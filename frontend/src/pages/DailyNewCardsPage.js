@@ -7,7 +7,7 @@ import { Badge } from '../components/ui/badge';
 import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard, Filter, Languages, Search, X } from 'lucide-react';
 import { membersAPI } from '../services/api';
 import { getMemberQRValue } from '../utils/memberQR';
-import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule } from '../utils/printLang';
+import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule, dedupeCardActivities } from '../utils/printLang';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -20,6 +20,7 @@ const DailyNewCardsPage = () => {
   const [data, setData] = useState(null);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [renewalSelectedIds, setRenewalSelectedIds] = useState(() => new Set());
   const [printLang, setPrintLangState] = useState(getPrintLang);
   const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
 
@@ -46,6 +47,28 @@ const DailyNewCardsPage = () => {
     });
   };
 
+  const toggleRenewalMember = (id) => {
+    setRenewalSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Renewal cards are RE-prints: almost every renewing member already has
+  // card_printed_at set, so (unlike new members) "select branch" takes all.
+  const toggleRenewalBranchAll = (branch, checked) => {
+    setRenewalSelectedIds((prev) => {
+      const next = new Set(prev);
+      branch.members.forEach((m) => {
+        if (checked) next.add(m.id);
+        else next.delete(m.id);
+      });
+      return next;
+    });
+  };
+
   const clearSelection = () => setSelectedIds(new Set());
 
   const selectAllVisible = () => {
@@ -67,6 +90,7 @@ const DailyNewCardsPage = () => {
       // keeps showing the search results instead of falling back to day mode.
       await load(date, debouncedSearch);
       setSelectedIds(new Set());
+      setRenewalSelectedIds(new Set());
     } catch (_e) {}
   };
 
@@ -106,7 +130,7 @@ const DailyNewCardsPage = () => {
 
   const renderCardHtml = (m, lang = printLang) => {
     const qrData = encodeURIComponent(getMemberQRValue(m.member_code || ''));
-    const allActs = m.activities || [];
+    const allActs = dedupeCardActivities(m.activities);
     const today = new Date();
     const parseEnd = (a) => {
       if (!a?.end_date) return 0;
@@ -130,7 +154,7 @@ const DailyNewCardsPage = () => {
     const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
     return `
       <div class="card" dir="${L.dir}">
-        <div class="accent-stripe"><span>${(m.activities && m.activities[0] && m.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
+        <div class="accent-stripe"><span>${(allActs[0] && allActs[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
         <div class="card-header">
           <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
           <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
@@ -175,9 +199,22 @@ const DailyNewCardsPage = () => {
     return scoped;
   };
 
-  const printAllCards = (lang = printLang) => {
-    if (!data || !data.members || data.members.length === 0) return;
-    const branchesList = getFilteredBranches();
+  const getFilteredRenewalBranches = () => {
+    const list = data?.renewal_branches || [];
+    let scoped = selectedBranchId === 'all'
+      ? list
+      : list.filter((b) => String(b.branch_id) === String(selectedBranchId));
+    if (renewalSelectedIds.size > 0) {
+      scoped = scoped
+        .map((b) => ({ ...b, members: b.members.filter((m) => renewalSelectedIds.has(m.id)) }))
+        .filter((b) => b.members.length > 0);
+    }
+    return scoped;
+  };
+
+  const printAllCards = (lang = printLang, branchesOverride = null) => {
+    if (!data) return;
+    const branchesList = branchesOverride || getFilteredBranches();
     if (branchesList.length === 0) return;
 
     const pairs = [];
@@ -257,7 +294,7 @@ const DailyNewCardsPage = () => {
       </style></head><body>
       <div class="toolbar">
         <button onclick="window.print()">🖨️ طباعة (${pairs.length} كرت)</button>
-        <div class="meta">تاريخ: ${data.date} — إجمالي: ${pairs.length} كرت موزع على ${data.total_branches} فرع</div>
+        <div class="meta">تاريخ: ${data.date} — إجمالي: ${pairs.length} كرت موزع على ${branchesList.length} فرع</div>
       </div>
       ${pagesHtml.join('')}
       </body></html>`);
@@ -265,9 +302,9 @@ const DailyNewCardsPage = () => {
     markIdsPrinted(pairs.map((p) => p.member.id));
   };
 
-  const printCD820 = (mode = 'duplex', lang = printLang) => {
-    if (!data || !data.members || data.members.length === 0) return;
-    const branchesList = getFilteredBranches();
+  const printCD820 = (mode = 'duplex', lang = printLang, branchesOverride = null) => {
+    if (!data) return;
+    const branchesList = branchesOverride || getFilteredBranches();
     if (branchesList.length === 0) return;
 
     const allMembers = [];
@@ -367,6 +404,25 @@ const DailyNewCardsPage = () => {
     : allBranches.filter((b) => String(b.branch_id) === String(selectedBranchId));
   const totalMembers = branches.reduce((sum, b) => sum + (b.members?.length || 0), 0);
   const totalBranchesShown = branches.length;
+  const allRenewalBranches = data?.renewal_branches || [];
+  const renewalBranchesView = selectedBranchId === 'all'
+    ? allRenewalBranches
+    : allRenewalBranches.filter((b) => String(b.branch_id) === String(selectedBranchId));
+  const totalRenewals = renewalBranchesView.reduce((sum, b) => sum + (b.members?.length || 0), 0);
+  // Branch dropdown options = union of new-member branches and renewal
+  // branches, so a branch with only renewals that day is still selectable.
+  const branchOptions = (() => {
+    const map = new Map();
+    (data?.branches || []).forEach((b) => {
+      map.set(String(b.branch_id), { id: b.branch_id, name: b.branch_name, newCount: b.members.length, renCount: 0 });
+    });
+    (data?.renewal_branches || []).forEach((b) => {
+      const k = String(b.branch_id);
+      if (map.has(k)) map.get(k).renCount = b.members.length;
+      else map.set(k, { id: b.branch_id, name: b.branch_name, newCount: 0, renCount: b.members.length });
+    });
+    return [...map.values()];
+  })();
 
   return (
     <Layout>
@@ -376,7 +432,7 @@ const DailyNewCardsPage = () => {
             <CalendarDays className="w-7 h-7 text-orange-500" />
             كروت العضوية اليومية
           </h1>
-          <p className="text-gray-600 text-sm">تجميع يومي لكل كروت العضوية الجديدة من كل الفروع لطباعتها وتوزيعها.</p>
+          <p className="text-gray-600 text-sm">تجميع يومي لكل كروت العضوية الجديدة من كل الفروع لطباعتها وتوزيعها، مع قسم لتجديدات نفس اليوم.</p>
         </div>
 
         <Card className="mb-6 shadow-sm">
@@ -431,10 +487,10 @@ const DailyNewCardsPage = () => {
                   onChange={(e) => setSelectedBranchId(e.target.value)}
                   className="w-full h-10 border border-gray-300 rounded-md px-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
                 >
-                  <option value="all">كل الفروع ({data?.total_branches || 0})</option>
-                  {(data?.branches || []).map((b) => (
-                    <option key={b.branch_id} value={b.branch_id}>
-                      {b.branch_name} ({b.members.length})
+                  <option value="all">كل الفروع ({branchOptions.length})</option>
+                  {branchOptions.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} ({b.newCount}{b.renCount ? ` + ${b.renCount} تجديد` : ''})
                     </option>
                   ))}
                 </select>
@@ -516,6 +572,12 @@ const DailyNewCardsPage = () => {
                 <Users className="w-3.5 h-3.5" />
                 {isSearching ? 'نتائج البحث' : (selectedBranchId === 'all' ? 'إجمالي الأعضاء الجدد' : 'أعضاء الفرع المختار')}: {totalMembers}
               </Badge>
+              {!isSearching && (
+                <Badge variant="secondary" className="text-sm gap-1 px-3 py-1 bg-blue-50 text-blue-700">
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  تجديدات اليوم: {totalRenewals}
+                </Badge>
+              )}
               {isSearching && (
                 <Badge
                   className="text-xs gap-1 px-3 py-1 bg-blue-100 text-blue-700 cursor-pointer hover:bg-blue-200"
@@ -578,7 +640,13 @@ const DailyNewCardsPage = () => {
           <div className="text-center py-12 text-gray-500">جاري التحميل...</div>
         )}
 
-        {!loading && totalMembers === 0 && !error && (
+        {!loading && !error && totalMembers === 0 && totalRenewals > 0 && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded text-sm">
+            لا يوجد أعضاء جدد بهذا التاريخ — لكن يوجد {totalRenewals} تجديد في القسم بالأسفل.
+          </div>
+        )}
+
+        {!loading && totalMembers === 0 && totalRenewals === 0 && !error && (
           <Card className="shadow-sm">
             <CardContent className="p-10 text-center text-gray-500">
               <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
@@ -631,7 +699,7 @@ const DailyNewCardsPage = () => {
                   </thead>
                   <tbody>
                     {branch.members.map((m, idx) => {
-                      const acts = (m.activities || []).map((a) => a.activity_name).filter(Boolean).join('، ');
+                      const acts = [...new Set((m.activities || []).map((a) => a.activity_name).filter(Boolean))].join('، ');
                       const time = (m.created_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
                       const isSelected = selectedIds.has(m.id);
                       const isPrinted = !!m.card_printed_at;
@@ -677,6 +745,141 @@ const DailyNewCardsPage = () => {
           </Card>
           );
         })}
+
+        {!loading && !isSearching && totalRenewals > 0 && (
+          <div className="mt-8">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <RefreshCw className="w-5 h-5 text-blue-600" />
+                تجديدات اليوم
+                <Badge className="bg-blue-600 text-white">{totalRenewals}</Badge>
+              </h2>
+              <div className="flex gap-2 flex-wrap">
+                {renewalSelectedIds.size > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => setRenewalSelectedIds(new Set())}>
+                    إلغاء التحديد ({renewalSelectedIds.size})
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => printAllCards(printLang, getFilteredRenewalBranches())}
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  طباعة A4
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => printCD820('duplex', printLang, getFilteredRenewalBranches())}
+                  variant="outline"
+                  className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-1"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  CD820 وش وظهر
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => printCD820('single', printLang, getFilteredRenewalBranches())}
+                  variant="outline"
+                  className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-1"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  CD820 وش فقط
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              أعضاء حاليون تم دفع فاتورة تجديد لهم في هذا اليوم — التجديد لا يُنشئ عضواً جديداً لذلك لا يظهر في القائمة أعلاه. يمكنك إعادة طباعة كروتهم بالتواريخ الجديدة، وبدون تحديد تتم طباعة كل التجديدات المعروضة.
+            </p>
+            {renewalBranchesView.map((branch) => {
+              const branchSelectedCount = branch.members.filter((m) => renewalSelectedIds.has(m.id)).length;
+              const allSelected = branchSelectedCount === branch.members.length && branch.members.length > 0;
+              return (
+                <Card key={`ren-${branch.branch_id}`} className="mb-4 shadow-sm">
+                  <CardHeader className="bg-gradient-to-l from-blue-50 to-sky-50 border-b py-3">
+                    <CardTitle className="text-lg flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-blue-600" />
+                        {branch.branch_name}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {branchSelectedCount > 0 && (
+                          <Badge className="bg-blue-600 text-white text-xs">محدد: {branchSelectedCount}</Badge>
+                        )}
+                        <Badge className="bg-blue-600 text-white">{branch.members.length} تجديد</Badge>
+                      </div>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-600">
+                          <tr>
+                            <th className="text-center p-2 font-semibold w-10">
+                              <input
+                                type="checkbox"
+                                checked={allSelected}
+                                onChange={(e) => toggleRenewalBranchAll(branch, e.target.checked)}
+                                className="w-4 h-4 cursor-pointer accent-blue-600"
+                                title="تحديد كل الفرع"
+                              />
+                            </th>
+                            <th className="text-right p-2 font-semibold">#</th>
+                            <th className="text-right p-2 font-semibold">رقم العضوية</th>
+                            <th className="text-right p-2 font-semibold">الاسم</th>
+                            <th className="text-right p-2 font-semibold">الجوال</th>
+                            <th className="text-right p-2 font-semibold">النشاط المجدد</th>
+                            <th className="text-right p-2 font-semibold">الاشتراك الجديد</th>
+                            <th className="text-right p-2 font-semibold">وقت التجديد</th>
+                            <th className="text-right p-2 font-semibold">الفاتورة</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {branch.members.map((m, idx) => {
+                            const isSelected = renewalSelectedIds.has(m.id);
+                            const time = (m.renewed_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
+                            return (
+                              <tr
+                                key={m.id}
+                                className={`border-t hover:bg-blue-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
+                                onClick={() => toggleRenewalMember(m.id)}
+                              >
+                                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleRenewalMember(m.id)}
+                                    className="w-4 h-4 cursor-pointer accent-blue-600"
+                                  />
+                                </td>
+                                <td className="p-2 text-gray-500">{idx + 1}</td>
+                                <td className="p-2 font-bold text-blue-700">#{m.member_code}</td>
+                                <td className="p-2 font-medium">{m.name_ar || m.name}</td>
+                                <td className="p-2" dir="ltr">{m.phone || '-'}</td>
+                                <td className="p-2 text-gray-700">
+                                  {(m.renewal_items || []).map((it) => it.activity_name).filter(Boolean).join('، ') || '-'}
+                                </td>
+                                <td className="p-2">
+                                  {(m.renewal_items || []).map((it, i) => (
+                                    <div key={i} dir="ltr" className="text-xs whitespace-nowrap text-gray-700">
+                                      {(it.start_date || '؟')} → {(it.end_date || '؟')}
+                                    </div>
+                                  ))}
+                                </td>
+                                <td className="p-2 text-gray-500" dir="ltr">{time}</td>
+                                <td className="p-2 text-gray-500 text-xs" dir="ltr">{(m.renewal_invoices || []).join('، ') || '-'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </Layout>
   );

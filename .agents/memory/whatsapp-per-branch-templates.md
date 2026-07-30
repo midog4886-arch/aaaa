@@ -5,12 +5,29 @@ description: How branch-level WhatsApp renewal/manual reminder text overrides th
 
 # Per-branch WhatsApp message templates
 
-Branches can override three WhatsApp texts: renewal (automatic), manual, and
-welcome (new member, first subscription). Stored on the branch doc as
-`whatsapp_renewal_template`, `whatsapp_manual_template`, `whatsapp_welcome_template`.
-Empty/missing = use the shared global template in `whatsapp_settings` (backward
-compatible). Globals: `message_template` (renewal), `manual_reminder_template`,
+Branches can override four WhatsApp texts: renewal (automatic), manual,
+manual-EXPIRED (past-tense), and welcome (new member, first subscription).
+Stored on the branch doc as `whatsapp_renewal_template`,
+`whatsapp_manual_template`, `whatsapp_manual_expired_template`,
+`whatsapp_welcome_template`. Empty/missing = use the shared global template in
+`whatsapp_settings` (backward compatible). Globals: `message_template`
+(renewal), `manual_reminder_template`, `manual_reminder_expired_template`,
 `welcome_template`.
+
+**Expired (past-tense) variant:** when the subscription end date has already
+passed, manual reminders must say "الاشتراك انتهى بتاريخ ..." not "قارب على
+الانتهاء". Rule: expired ⇔ days-remaining < 0 computed as a pure DATE diff in
+Riyadh tz (0 = ends today = still present-tense). An empty branch expired
+override falls back to the GLOBAL expired template — never to the branch's
+regular manual text. Portal notification text switches سينتهي/انتهى by the same
+flag.
+
+**Single expiry-truth rule:** the Renewals page reuses `days_remaining` from the
+expiring-subscriptions endpoint for the tense choice, so that endpoint MUST
+compute it from the Riyadh date at midnight (naive UTC `now` with a time
+component both shifts the day near midnight AND floor-rounds "ends today" to
+-1). If backend and frontend ever decide expiry differently, wa.me text and
+service-sent text diverge around midnight.
 
 **Welcome message:** there is NO automatic first-subscription send. It is sent
 MANUALLY from the Members page via a 👋 button next to the WhatsApp icon (list

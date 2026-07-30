@@ -28,3 +28,5 @@ the invoice merge: read existing, for each incoming item replace the entry with
 the same `activity_id` (carry over `coach_id`/`level_id` when missing) else
 append, then `$set` the whole array. The read-only member-card endpoint already
 dedupes its response, so the trap is specifically the persisted-write paths.
+
+**Card prints dedupe at render (display-level):** membership-card HTML builders must not render `member.activities` verbatim — legacy dup copies (same name, different end_date, e.g. after a renewal merged by activity_id into only one copy) print "✓ swimming ✓ swimming". Shared helper `dedupeCardActivities` in `frontend/src/utils/printLang.js` dedupes by whitespace-normalized lowercased activity_name keeping the latest-end copy (tie → status active); use it in EVERY card/print surface that lists activities. Data itself is left untouched (no safe way to know which dup is authoritative).

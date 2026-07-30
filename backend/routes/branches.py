@@ -38,6 +38,9 @@ class BranchBase(BaseModel):
     # {name} {activity} {days} {end_date} {fee}.
     whatsapp_renewal_template: Optional[str] = ""
     whatsapp_manual_template: Optional[str] = ""
+    # Used instead of whatsapp_manual_template when the subscription already
+    # expired (past-tense wording). Empty -> global expired template.
+    whatsapp_manual_expired_template: Optional[str] = ""
     whatsapp_welcome_template: Optional[str] = ""
     # Days the branch operates. None/empty = open all week (backward compatible).
     working_days: Optional[List[str]] = None
@@ -65,7 +68,7 @@ def _validate_location_url(data: dict):
 
 def _validate_branch_templates(data: dict):
     """Cap per-branch WhatsApp templates to align with global template limits."""
-    for field in ("whatsapp_renewal_template", "whatsapp_manual_template", "whatsapp_welcome_template"):
+    for field in ("whatsapp_renewal_template", "whatsapp_manual_template", "whatsapp_manual_expired_template", "whatsapp_welcome_template"):
         val = data.get(field)
         if val and len(val) > 1000:
             raise HTTPException(

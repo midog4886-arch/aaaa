@@ -909,7 +909,15 @@ async def get_expiring_subscriptions(
     """
     user_branch_id = current_user.get("branch_id")
     is_admin = current_user.get("is_admin", False)
-    today_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    # Business-day arithmetic in Riyadh time, normalized to midnight so
+    # days_remaining is a clean date diff: 0 = ends today (still active),
+    # negative = already expired. Must match the WhatsApp send path, which
+    # decides past-tense "expired" wording by the same Riyadh date rule —
+    # the Renewals page reuses days_remaining for that template choice.
+    from zoneinfo import ZoneInfo
+    today_dt = datetime.combine(
+        datetime.now(ZoneInfo("Asia/Riyadh")).date(), datetime.min.time()
+    )
     today = today_dt.strftime("%Y-%m-%d")
     future_date = (today_dt + timedelta(days=days)).strftime("%Y-%m-%d")
     # Look back up to 90 days for already-expired subscriptions when requested

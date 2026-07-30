@@ -20,6 +20,7 @@ class BranchBase(BaseModel):
     # global templates in whatsapp_settings (backward compatible).
     whatsapp_renewal_template: Optional[str] = ""
     whatsapp_manual_template: Optional[str] = ""
+    whatsapp_manual_expired_template: Optional[str] = ""
     whatsapp_welcome_template: Optional[str] = ""
     # Days the branch operates. None/empty = open all week (backward compatible).
     working_days: Optional[List[str]] = None

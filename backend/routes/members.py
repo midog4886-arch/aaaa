@@ -122,6 +122,9 @@ async def get_daily_new_member_cards(
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
     search_term = (search or "").strip()
+    start_iso = f"{target_date}T00:00:00"
+    end_iso = f"{target_date}T23:59:59.999999"
+    renewal_members: List[Dict[str, Any]] = []
     if search_term:
         # Name search spans ALL dates: staff often need to reprint a card
         # without knowing the member's registration day.
@@ -134,37 +137,99 @@ async def get_daily_new_member_cards(
         ]}
         members = await db.members.find(query, {"_id": 0, "photo": 0}).sort("created_at", -1).to_list(200)
     else:
-        start_iso = f"{target_date}T00:00:00"
-        end_iso = f"{target_date}T23:59:59.999999"
         query = {"created_at": {"$gte": start_iso, "$lte": end_iso}}
         members = await db.members.find(query, {"_id": 0, "photo": 0}).sort("created_at", 1).to_list(5000)
 
-    activity_ids = list({a.get("activity_id") for m in members for a in (m.get("activities") or []) if a.get("activity_id")})
+        # ---- Same-day renewals ----
+        # Renewing never creates a member doc (paying a subscription invoice
+        # merges the new dates into the EXISTING member's activities), so the
+        # created_at query above can never show a renewal. Surface members
+        # whose subscription invoice was PAID on the target day so staff can
+        # see them and reprint their card with the new dates. Product-only
+        # invoices don't count, and refunds live in db.credit_notes, so a
+        # "paid" invoice here is a real subscription payment.
+        inv_query = {"status": "paid", "$or": [
+            {"paid_at": {"$gte": start_iso, "$lte": end_iso}},
+            # Legacy invoices paid before the paid_at field existed
+            # ({"paid_at": None} matches missing AND explicit-null).
+            {"paid_at": None, "created_at": {"$gte": start_iso, "$lte": end_iso}},
+        ]}
+        inv_docs = await db.invoices.find(
+            inv_query,
+            {"_id": 0, "id": 1, "invoice_number": 1, "member_id": 1, "items": 1, "paid_at": 1, "created_at": 1},
+        ).to_list(3000)
+
+        new_today_ids = {m.get("id") for m in members}
+        renewal_info: Dict[str, Dict[str, Any]] = {}
+        for inv in inv_docs:
+            primary_mid = inv.get("member_id")
+            renewed_at = inv.get("paid_at") or inv.get("created_at") or ""
+            inv_no = inv.get("invoice_number") or ""
+            for item in (inv.get("items") or []):
+                if item.get("is_product"):
+                    continue
+                mid = item.get("member_id") or primary_mid
+                if not mid or mid in new_today_ids:
+                    continue  # brand-new member: already in the "new" list
+                slot = renewal_info.setdefault(
+                    mid, {"items": [], "renewed_at": "", "invoice_numbers": []}
+                )
+                slot["items"].append({
+                    "activity_name": item.get("activity_name") or "",
+                    "start_date": item.get("start_date") or "",
+                    "end_date": item.get("end_date") or "",
+                })
+                if renewed_at > slot["renewed_at"]:
+                    slot["renewed_at"] = renewed_at
+                if inv_no and inv_no not in slot["invoice_numbers"]:
+                    slot["invoice_numbers"].append(inv_no)
+
+        if renewal_info:
+            ren_docs = await db.members.find(
+                {"id": {"$in": list(renewal_info.keys())}},
+                {"_id": 0, "photo": 0},
+            ).to_list(5000)
+            for m in ren_docs:
+                created = m.get("created_at") or ""
+                if start_iso <= created <= end_iso:
+                    continue  # created today => "new member", not a renewal
+                info = renewal_info.get(m.get("id")) or {}
+                m["renewal_items"] = info.get("items") or []
+                m["renewed_at"] = info.get("renewed_at") or ""
+                m["renewal_invoices"] = info.get("invoice_numbers") or []
+                renewal_members.append(m)
+            renewal_members.sort(key=lambda x: x.get("renewed_at") or "")
+
+    all_card_members = members + renewal_members
+    activity_ids = list({a.get("activity_id") for m in all_card_members for a in (m.get("activities") or []) if a.get("activity_id")})
     activities_en_map = {}
     if activity_ids:
         act_docs = await db.activities.find({"id": {"$in": activity_ids}}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
         activities_en_map = {a["id"]: a.get("name") or "" for a in act_docs}
-    for m in members:
+    for m in all_card_members:
         for a in (m.get("activities") or []):
             a["activity_name_en"] = activities_en_map.get(a.get("activity_id")) or ""
 
     branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1}).to_list(500)
     branch_map = {b["id"]: b for b in branches}
 
-    grouped: Dict[str, Dict[str, Any]] = {}
-    for m in members:
-        bid = m.get("branch_id") or "__no_branch__"
-        if bid not in grouped:
-            b = branch_map.get(bid, {})
-            grouped[bid] = {
-                "branch_id": bid,
-                "branch_name": b.get("name_ar") or b.get("name") or ("بدون فرع" if bid == "__no_branch__" else bid),
-                "branch_phone": b.get("phone") or "",
-                "members": [],
-            }
-        grouped[bid]["members"].append(m)
+    def _group_by_branch(member_list):
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for m in member_list:
+            bid = m.get("branch_id") or "__no_branch__"
+            if bid not in grouped:
+                b = branch_map.get(bid, {})
+                grouped[bid] = {
+                    "branch_id": bid,
+                    "branch_name": b.get("name_ar") or b.get("name") or ("بدون فرع" if bid == "__no_branch__" else bid),
+                    "branch_phone": b.get("phone") or "",
+                    "members": [],
+                }
+            grouped[bid]["members"].append(m)
+        return sorted(grouped.values(), key=lambda g: g["branch_name"])
 
-    branch_summaries = sorted(grouped.values(), key=lambda g: g["branch_name"])
+    branch_summaries = _group_by_branch(members)
+    renewal_branch_summaries = _group_by_branch(renewal_members)
 
     return {
         "date": target_date,
@@ -172,6 +237,9 @@ async def get_daily_new_member_cards(
         "total_branches": len([g for g in branch_summaries if g["members"]]),
         "branches": branch_summaries,
         "members": members,
+        "total_renewals": len(renewal_members),
+        "renewal_branches": renewal_branch_summaries,
+        "renewal_members": renewal_members,
     }
 
 

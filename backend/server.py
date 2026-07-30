@@ -7600,6 +7600,15 @@ async def quick_attendance(
         "member_photo": member.get("photo", ""),
         "activity_id": activity_id,
         "activity_name": activity.get("name_ar") or activity.get("name", ""),
+        # VIP members may train at any branch: tag the visit to the scanning
+        # user's branch. Regular members always record under their own branch.
+        # Records missing branch_id are invisible to every branch-filtered
+        # view (e.g. حضور اليوم), so this must always be stamped.
+        "branch_id": (
+            (current_user.get("branch_id") or member.get("branch_id") or "")
+            if member.get("is_vip")
+            else (member.get("branch_id") or current_user.get("branch_id") or "")
+        ),
         "date": today,
         "status": "present",
         "check_in_time": now_time,

@@ -49,6 +49,7 @@ const BranchesPage = () => {
     whatsapp_group_url: '',
     whatsapp_renewal_template: '',
     whatsapp_manual_template: '',
+    whatsapp_manual_expired_template: '',
     whatsapp_welcome_template: '',
     working_days: [...ALL_WEEKDAY_IDS]
   });
@@ -100,6 +101,7 @@ const BranchesPage = () => {
         whatsapp_group_url: (formData.whatsapp_group_url || '').trim(),
         whatsapp_renewal_template: (formData.whatsapp_renewal_template || '').trim(),
         whatsapp_manual_template: (formData.whatsapp_manual_template || '').trim(),
+        whatsapp_manual_expired_template: (formData.whatsapp_manual_expired_template || '').trim(),
         whatsapp_welcome_template: (formData.whatsapp_welcome_template || '').trim(),
         working_days: WEEKDAYS
           .map(d => d.id)
@@ -146,6 +148,7 @@ const BranchesPage = () => {
       whatsapp_group_url: branch.whatsapp_group_url || '',
       whatsapp_renewal_template: branch.whatsapp_renewal_template || '',
       whatsapp_manual_template: branch.whatsapp_manual_template || '',
+      whatsapp_manual_expired_template: branch.whatsapp_manual_expired_template || '',
       whatsapp_welcome_template: branch.whatsapp_welcome_template || '',
       // Missing/empty working_days means the branch was created before this
       // feature -> treat it as open all week.
@@ -168,6 +171,7 @@ const BranchesPage = () => {
       whatsapp_group_url: '',
       whatsapp_renewal_template: '',
       whatsapp_manual_template: '',
+      whatsapp_manual_expired_template: '',
       working_days: [...ALL_WEEKDAY_IDS]
     });
   };
@@ -453,6 +457,18 @@ const BranchesPage = () => {
                     placeholder={language === 'ar' ? 'مثال: السلام عليكم {name}، اشتراك {activity} قارب على الانتهاء بتاريخ {end_date}.' : 'e.g. Hello {name}, your {activity} subscription ends on {end_date}.'}
                     dir="rtl"
                     data-testid="branch-whatsapp-manual-template"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-sm">{language === 'ar' ? 'قالب التذكير بعد انتهاء الاشتراك' : 'Expired Subscription Reminder Template'}</Label>
+                  <textarea
+                    className="w-full min-h-[90px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={formData.whatsapp_manual_expired_template}
+                    onChange={(e) => setFormData({ ...formData, whatsapp_manual_expired_template: e.target.value })}
+                    placeholder={language === 'ar' ? 'مثال: السلام عليكم {name}، اشتراك {activity} انتهى بتاريخ {end_date}. فارغ = القالب العام.' : 'e.g. Hello {name}, your {activity} subscription ended on {end_date}. Empty = global template.'}
+                    dir="rtl"
+                    data-testid="branch-whatsapp-manual-expired-template"
                   />
                 </div>
 

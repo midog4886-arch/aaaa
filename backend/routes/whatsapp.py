@@ -52,6 +52,9 @@ DEFAULT_SETTINGS = {
     # Per-offset overrides keyed by stringified days; empty falls back to message_template
     "templates": {},
     "manual_reminder_template": "السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
+    # Used instead of manual_reminder_template when the subscription end date
+    # has already passed (past-tense wording: "انتهى" not "قارب على الانتهاء").
+    "manual_reminder_expired_template": "السلام عليكم {name}،\nنود إعلامكم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قد انتهى بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
     # Welcome message for NEW members (first subscription) — sent manually via the
     # Members page WhatsApp button. Empty per-branch override falls back to this.
     "welcome_template": "أهلاً وسهلاً {name} 🎉\nيسعدنا انضمامك إلى شركة اداء الابطال العالمية للرياضة في نشاط ({activity}).\nنتمنى لك تجربة رياضية ممتعة ومفيدة. 🏆",
@@ -88,18 +91,26 @@ def _normalize_offsets(settings: dict) -> List[dict]:
                     if 0 <= d <= 60:
                         items.append({"days": d, "enabled": bool(o.get("enabled", True))})
     else:
+        # Legacy fallback fields: clamp to the same 0..60 range as the offsets
+        # model so a malformed doc can never schedule post-expiry auto-reminders.
         try:
-            items.append({"days": int(settings.get("days_before", 3)), "enabled": True})
+            d1 = int(settings.get("days_before", 3))
+            if 0 <= d1 <= 60:
+                items.append({"days": d1, "enabled": True})
         except Exception:
             pass
         if settings.get("reminder_2_enabled", True):
             try:
-                items.append({"days": int(settings.get("days_before_2", 1)), "enabled": True})
+                d2 = int(settings.get("days_before_2", 1))
+                if 0 <= d2 <= 60:
+                    items.append({"days": d2, "enabled": True})
             except Exception:
                 pass
         for d in settings.get("extra_offsets", []) or []:
             try:
-                items.append({"days": int(d), "enabled": True})
+                dv = int(d)
+                if 0 <= dv <= 60:
+                    items.append({"days": dv, "enabled": True})
             except Exception:
                 continue
     seen: set = set()
@@ -181,7 +192,7 @@ async def _get_branch_templates() -> dict:
     out: dict = {}
     try:
         async for b in _db["branches"].find(
-            {}, {"_id": 0, "id": 1, "whatsapp_renewal_template": 1, "whatsapp_manual_template": 1}
+            {}, {"_id": 0, "id": 1, "whatsapp_renewal_template": 1, "whatsapp_manual_template": 1, "whatsapp_manual_expired_template": 1}
         ):
             bid = b.get("id")
             if not bid:
@@ -189,10 +200,13 @@ async def _get_branch_templates() -> dict:
             entry = {}
             renewal = (b.get("whatsapp_renewal_template") or "").strip()
             manual = (b.get("whatsapp_manual_template") or "").strip()
+            manual_expired = (b.get("whatsapp_manual_expired_template") or "").strip()
             if renewal:
                 entry["renewal"] = renewal
             if manual:
                 entry["manual"] = manual
+            if manual_expired:
+                entry["manual_expired"] = manual_expired
             if entry:
                 out[bid] = entry
     except Exception as e:
@@ -600,6 +614,7 @@ class WhatsAppSettings(BaseModel):
     # back to the shared `message_template`.
     templates: Optional[dict] = None
     manual_reminder_template: Optional[str] = None
+    manual_reminder_expired_template: Optional[str] = None
     welcome_template: Optional[str] = None
     send_hour: Optional[int] = None
     push_enabled: Optional[bool] = None
@@ -623,6 +638,8 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
         raise HTTPException(status_code=400, detail="message_template must not exceed 1000 characters")
     if data.manual_reminder_template is not None and len(data.manual_reminder_template) > 1000:
         raise HTTPException(status_code=400, detail="manual_reminder_template must not exceed 1000 characters")
+    if data.manual_reminder_expired_template is not None and len(data.manual_reminder_expired_template) > 1000:
+        raise HTTPException(status_code=400, detail="manual_reminder_expired_template must not exceed 1000 characters")
     if data.welcome_template is not None and len(data.welcome_template) > 1000:
         raise HTTPException(status_code=400, detail="welcome_template must not exceed 1000 characters")
     if data.templates is not None:
@@ -966,6 +983,10 @@ async def get_renewal_reminder_template(current_user: dict = Depends(get_current
             "manual_reminder_template",
             DEFAULT_SETTINGS["manual_reminder_template"],
         ),
+        "manual_reminder_expired_template": settings.get(
+            "manual_reminder_expired_template",
+            DEFAULT_SETTINGS["manual_reminder_expired_template"],
+        ),
         "message_template": settings.get(
             "message_template", DEFAULT_SETTINGS["message_template"]
         ),
@@ -1225,6 +1246,10 @@ async def send_bulk_renewal_reminders(
     settings = await _get_settings()
     settings = {**settings, "_manual_run": True}
     template = settings.get("manual_reminder_template", DEFAULT_SETTINGS["manual_reminder_template"])
+    expired_template = settings.get(
+        "manual_reminder_expired_template",
+        DEFAULT_SETTINGS["manual_reminder_expired_template"],
+    )
     branch_templates = await _get_branch_templates()
     push_enabled = settings.get("push_enabled", True)
     portal_enabled = settings.get("portal_enabled", True)
@@ -1294,6 +1319,11 @@ async def send_bulk_renewal_reminders(
         except Exception:
             days_calc = items[0].days_remaining if items[0].days_remaining is not None else 0
 
+        # Reminders sent AFTER the end date use the past-tense "expired"
+        # wording (الاشتراك انتهى بتاريخ...) instead of "قارب على الانتهاء".
+        # Decided by the same (earliest) end date shown in the message.
+        is_expired_reminder = days_calc < 0
+
         # Compute total fee for {fee} placeholder (sum of selected items' fees)
         total_fee = 0.0
         for it in items:
@@ -1308,9 +1338,14 @@ async def send_bulk_renewal_reminders(
         if wa_connected and phone:
             wa_phone = _format_phone(phone)
             if wa_phone:
-                member_template = _resolve_branch_template(
-                    branch_templates, member.get("branch_id"), "manual", template
-                )
+                if is_expired_reminder:
+                    member_template = _resolve_branch_template(
+                        branch_templates, member.get("branch_id"), "manual_expired", expired_template
+                    )
+                else:
+                    member_template = _resolve_branch_template(
+                        branch_templates, member.get("branch_id"), "manual", template
+                    )
                 message = _render_template(
                     member_template,
                     name=name,
@@ -1417,7 +1452,10 @@ async def send_bulk_renewal_reminders(
         if portal_enabled and not log_only:
             try:
                 title_ar = "🔔 تذكير بتجديد الاشتراك"
-                msg_ar = f"اشتراكك في {activities_text} سينتهي بتاريخ {end_date_raw}. نرجو التواصل معنا للتجديد."
+                if is_expired_reminder:
+                    msg_ar = f"اشتراكك في {activities_text} انتهى بتاريخ {end_date_raw}. نرجو التواصل معنا للتجديد."
+                else:
+                    msg_ar = f"اشتراكك في {activities_text} سينتهي بتاريخ {end_date_raw}. نرجو التواصل معنا للتجديد."
                 dedup_key = f"manual-renewal-{mid}-{end_date_raw}-{datetime.now(RIYADH_TZ).strftime('%Y%m%d%H%M')}"
                 await _db["member_notifications"].insert_one({
                     "id": str(uuid.uuid4()),

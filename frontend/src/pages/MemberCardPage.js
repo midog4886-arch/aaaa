@@ -10,7 +10,7 @@ import axios from 'axios';
 import { membersAPI } from '../services/api';
 import { getPrimaryColor } from '../services/branding';
 import { getMemberQRValue } from '../utils/memberQR';
-import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule } from '../utils/printLang';
+import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule, dedupeCardActivities } from '../utils/printLang';
 
 const API_URL = '';
 
@@ -98,7 +98,7 @@ const MemberCardPage = () => {
     const _headerBg = 'linear-gradient(135deg, #0A1A33 0%, #122E55 40%, #1E3A6E 70%, #0F2547 100%)';
     const _accent = _brand || '#F97316';
     
-    const _allActs = member?.activities || [];
+    const _allActs = dedupeCardActivities(member?.activities);
     const _today = new Date();
     const _parseEnd = (a) => {
       if (!a?.end_date) return 0;
@@ -113,7 +113,7 @@ const MemberCardPage = () => {
     const schedule = latestActivity?.schedule || '';
     
     // Get activities list
-    const activitiesHtml = member?.activities?.map(act => `
+    const activitiesHtml = _allActs.map(act => `
       <div class="activity-item ${act.status === 'active' ? 'active' : 'expired'}">
         <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
         <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
@@ -181,7 +181,7 @@ const MemberCardPage = () => {
             <div class="sticker-preview">
               <!-- Member Card - Position 1 -->
               <div class="card">
-                <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
+                <div class="accent-stripe"><span>${(_allActs[0] && _allActs[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
                 <div class="card-header">
                   <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
                   <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
@@ -222,7 +222,7 @@ const MemberCardPage = () => {
           <div class="print-area">
             <!-- Member Card - Position 1 -->
             <div class="card">
-              <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
+              <div class="accent-stripe"><span>${(_allActs[0] && _allActs[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
               <div class="card-header">
                 <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
                 <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
@@ -267,7 +267,7 @@ const MemberCardPage = () => {
     const _brand = getPrimaryColor();
     const _headerBg = 'linear-gradient(135deg, #0A1A33 0%, #122E55 40%, #1E3A6E 70%, #0F2547 100%)';
     const _accent = _brand || '#F97316';
-    const _allActs = member?.activities || [];
+    const _allActs = dedupeCardActivities(member?.activities);
     const _today = new Date();
     const _parseEnd = (a) => {
       if (!a?.end_date) return 0;
@@ -280,7 +280,7 @@ const MemberCardPage = () => {
     const startDate = latestActivity?.start_date || '';
     const endDate = latestActivity?.end_date || '';
     const schedule = latestActivity?.schedule || '';
-    const activitiesHtml = member?.activities?.map(act => {
+    const activitiesHtml = _allActs.map(act => {
       const actName = (lang === 'en' && act.activity_name_en) ? act.activity_name_en : (act.activity_name || '');
       return `
       <div class="activity-item ${act.status === 'active' ? 'active' : 'expired'}">
@@ -292,7 +292,7 @@ const MemberCardPage = () => {
     const frontHtml = `
       <div class="cd-page">
         <div class="card">
-          <div class="accent-stripe"><span>${(member?.activities && member.activities[0] && member.activities[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
+          <div class="accent-stripe"><span>${(_allActs[0] && _allActs[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
           <div class="card-header">
             <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
             <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>

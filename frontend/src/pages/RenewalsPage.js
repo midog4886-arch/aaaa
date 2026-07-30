@@ -125,6 +125,10 @@ const RenewalsPage = () => {
   const [waTemplate, setWaTemplate] = useState(
     'السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆'
   );
+  // Past-tense variant used when the subscription end date already passed.
+  const [waExpiredTemplate, setWaExpiredTemplate] = useState(
+    'السلام عليكم {name}،\nنود إعلامكم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قد انتهى بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆'
+  );
 
   useEffect(() => {
     loadData();
@@ -158,6 +162,8 @@ const RenewalsPage = () => {
         const res = await whatsappAPI.getReminderTemplate().catch(() => ({ data: {} }));
         const tpl = res.data?.manual_reminder_template;
         if (tpl) setWaTemplate(tpl);
+        const tplExpired = res.data?.manual_reminder_expired_template;
+        if (tplExpired) setWaExpiredTemplate(tplExpired);
       } catch (e) {
         // Non-fatal
       }
@@ -245,6 +251,8 @@ const RenewalsPage = () => {
         const tplRes = await whatsappAPI.getReminderTemplate();
         const tpl = tplRes?.data?.manual_reminder_template;
         if (tpl) setWaTemplate(tpl);
+        const tplExpired = tplRes?.data?.manual_reminder_expired_template;
+        if (tplExpired) setWaExpiredTemplate(tplExpired);
       } catch {}
     } catch (error) {
       console.error('Failed to load renewals data:', error);
@@ -383,8 +391,14 @@ const RenewalsPage = () => {
     const feeNum = Number(item.fee ?? 0) || 0;
     const feeStr = Number.isInteger(feeNum) ? String(feeNum) : feeNum.toFixed(2);
     const branch = (branches || []).find(b => b.id === item.branch_id);
-    const branchTpl = (branch?.whatsapp_manual_template || '').trim();
-    return (branchTpl || waTemplate || '')
+    // Past-due subscriptions use the past-tense wording ("انتهى بتاريخ")
+    // instead of "قارب على الانتهاء" — same rule as the backend send path.
+    const isExpiredItem = (item.days_remaining ?? 0) < 0;
+    const branchTpl = (isExpiredItem
+      ? (branch?.whatsapp_manual_expired_template || '')
+      : (branch?.whatsapp_manual_template || '')).trim();
+    const globalTpl = isExpiredItem ? waExpiredTemplate : waTemplate;
+    return (branchTpl || globalTpl || '')
       .replace(/\{name\}/g, item.member_name || '')
       .replace(/\{activity\}/g, item.activity_name || '')
       .replace(/\{days\}/g, String(item.days_remaining ?? 0))
@@ -552,6 +566,10 @@ const RenewalsPage = () => {
             start_date: newStart.toISOString().split('T')[0],
             end_date: newEnd.toISOString().split('T')[0],
             schedule: item.schedule || '',
+            training_days: item.training_days || [],
+            training_time: item.training_time || '',
+            day_times: item.day_times || {},
+            level_id: item.level_id || '',
             is_product: false,
           }],
           subtotal: fee, vat, total, discount: 0,
@@ -665,6 +683,10 @@ const RenewalsPage = () => {
           start_date: renewalForm.start_date,
           end_date: renewalForm.end_date,
           schedule: selectedItem.schedule || '',
+          training_days: selectedItem.training_days || [],
+          training_time: selectedItem.training_time || '',
+          day_times: selectedItem.day_times || {},
+          level_id: selectedItem.level_id || '',
           is_product: false
         }],
         subtotal: subtotal,
@@ -692,6 +714,8 @@ const RenewalsPage = () => {
         day_times: selectedItem.day_times || {},
         level_id: selectedItem.level_id || '',
         coach_id: selectedItem.coach_id || '',
+        source: 'invoice',
+        source_id: invoiceRes.data?.id || '',
         invoice_id: invoiceRes.data?.id,
         renewed_from: selectedItem.end_date
       };

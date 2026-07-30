@@ -43,6 +43,40 @@ export const translateSchedule = (text, lang) => {
   return out;
 };
 
+// Members can carry duplicate copies of the same activity in
+// member.activities (legacy $push writes, renewals against a re-created
+// activity id). Cards must list each activity ONCE — keep, per normalized
+// name, the copy with the latest end_date (tie → the one marked active).
+export const dedupeCardActivities = (activities) => {
+  const list = Array.isArray(activities) ? activities : [];
+  const parseEnd = (a) => {
+    if (!a || !a.end_date) return 0;
+    const t = new Date(a.end_date).getTime();
+    return isNaN(t) ? 0 : t;
+  };
+  const out = [];
+  const byKey = new Map();
+  list.forEach((act) => {
+    const key = String(act?.activity_name || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!key) {
+      out.push(act);
+      return;
+    }
+    if (!byKey.has(key)) {
+      byKey.set(key, out.length);
+      out.push(act);
+      return;
+    }
+    const idx = byKey.get(key);
+    const prev = out[idx];
+    const better =
+      parseEnd(act) > parseEnd(prev) ||
+      (parseEnd(act) === parseEnd(prev) && act?.status === 'active' && prev?.status !== 'active');
+    if (better) out[idx] = act;
+  });
+  return out;
+};
+
 export const PRINT_LABELS = {
   ar: {
     name: 'الاسم',

@@ -32,7 +32,12 @@
 // v30: daily membership cards page gets a name/code/phone search (spans all
 // dates) so staff can reprint any member's card without knowing the reg day.
 // v31: printing while searching keeps the search results on reload.
-const CACHE_NAME = 'gcsp-academy-v31';
+// v32: daily cards page gets a "renewals of the day" section — a renewal
+// pays an invoice for an EXISTING member (no new member doc), so it was
+// invisible in the created_at-based new-members list.
+// v34: membership cards no longer repeat a duplicated activity (dedupe by
+// name, keeping the latest-ending copy — e.g. after a renewal).
+const CACHE_NAME = 'gcsp-academy-v38';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install

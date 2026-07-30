@@ -6,6 +6,7 @@ import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
 import { NationalitySelect } from '../components/NationalitySelect';
 import ScheduleDaysTimeEditor from '../components/ScheduleDaysTimeEditor';
+import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
  
@@ -234,6 +235,7 @@ export const MembersPage = () => {
   const [freezeLoading, setFreezeLoading] = useState(false);
   const [appliedClosures, setAppliedClosures] = useState([]);
   const [renewalActivity, setRenewalActivity] = useState(null);
+  const [renewalLevelSelectorState, setRenewalLevelSelectorState] = useState(null);
   const [renewalForm, setRenewalForm] = useState({
     start_date: '',
     end_date: '',
@@ -430,6 +432,16 @@ export const MembersPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [levels, activityPickerBranch, editActivityForm.training_days]
   );
+  // Grouped levels for the renewal dialog picker: the member's branch plus
+  // shared (no-branch) levels, filtered by the renewal's chosen training days.
+  const renewalPickerGrouped = React.useMemo(() => {
+    const memberBranch = selectedMember?.branch_id || '';
+    const scoped = (levels || [])
+      .filter(l => l.is_active !== false)
+      .filter(l => !(l.branch_id || '') || l.branch_id === memberBranch);
+    return buildGroupedLevels(filterLevelsByDays(scoped, renewalForm.training_days || []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [levels, selectedMember, renewalForm.training_days]);
 
   useEffect(() => {
     loadData();
@@ -1375,8 +1387,8 @@ export const MembersPage = () => {
   };
 
   // A member "needs renewal" when they have at least one subscription that is
-  // already expired OR expiring within the next 7 days (same <=7 day threshold
-  // as needsRenewal). This is a SEPARATE worklist from the "expired" filter:
+  // already expired OR expiring within the next 7 days.
+  // This is a SEPARATE worklist from the "expired" filter:
   // it catches active-but-soon subscriptions (e.g. a swimming sub ending in a
   // few days) AND a single expired activity on an otherwise-active member
   // (e.g. an active member whose karate ended) — cases the "expired" filter
@@ -1413,11 +1425,6 @@ export const MembersPage = () => {
     return diffDays;
   };
 
-  // Check if activity needs renewal (7 days or less)
-  const needsRenewal = (activity) => {
-    const days = getDaysRemaining(activity.end_date);
-    return days !== null && days <= 7;
-  };
 
   // Permanently delete an activity period from the member (admin only)
   const handleDeleteActivity = async (activity) => {
@@ -1448,25 +1455,59 @@ export const MembersPage = () => {
     }
   };
 
+  // Extract canonical Arabic weekday names from a schedule string so the
+  // renewal end-date can snap to a real training day (mirrors RenewalsPage).
+  const RENEWAL_DAY_VARIANTS = {
+    'الأحد': ['الأحد', 'الاحد'],
+    'الإثنين': ['الإثنين', 'الاثنين'],
+    'الثلاثاء': ['الثلاثاء'],
+    'الأربعاء': ['الأربعاء', 'الاربعاء'],
+    'الخميس': ['الخميس'],
+    'الجمعة': ['الجمعة'],
+    'السبت': ['السبت'],
+  };
+  const parseScheduleDays = (schedule) => {
+    if (!schedule || typeof schedule !== 'string') return [];
+    return Object.keys(RENEWAL_DAY_VARIANTS).filter(canon => RENEWAL_DAY_VARIANTS[canon].some(v => schedule.includes(v)));
+  };
+
   // Open renewal dialog
   const openRenewalDialog = (activity) => {
     const endDate = new Date(activity.end_date);
     const newStartDate = new Date(endDate);
     newStartDate.setDate(newStartDate.getDate() + 1);
-    const newEndDate = new Date(newStartDate);
-    newEndDate.setMonth(newEndDate.getMonth() + 1);
-    
+    const startStr = newStartDate.toISOString().split('T')[0];
+
+    const trainingDays = (activity.training_days && activity.training_days.length > 0)
+      ? activity.training_days
+      : parseScheduleDays(activity.schedule);
+    const weeks = 4;
+    let endStr = calcEndDate(startStr, weeks, trainingDays);
+    if (!endStr) {
+      const newEndDate = new Date(newStartDate);
+      newEndDate.setMonth(newEndDate.getMonth() + 1);
+      endStr = newEndDate.toISOString().split('T')[0];
+    }
+
     setRenewalActivity(activity);
     setRenewalForm({
-      start_date: newStartDate.toISOString().split('T')[0],
-      end_date: newEndDate.toISOString().split('T')[0],
+      start_date: startStr,
+      end_date: endStr,
+      weeks,
       fee: activity.fee || 0,
       notes: '',
-      payment_method: 'card'
+      payment_method: 'card',
+      training_days: trainingDays,
+      training_time: activity.training_time || '',
+      day_times: activity.day_times || {},
+      schedule: activity.schedule || '',
+      level_id: activity.level_id || ''
     });
+    setRenewalLevelSelectorState(null);
     setRenewalCouponCode('');
     setRenewalAppliedCoupon(null);
     setRenewalCouponDiscount(0);
+    if (!levels || levels.length === 0) loadLevels();
     setIsRenewalDialogOpen(true);
   };
 
@@ -1521,7 +1562,11 @@ export const MembersPage = () => {
           period: `${renewalForm.start_date} - ${renewalForm.end_date}`,
           start_date: renewalForm.start_date,
           end_date: renewalForm.end_date,
-          schedule: '',
+          schedule: renewalForm.schedule || '',
+          training_days: renewalForm.training_days || [],
+          training_time: renewalForm.training_time || '',
+          day_times: renewalForm.day_times || {},
+          level_id: renewalForm.level_id || '',
           is_product: false
         }],
         subtotal: subtotal,
@@ -1536,25 +1581,59 @@ export const MembersPage = () => {
       
       const invoiceRes = await invoicesAPI.create(invoiceData);
       
-      // Add new activity period to member (keeping the old one as history)
-      const newActivityPeriod = {
-        activity_id: renewalActivity.activity_id,
+      // Renew in place (like the Renewals page): update the same activity
+      // subdoc with the edited dates/days/times/level instead of stacking a
+      // duplicate copy (stacked copies used to leak onto membership cards).
+      const renewedActivity = {
+        activity_id: renewalActivity.activity_id || '',
         activity_name: renewalActivity.activity_name,
         start_date: renewalForm.start_date,
         end_date: renewalForm.end_date,
         fee: parseFloat(renewalForm.fee),
         status: 'active',
         coach_id: renewalActivity.coach_id || '',
-        level_id: renewalActivity.level_id || '',
-        schedule: renewalActivity.schedule || '',
-        training_days: renewalActivity.training_days || [],
-        training_time: renewalActivity.training_time || '',
-        day_times: renewalActivity.day_times || {},
+        level_id: renewalForm.level_id || '',
+        schedule: renewalForm.schedule || '',
+        training_days: renewalForm.training_days || [],
+        training_time: renewalForm.training_time || '',
+        day_times: renewalForm.day_times || {},
+        source: 'invoice',
+        source_id: invoiceRes.data.id,
         invoice_id: invoiceRes.data.id,
         renewed_from: renewalActivity.end_date
       };
-      
-      await membersAPI.addActivity(selectedMember.id, newActivityPeriod);
+
+      if (renewalActivity.activity_id) {
+        await membersAPI.updateActivity(selectedMember.id, renewalActivity.activity_id, renewedActivity);
+      } else {
+        // Legacy activity entries without an id can't be targeted in place
+        await membersAPI.addActivity(selectedMember.id, renewedActivity);
+      }
+
+      // Sync level membership when the level changed during renewal
+      const oldLevelId = renewalActivity.level_id || '';
+      const newLevelId = renewalForm.level_id || '';
+      if (oldLevelId !== newLevelId) {
+        // Independent ops: a failed detach must not block the new placement
+        if (oldLevelId) {
+          try {
+            await levelsAPI.removeMember(oldLevelId, selectedMember.id);
+          } catch (lvlErr) {
+            console.warn('Old level detach warning:', lvlErr);
+          }
+        }
+        if (newLevelId) {
+          try {
+            await levelsAPI.addMember(newLevelId, selectedMember.id, {
+              activityId: renewalActivity.activity_id || undefined,
+              activityName: renewalActivity.activity_name || undefined,
+              force: true
+            });
+          } catch (lvlErr) {
+            console.warn('Level membership sync warning:', lvlErr);
+          }
+        }
+      }
       
       toast.success(language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully');
       setIsRenewalDialogOpen(false);
@@ -3183,7 +3262,9 @@ export const MembersPage = () => {
                           return Object.values(latestActivities);
                         })().map((activity, idx) => {
                           const daysRemaining = getDaysRemaining(activity.end_date);
-                          const showRenewalBtn = needsRenewal(activity) || daysRemaining <= 0;
+                          // Renewal is allowed at ANY time (early renewal chains the new
+                          // period after the current end date via openRenewalDialog).
+                          const showRenewalBtn = true;
                           const isExpired = daysRemaining !== null && daysRemaining <= 0;
                           const isNearExpiry = daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 7;
                           
@@ -4356,8 +4437,11 @@ export const MembersPage = () => {
         </Dialog>
 
         {/* Renewal Dialog */}
-        <Dialog open={isRenewalDialogOpen} onOpenChange={setIsRenewalDialogOpen}>
-          <DialogContent className="max-w-md">
+        <Dialog open={isRenewalDialogOpen} onOpenChange={(open) => {
+          setIsRenewalDialogOpen(open);
+          if (!open) setRenewalLevelSelectorState(null);
+        }}>
+          <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <RefreshCcw className="w-5 h-5 text-primary" />
@@ -4381,9 +4465,18 @@ export const MembersPage = () => {
                     </span>
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {language === 'ar' ? 'الاشتراك السابق انتهى في: ' : 'Previous subscription ended: '}
+                    {(getDaysRemaining(renewalActivity.end_date) ?? 0) > 0
+                      ? (language === 'ar' ? 'الاشتراك الحالي ينتهي في: ' : 'Current subscription ends: ')
+                      : (language === 'ar' ? 'الاشتراك السابق انتهى في: ' : 'Previous subscription ended: ')}
                     <span className="font-medium text-foreground">{renewalActivity.end_date}</span>
                   </p>
+                  {(getDaysRemaining(renewalActivity.end_date) ?? 0) > 0 && (
+                    <p className="text-xs text-emerald-600 font-medium">
+                      {language === 'ar'
+                        ? 'تجديد مبكر: الفترة الجديدة تبدأ بعد نهاية الاشتراك الحالي'
+                        : 'Early renewal: the new period starts after the current subscription ends'}
+                    </p>
+                  )}
                 </div>
 
                 {/* Renewal form */}
@@ -4393,13 +4486,36 @@ export const MembersPage = () => {
                     <Input
                       type="date"
                       value={renewalForm.start_date}
-                      onChange={(e) => setRenewalForm({...renewalForm, start_date: e.target.value})}
+                      onChange={(e) => {
+                        const start = e.target.value;
+                        const end = start ? (calcEndDate(start, renewalForm.weeks || 4, renewalForm.training_days || []) || renewalForm.end_date) : renewalForm.end_date;
+                        setRenewalForm({...renewalForm, start_date: start, end_date: end});
+                      }}
                       className="h-12"
                       data-testid="renewal-start-date"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}</Label>
+                    <Label className="flex items-center gap-2">
+                      {language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
+                      <span className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
+                        <input
+                          type="number"
+                          min="1"
+                          max="52"
+                          value={renewalForm.weeks || 4}
+                          onChange={(e) => {
+                            const weeks = parseInt(e.target.value, 10) || 4;
+                            const end = renewalForm.start_date ? (calcEndDate(renewalForm.start_date, weeks, renewalForm.training_days || []) || renewalForm.end_date) : renewalForm.end_date;
+                            setRenewalForm({ ...renewalForm, weeks, end_date: end });
+                          }}
+                          className="w-8 text-xs text-center bg-transparent outline-none font-semibold text-blue-700"
+                          title={language === 'ar' ? 'عدد الأسابيع' : 'Weeks'}
+                          data-testid="renewal-weeks-input"
+                        />
+                        <span className="text-xs text-blue-600">{language === 'ar' ? 'أسبوع' : 'wks'}</span>
+                      </span>
+                    </Label>
                     <Input
                       type="date"
                       value={renewalForm.end_date}
@@ -4408,6 +4524,166 @@ export const MembersPage = () => {
                       data-testid="renewal-end-date"
                     />
                   </div>
+                </div>
+
+                {/* Training days & times editor */}
+                <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-2">
+                  <Label className="text-blue-800">{language === 'ar' ? 'أيام ومواعيد التدريب' : 'Training Days & Times'}</Label>
+                  <ScheduleDaysTimeEditor
+                    value={{
+                      training_days: renewalForm.training_days || [],
+                      training_time: renewalForm.training_time || '',
+                      day_times: renewalForm.day_times || {}
+                    }}
+                    onChange={(patch) => {
+                      setRenewalForm(prev => {
+                        const next = { ...prev, ...patch };
+                        if (patch.training_days && prev.start_date) {
+                          next.end_date = calcEndDate(prev.start_date, prev.weeks || 4, patch.training_days) || prev.end_date;
+                        }
+                        return next;
+                      });
+                    }}
+                    language={language}
+                  />
+                </div>
+
+                {/* Level selector - cascading (same UX as activity edit) */}
+                <div className="space-y-1">
+                  <Label>{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                  {!renewalLevelSelectorState ? (
+                    <div>
+                      {renewalForm.level_id ? (
+                        <div className="flex items-center justify-between p-2 border rounded-lg bg-gray-50">
+                          <span className="text-sm">
+                            {(() => {
+                              const level = levels.find(l => l.id === renewalForm.level_id);
+                              if (!level) return renewalForm.level_id;
+                              const label = level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`);
+                              return level.activity_name ? `${label} - ${level.activity_name}` : label;
+                            })()}
+                          </span>
+                          <div className="flex gap-1">
+                            <Button type="button" variant="ghost" size="sm" className="h-7 px-2" onClick={() => setRenewalLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })} data-testid="renewal-change-level-btn">
+                              {language === 'ar' ? 'تغيير' : 'Change'}
+                            </Button>
+                            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-red-500" onClick={() => setRenewalForm({...renewalForm, level_id: ''})}>✕</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button type="button" variant="outline" className="w-full h-9 text-sm justify-start gap-2" onClick={() => setRenewalLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' })} data-testid="renewal-select-level-btn">
+                          <span>🎯</span>
+                          {language === 'ar' ? 'اختر المستوى (اختياري)' : 'Select Level (optional)'}
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+                      <div className="flex items-center justify-between p-2 bg-gray-100 border-b">
+                        <div className="flex items-center gap-2">
+                          {renewalLevelSelectorState.step !== 'activity' && (
+                            <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => {
+                              if (renewalLevelSelectorState.step === 'level') {
+                                setRenewalLevelSelectorState({ ...renewalLevelSelectorState, step: 'time', selectedTime: '' });
+                              } else if (renewalLevelSelectorState.step === 'time') {
+                                setRenewalLevelSelectorState({ step: 'activity', selectedActivity: '', selectedTime: '' });
+                              }
+                            }}>{language === 'ar' ? '→' : '←'}</Button>
+                          )}
+                          <span className="text-xs font-medium text-gray-600">
+                            {renewalLevelSelectorState.step === 'activity' && (language === 'ar' ? 'اختر النشاط' : 'Select Activity')}
+                            {renewalLevelSelectorState.step === 'time' && (language === 'ar' ? 'اختر الساعة' : 'Select Time')}
+                            {renewalLevelSelectorState.step === 'level' && (language === 'ar' ? 'اختر المستوى' : 'Select Level')}
+                          </span>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setRenewalLevelSelectorState(null)}>✕</Button>
+                      </div>
+                      {renewalLevelSelectorState.step === 'activity' && (
+                        <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                          {MAIN_ACTIVITIES_FOR_LEVELS.map(activity => {
+                            const activityLevels = renewalPickerGrouped[activity.id] || {};
+                            const timeCount = Object.keys(activityLevels).length;
+                            if (timeCount === 0) return null;
+                            return (
+                              <button key={activity.id} type="button" className={`w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors ${activity.color} bg-opacity-10`}
+                                onClick={() => setRenewalLevelSelectorState({ ...renewalLevelSelectorState, step: 'time', selectedActivity: activity.id })}>
+                                <div className="flex items-center gap-2"><span className="text-xl">{activity.icon}</span><span className="font-medium">{language === 'ar' ? activity.name_ar : activity.name_en}</span></div>
+                                <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
+                              </button>
+                            );
+                          })}
+                          {Object.keys(renewalPickerGrouped).filter(k => k !== 'other' && !MAIN_ACTIVITIES_FOR_LEVELS.some(a => a.id === k)).sort((a, b) => a.localeCompare(b, 'ar')).map(customKey => {
+                            const timeCount = Object.keys(renewalPickerGrouped[customKey] || {}).length;
+                            if (timeCount === 0) return null;
+                            return (
+                              <button key={customKey} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-gray-100 transition-colors bg-purple-500 bg-opacity-10"
+                                onClick={() => setRenewalLevelSelectorState({ ...renewalLevelSelectorState, step: 'time', selectedActivity: customKey })}>
+                                <div className="flex items-center gap-2"><span className="text-xl">🎽</span><span className="font-medium">{customKey}</span></div>
+                                <div className="flex items-center gap-1 text-gray-500"><span className="text-xs">{timeCount} {language === 'ar' ? 'أوقات' : 'times'}</span><span>{language === 'ar' ? '←' : '→'}</span></div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {renewalLevelSelectorState.step === 'time' && (
+                        <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                          {Object.entries(renewalPickerGrouped[renewalLevelSelectorState.selectedActivity] || {}).filter(([ts]) => { const h = hourFromTime(renewalForm.training_time); if (!h) return true; return hourFromTime(ts) === h; }).sort(([a], [b]) => (parseInt(hourFromTime(a)) || 0) - (parseInt(hourFromTime(b)) || 0)).map(([timeSlot, timeLevels]) => {
+                            const totalMembers = timeLevels.reduce((sum, l) => sum + countLevelMembersForForm(l, renewalForm.training_days || [], renewalForm.start_date || ''), 0);
+                            const totalCapacity = timeLevels.reduce((sum, l) => sum + (l.capacity || 10), 0);
+                            return (
+                              <button key={timeSlot} type="button" className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-blue-50 transition-colors border"
+                                onClick={() => setRenewalLevelSelectorState({ ...renewalLevelSelectorState, step: 'level', selectedTime: timeSlot })}>
+                                <div className="flex items-center gap-2"><span className="text-lg">🕐</span><span className="font-medium text-sm">{timeSlot}</span></div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-500">{timeLevels.length} {language === 'ar' ? 'مستويات' : 'levels'} • {totalMembers}/{totalCapacity}</span>
+                                  <span className="text-gray-400">{language === 'ar' ? '←' : '→'}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {renewalLevelSelectorState.step === 'level' && (
+                        <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+                          {(renewalPickerGrouped[renewalLevelSelectorState.selectedActivity]?.[renewalLevelSelectorState.selectedTime] || [])
+                            .sort((a, b) => a.level_number - b.level_number)
+                            .map(level => {
+                              const memberCount = countLevelMembersForForm(level, renewalForm.training_days || [], renewalForm.start_date || '');
+                              const maxCapacity = level.capacity || 10;
+                              const isFull = memberCount >= maxCapacity;
+                              const fillPercent = Math.round((memberCount / maxCapacity) * 100);
+                              const levelCoach = level.coach_id ? (coaches || []).find(c => c.id === level.coach_id) : null;
+                              const coachName = levelCoach ? (levelCoach.name_ar || levelCoach.name) : null;
+                              return (
+                                <button key={level.id} type="button"
+                                  className={`w-full p-2 rounded-lg transition-colors border ${isFull ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'hover:bg-green-50 border-gray-200'}`}
+                                  onClick={() => { setRenewalForm({...renewalForm, level_id: level.id}); setRenewalLevelSelectorState(null); }}>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className={`font-bold ${isFull ? 'text-red-600' : 'text-gray-800'}`}>
+                                      {level.display_name || (level.custom_name ? level.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${level.level_number}`)}
+                                    </span>
+                                    <span className={`text-sm ${isFull ? 'text-red-600' : 'text-gray-600'}`}>{memberCount}/{maxCapacity} {isFull && '⚠️'}</span>
+                                  </div>
+                                  {(level.time_slot || level.schedule || renewalLevelSelectorState.selectedTime) && (
+                                    <div className="text-xs font-bold text-amber-700 mb-1 text-right flex items-center justify-end gap-1">
+                                      <span>🕐</span><span>{level.time_slot || level.schedule || renewalLevelSelectorState.selectedTime}</span>
+                                    </div>
+                                  )}
+                                  {coachName && (
+                                    <div className="text-xs text-blue-600 mb-1 text-right">
+                                      👤 {language === 'ar' ? 'المدرب: ' : 'Coach: '}{coachName}
+                                    </div>
+                                  )}
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                    <div className={`h-1.5 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min(fillPercent, 100)}%` }} />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">

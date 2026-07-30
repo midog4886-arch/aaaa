@@ -18,3 +18,31 @@ carry forward the full set: `level_id, schedule, training_days, training_time, d
 sourced from `GET /notifications/expiring-subscriptions` — that endpoint must return
 those fields or the page has nothing to carry forward. The same fields must be reset
 together on any "clear activity" UI path (Trash button AND dropdown "none" selection).
+
+## Invoice /pay re-merges activities FROM the invoice items
+
+Marking an invoice paid rebuilds the member's matching activity subdoc from the
+invoice ITEM (start/end/fee/schedule/training_days/training_time/day_times/level_id;
+only coach_id is preserved from the existing entry) and stamps
+`source='invoice'`, `source_id=<that invoice id>`.
+
+**Why:** renewal dialogs create a PENDING invoice then updateActivity with the edited
+days/level. If the invoice items don't also carry the structured fields, the later
+"mark paid" re-merge wipes those edits back to empty.
+
+**How to apply:**
+- Any renewal/subscription invoice item must include `training_days, training_time,
+  day_times, level_id` alongside `schedule` (the local `InvoiceItem` model in the
+  invoices route accepts them; the copy in models/ does not — route uses its local one).
+- updateActivity renewal payloads must also set `source: 'invoice'` and
+  `source_id: <new invoice id>` — attendance/session-quota joins the original purchased
+  window via (source_id, activity_id); omitting them blanks the fields until payment.
+
+## Renew in place, never stack
+
+Member-page renewal renews IN PLACE via updateActivity (same as RenewalsPage);
+`addActivity` ($push) is only a fallback for legacy entries lacking `activity_id`.
+Stacked copies were the root cause of duplicate activities on printed cards. Level
+change during renewal: removeMember(old) and addMember(new, force + member's own
+activity_id/name) as INDEPENDENT try/catch ops — a failed detach must not block
+the new placement.

@@ -7,6 +7,8 @@ description: How the React (CRA/craco) frontend is built and served, and how to 
 
 The React frontend is PRE-BUILT and served by the FastAPI backend from `backend/static/`. `backend/main.py` reads `backend/static/index.html` into memory at startup, so a frontend source edit is NOT live until you: rebuild, copy build output into `backend/static/`, and restart the `Start application` workflow.
 
+**Build MUST go through craco** (`yarn build` / `npx craco build`). Running `npx react-scripts build` directly fails with `Can't resolve '@/lib/utils'` — the `@` path alias lives in craco.config.js and jsconfig paths, which plain react-scripts ignores.
+
 **Rebuild steps (from project root):**
 1. `cd frontend && DISABLE_ESLINT_PLUGIN=true GENERATE_SOURCEMAP=false NODE_OPTIONS=--max-old-space-size=4096 yarn build` (~45-75s; runs craco). Run it SYNCHRONOUSLY in one shell call — detached/`setsid`/`nohup` builds get killed when the tool's shell session ends, and running two builds at once corrupts the build folder (inconsistent index.html vs chunks / spurious content hashes).
 2. `rm -rf backend/static/static && cp -r frontend/build/* backend/static/` (clears old hashed assets but preserves custom root files like `admin-manifest.json`, `feature-graphic.png`, `images/`).
