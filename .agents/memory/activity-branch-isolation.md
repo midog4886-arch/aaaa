@@ -46,3 +46,12 @@ All member-page pickers mirror the invoice picker: day-filtered levels
 (Arabic day -> level.days), hour-filtered time slots, day-aware member
 counts (members_details + active-at-start-date). Keep them in parity —
 users compare them directly.
+
+# LevelsPage render guard (mixed branches on shared weekdays)
+
+Even with `branch_filter` on every fetch, the Levels day/slot views could show
+other branches' levels: an in-flight request from a previous branch selection
+(or an initial 'all' state) resolves last and repaints unfiltered data.
+Fix: render from a branch-filtered memo (branch match OR no-branch) instead of
+raw levels state, plus a load-sequence counter in the loader so stale responses
+are dropped. Any new levels-rendering path must consume the filtered array.

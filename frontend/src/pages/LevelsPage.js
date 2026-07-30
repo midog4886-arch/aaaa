@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -71,6 +71,7 @@ export const LevelsPage = () => {
   const isAdmin = user?.is_admin === true;
   
   const [levels, setLevels] = useState([]);
+  const loadSeqRef = useRef(0);
   const [members, setMembers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -600,6 +601,10 @@ export const LevelsPage = () => {
   const displayedLevelsForAssign = showAllLevels ? allLevelsForAssign : matchingLevelsForAssign;
 
   const loadData = async () => {
+    // Stale-response guard: if selectedBranchId changes (or another load starts)
+    // while this request is in flight, drop this response instead of letting the
+    // slower/older fetch overwrite the correctly-filtered data.
+    const seq = ++loadSeqRef.current;
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const today = new Date().toISOString().split('T')[0];
@@ -614,6 +619,7 @@ export const LevelsPage = () => {
         attendanceAPI.getAll({ date: today }).catch(() => ({ data: [] })),
         coachesAPI.getAll({ exclude_photo: true }).catch(() => ({ data: [] }))
       ]);
+      if (seq !== loadSeqRef.current) return; // stale response — a newer load superseded it
       setLevels(levelsRes.data);
       setMembers(membersRes.data);
       setBranches(branchesRes.data || []);
@@ -748,8 +754,17 @@ export const LevelsPage = () => {
     return level.days.includes(dayId);
   };
 
+  // Hard client-side branch guard: when a specific branch is selected, only
+  // render levels that belong to it (or legacy levels with no branch). This is
+  // defense-in-depth against stale/racing fetches or backend responses that
+  // include other branches — without it, shared weekdays show mixed branches.
+  const visibleLevels = useMemo(() => {
+    if (!selectedBranchId || selectedBranchId === 'all') return levels;
+    return (levels || []).filter(l => !l.branch_id || l.branch_id === selectedBranchId);
+  }, [levels, selectedBranchId]);
+
   // Group levels hierarchically: Main Activity -> Time Slot -> Levels
-  const groupedLevels = levels.reduce((acc, level) => {
+  const groupedLevels = visibleLevels.reduce((acc, level) => {
     const { mainActivity, timeSlot } = parseActivityName(level.activity_name);
     
     if (!acc[mainActivity]) {
