@@ -72,6 +72,9 @@ export const LevelsPage = () => {
   
   const [levels, setLevels] = useState([]);
   const loadSeqRef = useRef(0);
+  // Temporary view-only merge: show another branch's levels alongside the
+  // selected branch (shared training days). '' = off. Session-only on purpose.
+  const [mergeBranchId, setMergeBranchId] = useState('');
   const [members, setMembers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -254,10 +257,16 @@ export const LevelsPage = () => {
     name: ''
   });
 
+  // Switching the main branch cancels any temporary merge (it belongs to the
+  // previous branch pair).
+  useEffect(() => {
+    setMergeBranchId('');
+  }, [selectedBranchId]);
+
   useEffect(() => {
     loadData();
     loadUnassignedCount();
-  }, [selectedBranchId]);
+  }, [selectedBranchId, mergeBranchId]);
 
   const loadUnassignedCount = async () => {
     try {
@@ -619,9 +628,24 @@ export const LevelsPage = () => {
         attendanceAPI.getAll({ date: today }).catch(() => ({ data: [] })),
         coachesAPI.getAll({ exclude_photo: true }).catch(() => ({ data: [] }))
       ]);
+      // Temporary merge view: additionally fetch the merge branch's levels +
+      // members and combine (dedupe by id) so shared days show both branches.
+      let mergedLevels = levelsRes.data || [];
+      let mergedMembers = membersRes.data || [];
+      if (mergeBranchId && selectedBranchId && selectedBranchId !== 'all' && mergeBranchId !== selectedBranchId) {
+        const mergeParams = { branch_filter: mergeBranchId };
+        const [mLevelsRes, mMembersRes] = await Promise.all([
+          levelsAPI.getAll(mergeParams).catch(() => ({ data: [] })),
+          membersAPI.getAll({ ...mergeParams, exclude_photo: true }).catch(() => ({ data: [] })),
+        ]);
+        const seenL = new Set(mergedLevels.map(l => l.id));
+        mergedLevels = [...mergedLevels, ...(mLevelsRes.data || []).filter(l => !seenL.has(l.id))];
+        const seenM = new Set(mergedMembers.map(m => m.id));
+        mergedMembers = [...mergedMembers, ...(mMembersRes.data || []).filter(m => !seenM.has(m.id))];
+      }
       if (seq !== loadSeqRef.current) return; // stale response — a newer load superseded it
-      setLevels(levelsRes.data);
-      setMembers(membersRes.data);
+      setLevels(mergedLevels);
+      setMembers(mergedMembers);
       setBranches(branchesRes.data || []);
       setActivities(activitiesRes.data || []);
       setCoaches(coachesRes.data || []);
@@ -760,8 +784,20 @@ export const LevelsPage = () => {
   // include other branches — without it, shared weekdays show mixed branches.
   const visibleLevels = useMemo(() => {
     if (!selectedBranchId || selectedBranchId === 'all') return levels;
-    return (levels || []).filter(l => !l.branch_id || l.branch_id === selectedBranchId);
-  }, [levels, selectedBranchId]);
+    return (levels || []).filter(l =>
+      !l.branch_id ||
+      l.branch_id === selectedBranchId ||
+      (mergeBranchId && l.branch_id === mergeBranchId)
+    );
+  }, [levels, selectedBranchId, mergeBranchId]);
+
+  // A "foreign" level belongs to the temporarily-merged branch: it is shown
+  // for display only and must never be mutated from this view (no edit/delete/
+  // close, no member drag-drop, no attendance, no bulk time-slot ops).
+  const isForeignLevel = (lvl) => !!(
+    mergeBranchId && selectedBranchId && selectedBranchId !== 'all' &&
+    lvl?.branch_id && lvl.branch_id !== selectedBranchId
+  );
 
   // Group levels hierarchically: Main Activity -> Time Slot -> Levels
   const groupedLevels = visibleLevels.reduce((acc, level) => {
@@ -882,8 +918,15 @@ export const LevelsPage = () => {
     if (!selectedBranchId || selectedBranchId === 'all') return WEEKDAYS;
     const branch = branches.find(b => b.id === selectedBranchId);
     const wd = branch?.working_days;
-    if (!Array.isArray(wd) || wd.length === 0) return WEEKDAYS;
-    return WEEKDAYS.filter(d => wd.includes(d.id));
+    let days = (!Array.isArray(wd) || wd.length === 0) ? WEEKDAYS.map(d => d.id) : wd;
+    // Temporary merge view: union the merge branch's working days too.
+    if (mergeBranchId) {
+      const mBranch = branches.find(b => b.id === mergeBranchId);
+      const mwd = mBranch?.working_days;
+      const mDays = (!Array.isArray(mwd) || mwd.length === 0) ? WEEKDAYS.map(d => d.id) : mwd;
+      days = [...new Set([...days, ...mDays])];
+    }
+    return WEEKDAYS.filter(d => days.includes(d.id));
   })();
 
   // Navigate to activities view (after selecting day)
@@ -974,7 +1017,9 @@ export const LevelsPage = () => {
     
     setSaving(true);
     try {
-      const levelsToUpdate = getLevelsForTimeSlot(editingTimeSlot.activityId, editingTimeSlot.oldName);
+      // Never bulk-edit the merged (foreign) branch's levels from this view.
+      const levelsToUpdate = getLevelsForTimeSlot(editingTimeSlot.activityId, editingTimeSlot.oldName)
+        .filter(l => !isForeignLevel(l));
       
       for (const level of levelsToUpdate) {
         let newActivityName = editingTimeSlot.newName.trim();
@@ -1011,7 +1056,8 @@ export const LevelsPage = () => {
   const handleDeleteTimeSlot = async (e, activityId, timeSlot) => {
     e.stopPropagation();
     
-    const levelsInSlot = getLevelsForTimeSlot(activityId, timeSlot);
+    // Never bulk-delete the merged (foreign) branch's levels from this view.
+    const levelsInSlot = getLevelsForTimeSlot(activityId, timeSlot).filter(l => !isForeignLevel(l));
     const totalMembers = levelsInSlot.reduce((sum, l) => sum + (l.members || []).length, 0);
     
     const confirmMsg = totalMembers > 0 
@@ -1471,6 +1517,11 @@ ${slotTables}
     if (!draggedMember || !draggedFromLevel || targetLevel.id === draggedFromLevel.id) {
       return;
     }
+    // Merged (foreign) levels are view-only — never move members across branches.
+    if (isForeignLevel(targetLevel) || isForeignLevel(draggedFromLevel)) {
+      toast.info(t('المستويات المدموجة للعرض فقط — لا يمكن نقل لاعبين بين الفروع', 'Merged levels are view-only — cannot move players across branches'));
+      return;
+    }
     
     // Check capacity — mirror the renderLevelCard logic so we count the
     // same active, deduped enrollments that the user sees on the card.
@@ -1844,6 +1895,12 @@ ${slotTables}
     if (!transferTarget || !targetLevel) return;
     const { member, activity, fromLevel } = transferTarget;
     if (!fromLevel || targetLevel.id === fromLevel.id) return;
+
+    // Merged (foreign) levels are view-only — never transfer across branches.
+    if (isForeignLevel(targetLevel) || isForeignLevel(fromLevel)) {
+      toast.info(t('المستويات المدموجة للعرض فقط — لا يمكن نقل لاعبين بين الفروع', 'Merged levels are view-only — cannot move players across branches'));
+      return;
+    }
 
     // Capacity guard on the destination (mirrors the add/drag checks).
     const targetMain = parseActivityName(targetLevel.activity_name).mainActivity;
@@ -2223,6 +2280,7 @@ ${slotTables}
     const isFull = memberCount >= maxCapacity;
     const isDropTarget = dropTargetLevel === originalLevel.id;
     const isClosed = originalLevel.is_active === false;
+    const isForeign = isForeignLevel(originalLevel);
     
     return (
       <div 
@@ -2230,11 +2288,12 @@ ${slotTables}
         className={`border rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 
           ${isFull ? 'border-red-300 bg-red-50/30' : 'bg-white'}
           ${isClosed ? 'opacity-60 grayscale' : ''}
+          ${isForeign ? 'border-amber-300' : ''}
           ${isDropTarget ? 'ring-2 ring-primary ring-offset-2 scale-[1.02]' : ''}`}
         data-testid={`level-card-${originalLevel.id}`}
-        onDragOver={(e) => handleDragOver(e, originalLevel)}
-        onDragLeave={handleDragLeave}
-        onDrop={(e) => handleDrop(e, originalLevel)}
+        onDragOver={isForeign ? undefined : (e) => handleDragOver(e, originalLevel)}
+        onDragLeave={isForeign ? undefined : handleDragLeave}
+        onDrop={isForeign ? undefined : (e) => handleDrop(e, originalLevel)}
       >
         {/* Level Header */}
         <div className={`${getLevelColor(level.level_number)} text-white p-3 flex items-center justify-between`}>
@@ -2245,6 +2304,14 @@ ${slotTables}
             <div>
               <span className="text-sm opacity-90">{_cleanLevelName(level.custom_name) || t('المستوى', 'Level')}</span>
               <p className="text-xs opacity-75">{level.activity_name}</p>
+              {mergeBranchId && level.branch_id && level.branch_id !== selectedBranchId && (() => {
+                const mb = branches.find(b => b.id === level.branch_id);
+                return (
+                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold">
+                    🏢 {mb ? (mb.name_ar || mb.name) : t('فرع آخر', 'Other branch')}
+                  </span>
+                );
+              })()}
               {(() => {
                 const lvCoach = level.coach_id ? coaches.find(c => c.id === level.coach_id) : null;
                 return lvCoach ? (
@@ -2262,7 +2329,7 @@ ${slotTables}
               )}
             </div>
           </div>
-          <div className="flex gap-1">
+          {!isForeign && <div className="flex gap-1">
             <Button
               size="icon"
               variant="ghost"
@@ -2291,13 +2358,13 @@ ${slotTables}
             >
               <Trash2 className="w-4 h-4" />
             </Button>
-          </div>
+          </div>}
         </div>
 
         {/* "Needs scheduling" alert: a level without a time_slot won't be
             picked by the post-Task-#177 auto-assign rule, so surface a quick
             shortcut into the schedule builder pre-focused on this level. */}
-        {!(originalLevel.time_slot || '').trim() && (
+        {!isForeign && !(originalLevel.time_slot || '').trim() && (
           <div className="px-3 pt-3">
             <div
               className="flex items-center justify-between gap-2 p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-800"
@@ -2369,16 +2436,16 @@ ${slotTables}
                   return (
                   <div 
                     key={member.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, member, level)}
-                    onDragEnd={handleDragEnd}
-                    className={`flex items-center gap-2 p-2 rounded-lg transition-colors cursor-grab active:cursor-grabbing
+                    draggable={!isForeign}
+                    onDragStart={isForeign ? undefined : (e) => handleDragStart(e, member, level)}
+                    onDragEnd={isForeign ? undefined : handleDragEnd}
+                    className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${isForeign ? '' : 'cursor-grab active:cursor-grabbing'}
                       ${isPresent ? 'bg-green-50 border border-green-200' : 'bg-gray-50 hover:bg-gray-100'}
                       ${draggedMember?.id === member.id ? 'opacity-50 scale-95' : ''}`}
                   >
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleMemberAttendance(member, level); }}
-                      disabled={isPresent || isAttLoading}
+                      onClick={(e) => { e.stopPropagation(); if (!isForeign) handleMemberAttendance(member, level); }}
+                      disabled={isForeign || isPresent || isAttLoading}
                       className={`shrink-0 transition-colors ${isPresent ? 'text-green-600' : 'text-gray-400 hover:text-green-500'}`}
                       title={isPresent ? t('حاضر', 'Present') : t('تحضير', 'Mark present')}
                     >
@@ -2405,7 +2472,12 @@ ${slotTables}
             )}
           </div>
           
-          {/* Attendance & Manage Buttons */}
+          {/* Attendance & Manage Buttons (hidden for merged foreign levels — view only) */}
+          {isForeign ? (
+            <p className="text-center text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg py-1.5">
+              {t('عرض فقط — هذا المستوى تابع للفرع الآخر', 'View only — this level belongs to the other branch')}
+            </p>
+          ) : (
           <div className="flex gap-2">
             {levelMembers.length > 0 && (
               <Button
@@ -2427,6 +2499,7 @@ ${slotTables}
               {t('إدارة الأعضاء', 'Manage Members')}
             </Button>
           </div>
+          )}
         </div>
       </div>
     );
@@ -2652,6 +2725,48 @@ ${slotTables}
             </div>
           </div>
         </div>
+
+        {/* Temporary branch-merge view control (shared training days) */}
+        {selectedBranchId && selectedBranchId !== 'all' && branches.filter(b => b.id !== selectedBranchId).length > 0 && (
+          <div className={`mb-4 rounded-xl border p-3 flex flex-wrap items-center gap-3 ${mergeBranchId ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+              <Layers className="w-4 h-4 text-amber-600 shrink-0" />
+              {t('دمج مؤقت لعرض مستويات فرع آخر', 'Temporary merge: view another branch')}
+            </div>
+            <div className="w-52">
+              <Select
+                value={mergeBranchId || 'none'}
+                onValueChange={(v) => setMergeBranchId(v === 'none' ? '' : v)}
+              >
+                <SelectTrigger data-testid="merge-branch-select" className="h-9 bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('بدون دمج', 'No merge')}</SelectItem>
+                  {branches.filter(b => b.id !== selectedBranchId).map(b => (
+                    <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {mergeBranchId && (
+              <>
+                <span className="text-xs text-amber-700">
+                  {t('عرض فقط — مستويات الفرع الآخر تظهر بشارة باسم فرعها ولا يتم نقل أي أعضاء', 'View only — the other branch\'s levels show a branch badge; no members are moved')}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs border-amber-300 text-amber-700 hover:bg-amber-100"
+                  onClick={() => setMergeBranchId('')}
+                  data-testid="merge-branch-clear-btn"
+                >
+                  {t('إلغاء الدمج', 'End merge')}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* VIEW: Days Selection */}
         {currentView === 'days' && (

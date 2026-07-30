@@ -55,3 +55,15 @@ other branches' levels: an in-flight request from a previous branch selection
 Fix: render from a branch-filtered memo (branch match OR no-branch) instead of
 raw levels state, plus a load-sequence counter in the loader so stale responses
 are dropped. Any new levels-rendering path must consume the filtered array.
+
+# Temporary branch-merge view (LevelsPage)
+
+User can pick a second branch to VIEW alongside the selected branch on shared
+days (mergeBranchId, session-only, cleared on branch switch). Merged levels are
+strictly view-only: `isForeignLevel()` gates edit/delete/close buttons,
+drag-drop (both source and target), per-member + bulk attendance, manage
+members, scheduler shortcut, AND the bulk time-slot rename/delete handlers
+(which otherwise iterate `getLevelsForTimeSlot` over the merged set).
+**Why:** merged view would otherwise become a cross-branch mutation path.
+**How to apply:** any new mutating action on level cards or slot groups must
+check `isForeignLevel` first; weekday cards union both branches' working_days.
