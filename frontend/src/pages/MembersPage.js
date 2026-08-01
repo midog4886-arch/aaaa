@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
 import { NationalitySelect } from '../components/NationalitySelect';
-import ScheduleDaysTimeEditor from '../components/ScheduleDaysTimeEditor';
+import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import { fetchOriginalActivityDates, applyOriginalDates } from './invoices/cardDates';
 import { Card, CardContent } from '../components/ui/card';
@@ -1507,6 +1507,8 @@ export const MembersPage = () => {
       start_date: startStr,
       end_date: endStr,
       weeks,
+      activity_id: activity.activity_id || '',
+      activity_name: activity.activity_name || '',
       fee: activity.fee || 0,
       notes: '',
       payment_method: 'card',
@@ -1538,7 +1540,8 @@ export const MembersPage = () => {
     }
     setRenewalValidatingCoupon(true);
     try {
-      const res = await discountsAPI.validate(renewalCouponCode, subtotal, renewalActivity?.activity_id ? [renewalActivity.activity_id] : []);
+      const couponActivityId = renewalForm.activity_id || renewalActivity?.activity_id;
+      const res = await discountsAPI.validate(renewalCouponCode, subtotal, couponActivityId ? [couponActivityId] : []);
       setRenewalAppliedCoupon(res.data.discount);
       setRenewalCouponDiscount(res.data.discount_amount || 0);
       toast.success(language === 'ar' ? 'تم تطبيق كود الخصم' : 'Coupon applied');
@@ -1556,6 +1559,13 @@ export const MembersPage = () => {
     setSaving(true);
     
     try {
+      // Use the (possibly edited) activity from the form; fall back to current
+      const newActivityId = renewalForm.activity_id || renewalActivity.activity_id || '';
+      const newActivityName = renewalForm.activity_name || renewalActivity.activity_name;
+      // Rebuild the schedule text when days/time/activity changed so it doesn't go stale
+      const scheduleStr = (renewalForm.training_days || []).length > 0
+        ? buildMemberSchedule(renewalForm.training_days || [], renewalForm.training_time || '', renewalForm.day_times || {})
+        : (renewalForm.schedule || '');
       // Calculate invoice totals
       const subtotal = parseFloat(renewalForm.fee);
       const vatAmount = Math.round(subtotal * 0.15 * 100) / 100;
@@ -1569,13 +1579,13 @@ export const MembersPage = () => {
         customer_name: selectedMember.name,
         customer_phone: selectedMember.phone,
         items: [{
-          activity_id: renewalActivity.activity_id,
-          activity_name: renewalActivity.activity_name,
+          activity_id: newActivityId,
+          activity_name: newActivityName,
           fee: parseFloat(renewalForm.fee),
           period: `${renewalForm.start_date} - ${renewalForm.end_date}`,
           start_date: renewalForm.start_date,
           end_date: renewalForm.end_date,
-          schedule: renewalForm.schedule || '',
+          schedule: scheduleStr,
           training_days: renewalForm.training_days || [],
           training_time: renewalForm.training_time || '',
           day_times: renewalForm.day_times || {},
@@ -1589,7 +1599,7 @@ export const MembersPage = () => {
         discount_code: renewalAppliedCoupon?.code || null,
         status: 'paid',
         payment_method: renewalForm.payment_method,
-        notes: renewalForm.notes || `تجديد اشتراك ${renewalActivity.activity_name}`
+        notes: renewalForm.notes || `تجديد اشتراك ${newActivityName}`
       };
       
       const invoiceRes = await invoicesAPI.create(invoiceData);
@@ -1598,15 +1608,15 @@ export const MembersPage = () => {
       // subdoc with the edited dates/days/times/level instead of stacking a
       // duplicate copy (stacked copies used to leak onto membership cards).
       const renewedActivity = {
-        activity_id: renewalActivity.activity_id || '',
-        activity_name: renewalActivity.activity_name,
+        activity_id: newActivityId,
+        activity_name: newActivityName,
         start_date: renewalForm.start_date,
         end_date: renewalForm.end_date,
         fee: parseFloat(renewalForm.fee),
         status: 'active',
         coach_id: renewalActivity.coach_id || '',
         level_id: renewalForm.level_id || '',
-        schedule: renewalForm.schedule || '',
+        schedule: scheduleStr,
         training_days: renewalForm.training_days || [],
         training_time: renewalForm.training_time || '',
         day_times: renewalForm.day_times || {},
@@ -1638,8 +1648,8 @@ export const MembersPage = () => {
         if (newLevelId) {
           try {
             await levelsAPI.addMember(newLevelId, selectedMember.id, {
-              activityId: renewalActivity.activity_id || undefined,
-              activityName: renewalActivity.activity_name || undefined,
+              activityId: newActivityId || undefined,
+              activityName: newActivityName || undefined,
               force: true
             });
           } catch (lvlErr) {
@@ -4536,6 +4546,50 @@ export const MembersPage = () => {
                       {language === 'ar'
                         ? 'تجديد مبكر: الفترة الجديدة تبدأ بعد نهاية الاشتراك الحالي'
                         : 'Early renewal: the new period starts after the current subscription ends'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Activity selector — allows switching the subscription activity on renewal */}
+                <div className="space-y-2">
+                  <Label>{language === 'ar' ? 'النشاط' : 'Activity'}</Label>
+                  <Select
+                    value={renewalForm.activity_id || '__current__'}
+                    onValueChange={(val) => {
+                      if (val === '__current__') return;
+                      const act = (activities || []).find(a => a.id === val);
+                      if (!act) return;
+                      setRenewalForm(prev => ({
+                        ...prev,
+                        activity_id: act.id,
+                        activity_name: act.name_ar || act.name,
+                        fee: (act.monthly_fee ?? act.fee) ?? prev.fee,
+                        level_id: ''
+                      }));
+                      clearRenewalCoupon();
+                    }}
+                  >
+                    <SelectTrigger data-testid="renewal-activity-select">
+                      <SelectValue placeholder={renewalActivity.activity_name} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {!(activities || []).some(a => a.id === renewalForm.activity_id) && (
+                        <SelectItem value={renewalForm.activity_id || '__current__'}>
+                          {renewalForm.activity_name || renewalActivity.activity_name}
+                        </SelectItem>
+                      )}
+                      {(activities || []).map(a => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name_ar || a.name}{(a.monthly_fee ?? a.fee) ? ` — ${a.monthly_fee ?? a.fee} ${t('sar')}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {renewalForm.activity_id !== (renewalActivity.activity_id || '') && (
+                    <p className="text-xs text-amber-600">
+                      {language === 'ar'
+                        ? 'سيتم تحويل الاشتراك إلى النشاط الجديد عند التجديد'
+                        : 'The subscription will switch to the new activity on renewal'}
                     </p>
                   )}
                 </div>

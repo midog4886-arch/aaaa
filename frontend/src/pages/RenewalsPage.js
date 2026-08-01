@@ -10,8 +10,9 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Textarea } from '../components/ui/textarea';
-import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI, discountsAPI } from '../services/api';
+import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI, discountsAPI, activitiesAPI, levelsAPI } from '../services/api';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
+import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
 import MemberAvatar from '../components/MemberAvatar';
 import { toast } from 'sonner';
 import {
@@ -106,10 +107,19 @@ const RenewalsPage = () => {
     end_date: '',
     weeks: 4,
     training_days: [],
+    training_time: '',
+    day_times: {},
     fee: 0,
     notes: '',
-    payment_method: 'card'
+    payment_method: 'card',
+    activity_id: '',
+    activity_name: '',
+    level_id: '',
+    schedule: ''
   });
+  // Catalogs for changing activity/level during renewal (lazy-loaded on dialog open)
+  const [renewalActivities, setRenewalActivities] = useState([]);
+  const [renewalLevels, setRenewalLevels] = useState([]);
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -623,11 +633,24 @@ const RenewalsPage = () => {
       start_date: startStr,
       end_date: endStr,
       weeks,
-      training_days: trainingDays,
+      training_days: (item.training_days && item.training_days.length > 0) ? item.training_days : trainingDays,
+      training_time: item.training_time || '',
+      day_times: item.day_times || {},
       fee: item.fee || 0,
       notes: '',
-      payment_method: 'card'
+      payment_method: 'card',
+      activity_id: item.activity_id || '',
+      activity_name: item.activity_name || '',
+      level_id: item.level_id || '',
+      schedule: item.schedule || ''
     });
+    // Lazy-load catalogs so the admin can change activity/level during renewal
+    if (renewalActivities.length === 0) {
+      activitiesAPI.getAll().then(res => setRenewalActivities(res.data || [])).catch(() => {});
+    }
+    if (renewalLevels.length === 0) {
+      levelsAPI.getAll().then(res => setRenewalLevels(res.data || [])).catch(() => {});
+    }
     setCouponCode('');
     setAppliedCoupon(null);
     setCouponDiscount(0);
@@ -648,7 +671,8 @@ const RenewalsPage = () => {
     }
     setValidatingCoupon(true);
     try {
-      const res = await discountsAPI.validate(couponCode, subtotal, selectedItem?.activity_id ? [selectedItem.activity_id] : []);
+      const couponActivityId = renewalForm.activity_id || selectedItem?.activity_id;
+      const res = await discountsAPI.validate(couponCode, subtotal, couponActivityId ? [couponActivityId] : []);
       setAppliedCoupon(res.data.discount);
       setCouponDiscount(res.data.discount_amount || 0);
       toast.success(language === 'ar' ? 'تم تطبيق كود الخصم' : 'Coupon applied');
@@ -670,23 +694,35 @@ const RenewalsPage = () => {
       const discountAmount = Math.round((couponDiscount || 0) * 100) / 100;
       const total = Math.max(Math.round((subtotal + vatAmount - discountAmount) * 100) / 100, 0);
 
+      // Use the (possibly edited) form values: activity, days/times, level.
+      const newActivityId = renewalForm.activity_id || selectedItem.activity_id || '';
+      const newActivityName = renewalForm.activity_name || selectedItem.activity_name;
+      const trainingDays = renewalForm.training_days || [];
+      const trainingTime = renewalForm.training_time || '';
+      const dayTimes = renewalForm.day_times || {};
+      // Rebuild the human-readable schedule string when days/time were edited,
+      // otherwise stale text would keep showing the old days everywhere.
+      const scheduleStr = trainingDays.length > 0
+        ? buildMemberSchedule(trainingDays, trainingTime, dayTimes)
+        : (renewalForm.schedule || selectedItem.schedule || '');
+
       const invoiceData = {
         member_id: selectedItem.member_id,
         customer_name_ar: selectedItem.member_name,
         customer_name: selectedItem.member_name,
         customer_phone: selectedItem.phone,
         items: [{
-          activity_id: selectedItem.activity_id || '',
-          activity_name: selectedItem.activity_name,
+          activity_id: newActivityId,
+          activity_name: newActivityName,
           fee: parseFloat(renewalForm.fee),
           period: `${renewalForm.start_date} - ${renewalForm.end_date}`,
           start_date: renewalForm.start_date,
           end_date: renewalForm.end_date,
-          schedule: selectedItem.schedule || '',
-          training_days: selectedItem.training_days || [],
-          training_time: selectedItem.training_time || '',
-          day_times: selectedItem.day_times || {},
-          level_id: selectedItem.level_id || '',
+          schedule: scheduleStr,
+          training_days: trainingDays,
+          training_time: trainingTime,
+          day_times: dayTimes,
+          level_id: renewalForm.level_id || '',
           is_product: false
         }],
         subtotal: subtotal,
@@ -696,23 +732,23 @@ const RenewalsPage = () => {
         discount_code: appliedCoupon?.code || null,
         status: 'paid',
         payment_method: renewalForm.payment_method,
-        notes: renewalForm.notes || `تجديد اشتراك ${selectedItem.activity_name}`
+        notes: renewalForm.notes || `تجديد اشتراك ${newActivityName}`
       };
 
       const invoiceRes = await invoicesAPI.create(invoiceData);
 
       const updatedActivity = {
-        activity_id: selectedItem.activity_id || '',
-        activity_name: selectedItem.activity_name,
+        activity_id: newActivityId,
+        activity_name: newActivityName,
         start_date: renewalForm.start_date,
         end_date: renewalForm.end_date,
         fee: parseFloat(renewalForm.fee),
         status: 'active',
-        schedule: selectedItem.schedule || '',
-        training_days: selectedItem.training_days || [],
-        training_time: selectedItem.training_time || '',
-        day_times: selectedItem.day_times || {},
-        level_id: selectedItem.level_id || '',
+        schedule: scheduleStr,
+        training_days: trainingDays,
+        training_time: trainingTime,
+        day_times: dayTimes,
+        level_id: renewalForm.level_id || '',
         coach_id: selectedItem.coach_id || '',
         source: 'invoice',
         source_id: invoiceRes.data?.id || '',
@@ -720,7 +756,27 @@ const RenewalsPage = () => {
         renewed_from: selectedItem.end_date
       };
 
+      // Replace the SAME activity subdoc in place (targeted by the OLD id) so
+      // an activity change doesn't stack a duplicate copy on the member.
       await membersAPI.updateActivity(selectedItem.member_id, selectedItem.activity_id, updatedActivity);
+
+      // Sync level membership when the level changed during renewal
+      const oldLevelId = selectedItem.level_id || '';
+      const newLevelId = renewalForm.level_id || '';
+      if (oldLevelId !== newLevelId) {
+        if (oldLevelId) {
+          try { await levelsAPI.removeMember(oldLevelId, selectedItem.member_id); } catch (e) { console.warn('Old level detach warning:', e); }
+        }
+        if (newLevelId) {
+          try {
+            await levelsAPI.addMember(newLevelId, selectedItem.member_id, {
+              activityId: newActivityId || undefined,
+              activityName: newActivityName || undefined,
+              force: true
+            });
+          } catch (e) { console.warn('Level membership sync warning:', e); }
+        }
+      }
 
       toast.success(language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully');
       setIsRenewalDialogOpen(false);
@@ -1137,8 +1193,109 @@ const RenewalsPage = () => {
             <div className="space-y-4">
               <div className="p-3 bg-muted rounded-lg text-sm space-y-1">
                 <p><strong>{language === 'ar' ? 'العضو:' : 'Member:'}</strong> {selectedItem.member_name}</p>
-                <p><strong>{language === 'ar' ? 'النشاط:' : 'Activity:'}</strong> {selectedItem.activity_name}</p>
+                <p><strong>{language === 'ar' ? 'النشاط الحالي:' : 'Current Activity:'}</strong> {selectedItem.activity_name}</p>
                 <p><strong>{language === 'ar' ? 'تاريخ الانتهاء:' : 'End Date:'}</strong> {selectedItem.end_date}</p>
+              </div>
+
+              {/* Activity selector — allows switching the subscription activity on renewal */}
+              <div>
+                <label className="text-sm font-medium mb-1 block">
+                  {language === 'ar' ? 'النشاط' : 'Activity'}
+                </label>
+                <Select
+                  value={renewalForm.activity_id || '__current__'}
+                  onValueChange={(val) => {
+                    if (val === '__current__') return;
+                    const act = renewalActivities.find(a => a.id === val);
+                    if (!act) return;
+                    setRenewalForm(prev => ({
+                      ...prev,
+                      activity_id: act.id,
+                      activity_name: act.name_ar || act.name,
+                      fee: (act.monthly_fee ?? act.fee) ?? prev.fee,
+                      level_id: ''
+                    }));
+                    if (appliedCoupon) clearCoupon();
+                  }}
+                >
+                  <SelectTrigger data-testid="renewal-activity-select">
+                    <SelectValue placeholder={selectedItem.activity_name} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!renewalActivities.some(a => a.id === renewalForm.activity_id) && (
+                      <SelectItem value={renewalForm.activity_id || '__current__'}>
+                        {renewalForm.activity_name || selectedItem.activity_name}
+                      </SelectItem>
+                    )}
+                    {renewalActivities.map(a => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name_ar || a.name}{(a.monthly_fee ?? a.fee) ? ` — ${a.monthly_fee ?? a.fee} ${language === 'ar' ? 'ر.س' : 'SAR'}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {renewalForm.activity_id !== (selectedItem.activity_id || '') && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    {language === 'ar'
+                      ? 'سيتم تحويل الاشتراك إلى النشاط الجديد عند التجديد'
+                      : 'The subscription will switch to the new activity on renewal'}
+                  </p>
+                )}
+              </div>
+
+              {/* Training days & times editor */}
+              <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-2">
+                <label className="text-sm font-medium block text-blue-800">
+                  {language === 'ar' ? 'أيام ومواعيد التدريب' : 'Training Days & Times'}
+                </label>
+                <ScheduleDaysTimeEditor
+                  value={{
+                    training_days: renewalForm.training_days || [],
+                    training_time: renewalForm.training_time || '',
+                    day_times: renewalForm.day_times || {}
+                  }}
+                  onChange={(patch) => {
+                    setRenewalForm(prev => {
+                      const next = { ...prev, ...patch };
+                      if (patch.training_days && prev.start_date) {
+                        next.end_date = calcEndDate(prev.start_date, prev.weeks || 4, patch.training_days) || prev.end_date;
+                      }
+                      return next;
+                    });
+                  }}
+                  language={language}
+                />
+              </div>
+
+              {/* Level selector */}
+              <div>
+                <label className="text-sm font-medium mb-1 block">
+                  {language === 'ar' ? 'المستوى (اختياري)' : 'Level (optional)'}
+                </label>
+                <div className="flex gap-2">
+                  <Select
+                    value={renewalForm.level_id || '__none__'}
+                    onValueChange={(val) => setRenewalForm(prev => ({ ...prev, level_id: val === '__none__' ? '' : val }))}
+                  >
+                    <SelectTrigger className="flex-1" data-testid="renewal-level-select">
+                      <SelectValue placeholder={language === 'ar' ? 'بدون مستوى' : 'No level'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
+                      {renewalLevels
+                        .slice()
+                        .sort((a, b) => `${a.activity_name || ''}`.localeCompare(`${b.activity_name || ''}`, 'ar') || (a.level_number || 0) - (b.level_number || 0))
+                        .map(l => {
+                          const label = l.display_name || (l.custom_name ? l.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number}`);
+                          return (
+                            <SelectItem key={l.id} value={l.id}>
+                              {l.activity_name ? `${l.activity_name} — ${label}` : label}
+                            </SelectItem>
+                          );
+                        })}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
