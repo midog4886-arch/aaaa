@@ -218,6 +218,7 @@ export const MembersPage = () => {
   const [memberAttendance, setMemberAttendance] = useState(null);
   const [memberSessionQuota, setMemberSessionQuota] = useState([]);
   const [expandedQuotaIdx, setExpandedQuotaIdx] = useState(new Set());
+  const [expandedOldDatesIdx, setExpandedOldDatesIdx] = useState(new Set());
   const [registeringDate, setRegisteringDate] = useState(null);
   const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance, reminders, freeze
   const [memberReminders, setMemberReminders] = useState([]);
@@ -1224,6 +1225,7 @@ export const MembersPage = () => {
     setSelectedMember(member);
     setViewTab('info');
     setExpandedQuotaIdx(new Set());
+    setExpandedOldDatesIdx(new Set());
     setIsViewDialogOpen(true);
     setMemberAttendance(null);
     setMemberProductPurchases([]);
@@ -3795,9 +3797,15 @@ export const MembersPage = () => {
                             // schedule) have a real date that is NOT one of the generated
                             // schedule chips. Surface them as their own green chips so the
                             // consumed session is visible on its actual attendance date.
-                            const offScheduleDates = [...attendedDates].filter(d => !scheduleDates.includes(d));
+                            const allOffScheduleDates = [...attendedDates].filter(d => !scheduleDates.includes(d));
+                            // Attendance dated BEFORE the current subscription window belongs
+                            // to an older subscription — show it in a separate collapsed list
+                            // instead of mixing it with the current quota chips.
+                            const oldSubDates = allOffScheduleDates.filter(d => q.start_date && d < q.start_date).sort();
+                            const offScheduleDates = allOffScheduleDates.filter(d => !(q.start_date && d < q.start_date));
                             const offScheduleSet = new Set(offScheduleDates);
                             const displayDates = [...new Set([...scheduleDates, ...offScheduleDates])].sort();
+                            const isOldExpanded = expandedOldDatesIdx.has(idx);
                             const todayStr = localDateStr(new Date());
                             return (
                               <div key={idx} className={`rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
@@ -3941,6 +3949,48 @@ export const MembersPage = () => {
                                         );
                                       })}
                                     </div>
+                                    {oldSubDates.length > 0 && (
+                                      <div className="mt-3 rounded-md border border-gray-200 bg-gray-50">
+                                        <button
+                                          onClick={() => setExpandedOldDatesIdx(prev => {
+                                            const next = new Set(prev);
+                                            if (next.has(idx)) next.delete(idx); else next.add(idx);
+                                            return next;
+                                          })}
+                                          className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-gray-600 hover:text-gray-800"
+                                        >
+                                          <span className="flex items-center gap-1">
+                                            <Calendar className="w-3 h-3" />
+                                            {language === 'ar'
+                                              ? `حضور اشتراك سابق (${oldSubDates.length})`
+                                              : `Previous subscription attendance (${oldSubDates.length})`}
+                                          </span>
+                                          <span>{isOldExpanded ? '▲' : '▼'}</span>
+                                        </button>
+                                        {isOldExpanded && (
+                                          <div className="px-3 pb-3">
+                                            <p className="text-[11px] text-gray-400 mb-2">
+                                              {language === 'ar'
+                                                ? 'تواريخ حضور قبل بداية الاشتراك الحالي — لا تُحسب من حصص هذا الاشتراك'
+                                                : 'Attendance before the current subscription started — not counted against this quota'}
+                                            </p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {oldSubDates.map(date => (
+                                                <span
+                                                  key={date}
+                                                  title={language === 'ar' ? 'حضور من اشتراك سابق' : 'Attendance from a previous subscription'}
+                                                  className="text-xs px-2 py-1 rounded-full border font-medium bg-gray-100 border-gray-300 text-gray-500 inline-flex items-center gap-1"
+                                                >
+                                                  <span>✓</span>
+                                                  <span>{date}</span>
+                                                  <span className="text-[10px] bg-gray-200 text-gray-600 px-1 rounded">{language === 'ar' ? 'اشتراك سابق' : 'Previous'}</span>
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                     <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span>{language === 'ar' ? 'حضر' : 'Attended'}</span>
                                       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block"></span>{language === 'ar' ? 'اليوم' : 'Today'}</span>
