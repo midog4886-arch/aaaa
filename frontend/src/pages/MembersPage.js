@@ -4573,16 +4573,28 @@ export const MembersPage = () => {
                       <SelectValue placeholder={renewalActivity.activity_name} />
                     </SelectTrigger>
                     <SelectContent>
-                      {!(activities || []).some(a => a.id === renewalForm.activity_id) && (
-                        <SelectItem value={renewalForm.activity_id || '__current__'}>
-                          {renewalForm.activity_name || renewalActivity.activity_name}
-                        </SelectItem>
-                      )}
-                      {(activities || []).map(a => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name_ar || a.name}{(a.monthly_fee ?? a.fee) ? ` — ${a.monthly_fee ?? a.fee} ${t('sar')}` : ''}
-                        </SelectItem>
-                      ))}
+                      {(() => {
+                        // Only offer activities from the member's own branch, plus
+                        // shared (no-branch) activities — each branch stays separate.
+                        const memberBranch = selectedMember?.branch_id || '';
+                        const visibleActs = (activities || []).filter(a => !a.branch_id || a.branch_id === memberBranch);
+                        const items = [];
+                        if (!visibleActs.some(a => a.id === renewalForm.activity_id)) {
+                          items.push(
+                            <SelectItem key="__current__" value={renewalForm.activity_id || '__current__'}>
+                              {renewalForm.activity_name || renewalActivity.activity_name}
+                            </SelectItem>
+                          );
+                        }
+                        visibleActs.forEach(a => {
+                          items.push(
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name_ar || a.name}{(a.monthly_fee ?? a.fee) ? ` — ${a.monthly_fee ?? a.fee} ${t('sar')}` : ''}
+                            </SelectItem>
+                          );
+                        });
+                        return items;
+                      })()}
                     </SelectContent>
                   </Select>
                   {renewalForm.activity_id !== (renewalActivity.activity_id || '') && (
