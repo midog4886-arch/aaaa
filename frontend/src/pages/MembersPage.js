@@ -7,6 +7,7 @@ import { getMemberQRValue } from '../utils/memberQR';
 import { NationalitySelect } from '../components/NationalitySelect';
 import ScheduleDaysTimeEditor from '../components/ScheduleDaysTimeEditor';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
+import { fetchOriginalActivityDates, applyOriginalDates } from './invoices/cardDates';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
  
@@ -788,9 +789,19 @@ export const MembersPage = () => {
   };
 
   // Open member card dialog
+  // The card must show the ORIGINAL invoice period (user decision), not the
+  // live activity dates that drift with off-schedule attendance / extensions.
   const openMemberCardDialog = (member) => {
     setMemberCardData(member);
     setIsMemberCardDialogOpen(true);
+    fetchOriginalActivityDates(member?.id).then((origMap) => {
+      if (Object.keys(origMap).length === 0) return;
+      setMemberCardData((prev) =>
+        prev && prev.id === member.id
+          ? { ...prev, activities: applyOriginalDates(prev.activities, origMap) }
+          : prev
+      );
+    });
   };
 
   // Print member card

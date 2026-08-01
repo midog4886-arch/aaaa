@@ -11,6 +11,7 @@ const _escapeHtml = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;');
 import { getAcademyLogoUrl, getPrimaryColor } from '../../services/branding';
+import { fetchOriginalActivityDates, applyOriginalDates } from './cardDates';
 
 /**
  * Generate QR data for member - Just the member code number
@@ -129,10 +130,15 @@ export const generateCardHTML = (member, qrData, schedule) => {
 /**
  * Print member card with logo
  */
-export const printMemberCard = (member) => {
-  if (!member) return;
+export const printMemberCard = async (rawMember) => {
+  if (!rawMember) return;
   
+  // Open the window synchronously (popup blockers), then fill it once the
+  // original invoice dates arrive — the card shows the ORIGINAL invoice
+  // period, not the live activity dates (they drift with attendance/extensions).
   const printWindow = window.open('', '_blank', 'width=800,height=600');
+  const origMap = await fetchOriginalActivityDates(rawMember?.id);
+  const member = { ...rawMember, activities: applyOriginalDates(rawMember?.activities, origMap) };
   const qrData = generateQRData(member);
   const firstActivity = member?.activities?.[0];
   const schedule = firstActivity?.schedule || '';

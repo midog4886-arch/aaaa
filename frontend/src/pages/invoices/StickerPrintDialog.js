@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../componen
 import { Button } from '../../components/ui/button';
 import { Printer } from 'lucide-react';
 import { getAcademyLogoUrl, getPrimaryColor } from '../../services/branding';
+import { fetchOriginalActivityDates, applyOriginalDates } from './cardDates';
 
 // Print settings
 const CARD_WIDTH = 90; // mm
@@ -133,15 +134,20 @@ const generateCardHTML = (member, qrData, schedule) => {
 /**
  * Open print window with card and logo
  */
-export const openStickerPrint = (member) => {
+export const openStickerPrint = async (member) => {
   if (!member) return;
   
+  // Open the window synchronously (popup blockers), then fill it after the
+  // original invoice dates arrive — the card must show the ORIGINAL invoice
+  // period, not the live activity dates that drift with attendance/extensions.
   const printWindow = window.open('', '_blank', 'width=800,height=600');
-  const qrData = generateQRData(member);
-  const firstActivity = member?.activities?.[0];
+  const origMap = await fetchOriginalActivityDates(member?.id);
+  const cardMember = { ...member, activities: applyOriginalDates(member?.activities, origMap) };
+  const qrData = generateQRData(cardMember);
+  const firstActivity = cardMember?.activities?.[0];
   const schedule = firstActivity?.schedule || '';
   
-  const cardHTML = generateCardHTML(member, qrData, schedule);
+  const cardHTML = generateCardHTML(cardMember, qrData, schedule);
   
   printWindow.document.write(`
     <!DOCTYPE html>
