@@ -401,7 +401,12 @@ export const InvoicesPage = () => {
                           </td>
                           <td className="p-3 font-semibold">{inv.total?.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</td>
                           <td className="p-3">{getStatusBadge(inv.status)}</td>
-                          <td className="p-3 text-xs text-muted-foreground">{new Date(inv.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}</td>
+                          <td className="p-3 text-xs text-muted-foreground">
+                            {new Date(inv.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
+                            <span className="block text-[11px]" dir="ltr" data-testid={`inv-row-time-${inv.invoice_number}`}>
+                              {new Date(inv.created_at).toLocaleTimeString(language === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' })}
+                            </span>
+                          </td>
                           <td className="p-3">
                             <div className="flex gap-1 flex-wrap">
                               <Button variant="ghost" size="sm" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" /></Button>
