@@ -2437,7 +2437,12 @@ async def get_financial_report(
             query["paid_at"]["$lte"] = end_date_full
         else:
             query["paid_at"] = {"$lte": end_date_full}
-    
+
+    # Activity filter: single id or comma-separated list (activity group).
+    activity_ids = [a.strip() for a in activity_id.split(",") if a.strip()] if activity_id else []
+    if activity_ids:
+        query["items.activity_id"] = {"$in": activity_ids}
+
     invoices = await db.invoices.find(query, {"_id": 0}).to_list(10000)
     
     # Get credit notes (refunds) from the new collection
@@ -2471,6 +2476,8 @@ async def get_financial_report(
     for inv in invoices:
         for item in inv["items"]:
             act_id = item["activity_id"]
+            if activity_ids and act_id not in activity_ids:
+                continue
             if act_id not in revenue_by_activity:
                 revenue_by_activity[act_id] = {"name": item["activity_name"], "total": 0, "count": 0}
             revenue_by_activity[act_id]["total"] += item["fee"]

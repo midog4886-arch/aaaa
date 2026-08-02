@@ -39,6 +39,18 @@ import {
   Legend
 } from 'recharts';
 
+// Keyword-based activity groups (same convention as the Levels page) so the
+// activity filter can select "all swimming" / "all football" / "all karate" at once.
+const ACTIVITY_GROUPS = [
+  { id: 'swimming', label_ar: 'كل السباحة', label_en: 'All Swimming', keywords: ['سباحة', 'سباحه', 'swim'] },
+  { id: 'football', label_ar: 'كل كرة القدم', label_en: 'All Football', keywords: ['قدم', 'كره', 'كرة', 'foot', 'soccer'] },
+  { id: 'karate', label_ar: 'كل الكاراتيه', label_en: 'All Karate', keywords: ['كارات', 'كاراتيه', 'كارتيه', 'karate'] },
+];
+const activityInGroup = (activity, group) => {
+  const name = `${activity.name_ar || ''} ${activity.name || ''}`.toLowerCase();
+  return group.keywords.some(k => name.includes(k));
+};
+
 export const ReportsPage = () => {
   const { t, language } = useLanguage();
   const { selectedBranchId, isAdmin } = useAuth();
@@ -107,13 +119,30 @@ export const ReportsPage = () => {
     loadData();
   }, [branchFilter]);
 
+  // Convert the filter value ('all' | 'group:<id>' | activity id) into the
+  // activity_id param sent to the backend (comma-separated ids for a group).
+  const resolveActivityParam = (value, actsList = activities) => {
+    if (!value || value === 'all') return null;
+    if (value.startsWith('group:')) {
+      const group = ACTIVITY_GROUPS.find(g => g.id === value.slice(6));
+      if (!group) return null;
+      const ids = (actsList || [])
+        .filter(a => branchFilter === 'all' || !a.branch_id || a.branch_id === branchFilter)
+        .filter(a => activityInGroup(a, group))
+        .map(a => a.id);
+      return ids.length ? ids.join(',') : null;
+    }
+    return value;
+  };
+
   const loadData = async () => {
     try {
       const branchParams = branchFilter && branchFilter !== 'all' ? { branch_filter: branchFilter } : {};
       const filterParams = {};
       if (filters.start_date) filterParams.start_date = filters.start_date;
       if (filters.end_date) filterParams.end_date = filters.end_date;
-      if (filters.activity_id !== 'all') filterParams.activity_id = filters.activity_id;
+      const actParam = resolveActivityParam(filters.activity_id);
+      if (actParam) filterParams.activity_id = actParam;
       const [reportRes, activitiesRes, nationalitiesRes] = await Promise.all([
         reportsAPI.getFinancial({ ...filterParams, ...branchParams }),
         activitiesAPI.getAll(),
@@ -135,7 +164,8 @@ export const ReportsPage = () => {
       const params = {};
       if (filters.start_date) params.start_date = filters.start_date;
       if (filters.end_date) params.end_date = filters.end_date;
-      if (filters.activity_id !== 'all') params.activity_id = filters.activity_id;
+      const actParam = resolveActivityParam(filters.activity_id);
+      if (actParam) params.activity_id = actParam;
       if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
       
       const response = await reportsAPI.getFinancial(params);
@@ -291,13 +321,37 @@ export const ReportsPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{language === 'ar' ? 'الكل' : 'All'}</SelectItem>
-                    {activities
-                      .filter(a => branchFilter === 'all' || !a.branch_id || a.branch_id === branchFilter)
-                      .map(activity => (
-                        <SelectItem key={activity.id} value={activity.id}>
-                          {language === 'ar' ? activity.name_ar : activity.name}
-                        </SelectItem>
-                      ))}
+                    {(() => {
+                      const visible = activities.filter(a => branchFilter === 'all' || !a.branch_id || a.branch_id === branchFilter);
+                      const items = [];
+                      const usedIds = new Set();
+                      ACTIVITY_GROUPS.forEach(group => {
+                        const groupActs = visible.filter(a => activityInGroup(a, group));
+                        if (groupActs.length === 0) return;
+                        items.push(
+                          <SelectItem key={`group:${group.id}`} value={`group:${group.id}`} className="font-bold">
+                            {language === 'ar' ? group.label_ar : group.label_en}
+                          </SelectItem>
+                        );
+                        groupActs.forEach(a => {
+                          usedIds.add(a.id);
+                          items.push(
+                            <SelectItem key={a.id} value={a.id} className="ps-6">
+                              {language === 'ar' ? a.name_ar : a.name}
+                            </SelectItem>
+                          );
+                        });
+                      });
+                      const rest = visible.filter(a => !usedIds.has(a.id));
+                      rest.forEach(a => {
+                        items.push(
+                          <SelectItem key={a.id} value={a.id}>
+                            {language === 'ar' ? a.name_ar : a.name}
+                          </SelectItem>
+                        );
+                      });
+                      return items;
+                    })()}
                   </SelectContent>
                 </Select>
               </div>
