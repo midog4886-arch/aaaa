@@ -570,6 +570,7 @@ async def list_webhook_events(
     status: Optional[str] = None,
     provider: Optional[str] = None,
     outcome: Optional[str] = None,
+    tenant_slug: Optional[str] = None,
     limit: int = 200,
 ) -> list:
     """Return the most recent webhook diagnostic rows (newest first).
@@ -578,6 +579,9 @@ async def list_webhook_events(
     ``duplicate`` / ``ignored``) derived from the granular ``status``, so the
     super-admin UI can group / filter the way task #265 specifies without
     losing the more detailed status string.
+
+    Pass ``tenant_slug`` to restrict results to a specific academy.  An
+    unknown slug simply returns no rows (no error).
     """
     try:
         limit = max(1, min(int(limit or 200), WEBHOOK_EVENTS_MAX))
@@ -593,6 +597,10 @@ async def list_webhook_events(
         p = str(provider).strip().lower()
         if p and p != "all":
             query["provider"] = p
+    if tenant_slug:
+        ts = str(tenant_slug).strip().lower()
+        if ts:
+            query["tenant_slug"] = ts
     outcome_filter = ""
     if outcome:
         o = str(outcome).strip().lower()
@@ -647,6 +655,7 @@ async def aggregate_webhook_event_stats(
     *,
     window_seconds: int = 24 * 60 * 60,
     provider: Optional[str] = None,
+    tenant_slug: Optional[str] = None,
 ) -> Dict:
     """Return webhook delivery counts grouped by status over a recent window.
 
@@ -658,6 +667,8 @@ async def aggregate_webhook_event_stats(
     "by_status": {status: count, …}, "by_outcome": {outcome: count, …}}``.
     Statuses with zero hits in the window are omitted from ``by_status`` so
     callers can iterate just the buckets that fired.
+
+    Pass ``tenant_slug`` to restrict stats to a specific academy.
     """
     try:
         window = int(window_seconds)
@@ -674,6 +685,10 @@ async def aggregate_webhook_event_stats(
         if p and p != "all":
             provider_lc = p
             query["provider"] = p
+    if tenant_slug:
+        ts = str(tenant_slug).strip().lower()
+        if ts:
+            query["tenant_slug"] = ts
     by_status: Dict[str, int] = {}
     by_outcome: Dict[str, int] = {"processed": 0, "duplicate": 0, "ignored": 0}
     total = 0

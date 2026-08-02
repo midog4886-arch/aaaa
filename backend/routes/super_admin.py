@@ -1593,6 +1593,7 @@ async def payment_delivery_alerts(_=Depends(_require_super)):
 async def payment_events_stats(
     window_seconds: int = 24 * 60 * 60,
     provider: Optional[str] = None,
+    tenant_slug: Optional[str] = None,
     _=Depends(_require_super),
 ):
     """Return webhook delivery counts grouped by status over a recent window.
@@ -1602,7 +1603,7 @@ async def payment_events_stats(
     deliveries are arriving and how many are failing.
     """
     return await aggregate_webhook_event_stats(
-        window_seconds=window_seconds, provider=provider,
+        window_seconds=window_seconds, provider=provider, tenant_slug=tenant_slug,
     )
 
 
@@ -1611,6 +1612,7 @@ async def payment_events_list(
     status: Optional[str] = None,
     provider: Optional[str] = None,
     outcome: Optional[str] = None,
+    tenant_slug: Optional[str] = None,
     limit: int = 200,
     _=Depends(_require_super),
 ):
@@ -1620,7 +1622,10 @@ async def payment_events_list(
     incoming webhooks are arriving and whether they are being accepted,
     signature-rejected, deduplicated, or otherwise ignored.
     """
-    rows = await list_webhook_events(status=status, provider=provider, outcome=outcome, limit=limit)
+    rows = await list_webhook_events(
+        status=status, provider=provider, outcome=outcome,
+        tenant_slug=tenant_slug, limit=limit,
+    )
     return {"items": rows, "max_retained": WEBHOOK_EVENTS_MAX}
 
 
@@ -1629,17 +1634,22 @@ async def payment_events_export_csv(
     status: Optional[str] = None,
     provider: Optional[str] = None,
     outcome: Optional[str] = None,
+    tenant_slug: Optional[str] = None,
     limit: int = 200,
     _=Depends(_require_super),
 ):
     """Export the same webhook events shown on the super-admin page as a CSV
     file so they can be archived or shared with a payment provider's support
-    team. Honors the same status/provider/outcome filters as ``/payment/events``.
+    team. Honors the same status/provider/outcome/tenant_slug filters as
+    ``/payment/events``.
     """
     import csv
     import io
 
-    rows = await list_webhook_events(status=status, provider=provider, outcome=outcome, limit=limit)
+    rows = await list_webhook_events(
+        status=status, provider=provider, outcome=outcome,
+        tenant_slug=tenant_slug, limit=limit,
+    )
     buf = io.StringIO()
     buf.write("\ufeff")  # UTF-8 BOM so Excel opens Arabic text correctly
     writer = csv.writer(buf)

@@ -194,6 +194,7 @@ export default function SuperPayment() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsErr, setStatsErr] = useState('');
   const [statsWindowHours, setStatsWindowHours] = useState(24);
+  const [eventTenantSlug, setEventTenantSlug] = useState('');
   const [reprocessRowId, setReprocessRowId] = useState(null);
   const [reprocessTenantSlug, setReprocessTenantSlug] = useState('');
   const [reprocessMonths, setReprocessMonths] = useState('');
@@ -217,6 +218,7 @@ export default function SuperPayment() {
     statusFilter = eventStatus,
     providerFilter = eventProvider,
     outcomeFilter = eventOutcome,
+    tenantSlugFilter = eventTenantSlug,
   ) => {
     setEventsLoading(true);
     setEventsErr('');
@@ -225,6 +227,7 @@ export default function SuperPayment() {
       if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
       if (providerFilter && providerFilter !== 'all') params.provider = providerFilter;
       if (outcomeFilter && outcomeFilter !== 'all') params.outcome = outcomeFilter;
+      if (tenantSlugFilter && tenantSlugFilter.trim()) params.tenant_slug = tenantSlugFilter.trim().toLowerCase();
       const res = await axios.get('/super/payment/events', { ...auth(), params });
       setEvents(Array.isArray(res.data?.items) ? res.data.items : []);
       if (typeof res.data?.max_retained === 'number') setMaxRetained(res.data.max_retained);
@@ -238,19 +241,21 @@ export default function SuperPayment() {
     } finally {
       setEventsLoading(false);
     }
-  }, [eventStatus, eventProvider, eventOutcome, navigate]);
+  }, [eventStatus, eventProvider, eventOutcome, eventTenantSlug, navigate]);
 
-  useEffect(() => { reloadEvents(eventStatus, eventProvider, eventOutcome); }, [reloadEvents, eventStatus, eventProvider, eventOutcome]);
+  useEffect(() => { reloadEvents(eventStatus, eventProvider, eventOutcome, eventTenantSlug); }, [reloadEvents, eventStatus, eventProvider, eventOutcome, eventTenantSlug]);
 
   const reloadStats = useCallback(async (
     windowHours = statsWindowHours,
     providerFilter = eventProvider,
+    tenantSlugFilter = eventTenantSlug,
   ) => {
     setStatsLoading(true);
     setStatsErr('');
     try {
       const params = { window_seconds: Math.max(1, parseInt(windowHours, 10) || 24) * 3600 };
       if (providerFilter && providerFilter !== 'all') params.provider = providerFilter;
+      if (tenantSlugFilter && tenantSlugFilter.trim()) params.tenant_slug = tenantSlugFilter.trim().toLowerCase();
       const res = await axios.get('/super/payment/events/stats', { ...auth(), params });
       setStats(res.data || null);
     } catch (e) {
@@ -263,9 +268,9 @@ export default function SuperPayment() {
     } finally {
       setStatsLoading(false);
     }
-  }, [statsWindowHours, eventProvider, navigate]);
+  }, [statsWindowHours, eventProvider, eventTenantSlug, navigate]);
 
-  useEffect(() => { reloadStats(statsWindowHours, eventProvider); }, [reloadStats, statsWindowHours, eventProvider]);
+  useEffect(() => { reloadStats(statsWindowHours, eventProvider, eventTenantSlug); }, [reloadStats, statsWindowHours, eventProvider, eventTenantSlug]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -300,6 +305,7 @@ export default function SuperPayment() {
       if (eventStatus && eventStatus !== 'all') params.status = eventStatus;
       if (eventProvider && eventProvider !== 'all') params.provider = eventProvider;
       if (eventOutcome && eventOutcome !== 'all') params.outcome = eventOutcome;
+      if (eventTenantSlug && eventTenantSlug.trim()) params.tenant_slug = eventTenantSlug.trim().toLowerCase();
       const res = await axios.get('/super/payment/events.csv', {
         ...auth(),
         params,
@@ -377,8 +383,8 @@ export default function SuperPayment() {
       if (reprocessMonths && parseInt(reprocessMonths, 10) > 0) body.months = parseInt(reprocessMonths, 10);
       const res = await axios.post(`/super/payment/events/${rowId}/reprocess`, body, auth());
       setReprocessResult({ ok: true, ...res.data });
-      reloadEvents(eventStatus, eventProvider, eventOutcome);
-      reloadStats(statsWindowHours, eventProvider);
+      reloadEvents(eventStatus, eventProvider, eventOutcome, eventTenantSlug);
+      reloadStats(statsWindowHours, eventProvider, eventTenantSlug);
     } catch (e) {
       const detail = e?.response?.data?.detail || e?.message || 'تعذرت إعادة المعالجة';
       setReprocessResult({ ok: false, error: detail });
@@ -571,6 +577,14 @@ export default function SuperPayment() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>📜 آخر أحداث الـ webhook</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <label style={{ fontSize: 13, color: '#475569' }}>الأكاديمية:</label>
+              <input
+                type="text"
+                value={eventTenantSlug}
+                onChange={(e) => setEventTenantSlug(e.target.value)}
+                placeholder="slug الأكاديمية…"
+                style={{ ...input, width: 140, padding: '6px 10px', fontFamily: 'monospace' }}
+              />
               <label style={{ fontSize: 13, color: '#475569' }}>المزود:</label>
               <select
                 value={eventProvider}
@@ -603,7 +617,7 @@ export default function SuperPayment() {
                 ))}
               </select>
               <button
-                onClick={() => { reloadEvents(eventStatus, eventProvider, eventOutcome); reloadStats(statsWindowHours, eventProvider); }}
+                onClick={() => { reloadEvents(eventStatus, eventProvider, eventOutcome, eventTenantSlug); reloadStats(statsWindowHours, eventProvider, eventTenantSlug); }}
                 disabled={eventsLoading}
                 style={{ ...btn('#475569'), padding: '6px 12px', fontSize: 13 }}
               >
