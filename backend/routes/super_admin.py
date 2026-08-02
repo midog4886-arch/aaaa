@@ -35,9 +35,17 @@ from utils.email_service import (
 from utils.payment_service import (
     DELIVERY_FAILURE_STREAK_THRESHOLD,
     aggregate_webhook_event_stats,
+    claim_event,
+    confirm_event,
     get_payment_settings,
+    get_webhook_event_by_row_id,
     list_active_delivery_alerts,
     list_webhook_events,
+    lock_original_event,
+    parse_failure_event,
+    parse_success_event,
+    record_webhook_event,
+    release_event,
     update_payment_settings,
     verify_signature,
     WEBHOOK_EVENTS_MAX,
@@ -1662,6 +1670,320 @@ async def payment_events_export_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+_REPROCESS_ELIGIBLE_STATUSES = {"tenant_not_found", "error"}
+
+
+class ReprocessEventIn(BaseModel):
+    tenant_slug: Optional[str] = None
+    months: Optional[int] = None
+    days: Optional[int] = None
+
+
+@router.post("/payment/events/{row_id}/reprocess")
+async def reprocess_webhook_event(
+    row_id: str,
+    payload: ReprocessEventIn,
+    super_payload: dict = Depends(_require_super),
+):
+    """Re-run a failed webhook event through the same dedupe/claim pipeline.
+
+    Eligible statuses: ``tenant_not_found`` (provide ``tenant_slug`` in the
+    body to override the missing metadata) and ``error`` (retry the stored
+    payload as-is).  A synthetic dedupe key ``reprocess:{row_id}`` prevents
+    double-application if the button is clicked more than once.
+
+    The result is recorded as a new webhook event whose ``reason`` references
+    the original ``row_id`` so the full chain is visible in the event log.
+    """
+    from routes.billing import apply_payment_failure, _resolve_tenant
+
+    # ── 1. Load the original event ───────────────────────────────────────
+    event = await get_webhook_event_by_row_id(row_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Webhook event not found")
+
+    status = (event.get("status") or "").lower()
+    if status not in _REPROCESS_ELIGIBLE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Event status '{status}' is not eligible for reprocessing "
+                   f"(only {sorted(_REPROCESS_ELIGIBLE_STATUSES)} are)",
+        )
+
+    provider = (event.get("provider") or "").lower()
+    original_event_id = event.get("event_id") or ""
+    snapshot = event.get("payload_snapshot") or {}
+    raw_payload = snapshot.get("data")  # may be None if snapshot was truncated
+
+    # ── 2. Dedupe via a synthetic claim so reprocessing is idempotent ────
+    synthetic_event_id = f"reprocess:{row_id}"
+    claim_state = await claim_event(provider or "reprocess", synthetic_event_id)
+    if claim_state != "new":
+        await record_webhook_event(
+            provider=provider or "reprocess",
+            status="duplicate",
+            reason=f"reprocess already {claim_state} for row_id={row_id}",
+            event_id=synthetic_event_id,
+            http_status=200,
+        )
+        return {
+            "status": "duplicate",
+            "row_id": row_id,
+            "claim": claim_state,
+            "detail": "This event was already reprocessed (or is currently in flight).",
+        }
+
+    try:
+        # ── 3. Resolve the tenant ────────────────────────────────────────
+        # For tenant_not_found: admin may supply a corrected tenant_slug.
+        # For error: try to use what was stored in the original event row.
+        override_slug = (payload.tenant_slug or "").strip().lower() or None
+        stored_tenant_id = (event.get("tenant_id") or "").strip() or None
+        stored_tenant_slug = (event.get("tenant_slug") or "").strip().lower() or None
+
+        tenant_slug_to_use = override_slug or stored_tenant_slug
+        tenant_id_to_use = None if override_slug else stored_tenant_id
+
+        # Also check inside the redacted payload snapshot if we have it.
+        if not tenant_slug_to_use and isinstance(raw_payload, dict):
+            meta = (
+                (raw_payload.get("data") or {}).get("metadata")
+                or raw_payload.get("metadata")
+                or ((raw_payload.get("data") or {}).get("object") or {}).get("metadata")
+                or {}
+            )
+            tenant_slug_to_use = (
+                meta.get("tenant_slug")
+                or meta.get("tenantSlug")
+                or meta.get("slug")
+                or None
+            )
+            if tenant_slug_to_use:
+                tenant_slug_to_use = str(tenant_slug_to_use).strip().lower()
+            if not tenant_id_to_use:
+                tid = meta.get("tenant_id") or meta.get("tenantId")
+                tenant_id_to_use = str(tid).strip() if tid else None
+
+        tenant = await _resolve_tenant(tenant_id_to_use, tenant_slug_to_use)
+        if not tenant:
+            await release_event(provider or "reprocess", synthetic_event_id)
+            await record_webhook_event(
+                provider=provider or "reprocess",
+                status="tenant_not_found",
+                reason=f"reprocess: tenant not found (slug={tenant_slug_to_use!r}, id={tenant_id_to_use!r}); original row_id={row_id}",
+                tenant_slug=tenant_slug_to_use or "",
+                event_id=synthetic_event_id,
+                http_status=404,
+            )
+            raise HTTPException(
+                status_code=404,
+                detail="Tenant not found — provide a valid tenant_slug in the request body.",
+            )
+
+        link = f"reprocessed from row_id={row_id}" + (
+            f" (original event_id={original_event_id})" if original_event_id else ""
+        )
+
+        # ── 4a. Try as a success event (renewal) ────────────────────────
+        success_parsed = parse_success_event(provider, raw_payload) if isinstance(raw_payload, dict) else None
+        if success_parsed:
+            months = int(payload.months or 0) or int(success_parsed.get("months") or 0)
+            days = int(payload.days or 0) or int(success_parsed.get("days") or 0)
+            if not months and not days:
+                cycle = (
+                    success_parsed.get("cycle")
+                    or tenant.get("billing_cycle")
+                    or "monthly"
+                ).lower()
+                if cycle == "yearly":
+                    months = 12
+                elif cycle == "quarterly":
+                    months = 3
+                else:
+                    months = 1
+            try:
+                result = await apply_renewal(
+                    tenant=tenant,
+                    months=int(months or 0),
+                    days=int(days or 0),
+                    amount=success_parsed.get("amount"),
+                    currency=success_parsed.get("currency") or "SAR",
+                    method=provider or "manual",
+                    provider_ref=success_parsed.get("provider_ref") or "",
+                    note=f"auto-renewed via payment webhook ({link})",
+                )
+            except ValueError as e:
+                await release_event(provider or "reprocess", synthetic_event_id)
+                raise HTTPException(status_code=400, detail=str(e))
+            await confirm_event(provider or "reprocess", synthetic_event_id)
+            # Also lock the original provider event so future provider retries
+            # can't re-claim and re-apply the same renewal. This upserts a
+            # "processed" row even when the original claim was released (error path).
+            if original_event_id:
+                await lock_original_event(provider, original_event_id)
+            await record_webhook_event(
+                provider=provider or "reprocess",
+                status="renewed",
+                reason=f"+{months}m/+{days}d; {link}",
+                tenant_id=(result.get("tenant") or {}).get("id"),
+                tenant_slug=(result.get("tenant") or {}).get("slug"),
+                event_id=synthetic_event_id,
+                payload={"_reprocess": True, "original_row_id": row_id},
+                http_status=200,
+            )
+            try:
+                from utils.audit import log_audit
+                await log_audit(
+                    actor=_super_actor(super_payload),
+                    action="tenant.webhook_reprocess",
+                    entity_type="tenant",
+                    entity_id=tenant.get("id"),
+                    entity_name=tenant.get("name", ""),
+                    extra={
+                        "original_row_id": row_id,
+                        "original_event_id": original_event_id,
+                        "original_status": status,
+                        "outcome": "renewed",
+                        "renewal_id": (result.get("renewal") or {}).get("id"),
+                    },
+                )
+            except Exception:
+                pass
+            return {
+                "status": "renewed",
+                "row_id": row_id,
+                "tenant_slug": (result.get("tenant") or {}).get("slug"),
+                "renewal_id": (result.get("renewal") or {}).get("id"),
+                "email": result.get("email"),
+            }
+
+        # ── 4b. Try as a failure event ────────────────────────────────────
+        failure_parsed = parse_failure_event(provider, raw_payload) if isinstance(raw_payload, dict) else None
+        if failure_parsed:
+            result = await apply_payment_failure(
+                tenant=tenant,
+                reason=failure_parsed.get("reason") or f"reprocessed failure ({link})",
+                amount=failure_parsed.get("amount"),
+                currency=failure_parsed.get("currency") or "SAR",
+                provider=provider or "manual",
+                provider_ref=failure_parsed.get("provider_ref") or "",
+            )
+            await confirm_event(provider or "reprocess", synthetic_event_id)
+            if original_event_id:
+                await lock_original_event(provider, original_event_id)
+            await record_webhook_event(
+                provider=provider or "reprocess",
+                status="recorded",
+                reason=f"{failure_parsed.get('reason') or ''}; {link}",
+                tenant_id=(result.get("tenant") or {}).get("id"),
+                tenant_slug=(result.get("tenant") or {}).get("slug"),
+                event_id=synthetic_event_id,
+                payload={"_reprocess": True, "original_row_id": row_id},
+                http_status=200,
+            )
+            try:
+                from utils.audit import log_audit
+                await log_audit(
+                    actor=_super_actor(super_payload),
+                    action="tenant.webhook_reprocess",
+                    entity_type="tenant",
+                    entity_id=tenant.get("id"),
+                    entity_name=tenant.get("name", ""),
+                    extra={
+                        "original_row_id": row_id,
+                        "original_event_id": original_event_id,
+                        "original_status": status,
+                        "outcome": "recorded",
+                        "failure_id": (result.get("failure") or {}).get("id"),
+                    },
+                )
+            except Exception:
+                pass
+            return {
+                "status": "recorded",
+                "row_id": row_id,
+                "tenant_slug": (result.get("tenant") or {}).get("slug"),
+                "failure_id": (result.get("failure") or {}).get("id"),
+                "email": result.get("email"),
+            }
+
+        # ── 4c. No parseable payload — can still try forced renewal if admin
+        #        supplies months and we can identify the tenant ──────────────
+        months_override = int(payload.months or 0)
+        days_override = int(payload.days or 0)
+        if months_override > 0 or days_override > 0:
+            try:
+                result = await apply_renewal(
+                    tenant=tenant,
+                    months=months_override,
+                    days=days_override,
+                    amount=None,
+                    currency="SAR",
+                    method=provider or "manual",
+                    note=f"manual reprocess of failed webhook ({link})",
+                )
+            except ValueError as e:
+                await release_event(provider or "reprocess", synthetic_event_id)
+                raise HTTPException(status_code=400, detail=str(e))
+            await confirm_event(provider or "reprocess", synthetic_event_id)
+            if original_event_id:
+                await lock_original_event(provider, original_event_id)
+            await record_webhook_event(
+                provider=provider or "reprocess",
+                status="renewed",
+                reason=f"+{months_override}m/+{days_override}d (forced manual); {link}",
+                tenant_id=(result.get("tenant") or {}).get("id"),
+                tenant_slug=(result.get("tenant") or {}).get("slug"),
+                event_id=synthetic_event_id,
+                payload={"_reprocess": True, "original_row_id": row_id},
+                http_status=200,
+            )
+            try:
+                from utils.audit import log_audit
+                await log_audit(
+                    actor=_super_actor(super_payload),
+                    action="tenant.webhook_reprocess",
+                    entity_type="tenant",
+                    entity_id=tenant.get("id"),
+                    entity_name=tenant.get("name", ""),
+                    extra={
+                        "original_row_id": row_id,
+                        "original_event_id": original_event_id,
+                        "original_status": status,
+                        "outcome": "renewed_manual",
+                        "renewal_id": (result.get("renewal") or {}).get("id"),
+                    },
+                )
+            except Exception:
+                pass
+            return {
+                "status": "renewed",
+                "row_id": row_id,
+                "tenant_slug": (result.get("tenant") or {}).get("slug"),
+                "renewal_id": (result.get("renewal") or {}).get("id"),
+                "email": result.get("email"),
+            }
+
+        # ── 5. Cannot determine event type ───────────────────────────────
+        await release_event(provider or "reprocess", synthetic_event_id)
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot determine event type from stored payload snapshot "
+                "(may be truncated or missing). "
+                "Supply months/days to force a manual renewal, or use the "
+                "manual renew endpoint instead."
+            ),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("reprocess_webhook_event failed for row_id=%s", row_id)
+        await release_event(provider or "reprocess", synthetic_event_id)
+        raise HTTPException(status_code=500, detail=f"Reprocess failed: {e}")
 
 
 @router.post("/payment/test-webhook")

@@ -503,8 +503,10 @@ async def record_webhook_event(
             http_status_int = int(http_status)
         except (TypeError, ValueError):
             http_status_int = None
+    import uuid as _uuid_mod
     try:
         doc = {
+            "row_id": str(_uuid_mod.uuid4()),
             "provider": provider_lc,
             "status": normalized_status,
             "reason": reason_clean,
@@ -620,6 +622,26 @@ async def list_webhook_events(
             continue
         rows.append(r)
     return rows
+
+async def get_webhook_event_by_row_id(row_id: str) -> Optional[Dict]:
+    """Return a single webhook event doc by its ``row_id`` UUID field."""
+    if not row_id:
+        return None
+    try:
+        doc = await control_db.webhook_events.find_one(
+            {"row_id": str(row_id).strip()}, {"_id": 0}
+        )
+        if doc is None:
+            return None
+        recv = doc.get("received_at")
+        if isinstance(recv, datetime):
+            doc["received_at"] = recv.isoformat()
+        doc["outcome"] = _derive_outcome(doc.get("status", ""))
+        return doc
+    except Exception:
+        logger.exception("get_webhook_event_by_row_id failed for %s", row_id)
+        return None
+
 
 async def aggregate_webhook_event_stats(
     *,
@@ -796,6 +818,44 @@ async def confirm_event(provider: str, event_id: str) -> None:
         )
     except Exception:
         logger.exception("confirm_event update failed for %s/%s", provider, event_id)
+
+
+async def lock_original_event(provider: str, event_id: str) -> None:
+    """After a manual reprocess succeeds, guarantee the original provider event
+    is marked as ``processed`` so future provider retries cannot re-claim and
+    re-apply the same side effects.
+
+    Unlike :func:`confirm_event` (which only updates an *existing* row),
+    this function upserts — it inserts a ``processed`` row when the original
+    claim was already released (``status=error`` path in the webhook handler
+    deletes the claim via :func:`release_event` so :func:`confirm_event` would
+    silently no-op).  Best-effort: any failure is logged and swallowed.
+    """
+    if not event_id:
+        return
+    provider_lc = (provider or "").lower()
+    await _ensure_processed_events_indexes()
+    now = datetime.now(timezone.utc)
+    try:
+        await control_db.processed_payment_events.update_one(
+            {"provider": provider_lc, "event_id": event_id},
+            {
+                "$set": {
+                    "provider": provider_lc,
+                    "event_id": event_id,
+                    "status": "processed",
+                    "processed_at": now,
+                },
+                "$setOnInsert": {
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
+    except Exception:
+        logger.exception(
+            "lock_original_event upsert failed for %s/%s", provider_lc, event_id
+        )
 
 
 async def release_event(provider: str, event_id: str) -> None:

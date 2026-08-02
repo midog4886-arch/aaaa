@@ -69,6 +69,7 @@ const statusLabel = (s) =>
 const FAILURE_STATUSES = ['signature_invalid', 'tenant_not_found', 'secret_missing', 'error', 'invalid_payload'];
 const SUCCESS_STATUSES = ['recorded', 'renewed'];
 const NEUTRAL_STATUSES = ['received', 'duplicate', 'ignored', 'provider_disabled'];
+const REPROCESS_ELIGIBLE_STATUSES = ['tenant_not_found', 'error'];
 
 const STAT_STYLES = {
   total: { bg: '#f1f5f9', fg: '#0f172a', border: '#cbd5e1' },
@@ -193,6 +194,11 @@ export default function SuperPayment() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsErr, setStatsErr] = useState('');
   const [statsWindowHours, setStatsWindowHours] = useState(24);
+  const [reprocessRowId, setReprocessRowId] = useState(null);
+  const [reprocessTenantSlug, setReprocessTenantSlug] = useState('');
+  const [reprocessMonths, setReprocessMonths] = useState('');
+  const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessResult, setReprocessResult] = useState(null);
 
   const reloadDeliveryAlerts = useCallback(async () => {
     try {
@@ -357,6 +363,41 @@ export default function SuperPayment() {
       setErr(e?.response?.data?.detail || 'تعذر حفظ الإعدادات');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleReprocess = async (ev) => {
+    const rowId = ev.row_id;
+    if (!rowId) { setEventsErr('هذا الحدث لا يملك row_id (حدث قديم لا يمكن إعادة معالجته)'); return; }
+    setReprocessing(true);
+    setReprocessResult(null);
+    try {
+      const body = {};
+      if (reprocessTenantSlug.trim()) body.tenant_slug = reprocessTenantSlug.trim();
+      if (reprocessMonths && parseInt(reprocessMonths, 10) > 0) body.months = parseInt(reprocessMonths, 10);
+      const res = await axios.post(`/super/payment/events/${rowId}/reprocess`, body, auth());
+      setReprocessResult({ ok: true, ...res.data });
+      reloadEvents(eventStatus, eventProvider, eventOutcome);
+      reloadStats(statsWindowHours, eventProvider);
+    } catch (e) {
+      const detail = e?.response?.data?.detail || e?.message || 'تعذرت إعادة المعالجة';
+      setReprocessResult({ ok: false, error: detail });
+    } finally {
+      setReprocessing(false);
+    }
+  };
+
+  const openReprocess = (ev, idx) => {
+    if (reprocessRowId === idx) {
+      setReprocessRowId(null);
+      setReprocessTenantSlug('');
+      setReprocessMonths('');
+      setReprocessResult(null);
+    } else {
+      setReprocessRowId(idx);
+      setReprocessTenantSlug(ev.tenant_slug || '');
+      setReprocessMonths('');
+      setReprocessResult(null);
     }
   };
 
@@ -609,6 +650,7 @@ export default function SuperPayment() {
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>الأكاديمية</th>
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>السبب / التفاصيل</th>
                     <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>event_id</th>
+                    <th style={{ padding: '8px 10px', fontWeight: 700, color: '#334155' }}>إجراء</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -616,8 +658,10 @@ export default function SuperPayment() {
                     const c = STATUS_COLORS[ev.status] || { bg: '#f1f5f9', fg: '#475569' };
                     const oc = OUTCOME_COLORS[ev.outcome] || { bg: '#f1f5f9', fg: '#475569' };
                     const isOpen = expandedEvent === i;
+                    const isReprocessOpen = reprocessRowId === i;
                     const snap = ev.payload_snapshot;
                     const hasDetails = !!(snap || ev.signature_header || ev.http_status);
+                    const canReprocess = REPROCESS_ELIGIBLE_STATUSES.includes(ev.status) && !!ev.row_id;
                     let snapshotText = '';
                     if (snap) {
                       if (snap.preview) {
@@ -653,10 +697,31 @@ export default function SuperPayment() {
                           <td style={{ padding: '8px 10px', color: '#0f172a' }}>{ev.tenant_slug || '—'}</td>
                           <td style={{ padding: '8px 10px', color: '#475569', maxWidth: 320, wordBreak: 'break-word' }}>{ev.reason || '—'}</td>
                           <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#64748b', fontSize: 12, wordBreak: 'break-all', maxWidth: 200 }}>{ev.event_id || '—'}</td>
+                          <td style={{ padding: '8px 10px' }} onClick={(e) => e.stopPropagation()}>
+                            {canReprocess && (
+                              <button
+                                onClick={() => openReprocess(ev, i)}
+                                style={{
+                                  padding: '4px 10px',
+                                  background: isReprocessOpen ? '#e0e7ff' : '#f1f5f9',
+                                  color: isReprocessOpen ? '#3730a3' : '#475569',
+                                  border: `1px solid ${isReprocessOpen ? '#a5b4fc' : '#cbd5e1'}`,
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title="إعادة تشغيل هذا الحدث الفاشل عبر نفس مسار المعالجة"
+                              >
+                                ↺ إعادة معالجة
+                              </button>
+                            )}
+                          </td>
                         </tr>
                         {isOpen && hasDetails && (
                           <tr style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-                            <td colSpan={7} style={{ padding: '12px 16px' }}>
+                            <td colSpan={8} style={{ padding: '12px 16px' }}>
                               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 10, fontSize: 12, color: '#475569' }}>
                                 <div>
                                   <span style={{ color: '#64748b' }}>كود الاستجابة HTTP: </span>
@@ -706,6 +771,119 @@ export default function SuperPayment() {
                               )}
                               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
                                 ملاحظة: الحقول الحساسة (أرقام البطاقات، CVV، الأسرار) محذوفة تلقائياً قبل الحفظ.
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {isReprocessOpen && canReprocess && (
+                          <tr style={{ background: '#eff6ff', borderTop: '1px solid #bfdbfe' }}>
+                            <td colSpan={8} style={{ padding: '14px 16px' }}>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a8a', marginBottom: 10 }}>
+                                ↺ إعادة معالجة الحدث
+                                {ev.status === 'tenant_not_found' && (
+                                  <span style={{ fontSize: 12, fontWeight: 400, color: '#3b82f6', marginRight: 8 }}>
+                                    — أدخل slug الأكاديمية الصحيح ثم اضغط إعادة المعالجة
+                                  </span>
+                                )}
+                                {ev.status === 'error' && (
+                                  <span style={{ fontSize: 12, fontWeight: 400, color: '#3b82f6', marginRight: 8 }}>
+                                    — سيُعاد تشغيل الحدث المخزَّن عبر نفس مسار المعالجة
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: 12, color: '#1e3a8a', marginBottom: 4, fontWeight: 600 }}>
+                                    slug الأكاديمية
+                                    {ev.status === 'tenant_not_found' ? ' (مطلوب)' : ' (اختياري — لتصحيح الأكاديمية)'}
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={reprocessTenantSlug}
+                                    onChange={(e) => setReprocessTenantSlug(e.target.value)}
+                                    placeholder="مثال: my-academy"
+                                    dir="ltr"
+                                    style={{ padding: '6px 10px', border: '1px solid #93c5fd', borderRadius: 6, fontSize: 13, width: 200, fontFamily: 'monospace' }}
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: 'block', fontSize: 12, color: '#1e3a8a', marginBottom: 4, fontWeight: 600 }}>
+                                    شهور التجديد (اختياري — إذا لم تُحفظ في الحمولة)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="120"
+                                    value={reprocessMonths}
+                                    onChange={(e) => setReprocessMonths(e.target.value)}
+                                    placeholder="0"
+                                    dir="ltr"
+                                    style={{ padding: '6px 10px', border: '1px solid #93c5fd', borderRadius: 6, fontSize: 13, width: 100 }}
+                                  />
+                                </div>
+                                <button
+                                  onClick={() => handleReprocess(ev)}
+                                  disabled={reprocessing || (ev.status === 'tenant_not_found' && !reprocessTenantSlug.trim())}
+                                  style={{
+                                    padding: '6px 16px',
+                                    background: '#2563eb',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: 6,
+                                    fontSize: 13,
+                                    fontWeight: 600,
+                                    cursor: (reprocessing || (ev.status === 'tenant_not_found' && !reprocessTenantSlug.trim())) ? 'not-allowed' : 'pointer',
+                                    opacity: (reprocessing || (ev.status === 'tenant_not_found' && !reprocessTenantSlug.trim())) ? 0.6 : 1,
+                                  }}
+                                >
+                                  {reprocessing ? 'جارٍ المعالجة...' : '↺ إعادة المعالجة'}
+                                </button>
+                                <button
+                                  onClick={() => { setReprocessRowId(null); setReprocessResult(null); }}
+                                  style={{ padding: '6px 12px', background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                              {reprocessResult && (
+                                <div style={{
+                                  marginTop: 12,
+                                  padding: '10px 14px',
+                                  borderRadius: 8,
+                                  fontSize: 13,
+                                  background: reprocessResult.ok ? '#dcfce7' : '#fef2f2',
+                                  color: reprocessResult.ok ? '#166534' : '#b91c1c',
+                                  border: `1px solid ${reprocessResult.ok ? '#86efac' : '#fecaca'}`,
+                                }}>
+                                  {reprocessResult.ok ? (
+                                    <>
+                                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                                        {reprocessResult.status === 'renewed' ? '✓ تم التجديد بنجاح' :
+                                         reprocessResult.status === 'recorded' ? '✓ تم تسجيل فشل الدفع' :
+                                         reprocessResult.status === 'duplicate' ? '⟳ الحدث مُعالَج مسبقاً' :
+                                         '✓ تمت إعادة المعالجة'}
+                                      </div>
+                                      {reprocessResult.tenant_slug && (
+                                        <div style={{ fontSize: 12 }}>الأكاديمية: <b>{reprocessResult.tenant_slug}</b></div>
+                                      )}
+                                      {reprocessResult.renewal_id && (
+                                        <div style={{ fontSize: 12, fontFamily: 'monospace', opacity: 0.8 }}>renewal_id: {reprocessResult.renewal_id}</div>
+                                      )}
+                                      {reprocessResult.detail && (
+                                        <div style={{ fontSize: 12, marginTop: 4 }}>{reprocessResult.detail}</div>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✗ تعذرت إعادة المعالجة</div>
+                                      <div>{reprocessResult.error}</div>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                              <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 10, lineHeight: 1.6 }}>
+                                ملاحظة: تمر إعادة المعالجة عبر نفس مسار إلغاء التكرار — لا يمكن تطبيق نفس الحدث مرتين.
+                                النتيجة تُسجَّل كحدث جديد مرتبط بالأصل.
                               </div>
                             </td>
                           </tr>
