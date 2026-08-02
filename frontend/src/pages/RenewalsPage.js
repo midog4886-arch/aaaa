@@ -129,6 +129,22 @@ const RenewalsPage = () => {
   const [selectedKeys, setSelectedKeys] = useState(new Set());
   const [bulkActing, setBulkActing] = useState(false);
 
+  // Bulk renewal dialog state — lets the admin optionally override the
+  // training days/times and/or the level for ALL selected subscriptions
+  // before executing the bulk renewal (same in-place logic as the single
+  // renewal dialog: replace the same activity subdoc + sync level).
+  const [isBulkRenewDialogOpen, setIsBulkRenewDialogOpen] = useState(false);
+  const [bulkTargets, setBulkTargets] = useState([]);
+  const [bulkRenewForm, setBulkRenewForm] = useState({
+    override_days: false,
+    training_days: [],
+    training_time: '',
+    day_times: {},
+    weeks: 4,
+    override_level: false,
+    level_id: '',
+  });
+
   // Last-reminder map: { "memberId|activityName": { last_sent, channels } }
   const [lastReminders, setLastReminders] = useState({});
   // WhatsApp settings (manual template)
@@ -536,20 +552,43 @@ const RenewalsPage = () => {
     }
   };
 
-  // Bulk renew: confirms then renews each selected item with default 1-month period
-  const handleBulkRenew = async () => {
+  // Bulk renew: opens a dialog where the admin can optionally override the
+  // training days/times and/or the level before executing the renewal.
+  const handleBulkRenew = () => {
     const visible = filterItems(activeTab === 'expiring' ? expiringList : expiredList);
     const target = getSelectedItems(visible);
     if (target.length === 0) {
       toast.info(language === 'ar' ? 'حدد اشتراكات للتجديد أولاً' : 'Select subscriptions to renew first');
       return;
     }
-    const ok = window.confirm(
-      language === 'ar'
-        ? `سيتم تجديد ${target.length} اشتراك لمدة شهر واحد بالقيمة الحالية لكل اشتراك. هل تريد المتابعة؟`
-        : `${target.length} subscriptions will be renewed for 1 month using each subscription's current fee. Continue?`
-    );
-    if (!ok) return;
+    setBulkTargets(target);
+    setBulkRenewForm({
+      override_days: false,
+      training_days: [],
+      training_time: '',
+      day_times: {},
+      weeks: 4,
+      override_level: false,
+      level_id: '',
+    });
+    // Lazy-load the levels catalog for the level override picker
+    if (renewalLevels.length === 0) {
+      levelsAPI.getAll().then(res => setRenewalLevels(Array.isArray(res.data) ? res.data : [])).catch(() => {});
+    }
+    setIsBulkRenewDialogOpen(true);
+  };
+
+  // Execute the bulk renewal for all selected items, applying the optional
+  // days/level overrides. Mirrors the single-renewal logic: paid invoice +
+  // in-place activity replacement (old activity id in the URL) + level sync.
+  const executeBulkRenew = async () => {
+    const target = bulkTargets;
+    if (target.length === 0) return;
+    if (bulkRenewForm.override_days && (bulkRenewForm.training_days || []).length === 0) {
+      toast.error(language === 'ar' ? 'اختر أيام التدريب الجديدة أولاً' : 'Pick the new training days first');
+      return;
+    }
+    setIsBulkRenewDialogOpen(false);
     setBulkActing(true);
     let success = 0;
     let failed = 0;
@@ -558,8 +597,34 @@ const RenewalsPage = () => {
         const endDate = new Date(item.end_date);
         const newStart = new Date(endDate);
         newStart.setDate(newStart.getDate() + 1);
-        const newEnd = new Date(newStart);
-        newEnd.setMonth(newEnd.getMonth() + 1);
+        const startStr = newStart.toISOString().split('T')[0];
+
+        // Days/times: either the shared override or the item's current values
+        const overrideDays = bulkRenewForm.override_days;
+        const trainingDays = overrideDays ? (bulkRenewForm.training_days || []) : (item.training_days || []);
+        const trainingTime = overrideDays ? (bulkRenewForm.training_time || '') : (item.training_time || '');
+        const dayTimes = overrideDays ? (bulkRenewForm.day_times || {}) : (item.day_times || {});
+        // Rebuild the human-readable schedule when days changed so stale text
+        // doesn't keep showing the old days everywhere.
+        const scheduleStr = overrideDays
+          ? buildMemberSchedule(trainingDays, trainingTime, dayTimes)
+          : (item.schedule || '');
+
+        // End date: with a days override, snap onto real training days (same
+        // as the single dialog); otherwise keep the legacy 1-month period.
+        let endStr;
+        if (overrideDays) {
+          endStr = calcEndDate(startStr, bulkRenewForm.weeks || 4, trainingDays);
+        }
+        if (!endStr) {
+          const newEnd = new Date(newStart);
+          newEnd.setMonth(newEnd.getMonth() + 1);
+          endStr = newEnd.toISOString().split('T')[0];
+        }
+
+        // Level: shared override or the item's current level
+        const newLevelId = bulkRenewForm.override_level ? (bulkRenewForm.level_id || '') : (item.level_id || '');
+
         const fee = parseFloat(item.fee || 0);
         const vat = Math.round(fee * 0.15 * 100) / 100;
         const total = Math.round((fee + vat) * 100) / 100;
@@ -572,14 +637,14 @@ const RenewalsPage = () => {
             activity_id: item.activity_id || '',
             activity_name: item.activity_name,
             fee,
-            period: `${newStart.toISOString().split('T')[0]} - ${newEnd.toISOString().split('T')[0]}`,
-            start_date: newStart.toISOString().split('T')[0],
-            end_date: newEnd.toISOString().split('T')[0],
-            schedule: item.schedule || '',
-            training_days: item.training_days || [],
-            training_time: item.training_time || '',
-            day_times: item.day_times || {},
-            level_id: item.level_id || '',
+            period: `${startStr} - ${endStr}`,
+            start_date: startStr,
+            end_date: endStr,
+            schedule: scheduleStr,
+            training_days: trainingDays,
+            training_time: trainingTime,
+            day_times: dayTimes,
+            level_id: newLevelId,
             is_product: false,
           }],
           subtotal: fee, vat, total, discount: 0,
@@ -590,19 +655,38 @@ const RenewalsPage = () => {
         await membersAPI.updateActivity(item.member_id, item.activity_id, {
           activity_id: item.activity_id || '',
           activity_name: item.activity_name,
-          start_date: newStart.toISOString().split('T')[0],
-          end_date: newEnd.toISOString().split('T')[0],
+          start_date: startStr,
+          end_date: endStr,
           fee,
           status: 'active',
-          schedule: item.schedule || '',
-          training_days: item.training_days || [],
-          training_time: item.training_time || '',
-          day_times: item.day_times || {},
-          level_id: item.level_id || '',
+          schedule: scheduleStr,
+          training_days: trainingDays,
+          training_time: trainingTime,
+          day_times: dayTimes,
+          level_id: newLevelId,
           coach_id: item.coach_id || '',
+          source: 'invoice',
+          source_id: invRes.data?.id || '',
           invoice_id: invRes.data?.id,
           renewed_from: item.end_date,
         });
+
+        // Sync level membership when the level actually changed
+        const oldLevelId = item.level_id || '';
+        if (bulkRenewForm.override_level && oldLevelId !== newLevelId) {
+          if (oldLevelId) {
+            try { await levelsAPI.removeMember(oldLevelId, item.member_id); } catch (e) { console.warn('Old level detach warning:', e); }
+          }
+          if (newLevelId) {
+            try {
+              await levelsAPI.addMember(newLevelId, item.member_id, {
+                activityId: item.activity_id || undefined,
+                activityName: item.activity_name || undefined,
+                force: true
+              });
+            } catch (e) { console.warn('Level membership sync warning:', e); }
+          }
+        }
         success++;
       } catch (e) {
         console.error('Bulk renew failed for', item.member_name, e);
@@ -610,6 +694,7 @@ const RenewalsPage = () => {
       }
     }
     setBulkActing(false);
+    setBulkTargets([]);
     if (success) toast.success(language === 'ar' ? `تم تجديد ${success} اشتراك` : `${success} subscriptions renewed`);
     if (failed) toast.error(language === 'ar' ? `فشل تجديد ${failed} اشتراك` : `${failed} renewals failed`);
     clearSelection();
@@ -1468,6 +1553,123 @@ const RenewalsPage = () => {
             >
               {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
               {language === 'ar' ? 'تأكيد التجديد' : 'Confirm Renewal'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk renewal dialog — optional shared days/level overrides */}
+      <Dialog open={isBulkRenewDialogOpen} onOpenChange={setIsBulkRenewDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {language === 'ar'
+                ? `تجديد جماعي (${bulkTargets.length} اشتراك)`
+                : `Bulk Renewal (${bulkTargets.length} subscriptions)`}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="p-3 bg-muted rounded-lg text-sm">
+              {language === 'ar'
+                ? 'سيتم تجديد كل اشتراك بنفس نشاطه وقيمته الحالية. يمكنك اختيارياً تغيير أيام التدريب أو المستوى لجميع الاشتراكات المحددة.'
+                : 'Each subscription renews with its current activity and fee. Optionally override the training days or level for all selected subscriptions.'}
+            </div>
+
+            {/* Days/times override */}
+            <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-blue-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bulkRenewForm.override_days}
+                  onChange={(e) => setBulkRenewForm(prev => ({ ...prev, override_days: e.target.checked }))}
+                  data-testid="bulk-renew-override-days"
+                />
+                {language === 'ar' ? 'تغيير أيام ومواعيد التدريب للجميع' : 'Change training days & times for all'}
+              </label>
+              {bulkRenewForm.override_days && (
+                <>
+                  <ScheduleDaysTimeEditor
+                    value={{
+                      training_days: bulkRenewForm.training_days || [],
+                      training_time: bulkRenewForm.training_time || '',
+                      day_times: bulkRenewForm.day_times || {}
+                    }}
+                    onChange={(patch) => setBulkRenewForm(prev => ({ ...prev, ...patch }))}
+                    language={language}
+                  />
+                  <div className="flex items-center gap-2 text-xs text-blue-700">
+                    <span>{language === 'ar' ? 'مدة التجديد:' : 'Renewal period:'}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="52"
+                      value={bulkRenewForm.weeks || 4}
+                      onChange={(e) => setBulkRenewForm(prev => ({ ...prev, weeks: parseInt(e.target.value, 10) || 4 }))}
+                      className="w-12 text-center bg-white border border-blue-200 rounded px-1 py-0.5 font-semibold"
+                    />
+                    <span>{language === 'ar' ? 'أسبوع' : 'weeks'}</span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Level override */}
+            <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-lg space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium text-purple-800 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bulkRenewForm.override_level}
+                  onChange={(e) => setBulkRenewForm(prev => ({ ...prev, override_level: e.target.checked }))}
+                  data-testid="bulk-renew-override-level"
+                />
+                {language === 'ar' ? 'تغيير المستوى للجميع' : 'Change level for all'}
+              </label>
+              {bulkRenewForm.override_level && (
+                <Select
+                  value={bulkRenewForm.level_id || '__none__'}
+                  onValueChange={(val) => setBulkRenewForm(prev => ({ ...prev, level_id: val === '__none__' ? '' : val }))}
+                >
+                  <SelectTrigger data-testid="bulk-renew-level-select">
+                    <SelectValue placeholder={language === 'ar' ? 'بدون مستوى' : 'No level'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
+                    {(() => {
+                      // Only offer levels visible to the selected members' branches
+                      // (plus shared no-branch levels) — each branch stays separate.
+                      const targetBranches = new Set(bulkTargets.map(it => it.branch_id || ''));
+                      return renewalLevels
+                        .filter(l => !l.branch_id || targetBranches.has(l.branch_id))
+                        .slice()
+                        .sort((a, b) => `${a.activity_name || ''}`.localeCompare(`${b.activity_name || ''}`, 'ar') || (a.level_number || 0) - (b.level_number || 0))
+                        .map(l => {
+                          const label = l.display_name || (l.custom_name ? l.custom_name : `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number}`);
+                          return (
+                            <SelectItem key={l.id} value={l.id}>
+                              {l.activity_name ? `${l.activity_name} — ${label}` : label}
+                            </SelectItem>
+                          );
+                        });
+                    })()}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsBulkRenewDialogOpen(false)} disabled={bulkActing}>
+              {language === 'ar' ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button
+              onClick={executeBulkRenew}
+              disabled={bulkActing}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+              data-testid="bulk-renew-confirm"
+            >
+              {bulkActing && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+              {language === 'ar' ? `تأكيد تجديد ${bulkTargets.length} اشتراك` : `Renew ${bulkTargets.length} subscriptions`}
             </Button>
           </DialogFooter>
         </DialogContent>
