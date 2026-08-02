@@ -1128,6 +1128,52 @@ async def resend_email_log_entry(
     return {"to": to, "kind": kind, "result": result}
 
 
+@router.get("/payment-events")
+async def list_payment_events(
+    current_user: dict = Depends(get_current_user),
+    limit: int = 20,
+):
+    """Return recent payment webhook events for the current academy.
+
+    Scoped strictly to the current tenant by ``tenant_slug`` so academy admins
+    can see whether their own renewal payments succeeded or failed — and why —
+    without needing super-admin access or contacting support.
+
+    Only safe display fields are returned (status, reason, amount, timestamp,
+    provider). Payload snapshots, signature diagnostics, and other tenants'
+    data are never exposed.
+    """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
+    slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
+    try:
+        capped_limit = max(1, min(int(limit or 20), 50))
+    except (TypeError, ValueError):
+        capped_limit = 20
+    from utils.payment_service import _derive_outcome
+    try:
+        cursor = control_db.webhook_events.find(
+            {"tenant_slug": slug},
+            {"_id": 0, "status": 1, "reason": 1, "received_at": 1, "provider": 1},
+        ).sort("received_at", -1).limit(capped_limit)
+        rows = []
+        async for r in cursor:
+            recv = r.get("received_at")
+            if isinstance(recv, datetime):
+                recv = recv.isoformat()
+            rows.append({
+                "status": r.get("status", ""),
+                "reason": r.get("reason", ""),
+                "received_at": recv or "",
+                "provider": r.get("provider", ""),
+                "outcome": _derive_outcome(r.get("status", "")),
+            })
+    except Exception:
+        logger.exception("list_payment_events failed for slug=%s", slug)
+        rows = []
+    return {"items": rows, "tenant_slug": slug}
+
+
 @router.post("/email-log/test-welcome")
 async def send_test_welcome_email(current_user: dict = Depends(get_current_user)):
     """Send a one-off welcome email to the academy owner address.

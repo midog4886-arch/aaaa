@@ -73,6 +73,8 @@ export const SettingsPage = () => {
   const [emailLogSearch, setEmailLogSearch] = React.useState('');
   const [emailLogSearchInput, setEmailLogSearchInput] = React.useState('');
   const [emailLogLimit, setEmailLogLimit] = React.useState(20);
+  const [paymentEvents, setPaymentEvents] = React.useState([]);
+  const [paymentEventsLoading, setPaymentEventsLoading] = React.useState(false);
   const ALL_DAYS = React.useMemo(() => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], []);
   const [dailyChecksDays, setDailyChecksDays] = React.useState(ALL_DAYS);
   const DAY_LABELS = React.useMemo(() => ({
@@ -98,6 +100,11 @@ export const SettingsPage = () => {
       .then((res) => { if (!cancelled) setInvoices(res.data?.items || []); })
       .catch(() => { if (!cancelled) setInvoices([]); })
       .finally(() => { if (!cancelled) setInvoicesLoading(false); });
+    setPaymentEventsLoading(true);
+    billingAPI.paymentEvents()
+      .then((res) => { if (!cancelled) setPaymentEvents(res.data?.items || []); })
+      .catch(() => { if (!cancelled) setPaymentEvents([]); })
+      .finally(() => { if (!cancelled) setPaymentEventsLoading(false); });
     return () => { cancelled = true; };
   }, [isAdmin]);
 
@@ -1146,6 +1153,106 @@ export const SettingsPage = () => {
                         </table>
                       </div>
                     )}
+                  </div>
+
+                  {/* Payment events — tenant-scoped webhook activity */}
+                  <div className="pt-4 border-t" data-testid="billing-payment-events">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-bold flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-primary" />
+                        {language === 'ar' ? 'آخر عمليات الدفع' : 'Recent payment events'}
+                      </h4>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={paymentEventsLoading}
+                        onClick={() => {
+                          setPaymentEventsLoading(true);
+                          billingAPI.paymentEvents()
+                            .then((res) => setPaymentEvents(res.data?.items || []))
+                            .catch(() => {})
+                            .finally(() => setPaymentEventsLoading(false));
+                        }}
+                        data-testid="billing-payment-events-refresh-btn"
+                      >
+                        <RefreshCw className={`w-4 h-4 me-1 ${paymentEventsLoading ? 'animate-spin' : ''}`} />
+                        {language === 'ar' ? 'تحديث' : 'Refresh'}
+                      </Button>
+                    </div>
+                    {paymentEventsLoading && paymentEvents.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">{language === 'ar' ? 'جارٍ التحميل...' : 'Loading...'}</p>
+                    ) : paymentEvents.length === 0 ? (
+                      <p className="text-sm text-muted-foreground" data-testid="billing-payment-events-empty">
+                        {language === 'ar'
+                          ? 'لا توجد عمليات دفع مسجّلة بعد.'
+                          : 'No payment events recorded yet.'}
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm" data-testid="billing-payment-events-table">
+                          <thead>
+                            <tr className="text-start text-muted-foreground border-b">
+                              <th className="py-2 text-start">{language === 'ar' ? 'الوقت' : 'Time'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'السبب' : 'Reason'}</th>
+                              <th className="py-2 text-start">{language === 'ar' ? 'المزوّد' : 'Provider'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paymentEvents.map((ev, idx) => {
+                              const isSuccess = ev.outcome === 'processed';
+                              const isFailure = ev.status === 'signature_invalid'
+                                || ev.status === 'tenant_not_found'
+                                || ev.status === 'error'
+                                || ev.status === 'recorded' && ev.reason?.toLowerCase().includes('fail');
+                              const isFailed = ev.status === 'recorded' && false; // recorded = success
+                              const badgeClass = isSuccess
+                                ? 'bg-green-100 text-green-700'
+                                : (ev.status === 'duplicate' || ev.status === 'ignored')
+                                  ? 'bg-slate-100 text-slate-600'
+                                  : 'bg-red-100 text-red-700';
+                              const statusLabel = {
+                                recorded: language === 'ar' ? 'تم التسجيل' : 'Recorded',
+                                renewed: language === 'ar' ? 'تم التجديد' : 'Renewed',
+                                duplicate: language === 'ar' ? 'مكرر' : 'Duplicate',
+                                ignored: language === 'ar' ? 'متجاهَل' : 'Ignored',
+                                signature_invalid: language === 'ar' ? 'توقيع غير صالح' : 'Invalid signature',
+                                tenant_not_found: language === 'ar' ? 'أكاديمية غير موجودة' : 'Tenant not found',
+                                error: language === 'ar' ? 'خطأ' : 'Error',
+                                provider_disabled: language === 'ar' ? 'المزوّد معطّل' : 'Provider disabled',
+                                secret_missing: language === 'ar' ? 'المفتاح مفقود' : 'Secret missing',
+                                invalid_payload: language === 'ar' ? 'بيانات غير صالحة' : 'Invalid payload',
+                              }[ev.status] || ev.status;
+                              return (
+                                <tr key={`${ev.received_at}-${idx}`} className="border-b last:border-0 align-top" data-testid={`billing-payment-event-${idx}`}>
+                                  <td className="py-2 whitespace-nowrap">
+                                    {ev.received_at ? new Date(ev.received_at).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                                  </td>
+                                  <td className="py-2">
+                                    <span className={`text-xs px-2 py-0.5 rounded-full ${badgeClass}`}>
+                                      {statusLabel}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 max-w-xs">
+                                    <span className="text-xs break-words" title={ev.reason || ''}>
+                                      {ev.reason || '—'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 text-xs text-muted-foreground">
+                                    {ev.provider || '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground pt-2">
+                      {language === 'ar'
+                        ? 'يعرض آخر 20 حدث دفع مرتبط بأكاديميتك (نجاح التجديد، فشل الدفع وسببه).'
+                        : 'Shows the last 20 payment events for your academy (renewal success, payment failures and reason).'}
+                    </p>
                   </div>
                 </>
               )}

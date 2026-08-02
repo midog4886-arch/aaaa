@@ -354,6 +354,7 @@ export const billingAPI = {
   sendTestWelcome: () => axios.post(`${API}/billing/email-log/test-welcome`),
   resendEmailLog: (id) => axios.post(`${API}/billing/email-log/${id}/resend`),
   cancelDelete: () => axios.post(`${API}/billing/cancel-delete`),
+  paymentEvents: (params = {}) => axios.get(`${API}/billing/payment-events`, { params }),
 };
 
 // Branches API
