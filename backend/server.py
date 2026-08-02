@@ -2962,12 +2962,10 @@ async def export_members(
     members = await db.members.find(query, {"_id": 0}).to_list(10000)
     
     if format == "xlsx":
-        # Create Excel file
+        # Create Excel file — one sheet per branch
         xl = _get_openpyxl()
         Workbook = xl.Workbook; Font = xl.Font; PatternFill = xl.PatternFill; Border = xl.Border; Side = xl.Side; Alignment = xl.Alignment
         wb = Workbook()
-        ws = wb.active
-        ws.title = "الأعضاء"
         
         # Header styling
         header_fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")
@@ -2976,52 +2974,80 @@ async def export_members(
             left=Side(style='thin'), right=Side(style='thin'),
             top=Side(style='thin'), bottom=Side(style='thin')
         )
-        
         headers = ["م", "الاسم", "العمر", "ولي الأمر", "الجنسية", "الجوال", "البريد", "الأنشطة", "حالة الاشتراك", "تاريخ البداية", "تاريخ النهاية"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.border = thin_border
-            cell.alignment = Alignment(horizontal='center')
+        col_widths = {'A': 5, 'B': 20, 'C': 8, 'D': 20, 'E': 15, 'F': 15, 'G': 25, 'H': 25, 'I': 15, 'J': 15, 'K': 15}
         
-        for row_num, member in enumerate(members, 2):
-            activities = member.get("activities", [])
-            activities_names = ", ".join([a.get("activity_name", "") for a in activities])
-            statuses = ", ".join(["نشط" if a.get("status") == "active" else "منتهي" for a in activities])
-            start_dates = ", ".join([a.get("start_date", "") for a in activities])
-            end_dates = ", ".join([a.get("end_date", "") for a in activities])
+        # Group members by branch
+        branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(200)
+        branch_names = {b.get("id"): (b.get("name_ar") or b.get("name") or "") for b in branches}
+        grouped = {}
+        for m in members:
+            grouped.setdefault(m.get("branch_id") or None, []).append(m)
+        # Stable order: known branches first (in branches order), then unknown/no-branch
+        ordered_keys = [b.get("id") for b in branches if b.get("id") in grouped]
+        ordered_keys += [k for k in grouped if k not in ordered_keys]
+        
+        import re as _re_sheet
+        def _sheet_title(raw):
+            # Excel sheet names: max 31 chars, no : \ / ? * [ ]
+            cleaned = _re_sheet.sub(r'[:\\/?*\[\]]', ' ', raw).strip() or "فرع"
+            return cleaned[:31]
+        
+        used_titles = set()
+        first = True
+        for key in ordered_keys:
+            title = _sheet_title(branch_names.get(key) or "بدون فرع")
+            base = title; n = 2
+            while title in used_titles:
+                title = f"{base[:28]} {n}"; n += 1
+            used_titles.add(title)
+            if first:
+                ws = wb.active
+                ws.title = title
+                first = False
+            else:
+                ws = wb.create_sheet(title=title)
+            ws.sheet_view.rightToLeft = True
             
-            row_data = [
-                row_num - 1,
-                member.get("name_ar", ""),
-                member.get("age", ""),
-                member.get("guardian_name_ar", ""),
-                member.get("nationality", ""),
-                member.get("phone", ""),
-                member.get("email", ""),
-                activities_names,
-                statuses,
-                start_dates,
-                end_dates
-            ]
-            for col, value in enumerate(row_data, 1):
-                cell = ws.cell(row=row_num, column=col, value=value)
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.fill = header_fill
+                cell.font = header_font
                 cell.border = thin_border
-                cell.alignment = Alignment(horizontal='right' if col > 1 else 'center')
+                cell.alignment = Alignment(horizontal='center')
+            
+            for row_num, member in enumerate(grouped[key], 2):
+                activities = member.get("activities", [])
+                activities_names = ", ".join([a.get("activity_name", "") for a in activities])
+                statuses = ", ".join(["نشط" if a.get("status") == "active" else "منتهي" for a in activities])
+                start_dates = ", ".join([a.get("start_date", "") for a in activities])
+                end_dates = ", ".join([a.get("end_date", "") for a in activities])
+                
+                row_data = [
+                    row_num - 1,
+                    member.get("name_ar", ""),
+                    member.get("age", ""),
+                    member.get("guardian_name_ar", ""),
+                    member.get("nationality", ""),
+                    member.get("phone", ""),
+                    member.get("email", ""),
+                    activities_names,
+                    statuses,
+                    start_dates,
+                    end_dates
+                ]
+                for col, value in enumerate(row_data, 1):
+                    cell = ws.cell(row=row_num, column=col, value=value)
+                    cell.border = thin_border
+                    cell.alignment = Alignment(horizontal='right' if col > 1 else 'center')
+            
+            for letter, width in col_widths.items():
+                ws.column_dimensions[letter].width = width
         
-        # Adjust column widths
-        ws.column_dimensions['A'].width = 5
-        ws.column_dimensions['B'].width = 20
-        ws.column_dimensions['C'].width = 8
-        ws.column_dimensions['D'].width = 20
-        ws.column_dimensions['E'].width = 15
-        ws.column_dimensions['F'].width = 15
-        ws.column_dimensions['G'].width = 25
-        ws.column_dimensions['H'].width = 25
-        ws.column_dimensions['I'].width = 15
-        ws.column_dimensions['J'].width = 15
-        ws.column_dimensions['K'].width = 15
+        if first:
+            # No members at all — keep an empty default sheet
+            ws = wb.active
+            ws.title = "الأعضاء"
         
         # Save to bytes
         output = io.BytesIO()
