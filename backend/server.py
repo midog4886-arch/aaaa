@@ -2505,7 +2505,7 @@ async def get_financial_report(
         "partial_refund_count": len(partial_refunds),
         "revenue_by_activity": list(revenue_by_activity.values()),
         "refund_details": refund_details,
-        "invoices": invoices[:50]  # Return last 50 invoices
+        "invoices": invoices[:300]  # Return up to 300 invoices for the details panel
     }
 
 @api_router.get("/reports/nationalities")

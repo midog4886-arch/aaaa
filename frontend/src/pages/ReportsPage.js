@@ -749,22 +749,24 @@ export const ReportsPage = () => {
                 </div>
               </div>
               {report?.invoices?.length > 0 ? (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
                   <table className="data-table w-full">
-                    <thead>
+                    <thead className="sticky top-0">
                       <tr className="bg-blue-100">
                         <th className="text-blue-700">{language === 'ar' ? 'رقم الفاتورة' : 'Invoice #'}</th>
                         <th className="text-blue-700">{language === 'ar' ? 'العميل' : 'Customer'}</th>
+                        <th className="text-blue-700">{language === 'ar' ? 'النشاط' : 'Activity'}</th>
                         <th className="text-blue-700">{language === 'ar' ? 'المبلغ' : 'Amount'}</th>
                         <th className="text-blue-700">{language === 'ar' ? 'طريقة الدفع' : 'Payment'}</th>
                         <th className="text-blue-700">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {report.invoices.slice(0, 20).map((invoice, idx) => (
+                      {report.invoices.map((invoice, idx) => (
                         <tr key={idx}>
                           <td className="font-mono text-sm">#{invoice.id?.slice(0, 8)}</td>
                           <td>{invoice.customer_name_ar || invoice.member_name || '-'}</td>
+                          <td className="text-sm">{[...new Set((invoice.items || []).map(it => it.activity_name).filter(Boolean))].join(' / ') || '-'}</td>
                           <td className="font-bold text-blue-600">{invoice.total} {t('sar')}</td>
                           <td>
                             <Badge variant="outline">
@@ -781,9 +783,9 @@ export const ReportsPage = () => {
                       ))}
                     </tbody>
                   </table>
-                  {report.invoices.length > 20 && (
+                  {(report.invoice_count || 0) > report.invoices.length && (
                     <p className="text-center text-sm text-muted-foreground mt-2">
-                      {language === 'ar' ? `عرض 20 من ${report.invoices.length} فاتورة` : `Showing 20 of ${report.invoices.length} invoices`}
+                      {language === 'ar' ? `عرض ${report.invoices.length} من ${report.invoice_count} فاتورة — استخدم الفلاتر لتضييق النتائج` : `Showing ${report.invoices.length} of ${report.invoice_count} invoices — use filters to narrow down`}
                     </p>
                   )}
                 </div>
