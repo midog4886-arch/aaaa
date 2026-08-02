@@ -130,6 +130,12 @@ const InvoicesTable = ({
                     {new Date(invoice.created_at).toLocaleDateString(
                       language === 'ar' ? 'ar-SA' : 'en-US'
                     )}
+                    <span className="block text-xs" dir="ltr" data-testid={`invoice-time-${invoice.invoice_number}`}>
+                      {new Date(invoice.created_at).toLocaleTimeString(
+                        language === 'ar' ? 'ar-SA' : 'en-US',
+                        { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' }
+                      )}
+                    </span>
                   </td>
                   <td>
                     <div className="action-buttons">

@@ -39,7 +39,7 @@ export const ViewInvoiceDialog = ({
               </div>
               <div className="text-sm text-end">
                 <p><strong>{tl('invoice_number')}:</strong> #{selectedInvoice.invoice_number || selectedInvoice.id.slice(0, 8)}</p>
-                <p><strong>{tl('invoice_date')}:</strong> {new Date(selectedInvoice.created_at).toLocaleDateString(isAr ? 'ar-SA' : 'en-US')}</p>
+                <p><strong>{tl('invoice_date')}:</strong> {new Date(selectedInvoice.created_at).toLocaleDateString(isAr ? 'ar-SA' : 'en-US')} - {new Date(selectedInvoice.created_at).toLocaleTimeString(isAr ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' })}</p>
                 <div className="mt-2">{getStatusBadge(selectedInvoice.status)}</div>
               </div>
             </div>
