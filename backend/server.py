@@ -5233,6 +5233,7 @@ async def export_financial_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     branch_filter: Optional[str] = None,
+    activity_id: Optional[str] = None,
     format: str = "xlsx",
     token: Optional[str] = None
 ):
@@ -5253,18 +5254,40 @@ async def export_financial_report(
             query["paid_at"]["$lte"] = end_date_full
         else:
             query["paid_at"] = {"$lte": end_date_full}
-    
+
+    # Activity filter: single id or comma-separated list (activity group),
+    # same convention as /reports/financial so the export mirrors the screen.
+    activity_ids = [a.strip() for a in activity_id.split(",") if a.strip()] if activity_id else []
+    if activity_ids:
+        query["items.activity_id"] = {"$in": activity_ids}
+
     invoices = await db.invoices.find(query, {"_id": 0}).sort("paid_at", -1).to_list(10000)
     activities_data = await db.activities.find({}, {"_id": 0}).to_list(100)
-    
-    # Calculate summary
-    total_revenue = sum(inv["total"] for inv in invoices)
-    total_vat = sum(inv.get("vat_amount", 0) for inv in invoices)
-    
-    # Revenue by activity
+
+    # When an activity filter is applied, totals count only the matching items'
+    # fees (a mixed invoice contributes only its matching item), and each
+    # invoice row shows only the matching activities + the filtered total.
+    def _matching_items(inv):
+        items = inv.get("items", [])
+        if not activity_ids:
+            return items
+        return [item for item in items if item.get("activity_id") in activity_ids]
+
+    if activity_ids:
+        total_revenue = 0
+        for inv in invoices:
+            matched = sum(item.get("fee", 0) for item in _matching_items(inv))
+            inv["filtered_total"] = matched
+            total_revenue += matched
+        total_vat = None  # VAT is stored per-invoice; a per-item split isn't stored.
+    else:
+        total_revenue = sum(inv["total"] for inv in invoices)
+        total_vat = sum(inv.get("vat_amount", 0) for inv in invoices)
+
+    # Revenue by activity (matching items only when filtered)
     revenue_by_activity = {}
     for inv in invoices:
-        for item in inv.get("items", []):
+        for item in _matching_items(inv):
             act_name = item.get("activity_name", "غير محدد")
             revenue_by_activity[act_name] = revenue_by_activity.get(act_name, 0) + item.get("fee", 0)
     
@@ -5284,10 +5307,13 @@ async def export_financial_report(
         
         ws_summary.cell(row=1, column=1, value="التقرير المالي - شركة اداء الابطال العالمية للرياضة").font = title_font
         ws_summary.cell(row=2, column=1, value=f"الفترة: {start_date or 'الكل'} إلى {end_date or 'الآن'}")
+        if activity_ids:
+            filtered_names = ", ".join(sorted(revenue_by_activity.keys())) or "نشاط محدد"
+            ws_summary.cell(row=3, column=1, value=f"النشاط: {filtered_names}")
         ws_summary.cell(row=4, column=1, value="إجمالي الإيرادات:").font = Font(bold=True)
         ws_summary.cell(row=4, column=2, value=f"{total_revenue} ر.س")
         ws_summary.cell(row=5, column=1, value="إجمالي الضريبة:").font = Font(bold=True)
-        ws_summary.cell(row=5, column=2, value=f"{total_vat} ر.س")
+        ws_summary.cell(row=5, column=2, value="—" if total_vat is None else f"{total_vat} ر.س")
         ws_summary.cell(row=6, column=1, value="عدد الفواتير:").font = Font(bold=True)
         ws_summary.cell(row=6, column=2, value=len(invoices))
         
@@ -5317,8 +5343,9 @@ async def export_financial_report(
             cell.border = thin_border
         
         for row_num, invoice in enumerate(invoices, 2):
-            activities_list = ", ".join([item.get('activity_name', '') for item in invoice.get("items", [])])
-            row_data = [row_num - 1, invoice.get("id", "")[:8], invoice.get("customer_name_ar", invoice.get("member_name", "")), activities_list, invoice.get("total", 0), (invoice.get("paid_at", "") or "")[:10]]
+            activities_list = ", ".join([item.get('activity_name', '') for item in _matching_items(invoice)])
+            row_total = invoice.get("filtered_total", invoice.get("total", 0)) if activity_ids else invoice.get("total", 0)
+            row_data = [row_num - 1, invoice.get("id", "")[:8], invoice.get("customer_name_ar", invoice.get("member_name", "")), activities_list, row_total, (invoice.get("paid_at", "") or "")[:10]]
             for col, value in enumerate(row_data, 1):
                 cell = ws_invoices.cell(row=row_num, column=col, value=value)
                 cell.border = thin_border
@@ -5343,8 +5370,9 @@ async def export_financial_report(
         writer.writerow(["م", "رقم الفاتورة", "اسم العميل", "الأنشطة", "الإجمالي", "تاريخ الدفع"])
         
         for idx, invoice in enumerate(invoices, 1):
-            activities_list = ", ".join([item.get('activity_name', '') for item in invoice.get("items", [])])
-            writer.writerow([idx, invoice.get("id", "")[:8], invoice.get("member_name", ""), activities_list, invoice.get("total", 0), (invoice.get("paid_at", "") or "")[:10]])
+            activities_list = ", ".join([item.get('activity_name', '') for item in _matching_items(invoice)])
+            row_total = invoice.get("filtered_total", invoice.get("total", 0)) if activity_ids else invoice.get("total", 0)
+            writer.writerow([idx, invoice.get("id", "")[:8], invoice.get("member_name", ""), activities_list, row_total, (invoice.get("paid_at", "") or "")[:10]])
         
         output.seek(0)
         response_content = '\ufeff' + output.getvalue()

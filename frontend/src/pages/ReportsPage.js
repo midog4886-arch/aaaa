@@ -381,6 +381,8 @@ export const ReportsPage = () => {
                   if (filters.start_date) params.start_date = filters.start_date;
                   if (filters.end_date) params.end_date = filters.end_date;
                   if (branchFilter && branchFilter !== 'all') params.branch_filter = branchFilter;
+                  const actParam = resolveActivityParam(filters.activity_id);
+                  if (actParam) params.activity_id = actParam;
                   const url = exportAPI.reports(params) + `&token=${token}`;
                   window.open(url, '_blank');
                 }}
