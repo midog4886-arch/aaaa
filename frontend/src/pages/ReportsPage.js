@@ -767,7 +767,7 @@ export const ReportsPage = () => {
                           <td className="font-mono text-sm">#{invoice.id?.slice(0, 8)}</td>
                           <td>{invoice.customer_name_ar || invoice.member_name || '-'}</td>
                           <td className="text-sm">{[...new Set((invoice.items || []).map(it => it.activity_name).filter(Boolean))].join(' / ') || '-'}</td>
-                          <td className="font-bold text-blue-600">{invoice.total} {t('sar')}</td>
+                          <td className="font-bold text-blue-600">{invoice.filtered_total ?? invoice.total} {t('sar')}</td>
                           <td>
                             <Badge variant="outline">
                               {invoice.payment_method === 'cash' ? (language === 'ar' ? 'نقداً' : 'Cash') : 

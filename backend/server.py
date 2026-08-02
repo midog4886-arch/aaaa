@@ -2460,8 +2460,21 @@ async def get_financial_report(
             credit_note_query["created_at"] = {"$lte": end_date_full}
     
     credit_notes = await db.credit_notes.find(credit_note_query, {"_id": 0}).to_list(10000)
-    
-    total_revenue = sum(inv["total"] for inv in invoices)
+
+    # When an activity filter is applied, totals must count only the matching
+    # items' fees (a mixed invoice like swimming+karate contributes only its
+    # karate item), and each returned invoice carries a filtered_total for display.
+    if activity_ids:
+        total_revenue = 0
+        for inv in invoices:
+            matched = sum(
+                item.get("fee", 0) for item in inv.get("items", [])
+                if item.get("activity_id") in activity_ids
+            )
+            inv["filtered_total"] = matched
+            total_revenue += matched
+    else:
+        total_revenue = sum(inv["total"] for inv in invoices)
     
     # Calculate refunds from credit notes
     total_refunds = sum(cn.get("refund_amount", 0) for cn in credit_notes)
