@@ -475,7 +475,7 @@ export const MembersPage = () => {
       setWelcomeTemplate((welcomeRes.data && welcomeRes.data.welcome_template) || '');
       setMembers(membersRes.data);
       setMarkedMemberIds(new Set((membersRes.data || []).filter(m => m.marked).map(m => m.id)));
-      setActivities(activitiesRes.data);
+      setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
       setCoaches(coachesRes.data);
       setLevels(levelsRes.data);
       setBranchesList(branchesRes.data || []);

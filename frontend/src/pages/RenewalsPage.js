@@ -646,10 +646,10 @@ const RenewalsPage = () => {
     });
     // Lazy-load catalogs so the admin can change activity/level during renewal
     if (renewalActivities.length === 0) {
-      activitiesAPI.getAll().then(res => setRenewalActivities(res.data || [])).catch(() => {});
+      activitiesAPI.getAll().then(res => setRenewalActivities(Array.isArray(res.data) ? res.data : [])).catch(() => {});
     }
     if (renewalLevels.length === 0) {
-      levelsAPI.getAll().then(res => setRenewalLevels(res.data || [])).catch(() => {});
+      levelsAPI.getAll().then(res => setRenewalLevels(Array.isArray(res.data) ? res.data : [])).catch(() => {});
     }
     setCouponCode('');
     setAppliedCoupon(null);

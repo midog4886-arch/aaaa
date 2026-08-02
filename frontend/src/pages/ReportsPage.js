@@ -149,7 +149,7 @@ export const ReportsPage = () => {
         reportsAPI.getNationalities(branchFilter).catch(() => ({ data: null }))
       ]);
       setReport(reportRes.data);
-      setActivities(activitiesRes.data);
+      setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
       setNationalitiesReport(nationalitiesRes.data);
     } catch (error) {
       console.error('Failed to load report:', error);
