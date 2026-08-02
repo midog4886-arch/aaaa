@@ -1007,6 +1007,24 @@ async def reschedule_tenant_delete(
     return {"ok": True, "tenant": refreshed, "purge_at": new_purge_at.isoformat()}
 
 
+@router.get("/tenants/{tenant_id}/reschedule-history")
+async def tenant_reschedule_history(tenant_id: str, _=Depends(_require_super)):
+    """Return the audit-log entries for every purge-date reschedule on a tenant.
+
+    Reads from the default tenant's ``audit_logs`` collection (where all
+    super-admin audit rows land, since super-admin routes run outside tenant
+    middleware and fall back to the default tenant DB).
+    """
+    from utils.tenant import slug_to_db_name, DEFAULT_TENANT_SLUG
+    default_db_name = slug_to_db_name(DEFAULT_TENANT_SLUG)
+    default_db = _raw_client[default_db_name]
+    rows = await default_db.audit_logs.find(
+        {"action": "tenant.reschedule_delete", "entity_id": tenant_id},
+        {"_id": 0, "created_at": 1, "actor_username": 1, "diff": 1, "extra": 1},
+    ).sort("created_at", -1).to_list(200)
+    return {"items": rows}
+
+
 @router.post("/tenants/{tenant_id}/cancel-delete")
 async def cancel_tenant_delete(tenant_id: str, super_payload: dict = Depends(_require_super)):
     refreshed = await _apply_cancel_tenant_delete(

@@ -680,6 +680,7 @@ export default function SuperTenants() {
   const [seedInfo, setSeedInfo] = useState(null);
   const [purgeDigests, setPurgeDigests] = useState([]);
   const [expandedDigest, setExpandedDigest] = useState(null);
+  const [rescheduleHistories, setRescheduleHistories] = useState({});
 
   const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('super_token') || ''}` } });
 
@@ -715,6 +716,41 @@ export default function SuperTenants() {
   }, []);
 
   useEffect(() => { loadPurgeDigests(); }, [loadPurgeDigests]);
+
+  const toggleRescheduleHistory = useCallback(async (tenantId) => {
+    setRescheduleHistories((prev) => {
+      const cur = prev[tenantId];
+      // If already loaded, just toggle visibility
+      if (cur && !cur.loading && cur.items !== undefined) {
+        return { ...prev, [tenantId]: { ...cur, expanded: !cur.expanded } };
+      }
+      // If already loading, do nothing
+      if (cur && cur.loading) return prev;
+      // Start loading — mark expanded so the row appears with a spinner
+      return { ...prev, [tenantId]: { loading: true, items: undefined, expanded: true } };
+    });
+    // Fetch if not yet loaded (check via functional update to avoid stale closure)
+    setRescheduleHistories((prev) => {
+      const cur = prev[tenantId];
+      if (cur && cur.loading && cur.items === undefined) {
+        // Fire the request outside setState
+        axios.get(`/super/tenants/${tenantId}/reschedule-history`, auth())
+          .then((res) => {
+            setRescheduleHistories((p) => ({
+              ...p,
+              [tenantId]: { loading: false, items: res.data?.items || [], expanded: true },
+            }));
+          })
+          .catch(() => {
+            setRescheduleHistories((p) => ({
+              ...p,
+              [tenantId]: { loading: false, items: [], expanded: true, error: true },
+            }));
+          });
+      }
+      return prev;
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tick once a minute so the "time remaining" column on the
   // pending-auto-purge panel stays live without reloading the whole page.
@@ -939,6 +975,7 @@ export default function SuperTenants() {
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>تاريخ الحذف النهائي</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>الوقت المتبقي</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>تنبيه نهائي</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>سجل التأجيل</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>إجراء</th>
                   </tr>
                 </thead>
@@ -947,7 +984,8 @@ export default function SuperTenants() {
                     const t = r.tenant;
                     const alertSent = !!t.final_purge_alert_sent_at;
                     return (
-                      <tr key={t.id} id={`pending-${t.slug}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <React.Fragment key={t.id}>
+                      <tr id={`pending-${t.slug}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
                         <td style={{ padding: '8px 10px', fontFamily: 'monospace', color: '#0f172a' }}>@{t.slug}</td>
                         <td style={{ padding: '8px 10px', color: '#0f172a' }}>{t.name}</td>
                         <td style={{ padding: '8px 10px', color: '#475569' }}>
@@ -972,12 +1010,87 @@ export default function SuperTenants() {
                           )}
                         </td>
                         <td style={{ padding: '8px 10px' }}>
+                          {(() => {
+                            const h = rescheduleHistories[t.id];
+                            const count = h && !h.loading && h.items ? h.items.length : null;
+                            const isExpanded = h && h.expanded;
+                            const lastAt = count > 0 ? h.items[0].created_at : null;
+                            return (
+                              <button
+                                style={{
+                                  padding: '4px 10px',
+                                  borderRadius: 6,
+                                  border: '1px solid #cbd5e1',
+                                  background: isExpanded ? '#eff6ff' : 'white',
+                                  color: count > 0 ? '#1d4ed8' : '#64748b',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  fontWeight: count > 0 ? 600 : 400,
+                                }}
+                                onClick={() => toggleRescheduleHistory(t.id)}
+                                title={lastAt ? `آخر تأجيل: ${new Date(lastAt).toLocaleString('ar-EG')}` : 'اضغط لعرض سجل تغييرات موعد الحذف'}
+                              >
+                                {h && h.loading ? '...' : count === null ? 'عرض' : count === 0 ? 'لا يوجد' : `${count} تأجيل`}
+                              </button>
+                            );
+                          })()}
+                        </td>
+                        <td style={{ padding: '8px 10px' }}>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             <button style={sx.btnEdit} onClick={() => setRescheduling(t)}>تغيير الموعد</button>
                             <button style={sx.btnEdit} onClick={() => cancelDelete(t)}>إلغاء الحذف</button>
                           </div>
                         </td>
                       </tr>
+                      {rescheduleHistories[t.id]?.expanded && (
+                        <tr key={`${t.id}-hist`}>
+                          <td colSpan={8} style={{ padding: '0 10px 10px 10px', background: '#f8fafc' }}>
+                            <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', marginTop: 2 }}>
+                              {rescheduleHistories[t.id]?.loading ? (
+                                <div style={{ padding: '10px 14px', fontSize: 12, color: '#64748b' }}>جارٍ التحميل...</div>
+                              ) : rescheduleHistories[t.id]?.error ? (
+                                <div style={{ padding: '10px 14px', fontSize: 12, color: '#b91c1c' }}>فشل تحميل السجل.</div>
+                              ) : (rescheduleHistories[t.id]?.items || []).length === 0 ? (
+                                <div style={{ padding: '10px 14px', fontSize: 12, color: '#64748b' }}>لا توجد تأجيلات مسجّلة لهذه الأكاديمية.</div>
+                              ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                  <thead>
+                                    <tr style={{ background: '#f1f5f9', color: '#475569' }}>
+                                      <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>التاريخ</th>
+                                      <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>المشرف</th>
+                                      <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>من</th>
+                                      <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>إلى</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(rescheduleHistories[t.id]?.items || []).map((entry, idx) => {
+                                      const before = entry.diff?.deletion_purge_at?.before;
+                                      const after = entry.diff?.deletion_purge_at?.after;
+                                      return (
+                                        <tr key={entry.id || idx} style={{ borderTop: '1px solid #e2e8f0' }}>
+                                          <td style={{ padding: '6px 10px', color: '#475569', whiteSpace: 'nowrap' }}>
+                                            {entry.created_at ? new Date(entry.created_at).toLocaleString('ar-EG') : '—'}
+                                          </td>
+                                          <td style={{ padding: '6px 10px', color: '#0f172a', fontFamily: 'monospace' }}>
+                                            {entry.actor_username || '—'}
+                                          </td>
+                                          <td style={{ padding: '6px 10px', color: '#b91c1c', whiteSpace: 'nowrap' }}>
+                                            {before ? new Date(before).toLocaleDateString('ar-EG') : '—'}
+                                          </td>
+                                          <td style={{ padding: '6px 10px', color: '#047857', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                            {after ? new Date(after).toLocaleDateString('ar-EG') : '—'}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
