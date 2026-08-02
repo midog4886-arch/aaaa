@@ -86,6 +86,15 @@ export const ReportsPage = () => {
     setBranchFilter(selectedBranchId || 'all');
   }, [selectedBranchId]);
 
+  // When the branch changes, drop an activity selection that belongs to another branch.
+  useEffect(() => {
+    if (filters.activity_id === 'all' || branchFilter === 'all') return;
+    const act = activities.find(a => a.id === filters.activity_id);
+    if (act && act.branch_id && act.branch_id !== branchFilter) {
+      setFilters(prev => ({ ...prev, activity_id: 'all' }));
+    }
+  }, [branchFilter, activities]);
+
   // Load the branch list once (admins get all branches; non-admins are scoped server-side).
   useEffect(() => {
     if (!isAdmin) return;
@@ -282,11 +291,13 @@ export const ReportsPage = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{language === 'ar' ? 'الكل' : 'All'}</SelectItem>
-                    {activities.map(activity => (
-                      <SelectItem key={activity.id} value={activity.id}>
-                        {language === 'ar' ? activity.name_ar : activity.name}
-                      </SelectItem>
-                    ))}
+                    {activities
+                      .filter(a => branchFilter === 'all' || !a.branch_id || a.branch_id === branchFilter)
+                      .map(activity => (
+                        <SelectItem key={activity.id} value={activity.id}>
+                          {language === 'ar' ? activity.name_ar : activity.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
