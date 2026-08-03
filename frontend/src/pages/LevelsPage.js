@@ -2158,11 +2158,24 @@ ${slotTables}
       seen.add(m.id);
       const acts = (m.activities || []).filter(isActivityNonExpired);
       if (acts.length === 0) return false;
+      // Authoritative link: an activity explicitly assigned to THIS level
+      // always counts, regardless of name conventions.
+      if (acts.some(a => a.level_id === level.id)) return true;
       // Keep only members whose active subscription matches the level's
       // main activity (swimming/football/karate). Levels parsed as
       // "other" keep their previous broad behavior.
       if (levelMain && levelMain !== 'other') {
-        return acts.some(a => parseActivityName(a.activity_name).mainActivity === levelMain);
+        return acts.some(a => {
+          const mMain = parseActivityName(a.activity_name).mainActivity;
+          if (mMain === levelMain) return true;
+          // Custom-prefix levels (e.g. "سباحه سيدات"): legacy member activity
+          // names lack the " - " separator and fall back to broad keywords,
+          // so also match by name containment.
+          if (!['swimming', 'football', 'karate'].includes(levelMain)) {
+            return (a.activity_name || '').includes(levelMain);
+          }
+          return false;
+        });
       }
       return true;
     });

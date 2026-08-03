@@ -57,3 +57,5 @@ for every `groupedLevels` key that isn't a built-in and isn't `other`.
 `getMainActivityInfo(id)` synthesizes display info for unknown ids (label as name,
 🏅 icon, name-derived stable color). `customActivityNames` (localStorage) only
 overrides DISPLAY name/icon, never the stored `activity_name`.
+
+**Manage-members dialog gotcha:** a custom-prefix level ("سباحه سيدات - الساعه 8") vs legacy member activity names without " - " ("سباحه سيدات 2") parse to different identities → dialog showed 0 members while cards showed 8. Membership filters must check `a.level_id === level.id` FIRST (authoritative), then fall back to name matching with containment for custom prefixes.
