@@ -367,6 +367,36 @@ const RenewalsPage = () => {
 
   const uncategorizedActivities = allActivities.filter(a => !getActivityCategory(a));
 
+  // Mirrors the Levels/invoice identity rule: for "<activity> - <slot>" names
+  // the prefix IS the activity — built-in only on an EXACT sport-name match,
+  // otherwise the prefix is its own custom activity. Separator-less legacy
+  // names fall back to keyword matching. Used to detect bulk-renew level
+  // overrides that would attach members to a level of the wrong activity.
+  const BUILT_IN_LEVEL_NAMES = {
+    swimming: ['سباحة', 'سباحه', 'السباحة', 'السباحه', 'swimming', 'swim'],
+    football: ['كرة القدم', 'كرة قدم', 'كره القدم', 'كره قدم', 'القدم', 'قدم', 'football'],
+    karate: ['كاراتيه', 'الكاراتيه', 'كاراتية', 'الكاراتية', 'كارتيه', 'الكارتيه', 'karate'],
+  };
+  const matchBuiltInExact = (str) => {
+    const s = (str || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    for (const [id, names] of Object.entries(BUILT_IN_LEVEL_NAMES)) {
+      if (names.includes(s)) return id;
+    }
+    return null;
+  };
+  const parseActivityForLevel = (activityName) => {
+    if (!activityName) return 'other';
+    if (activityName.includes(' - ')) {
+      const prefix = activityName.split(' - ')[0].trim();
+      return matchBuiltInExact(prefix) || prefix || 'other';
+    }
+    const name = activityName.toLowerCase();
+    if (name.includes('سباح') || name.includes('swim')) return 'swimming';
+    if (name.includes('كر') || name.includes('foot') || name.includes('قدم')) return 'football';
+    if (name.includes('كارات') || name.includes('karate')) return 'karate';
+    return 'other';
+  };
+
   const getActivityBreakdown = (items) => {
     const counts = {};
     items.forEach(item => {
@@ -1655,6 +1685,34 @@ const RenewalsPage = () => {
                   </SelectContent>
                 </Select>
               )}
+              {bulkRenewForm.override_level && bulkRenewForm.level_id && (() => {
+                // Warn when the selected subscriptions span activities that
+                // don't match the chosen level's activity — applying it would
+                // attach members to a level of the wrong activity.
+                const level = renewalLevels.find(l => l.id === bulkRenewForm.level_id);
+                if (!level) return null;
+                const levelActivity = parseActivityForLevel(level.activity_name);
+                const mismatched = [...new Set(
+                  bulkTargets
+                    .filter(it => parseActivityForLevel(it.activity_name) !== levelActivity)
+                    .map(it => it.activity_name || (language === 'ar' ? 'بدون نشاط' : 'No activity'))
+                )];
+                if (mismatched.length === 0) return null;
+                const levelLabel = level.activity_name || (language === 'ar' ? 'المستوى المختار' : 'the selected level');
+                return (
+                  <div
+                    className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-800"
+                    data-testid="bulk-renew-level-mismatch-warning"
+                  >
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                    <div>
+                      {language === 'ar'
+                        ? <>تحذير: المستوى المختار تابع لنشاط «{levelLabel}»، لكن التحديد يشمل اشتراكات من أنشطة مختلفة: <span className="font-semibold">{mismatched.join('، ')}</span>. تطبيق هذا المستوى سيربط هؤلاء الأعضاء بمستوى نشاط غير نشاطهم.</>
+                        : <>Warning: the selected level belongs to "{levelLabel}", but the selection includes subscriptions from different activities: <span className="font-semibold">{mismatched.join(', ')}</span>. Applying this level will attach those members to a level of the wrong activity.</>}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
