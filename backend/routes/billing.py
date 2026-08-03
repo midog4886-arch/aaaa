@@ -106,6 +106,47 @@ async def apply_payment_failure(
     return {"tenant": refreshed, "failure": history_entry, "email": email_result}
 
 
+async def _notify_owner_webhook_failure(
+    tenant: Optional[dict],
+    *,
+    reason: str,
+    amount: Optional[float] = None,
+    currency: str = "SAR",
+) -> dict:
+    """Email the academy owner (``payment_failed`` template) when a webhook
+    event for their academy fails to process (status ``error`` /
+    ``tenant_not_found``) but the tenant itself IS resolvable.
+
+    Unlike :func:`apply_payment_failure` this does NOT append a
+    ``renewal_history`` row — the payment may actually have succeeded on the
+    provider side; only our processing failed. It's a pure notification so
+    the owner isn't left in the dark until a super-admin reprocesses.
+    Best-effort: never raises.
+    """
+    if not tenant:
+        return {"status": "skipped", "error": "tenant not resolved"}
+    try:
+        recipient = (tenant.get("billing_email") or "").strip() \
+            or (tenant.get("owner_email") or "").strip()
+        if not recipient:
+            return {"status": "skipped", "error": "no owner_email"}
+        return await send_email(
+            kind="payment_failed",
+            to=recipient,
+            tenant_slug=tenant.get("slug"),
+            ctx={
+                "academy_name": tenant.get("name", ""),
+                "reason": (reason or "").strip()[:500] or "unknown",
+                "amount": amount,
+                "currency": (currency or "SAR").upper(),
+            },
+        )
+    except Exception as e:
+        logger.exception(
+            "owner webhook-failure email failed for %s", tenant.get("slug"))
+        return {"status": "failed", "error": str(e)}
+
+
 async def _alert_super_admin_signature_failures(
     *, provider: str, count: int, secret_env: str,
 ) -> None:
@@ -366,6 +407,9 @@ async def payment_webhook(provider: str, request: Request):
                 "claim": claim_state,
             }
 
+    # Tracks the tenant once resolved so the generic exception handler can
+    # still notify the academy owner when processing blows up mid-way.
+    resolved_tenant: Optional[dict] = None
     try:
         failure = parse_failure_event(cfg_provider, payload)
         if failure:
@@ -385,6 +429,7 @@ async def payment_webhook(provider: str, request: Request):
                 )
                 await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+            resolved_tenant = tenant
             result = await apply_payment_failure(
                 tenant=tenant,
                 reason=failure["reason"],
@@ -431,6 +476,7 @@ async def payment_webhook(provider: str, request: Request):
                 )
                 await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
                 raise HTTPException(status_code=404, detail="tenant not found in event metadata")
+            resolved_tenant = tenant
             months = success.get("months") or 0
             days = success.get("days") or 0
             if not months and not days:
@@ -467,6 +513,15 @@ async def payment_webhook(provider: str, request: Request):
                     http_status=400,
                 )
                 await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
+                # Notify the academy owner: their payment reached us but the
+                # renewal couldn't be applied. A later successful reprocess
+                # sends its own payment_success email via apply_renewal.
+                await _notify_owner_webhook_failure(
+                    tenant,
+                    reason=f"renewal rejected: {e}",
+                    amount=success.get("amount"),
+                    currency=success.get("currency") or "SAR",
+                )
                 raise HTTPException(status_code=400, detail=str(e))
             if event_id:
                 await confirm_event(cfg_provider, event_id)
@@ -521,6 +576,13 @@ async def payment_webhook(provider: str, request: Request):
             http_status=500,
         )
         await _maybe_alert_delivery(rec, provider=cfg_provider, secret_env=secret_env)
+        # If the tenant was already resolved before the crash, let the owner
+        # know their payment event failed to process (best-effort; the claim
+        # was released so a provider retry / super-admin reprocess can still
+        # complete it — a successful reprocess sends payment_success itself).
+        await _notify_owner_webhook_failure(
+            resolved_tenant, reason=f"webhook processing error: {str(e)[:300]}",
+        )
         raise
 
 
