@@ -937,7 +937,14 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
                     <div className="space-y-1.5">
                       {memberData.expiredActivities.map((act, idx) => (
                         <div key={idx} className="p-2.5 bg-gray-50 rounded-lg text-sm flex justify-between items-center border border-gray-100">
-                          <span className="text-gray-500 truncate">{act.activity_name}</span>
+                          <div className="min-w-0">
+                            <span className="text-gray-500 truncate block">{act.activity_name}</span>
+                            {act.end_date && (
+                              <span className="text-[10px] text-red-400 block" dir="ltr" data-testid={`expired-end-date-${idx}`}>
+                                {t('انتهى في', 'Ended')}: {act.end_date}
+                              </span>
+                            )}
+                          </div>
                           <Badge className="bg-red-50 text-red-500 border-red-100 text-[10px] px-2 flex-shrink-0">
                             {t('منتهي', 'Expired')}
                           </Badge>

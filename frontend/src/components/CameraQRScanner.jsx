@@ -599,7 +599,14 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
                 <div className="space-y-1">
                   {memberData.expiredActivities.map((act, idx) => (
                     <div key={idx} className="p-2 bg-red-50 rounded-lg text-xs flex justify-between items-center">
-                      <span className="text-red-700">{act.activity_name}</span>
+                      <div className="min-w-0">
+                        <span className="text-red-700 block">{act.activity_name}</span>
+                        {act.end_date && (
+                          <span className="text-[10px] text-red-500 block" dir="ltr" data-testid={`cam-expired-end-date-${idx}`}>
+                            {t('انتهى في', 'Ended')}: {act.end_date}
+                          </span>
+                        )}
+                      </div>
                       <Badge variant="destructive" className="text-xs">
                         {t('منتهي', 'Expired')}
                       </Badge>
