@@ -578,6 +578,51 @@ def _days_remaining(end_at_iso):
         return None
 
 
+def _parse_iso_utc(value):
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+_PAYMENT_FAILURE_BANNER_DAYS = 30
+
+
+def _recent_payment_failure(tenant: dict) -> Optional[dict]:
+    """Return failure info for the billing banner, or None.
+
+    Shows only when ``last_payment_failure_at`` is within the last 30 days
+    AND no successful renewal has landed at/after the failure (a successful
+    renewal clears the warning).
+    """
+    failed_at = _parse_iso_utc(tenant.get("last_payment_failure_at"))
+    if not failed_at:
+        return None
+    now = datetime.now(timezone.utc)
+    if (now - failed_at) > timedelta(days=_PAYMENT_FAILURE_BANNER_DAYS):
+        return None
+    reason = ""
+    for h in (tenant.get("renewal_history") or []):
+        renewed = _parse_iso_utc(h.get("renewed_at") or h.get("date"))
+        if not renewed or renewed < failed_at:
+            continue
+        if (h.get("status") or "paid") == "failed":
+            # remember the most recent failure reason at/after the stamp
+            reason = h.get("reason") or reason
+            continue
+        # successful renewal after the failure clears the banner
+        return None
+    return {
+        "failed_at": tenant.get("last_payment_failure_at"),
+        "reason": reason,
+    }
+
+
 @router.get("")
 async def get_billing(current_user: dict = Depends(get_current_user)):
     if not current_user.get("is_admin", False):
@@ -619,6 +664,7 @@ async def get_billing(current_user: dict = Depends(get_current_user)):
         "available_plans": plans,
         "deletion_scheduled_at": tenant.get("deletion_scheduled_at", ""),
         "deletion_purge_at": tenant.get("deletion_purge_at", ""),
+        "payment_failure": _recent_payment_failure(tenant),
     }
 
 

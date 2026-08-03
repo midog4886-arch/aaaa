@@ -775,6 +775,52 @@ export const SettingsPage = () => {
                       </div>
                     </div>
                   )}
+                  {billing.payment_failure && (
+                    <div
+                      className="rounded-md border border-amber-300 bg-amber-50 p-4 text-amber-900"
+                      data-testid="billing-payment-failure-banner"
+                    >
+                      <div className="flex items-start gap-3">
+                        <ShieldAlert className="w-5 h-5 mt-0.5 text-amber-700 shrink-0" />
+                        <div className="flex-1 space-y-2">
+                          <p className="font-bold">
+                            {language === 'ar'
+                              ? 'فشلت آخر عملية دفع لاشتراكك'
+                              : 'Your last subscription payment failed'}
+                          </p>
+                          <p className="text-sm">
+                            {language === 'ar' ? 'تاريخ الفشل:' : 'Failed on:'}{' '}
+                            <span className="font-bold" data-testid="billing-payment-failure-date">
+                              {billing.payment_failure.failed_at
+                                ? new Date(billing.payment_failure.failed_at).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-GB')
+                                : '—'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-amber-800">
+                            {language === 'ar'
+                              ? 'يرجى التواصل مع الدعم لتسوية الدفع قبل انتهاء اشتراكك.'
+                              : 'Please contact support to resolve the payment before your subscription lapses.'}
+                          </p>
+                          <a
+                            href={buildMailto(
+                              'مشكلة في دفع الاشتراك', 'Subscription payment issue',
+                              'مرحباً، وصلني تنبيه بفشل آخر عملية دفع لاشتراك أكاديميتي. أرجو المساعدة في تسوية الدفع.',
+                              'Hi, I received a warning that my academy\u2019s last subscription payment failed. Please help me resolve the payment.'
+                            )}
+                          >
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                              data-testid="billing-payment-failure-contact-btn"
+                            >
+                              {language === 'ar' ? 'التواصل مع الدعم' : 'Contact support'}
+                            </Button>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-muted-foreground">{language === 'ar' ? 'الخطة الحالية' : 'Current plan'}</p>
