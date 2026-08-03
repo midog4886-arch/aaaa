@@ -200,6 +200,26 @@ export default function SuperPayment() {
   const [reprocessMonths, setReprocessMonths] = useState('');
   const [reprocessing, setReprocessing] = useState(false);
   const [reprocessResult, setReprocessResult] = useState(null);
+  const [tenantOptions, setTenantOptions] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axios.get('/super/tenants', auth());
+        if (cancelled) return;
+        const rows = Array.isArray(res.data) ? res.data : [];
+        setTenantOptions(
+          rows
+            .filter((t) => t && t.slug)
+            .map((t) => ({ slug: t.slug, name: t.name || '' }))
+        );
+      } catch (e) {
+        // Best-effort: input keeps working as free text without suggestions.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const reloadDeliveryAlerts = useCallback(async () => {
     try {
@@ -580,11 +600,17 @@ export default function SuperPayment() {
               <label style={{ fontSize: 13, color: '#475569' }}>الأكاديمية:</label>
               <input
                 type="text"
+                list="tenant-slug-options"
                 value={eventTenantSlug}
                 onChange={(e) => setEventTenantSlug(e.target.value)}
                 placeholder="slug الأكاديمية…"
                 style={{ ...input, width: 140, padding: '6px 10px', fontFamily: 'monospace' }}
               />
+              <datalist id="tenant-slug-options">
+                {tenantOptions.map((t) => (
+                  <option key={t.slug} value={t.slug}>{t.name}</option>
+                ))}
+              </datalist>
               <label style={{ fontSize: 13, color: '#475569' }}>المزود:</label>
               <select
                 value={eventProvider}
