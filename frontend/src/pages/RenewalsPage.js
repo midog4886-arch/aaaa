@@ -31,6 +31,8 @@ import {
   Square,
   Activity,
   History,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 
 const extractSessionsPerWeek = (name) => {
@@ -144,6 +146,11 @@ const RenewalsPage = () => {
     override_level: false,
     level_id: '',
   });
+  // Per-member results summary after a bulk renewal (success/failure + retry)
+  const [isBulkResultsOpen, setIsBulkResultsOpen] = useState(false);
+  const [bulkResults, setBulkResults] = useState([]);
+  const [bulkResultForm, setBulkResultForm] = useState(null);
+  const [retryingIndex, setRetryingIndex] = useState(null);
 
   // Last-reminder map: { "memberId|activityName": { last_sent, channels } }
   const [lastReminders, setLastReminders] = useState({});
@@ -608,9 +615,120 @@ const RenewalsPage = () => {
     setIsBulkRenewDialogOpen(true);
   };
 
+  // Extract a human-readable error message from an API failure so the
+  // results dialog can show WHY a specific renewal failed.
+  const describeRenewError = (e) => {
+    const detail = e?.response?.data?.detail;
+    if (typeof detail === 'string' && detail) return detail;
+    if (Array.isArray(detail) && detail.length) {
+      return detail.map(d => d?.msg || '').filter(Boolean).join('; ') || (e?.message || '');
+    }
+    if (e?.response?.status) return `HTTP ${e.response.status}`;
+    return e?.message || (language === 'ar' ? 'خطأ غير معروف' : 'Unknown error');
+  };
+
+  // Renew a single item using the given bulk form (shared overrides).
+  // Mirrors the single-renewal logic: paid invoice + in-place activity
+  // replacement (old activity id in the URL) + level sync. Throws on failure.
+  const renewOneBulkItem = async (item, form) => {
+    const endDate = new Date(item.end_date);
+    const newStart = new Date(endDate);
+    newStart.setDate(newStart.getDate() + 1);
+    const startStr = newStart.toISOString().split('T')[0];
+
+    // Days/times: either the shared override or the item's current values
+    const overrideDays = form.override_days;
+    const trainingDays = overrideDays ? (form.training_days || []) : (item.training_days || []);
+    const trainingTime = overrideDays ? (form.training_time || '') : (item.training_time || '');
+    const dayTimes = overrideDays ? (form.day_times || {}) : (item.day_times || {});
+    // Rebuild the human-readable schedule when days changed so stale text
+    // doesn't keep showing the old days everywhere.
+    const scheduleStr = overrideDays
+      ? buildMemberSchedule(trainingDays, trainingTime, dayTimes)
+      : (item.schedule || '');
+
+    // End date: with a days override, snap onto real training days (same
+    // as the single dialog); otherwise keep the legacy 1-month period.
+    let endStr;
+    if (overrideDays) {
+      endStr = calcEndDate(startStr, form.weeks || 4, trainingDays);
+    }
+    if (!endStr) {
+      const newEnd = new Date(newStart);
+      newEnd.setMonth(newEnd.getMonth() + 1);
+      endStr = newEnd.toISOString().split('T')[0];
+    }
+
+    // Level: shared override or the item's current level
+    const newLevelId = form.override_level ? (form.level_id || '') : (item.level_id || '');
+
+    const fee = parseFloat(item.fee || 0);
+    const vat = Math.round(fee * 0.15 * 100) / 100;
+    const total = Math.round((fee + vat) * 100) / 100;
+    const invoiceData = {
+      member_id: item.member_id,
+      customer_name_ar: item.member_name,
+      customer_name: item.member_name,
+      customer_phone: item.phone,
+      items: [{
+        activity_id: item.activity_id || '',
+        activity_name: item.activity_name,
+        fee,
+        period: `${startStr} - ${endStr}`,
+        start_date: startStr,
+        end_date: endStr,
+        schedule: scheduleStr,
+        training_days: trainingDays,
+        training_time: trainingTime,
+        day_times: dayTimes,
+        level_id: newLevelId,
+        is_product: false,
+      }],
+      subtotal: fee, vat, total, discount: 0,
+      status: 'paid', payment_method: 'card',
+      notes: language === 'ar' ? `تجديد جماعي - ${item.activity_name}` : `Bulk renewal - ${item.activity_name}`,
+    };
+    const invRes = await invoicesAPI.create(invoiceData);
+    await membersAPI.updateActivity(item.member_id, item.activity_id, {
+      activity_id: item.activity_id || '',
+      activity_name: item.activity_name,
+      start_date: startStr,
+      end_date: endStr,
+      fee,
+      status: 'active',
+      schedule: scheduleStr,
+      training_days: trainingDays,
+      training_time: trainingTime,
+      day_times: dayTimes,
+      level_id: newLevelId,
+      coach_id: item.coach_id || '',
+      source: 'invoice',
+      source_id: invRes.data?.id || '',
+      invoice_id: invRes.data?.id,
+      renewed_from: item.end_date,
+    });
+
+    // Sync level membership when the level actually changed
+    const oldLevelId = item.level_id || '';
+    if (form.override_level && oldLevelId !== newLevelId) {
+      if (oldLevelId) {
+        try { await levelsAPI.removeMember(oldLevelId, item.member_id); } catch (e) { console.warn('Old level detach warning:', e); }
+      }
+      if (newLevelId) {
+        try {
+          await levelsAPI.addMember(newLevelId, item.member_id, {
+            activityId: item.activity_id || undefined,
+            activityName: item.activity_name || undefined,
+            force: true
+          });
+        } catch (e) { console.warn('Level membership sync warning:', e); }
+      }
+    }
+  };
+
   // Execute the bulk renewal for all selected items, applying the optional
-  // days/level overrides. Mirrors the single-renewal logic: paid invoice +
-  // in-place activity replacement (old activity id in the URL) + level sync.
+  // days/level overrides, then show a per-member results summary so the
+  // admin can see exactly which renewals failed (and retry them).
   const executeBulkRenew = async () => {
     const target = bulkTargets;
     if (target.length === 0) return;
@@ -618,117 +736,51 @@ const RenewalsPage = () => {
       toast.error(language === 'ar' ? 'اختر أيام التدريب الجديدة أولاً' : 'Pick the new training days first');
       return;
     }
+    const formSnapshot = { ...bulkRenewForm };
     setIsBulkRenewDialogOpen(false);
     setBulkActing(true);
-    let success = 0;
-    let failed = 0;
+    const results = [];
     for (const item of target) {
       try {
-        const endDate = new Date(item.end_date);
-        const newStart = new Date(endDate);
-        newStart.setDate(newStart.getDate() + 1);
-        const startStr = newStart.toISOString().split('T')[0];
-
-        // Days/times: either the shared override or the item's current values
-        const overrideDays = bulkRenewForm.override_days;
-        const trainingDays = overrideDays ? (bulkRenewForm.training_days || []) : (item.training_days || []);
-        const trainingTime = overrideDays ? (bulkRenewForm.training_time || '') : (item.training_time || '');
-        const dayTimes = overrideDays ? (bulkRenewForm.day_times || {}) : (item.day_times || {});
-        // Rebuild the human-readable schedule when days changed so stale text
-        // doesn't keep showing the old days everywhere.
-        const scheduleStr = overrideDays
-          ? buildMemberSchedule(trainingDays, trainingTime, dayTimes)
-          : (item.schedule || '');
-
-        // End date: with a days override, snap onto real training days (same
-        // as the single dialog); otherwise keep the legacy 1-month period.
-        let endStr;
-        if (overrideDays) {
-          endStr = calcEndDate(startStr, bulkRenewForm.weeks || 4, trainingDays);
-        }
-        if (!endStr) {
-          const newEnd = new Date(newStart);
-          newEnd.setMonth(newEnd.getMonth() + 1);
-          endStr = newEnd.toISOString().split('T')[0];
-        }
-
-        // Level: shared override or the item's current level
-        const newLevelId = bulkRenewForm.override_level ? (bulkRenewForm.level_id || '') : (item.level_id || '');
-
-        const fee = parseFloat(item.fee || 0);
-        const vat = Math.round(fee * 0.15 * 100) / 100;
-        const total = Math.round((fee + vat) * 100) / 100;
-        const invoiceData = {
-          member_id: item.member_id,
-          customer_name_ar: item.member_name,
-          customer_name: item.member_name,
-          customer_phone: item.phone,
-          items: [{
-            activity_id: item.activity_id || '',
-            activity_name: item.activity_name,
-            fee,
-            period: `${startStr} - ${endStr}`,
-            start_date: startStr,
-            end_date: endStr,
-            schedule: scheduleStr,
-            training_days: trainingDays,
-            training_time: trainingTime,
-            day_times: dayTimes,
-            level_id: newLevelId,
-            is_product: false,
-          }],
-          subtotal: fee, vat, total, discount: 0,
-          status: 'paid', payment_method: 'card',
-          notes: language === 'ar' ? `تجديد جماعي - ${item.activity_name}` : `Bulk renewal - ${item.activity_name}`,
-        };
-        const invRes = await invoicesAPI.create(invoiceData);
-        await membersAPI.updateActivity(item.member_id, item.activity_id, {
-          activity_id: item.activity_id || '',
-          activity_name: item.activity_name,
-          start_date: startStr,
-          end_date: endStr,
-          fee,
-          status: 'active',
-          schedule: scheduleStr,
-          training_days: trainingDays,
-          training_time: trainingTime,
-          day_times: dayTimes,
-          level_id: newLevelId,
-          coach_id: item.coach_id || '',
-          source: 'invoice',
-          source_id: invRes.data?.id || '',
-          invoice_id: invRes.data?.id,
-          renewed_from: item.end_date,
-        });
-
-        // Sync level membership when the level actually changed
-        const oldLevelId = item.level_id || '';
-        if (bulkRenewForm.override_level && oldLevelId !== newLevelId) {
-          if (oldLevelId) {
-            try { await levelsAPI.removeMember(oldLevelId, item.member_id); } catch (e) { console.warn('Old level detach warning:', e); }
-          }
-          if (newLevelId) {
-            try {
-              await levelsAPI.addMember(newLevelId, item.member_id, {
-                activityId: item.activity_id || undefined,
-                activityName: item.activity_name || undefined,
-                force: true
-              });
-            } catch (e) { console.warn('Level membership sync warning:', e); }
-          }
-        }
-        success++;
+        await renewOneBulkItem(item, formSnapshot);
+        results.push({ item, ok: true, error: '' });
       } catch (e) {
         console.error('Bulk renew failed for', item.member_name, e);
-        failed++;
+        results.push({ item, ok: false, error: describeRenewError(e) });
       }
     }
     setBulkActing(false);
     setBulkTargets([]);
+    const success = results.filter(r => r.ok).length;
+    const failed = results.length - success;
     if (success) toast.success(language === 'ar' ? `تم تجديد ${success} اشتراك` : `${success} subscriptions renewed`);
     if (failed) toast.error(language === 'ar' ? `فشل تجديد ${failed} اشتراك` : `${failed} renewals failed`);
+    // Show the per-member summary so failures are easy to spot and retry
+    setBulkResults(results);
+    setBulkResultForm(formSnapshot);
+    setIsBulkResultsOpen(true);
     clearSelection();
     loadData();
+  };
+
+  // Retry a single failed renewal from the results dialog, using the same
+  // overrides as the original bulk run. Updates that row in place.
+  const retryBulkResult = async (index) => {
+    const row = bulkResults[index];
+    if (!row || row.ok || retryingIndex !== null) return;
+    setRetryingIndex(index);
+    try {
+      await renewOneBulkItem(row.item, bulkResultForm || {});
+      setBulkResults(prev => prev.map((r, i) => i === index ? { ...r, ok: true, error: '' } : r));
+      toast.success(language === 'ar' ? `تم تجديد ${row.item.member_name}` : `Renewed ${row.item.member_name}`);
+      loadData();
+    } catch (e) {
+      console.error('Retry renew failed for', row.item.member_name, e);
+      setBulkResults(prev => prev.map((r, i) => i === index ? { ...r, error: describeRenewError(e) } : r));
+      toast.error(language === 'ar' ? `فشل تجديد ${row.item.member_name}` : `Failed to renew ${row.item.member_name}`);
+    } finally {
+      setRetryingIndex(null);
+    }
   };
 
   const openRenewalDialog = (item) => {
@@ -1728,6 +1780,85 @@ const RenewalsPage = () => {
             >
               {bulkActing && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
               {language === 'ar' ? `تأكيد تجديد ${bulkTargets.length} اشتراك` : `Renew ${bulkTargets.length} subscriptions`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk renewal results — per-member success/failure list with retry */}
+      <Dialog open={isBulkResultsOpen} onOpenChange={(open) => { if (!open && retryingIndex !== null) return; setIsBulkResultsOpen(open); }}>
+        <DialogContent className="max-w-lg" data-testid="bulk-renew-results-dialog">
+          <DialogHeader>
+            <DialogTitle>
+              {language === 'ar' ? 'نتائج التجديد الجماعي' : 'Bulk Renewal Results'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {(() => {
+            const okCount = bulkResults.filter(r => r.ok).length;
+            const failCount = bulkResults.length - okCount;
+            return (
+              <div className="flex items-center gap-3 text-sm" data-testid="bulk-renew-results-summary">
+                <span className="inline-flex items-center gap-1 text-green-700">
+                  <CheckCircle2 className="w-4 h-4" />
+                  {language === 'ar' ? `نجح: ${okCount}` : `Succeeded: ${okCount}`}
+                </span>
+                {failCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-red-700">
+                    <XCircle className="w-4 h-4" />
+                    {language === 'ar' ? `فشل: ${failCount}` : `Failed: ${failCount}`}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          <div className="max-h-80 overflow-y-auto space-y-2 pe-1">
+            {bulkResults.map((r, idx) => (
+              <div
+                key={`${r.item.member_id}|${r.item.activity_id || r.item.activity_name || ''}`}
+                className={`flex items-center gap-2 p-2.5 rounded-lg border text-sm ${r.ok ? 'bg-green-50/60 border-green-200' : 'bg-red-50/60 border-red-200'}`}
+                data-testid={`bulk-renew-result-row-${idx}`}
+              >
+                {r.ok
+                  ? <CheckCircle2 className="w-4 h-4 shrink-0 text-green-600" />
+                  : <XCircle className="w-4 h-4 shrink-0 text-red-600" />}
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium truncate">{r.item.member_name}</div>
+                  <div className="text-xs text-muted-foreground truncate">{r.item.activity_name}</div>
+                  {!r.ok && r.error && (
+                    <div className="text-xs text-red-700 break-words mt-0.5" data-testid={`bulk-renew-result-error-${idx}`}>
+                      {r.error}
+                    </div>
+                  )}
+                </div>
+                {!r.ok && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 border-red-300 text-red-700 hover:bg-red-100"
+                    onClick={() => retryBulkResult(idx)}
+                    disabled={retryingIndex !== null}
+                    data-testid={`bulk-renew-result-retry-${idx}`}
+                  >
+                    {retryingIndex === idx
+                      ? <Loader2 className="w-3.5 h-3.5 me-1 animate-spin" />
+                      : <RefreshCcw className="w-3.5 h-3.5 me-1" />}
+                    {language === 'ar' ? 'إعادة المحاولة' : 'Retry'}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsBulkResultsOpen(false)}
+              disabled={retryingIndex !== null}
+              data-testid="bulk-renew-results-close"
+            >
+              {language === 'ar' ? 'إغلاق' : 'Close'}
             </Button>
           </DialogFooter>
         </DialogContent>
