@@ -1712,7 +1712,39 @@ async def reprocess_webhook_event(
     # ── 1. Load the original event ───────────────────────────────────────
     event = await get_webhook_event_by_row_id(row_id)
     if not event:
+        # Distinguish "no such event" from an old (pre-row_id) event the admin
+        # tried to reprocess by referencing another identifier (event_id/id).
+        legacy = None
+        try:
+            legacy = await control_db.webhook_events.find_one(
+                {
+                    "$and": [
+                        {"$or": [{"event_id": row_id}, {"id": row_id}]},
+                        {"$or": [{"row_id": {"$exists": False}}, {"row_id": None}, {"row_id": ""}]},
+                    ]
+                },
+                {"_id": 0, "event_id": 1},
+            )
+        except Exception:
+            legacy = None
+        if legacy is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This webhook event predates reprocessing support (it has no "
+                    "row_id) and cannot be reprocessed — حدث قديم لا يمكن إعادة معالجته."
+                ),
+            )
         raise HTTPException(status_code=404, detail="Webhook event not found")
+
+    if not (event.get("row_id") or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This webhook event has no row_id (recorded before reprocessing "
+                "support) and cannot be reprocessed — حدث قديم لا يمكن إعادة معالجته."
+            ),
+        )
 
     status = (event.get("status") or "").lower()
     if status not in _REPROCESS_ELIGIBLE_STATUSES:

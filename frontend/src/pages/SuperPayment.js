@@ -675,7 +675,9 @@ export default function SuperPayment() {
                     const isReprocessOpen = reprocessRowId === i;
                     const snap = ev.payload_snapshot;
                     const hasDetails = !!(snap || ev.signature_header || ev.http_status);
-                    const canReprocess = REPROCESS_ELIGIBLE_STATUSES.includes(ev.status) && !!ev.row_id;
+                    const isReprocessStatus = REPROCESS_ELIGIBLE_STATUSES.includes(ev.status);
+                    const canReprocess = isReprocessStatus && !!ev.row_id;
+                    const isLegacyEvent = isReprocessStatus && !ev.row_id;
                     let snapshotText = '';
                     if (snap) {
                       if (snap.preview) {
@@ -727,6 +729,25 @@ export default function SuperPayment() {
                                   whiteSpace: 'nowrap',
                                 }}
                                 title="إعادة تشغيل هذا الحدث الفاشل عبر نفس مسار المعالجة"
+                              >
+                                ↺ إعادة معالجة
+                              </button>
+                            )}
+                            {isLegacyEvent && (
+                              <button
+                                disabled
+                                style={{
+                                  padding: '4px 10px',
+                                  background: '#f8fafc',
+                                  color: '#94a3b8',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  cursor: 'not-allowed',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title="حدث قديم — لا يمكن إعادة معالجته"
                               >
                                 ↺ إعادة معالجة
                               </button>
