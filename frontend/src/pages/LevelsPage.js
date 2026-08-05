@@ -762,8 +762,14 @@ export const LevelsPage = () => {
   };
 
   const getFilteredLevelForDay = (level) => {
-    if (!selectedDay) return level;
-    const filteredDetails = (level.members_details || []).filter(m => memberMatchesDay(m, selectedDay));
+    // Count only members with a non-expired active subscription so the hour
+    // cards and the level cards inside agree (expired members stay linked to
+    // the level in the DB but shouldn't inflate counts/occupancy). Members
+    // missing the flag (legacy payloads) are kept.
+    const activeDetails = (level.members_details || []).filter(m => m.has_active_sub !== false);
+    const filteredDetails = selectedDay
+      ? activeDetails.filter(m => memberMatchesDay(m, selectedDay))
+      : activeDetails;
     const filteredMembers = filteredDetails.map(m => m.member_id);
     return { ...level, members: filteredMembers, members_details: filteredDetails };
   };
