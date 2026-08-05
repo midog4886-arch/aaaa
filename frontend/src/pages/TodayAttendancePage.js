@@ -242,7 +242,7 @@ const TodayAttendancePage = () => {
   const presentCount = data?.present_count || 0;
   const expectedCount = data?.expected_count || 0;
   const absentCount = data?.absent_count || 0;
-  const ratio = expectedCount > 0 ? Math.round((presentCount / (expectedCount || 1)) * 100) : 0;
+  const ratio = expectedCount > 0 ? Math.round(((expectedCount - absentCount) / expectedCount) * 100) : 0;
   const allAbsentSelected = absentList.length > 0 && absentList.every(r => selectedIds.has(r.member_id));
   const toggleAllAbsent = () => setSelectedIds(prev => {
     const next = new Set(prev);
