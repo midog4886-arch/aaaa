@@ -126,6 +126,7 @@ export default function ScheduleDaysTimeEditor({ value, onChange, language = 'ar
         </Label>
         <Input
           type="number"
+                onWheel={(e) => e.currentTarget.blur()}
           min="1"
           max="12"
           value={hourOf(commonTime)}
@@ -156,6 +157,7 @@ export default function ScheduleDaysTimeEditor({ value, onChange, language = 'ar
               <span className="text-xs w-14 shrink-0 text-gray-700">{day}</span>
               <Input
                 type="number"
+                onWheel={(e) => e.currentTarget.blur()}
                 min="1"
                 max="12"
                 value={hourOf(dayTimes[day])}
