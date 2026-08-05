@@ -5,3 +5,4 @@ backend/backups/auto_backup_default_20260730.json filter=lfs diff=lfs merge=lfs 
 backend/backups/auto_backup_default_20260801.json filter=lfs diff=lfs merge=lfs -text
 backend/backups/auto_backup_default_20260802.json filter=lfs diff=lfs merge=lfs -text
 backend/backups/auto_backup_default_20260803.json filter=lfs diff=lfs merge=lfs -text
+backend/backups/auto_backup_default_20260805.json filter=lfs diff=lfs merge=lfs -text

@@ -991,10 +991,80 @@ async def get_expiring_subscriptions(
                 "training_days": activity.get("training_days", []),
                 "training_time": activity.get("training_time", ""),
                 "day_times": activity.get("day_times", {}),
+                "start_date": activity.get("start_date", ""),
                 "end_date": end_date,
                 "days_remaining": days_remaining,
                 "last_attendance_date": last_attendance_map.get(member["id"]),
             })
+
+    # ── Enrich with session usage (attended X of Y paid sessions) ──────────
+    # Total = weeks in the ORIGINAL purchased window (paid invoice item dates
+    # when found; freezes/extensions only move the deadline, never add paid
+    # sessions) × days-per-week from the schedule. Used = attendance records
+    # inside the activity window plus off-schedule ones.
+    try:
+        import math as _math
+        from .attendance import parse_schedule_days as _parse_sched_days
+        item_mids = list({it["member_id"] for it in expiring})
+        item_starts = [it.get("start_date") for it in expiring if it.get("start_date")]
+        if item_mids and item_starts:
+            min_start = min(item_starts)
+            att_rows = await db.attendance.find(
+                {"member_id": {"$in": item_mids}, "date": {"$gte": min_start}},
+                {"_id": 0, "member_id": 1, "activity_id": 1, "date": 1, "off_schedule": 1}
+            ).to_list(100000)
+            att_by = {}
+            for r in att_rows:
+                att_by.setdefault((r.get("member_id"), r.get("activity_id")), []).append(r)
+            inv_rows = await db.invoices.find(
+                {"member_id": {"$in": item_mids}, "status": {"$in": ["paid", "partial"]}},
+                {"_id": 0, "member_id": 1, "items": 1}
+            ).to_list(20000)
+            orig_win = {}  # lookup keys -> (orig_start, orig_end)
+            for inv in inv_rows:
+                mid = inv.get("member_id")
+                for itm in inv.get("items", []):
+                    if itm.get("is_product"):
+                        continue
+                    ist, ien = itm.get("start_date", ""), itm.get("end_date", "")
+                    if not ien:
+                        continue
+                    aid = itm.get("activity_id", "")
+                    if aid and ist:
+                        orig_win[(mid, aid, ist)] = (ist, ien)
+                    if aid:
+                        orig_win.setdefault((mid, aid), (ist, ien))
+                    if ist:
+                        orig_win.setdefault((mid, "@start", ist), (ist, ien))
+            for it in expiring:
+                sched = it.get("schedule") or ""
+                days = _parse_sched_days(sched) if sched else []
+                dpw = len(days) or len(it.get("training_days") or []) or len(it.get("day_times") or {})
+                st = it.get("start_date") or ""
+                if not dpw or not st:
+                    continue
+                mid, aid = it["member_id"], it.get("activity_id", "")
+                win = (orig_win.get((mid, aid, st))
+                       or orig_win.get((mid, "@start", st))
+                       or orig_win.get((mid, aid)))
+                tstart, tend = win if win else (st, it["end_date"])
+                try:
+                    delta_days = (datetime.strptime(tend[:10], "%Y-%m-%d")
+                                  - datetime.strptime((tstart or st)[:10], "%Y-%m-%d")).days
+                    weeks = max(1, _math.ceil(delta_days / 7))
+                except Exception:
+                    continue
+                total = weeks * dpw
+                used = 0
+                for r in att_by.get((mid, aid), []):
+                    d = r.get("date", "")
+                    if d >= st and (d <= it["end_date"] or r.get("off_schedule")):
+                        used += 1
+                it["sessions_total"] = total
+                it["sessions_used"] = used
+                it["sessions_remaining"] = max(0, total - used)
+    except Exception:
+        pass
 
     # Sort by days remaining (ascending: most urgent first)
     expiring.sort(key=lambda x: x.get("days_remaining", 999))

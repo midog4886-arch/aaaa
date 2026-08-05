@@ -1072,6 +1072,16 @@ const RenewalsPage = () => {
                   : formatRemainingSessions(item.days_remaining, item.activity_name, language)}
               </span>
             </div>
+            {item.sessions_total > 0 && (
+              <div className="flex items-center gap-2 text-muted-foreground" data-testid={`sessions-usage-${item.member_id}`}>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="text-emerald-700 font-medium">
+                  {language === 'ar'
+                    ? `حضر ${item.sessions_used} من أصل ${item.sessions_total} حصة`
+                    : `Attended ${item.sessions_used} of ${item.sessions_total} sessions`}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t">
               <Bell className="w-3 h-3" />
               {lastInfo
