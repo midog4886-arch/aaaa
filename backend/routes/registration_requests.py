@@ -344,6 +344,9 @@ async def list_registration_requests(
         query["branch_id"] = effective_branch
     if status and status != "all":
         query["status"] = status
+    elif status == "all":
+        # "الكل" tab shows active requests only; archived ones live in their own tab
+        query["status"] = {"$ne": "archived"}
 
     requests = await db.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
     return requests
@@ -355,20 +358,26 @@ async def update_registration_request(
     payload: RegistrationRequestUpdate,
     current_user: dict = Depends(get_current_user),
 ):
-    allowed_statuses = {"pending", "processed", "rejected"}
+    allowed_statuses = {"pending", "processed", "rejected", "archived"}
     if payload.status not in allowed_statuses:
         raise HTTPException(status_code=400, detail="حالة غير صحيحة")
 
-    req = await db.registration_requests.find_one({"id": req_id}, {"_id": 0, "branch_id": 1})
+    req = await db.registration_requests.find_one(
+        {"id": req_id}, {"_id": 0, "branch_id": 1, "status": 1, "archived_from": 1}
+    )
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     scope = require_branch_scope(current_user)
     if scope and req.get("branch_id") != scope:
         raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الطلب")
 
-    await db.registration_requests.update_one(
-        {"id": req_id}, {"$set": {"status": payload.status}}
-    )
+    update: dict = {"status": payload.status}
+    if payload.status == "archived":
+        # Remember what it was so restoring puts it back in the right tab.
+        if req.get("status") != "archived":
+            update["archived_from"] = req.get("status") or "pending"
+        update["archived_at"] = datetime.now(timezone.utc).isoformat()
+    await db.registration_requests.update_one({"id": req_id}, {"$set": update})
     return {"success": True}
 
 

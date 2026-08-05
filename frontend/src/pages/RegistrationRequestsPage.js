@@ -10,18 +10,20 @@ import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import { getPublicBaseUrl } from '../utils/publicUrl';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
-import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download, Search, X } from 'lucide-react';
+import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download, Search, X, Archive, ArchiveRestore } from 'lucide-react';
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'قيد الانتظار' },
   { value: 'processed', label: 'تمت المعالجة' },
   { value: 'all', label: 'الكل' },
+  { value: 'archived', label: 'الأرشيف' },
 ];
 
 const STATUS_BADGE = {
   pending: { label: 'قيد الانتظار', cls: 'bg-amber-100 text-amber-700' },
   processed: { label: 'تمت المعالجة', cls: 'bg-emerald-100 text-emerald-700' },
   rejected: { label: 'مرفوض', cls: 'bg-red-100 text-red-700' },
+  archived: { label: 'مؤرشف', cls: 'bg-gray-200 text-gray-600' },
 };
 
 export const RegistrationRequestsPage = () => {
@@ -200,6 +202,29 @@ export const RegistrationRequestsPage = () => {
   const handleCreateInvoice = (req) => {
     storePrefill(req);
     navigate('/admin/invoices');
+  };
+
+  const handleArchive = async (req) => {
+    try {
+      await registrationRequestsAPI.updateStatus(req.id, 'archived');
+      if (statusFilter !== 'archived') {
+        setRequests(prev => prev.filter(r => r.id !== req.id));
+      }
+      toast.success('تم نقل الطلب إلى الأرشيف');
+    } catch {
+      toast.error('تعذّرت الأرشفة');
+    }
+  };
+
+  const handleUnarchive = async (req) => {
+    const restoreTo = req.archived_from && req.archived_from !== 'archived' ? req.archived_from : 'pending';
+    try {
+      await registrationRequestsAPI.updateStatus(req.id, restoreTo);
+      setRequests(prev => prev.filter(r => r.id !== req.id));
+      toast.success('تمت استعادة الطلب من الأرشيف');
+    } catch {
+      toast.error('تعذّرت الاستعادة');
+    }
   };
 
   const handleDelete = async (req) => {
@@ -393,7 +418,7 @@ export const RegistrationRequestsPage = () => {
         ) : filteredRequests.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Inbox className="w-12 h-12 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">{searchQuery.trim() ? 'لا توجد نتائج مطابقة للبحث' : statusFilter === 'processed' ? 'لا توجد طلبات تمت معالجتها' : statusFilter === 'all' ? 'لا توجد طلبات تسجيل' : 'لا توجد طلبات تسجيل جديدة'}</p>
+            <p className="text-sm">{searchQuery.trim() ? 'لا توجد نتائج مطابقة للبحث' : statusFilter === 'processed' ? 'لا توجد طلبات تمت معالجتها' : statusFilter === 'archived' ? 'لا توجد طلبات مؤرشفة' : statusFilter === 'all' ? 'لا توجد طلبات تسجيل' : 'لا توجد طلبات تسجيل جديدة'}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -444,7 +469,11 @@ export const RegistrationRequestsPage = () => {
                       <p className="mt-2 text-[11px] text-gray-400">{new Date(req.created_at).toLocaleString('ar-EG')}</p>
                     </div>
                     <div className="flex flex-col gap-2 shrink-0">
-                      {req.status === 'processed' ? (
+                      {req.status === 'archived' ? (
+                        <Button size="sm" variant="outline" onClick={() => handleUnarchive(req)} className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid={`button-unarchive-${req.id}`}>
+                          <ArchiveRestore className="w-3.5 h-3.5" /> استعادة من الأرشيف
+                        </Button>
+                      ) : req.status === 'processed' ? (
                         <>
                           <span className="inline-flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2 py-0.5">
                             <CheckCircle2 className="w-4 h-4" /> تمت المعالجة
@@ -456,6 +485,11 @@ export const RegistrationRequestsPage = () => {
                       ) : (
                         <Button size="sm" onClick={() => handleProcess(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
                           <UserPlus className="w-3.5 h-3.5" /> معالجة وإنشاء فاتورة
+                        </Button>
+                      )}
+                      {req.status !== 'archived' && (
+                        <Button size="sm" variant="outline" onClick={() => handleArchive(req)} className="gap-1.5 text-gray-600 border-gray-300 hover:bg-gray-50" data-testid={`button-archive-${req.id}`}>
+                          <Archive className="w-3.5 h-3.5" /> أرشفة
                         </Button>
                       )}
                       <Button size="sm" variant="outline" onClick={() => handleDelete(req)} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
