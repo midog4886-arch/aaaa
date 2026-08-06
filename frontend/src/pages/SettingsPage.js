@@ -29,6 +29,7 @@ import {
   ArrowUpCircle,
   Download,
   ShieldAlert,
+  Upload,
 } from 'lucide-react';
 
 export const SettingsPage = () => {
@@ -1840,6 +1841,28 @@ const BrandingLegalCard = ({ language }) => {
   const [commercialReg, setCommercialReg] = React.useState('');
   const [termsAr, setTermsAr] = React.useState('');
   const [termsEn, setTermsEn] = React.useState('');
+  const [logoBase64, setLogoBase64] = React.useState('');
+  const [logoChanged, setLogoChanged] = React.useState(false);
+  const MAX_LOGO_BYTES = 620000; // ~450KB file → ~600KB base64
+
+  const handleLogoFile = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error(isAr ? 'الملف يجب أن يكون صورة' : 'File must be an image');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result || '';
+      if (typeof result !== 'string' || result.length > MAX_LOGO_BYTES) {
+        toast.error(isAr ? 'حجم الصورة كبير، الحد الأقصى ~450 ك.ب' : 'Image too large, max ~450KB');
+        return;
+      }
+      setLogoBase64(result);
+      setLogoChanged(true);
+    };
+    reader.readAsDataURL(file);
+  };
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1849,6 +1872,7 @@ const BrandingLegalCard = ({ language }) => {
         if (cancelled) return;
         const d = res?.data || {};
         setName(d.name || '');
+        setLogoBase64(d.logo_base64 || '');
         setTaxNumber(d.tax_number || '');
         setCommercialReg(d.commercial_reg || '');
         setTermsAr(Array.isArray(d.invoice_terms_ar) ? d.invoice_terms_ar.join('\n') : '');
@@ -1877,10 +1901,13 @@ const BrandingLegalCard = ({ language }) => {
         commercial_reg: (commercialReg || '').trim(),
         invoice_terms_ar: linesAr,
         invoice_terms_en: linesEn,
+        ...(logoChanged ? { logo_base64: logoBase64 || '' } : {}),
       });
+      setLogoChanged(false);
       try {
         const mod = await import('../services/branding');
         if (mod && typeof mod.loadBranding === 'function') await mod.loadBranding();
+        window.dispatchEvent(new Event('branding:updated'));
       } catch (e) {}
       toast.success(isAr ? 'تم الحفظ' : 'Saved');
     } catch (e) {
@@ -1907,6 +1934,32 @@ const BrandingLegalCard = ({ language }) => {
         <div>
           <Label>{isAr ? 'اسم الأكاديمية' : 'Academy name'}</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} disabled={loading} />
+        </div>
+        <div>
+          <Label>{isAr ? 'شعار الأكاديمية' : 'Academy logo'}</Label>
+          <p className="text-xs text-muted-foreground mb-1">
+            {isAr ? 'يظهر في القائمة الجانبية والفواتير وصفحة الدخول.' : 'Shown in the sidebar, invoices and the login page.'}
+          </p>
+          <div className="flex items-center gap-3 mt-1">
+            <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center overflow-hidden border">
+              {logoBase64 ? (
+                <img src={logoBase64} alt="logo" className="w-full h-full object-contain" data-testid="branding-logo-preview" />
+              ) : (
+                <FileText className="w-6 h-6 text-muted-foreground" />
+              )}
+            </div>
+            <label className="cursor-pointer">
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => { handleLogoFile(e.target.files?.[0]); e.target.value = ''; }} data-testid="branding-logo-input" disabled={loading} />
+              <span className="inline-flex items-center gap-2 px-3 py-2 rounded-md border bg-background hover:bg-accent text-sm">
+                <Upload className="w-4 h-4" />{isAr ? 'رفع شعار' : 'Upload logo'}
+              </span>
+            </label>
+            {logoBase64 && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setLogoBase64(''); setLogoChanged(true); }} data-testid="branding-logo-remove">
+                {isAr ? 'إزالة الشعار' : 'Remove logo'}
+              </Button>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
