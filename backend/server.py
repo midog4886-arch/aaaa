@@ -10625,6 +10625,38 @@ if STATIC_DIR.exists():
         return {"error": "File not found"}
 
 
+    @app.get("/images/academy-logo.png")
+    async def serve_academy_logo(request: Request):
+        """Serve the tenant's uploaded logo (from branding) instead of the
+        baked-in static image, so every screen/print that references
+        /images/academy-logo.png follows the logo set in Settings. Falls back
+        to the original static file when no custom logo is saved."""
+        try:
+            from middleware.tenant import _slug_from_host as _sfh
+            from control_db import control_db as _control_db
+            slug = _sfh(request.headers.get("host", "")) or "default"
+            tenant = await _control_db.tenants.find_one(
+                {"slug": slug}, {"_id": 0, "logo_base64": 1}
+            )
+            logo = (tenant or {}).get("logo_base64", "") or ""
+            if logo.startswith("data:image/") and ";base64," in logo:
+                header, b64 = logo.split(";base64,", 1)
+                mime = header[5:] or "image/png"
+                import base64 as _b64mod
+                from fastapi.responses import Response as _FResp
+                return _FResp(
+                    content=_b64mod.b64decode(b64),
+                    media_type=mime,
+                    headers={"Cache-Control": "no-cache, must-revalidate"},
+                )
+        except Exception as e:
+            print(f"academy-logo serve error: {e}")
+        fallback = STATIC_DIR / "images" / "academy-logo.png"
+        if fallback.exists():
+            return FileResponse(str(fallback), headers={"Cache-Control": "no-cache, must-revalidate"})
+        raise HTTPException(status_code=404, detail="Logo not found")
+
+
     @app.get("/{full_path:path}")
     async def serve_react_app(full_path: str):
         file_path = STATIC_DIR / full_path
