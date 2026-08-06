@@ -190,8 +190,6 @@ def _require_tenant_admin(current_user: dict):
     if not current_user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="صلاحية مسؤول الأكاديمية مطلوبة")
     slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
-    if slug == DEFAULT_TENANT_SLUG:
-        raise HTTPException(status_code=400, detail="لا تتوفر هذه العملية للأكاديمية الافتراضية")
     return slug
 
 
