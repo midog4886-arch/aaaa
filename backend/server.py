@@ -3767,25 +3767,54 @@ async def _send_backup_to_telegram(filepath, filename):
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         return
+    gz_path = None
     try:
+        send_path = filepath
+        send_name = filename
+        mime = "application/json"
         size_mb = filepath.stat().st_size / (1024 * 1024)
         if size_mb > 49:
-            print(f"Telegram backup skipped: file {filename} is {size_mb:.1f}MB (limit 50MB)")
-            return
+            # Telegram bot uploads are capped at 50MB — gzip the backup
+            # (JSON compresses to a fraction of its size) instead of skipping.
+            import gzip as _gzip
+            import shutil as _shutil
+            gz_path = filepath.with_suffix(filepath.suffix + ".gz")
+            await asyncio.to_thread(_gzip_file, filepath, gz_path)
+            gz_mb = gz_path.stat().st_size / (1024 * 1024)
+            if gz_mb > 49:
+                print(f"Telegram backup skipped: {filename} is {size_mb:.1f}MB ({gz_mb:.1f}MB gzipped, limit 50MB)")
+                return
+            send_path = gz_path
+            send_name = filename + ".gz"
+            mime = "application/gzip"
+            print(f"Telegram backup: {filename} {size_mb:.1f}MB > 49MB, sending gzipped ({gz_mb:.1f}MB)")
         import httpx
         url = f"https://api.telegram.org/bot{token}/sendDocument"
-        caption = f"Champions Academy backup\n{filename}\n{datetime.now(_RIYADH_TZ).strftime('%Y-%m-%d %H:%M %Z')}"
-        with open(filepath, "rb") as f:
-            files = {"document": (filename, f, "application/json")}
+        caption = f"Champions Academy backup\n{send_name}\n{datetime.now(_RIYADH_TZ).strftime('%Y-%m-%d %H:%M %Z')}"
+        with open(send_path, "rb") as f:
+            files = {"document": (send_name, f, mime)}
             data = {"chat_id": chat_id, "caption": caption}
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 resp = await client.post(url, data=data, files=files)
         if resp.status_code == 200 and resp.json().get("ok"):
-            print(f"Telegram backup sent: {filename}")
+            print(f"Telegram backup sent: {send_name}")
         else:
             print(f"Telegram backup failed: {resp.status_code} {resp.text[:200]}")
     except Exception as e:
         print(f"Telegram backup error: {e}")
+    finally:
+        if gz_path is not None:
+            try:
+                gz_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+
+def _gzip_file(src, dst):
+    import gzip as _gzip
+    with open(src, "rb") as fin, _gzip.open(dst, "wb", compresslevel=6) as fout:
+        import shutil as _shutil
+        _shutil.copyfileobj(fin, fout)
 
 
 async def _backup_one_tenant(tenant: dict) -> dict:
