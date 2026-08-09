@@ -569,19 +569,45 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         if not member:
             continue
         existing_activities = member.get("activities", [])
-        
-        for item in member_items:
-            if item.get("is_product"):
+
+        def _item_period(it):
+            s = it.get("start_date", today)
+            e = it.get("end_date", "")
+            if it.get("period") and " - " in it.get("period", ""):
+                parts = it["period"].split(" - ")
+                if len(parts) == 2:
+                    s = parts[0].strip()
+                    e = parts[1].strip()
+            return s, e
+
+        # When one invoice carries multiple periods for the SAME activity
+        # (e.g. two prepaid months), only ONE can live in member.activities.
+        # Pick the period covering today; otherwise the earliest upcoming;
+        # otherwise the latest. The other (prepaid) periods stay on the
+        # invoice and activate when their start date arrives.
+        def _pick_best(items_for_activity):
+            covering = [it for it in items_for_activity
+                        if (lambda p: p[0] <= today and (not p[1] or p[1] >= today))(_item_period(it))]
+            if covering:
+                return covering[0]
+            upcoming = [it for it in items_for_activity if _item_period(it)[0] > today]
+            if upcoming:
+                return min(upcoming, key=lambda it: _item_period(it)[0])
+            return max(items_for_activity, key=lambda it: _item_period(it)[1] or _item_period(it)[0])
+
+        by_activity = {}
+        for it in member_items:
+            if it.get("is_product"):
                 continue
-            
-            start_date = item.get("start_date", today)
-            end_date = item.get("end_date", "")
-            
-            if item.get("period") and " - " in item.get("period", ""):
-                period_parts = item["period"].split(" - ")
-                if len(period_parts) == 2:
-                    start_date = period_parts[0].strip()
-                    end_date = period_parts[1].strip()
+            by_activity.setdefault(it.get("activity_id"), []).append(it)
+
+        deduped_items = [
+            _pick_best(group) if len(group) > 1 else group[0]
+            for group in by_activity.values()
+        ]
+
+        for item in deduped_items:
+            start_date, end_date = _item_period(item)
             
             status = "active"
             if end_date:
