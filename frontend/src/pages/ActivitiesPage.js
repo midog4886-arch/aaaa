@@ -723,9 +723,16 @@ export const ActivitiesPage = () => {
                           {m.phone && <span className="flex items-center gap-0.5" dir="ltr"><Phone className="w-3 h-3" />{m.phone}</span>}
                         </div>
                       </div>
-                      <Badge variant="secondary" className={`text-[10px] shrink-0 ${m.active ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-100'}`}>
-                        {m.active ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'منتهي' : 'Expired')}
-                      </Badge>
+                      <div className="flex flex-col items-end gap-0.5 shrink-0">
+                        <Badge variant="secondary" className={`text-[10px] ${m.active ? 'bg-green-100 text-green-700 hover:bg-green-100' : 'bg-gray-100 text-gray-500 hover:bg-gray-100'}`}>
+                          {m.active ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'منتهي' : 'Expired')}
+                        </Badge>
+                        {m.end_date && (
+                          <span className="text-[10px] text-muted-foreground" dir="ltr" data-testid={`activity-member-end-${m.member_code}`}>
+                            {language === 'ar' ? 'ينتهي: ' : 'Ends: '}{m.end_date}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
