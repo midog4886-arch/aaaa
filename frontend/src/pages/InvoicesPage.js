@@ -61,6 +61,7 @@ export const InvoicesPage = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterRenewalOnly, setFilterRenewalOnly] = useState(false);
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
@@ -119,11 +120,13 @@ export const InvoicesPage = () => {
   const filteredInvoices = invoices.filter(inv => {
     const matchSearch = !searchTerm || inv.member_name?.toLowerCase().includes(searchTerm.toLowerCase()) || inv.id?.includes(searchTerm) || inv.customer_phone?.includes(searchTerm);
     const matchStatus = filterStatus === 'all' || inv.status === filterStatus;
+    const isRenewalInv = inv.is_renewal || (inv.notes || '').includes('تجديد');
+    const matchRenewal = !filterRenewalOnly || isRenewalInv;
     const matchActivity = filterActivity === 'all' || inv.items?.some(item => item.activity_id === filterActivity);
     const invDate = inv.created_at ? inv.created_at.split('T')[0] : '';
     const matchStart = !filterStartDate || invDate >= filterStartDate;
     const matchEnd = !filterEndDate || invDate <= filterEndDate;
-    return matchSearch && matchStatus && matchActivity && matchStart && matchEnd;
+    return matchSearch && matchStatus && matchRenewal && matchActivity && matchStart && matchEnd;
   });
 
   const qrCardHook = useQRCardPrint({ language });
@@ -332,6 +335,16 @@ export const InvoicesPage = () => {
                   <SelectItem value="cancelled">{t('cancelled')}</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant={filterRenewalOnly ? 'default' : 'outline'}
+                className={filterRenewalOnly ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'border-purple-300 text-purple-700 hover:bg-purple-50'}
+                onClick={() => setFilterRenewalOnly(v => !v)}
+                title={language === 'ar' ? 'عرض فواتير التجديد فقط' : 'Show renewal invoices only'}
+                data-testid="filter-renewal-only-btn"
+              >
+                <RefreshCcw className="w-4 h-4 me-1" />
+                {language === 'ar' ? 'تجديد فقط' : 'Renewals'}
+              </Button>
               <Button variant="outline" onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}><Filter className="w-4 h-4" /></Button>
             </div>
             <div className="flex gap-2 flex-wrap">
