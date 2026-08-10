@@ -2166,33 +2166,111 @@ async def cleanup_duplicate_members(current_user: dict = Depends(get_current_use
 
 
 @router.post("/cleanup-expired")
-async def cleanup_expired_subscriptions(current_user: dict = Depends(get_current_user)):
-    """Remove members from levels whose subscriptions have expired"""
+async def cleanup_expired_subscriptions(
+    dry_run: bool = True,
+    branch_filter: Optional[str] = None,
+    level_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Bulk-unlink EXPIRED members from levels (admin-only).
+
+    Clears ``activities[].level_id`` on member documents whose linked activity
+    subdoc is expired (end_date < today, or an explicit non-active status) and
+    pulls the member id from ``level.members[]``. Members re-appear in the
+    level pickers once they renew and get re-placed.
+
+    ``dry_run=True`` (default) only counts and lists what would be removed so
+    the UI can show a confirmation; ``dry_run=False`` performs the writes.
+    Scope: all levels visible under ``branch_filter``, or one level via
+    ``level_id``.
+    """
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="هذه العملية للمشرف العام فقط")
+
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
-    # Find all expired subscriptions
-    expired = await db.level_subscriptions.find({
-        "end_date": {"$lt": today}
-    }).to_list(1000)
-    
-    removed_count = 0
-    for sub in expired:
-        member_id = sub.get("member_id")
-        level_id = sub.get("level_id")
-        
-        if member_id and level_id:
-            # Remove member from level
-            result = await db.levels.update_one(
-                {"id": level_id},
-                {"$pull": {"members": member_id}}
-            )
-            if result.modified_count > 0:
-                removed_count += 1
-            
-            # Delete the subscription record
-            await db.level_subscriptions.delete_one({"_id": sub["_id"]})
-    
+
+    level_query = {}
+    if level_id:
+        level_query["id"] = level_id
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    if effective_branch:
+        level_query["$or"] = [
+            {"branch_id": effective_branch},
+            {"branch_id": None},
+            {"branch_id": {"$exists": False}},
+        ]
+    levels = await db.levels.find(
+        level_query, {"_id": 0, "id": 1, "activity_name": 1, "members": 1}
+    ).to_list(1000)
+    level_ids = {l["id"] for l in levels if l.get("id")}
+    if not level_ids:
+        return {"dry_run": dry_run, "members_affected": 0, "links_removed": 0, "items": []}
+
+    def _is_expired(act):
+        status = act.get("status")
+        if status and status != "active":
+            return True
+        end_d = act.get("end_date") or ""
+        return bool(end_d) and end_d < today
+
+    members = await db.members.find(
+        {"activities.level_id": {"$in": list(level_ids)}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "activities": 1},
+    ).to_list(20000)
+
+    items = []
+    links_removed = 0
+    pulls = {}  # level_id -> [member_id]
+    writes = []  # (member_id, activities)
+    for m in members:
+        acts = m.get("activities") or []
+        changed = False
+        for act in acts:
+            lid = act.get("level_id")
+            if lid in level_ids and _is_expired(act):
+                items.append({
+                    "member_id": m.get("id"),
+                    "member_name": m.get("name_ar") or m.get("name") or "",
+                    "member_code": m.get("member_code") or "",
+                    "level_id": lid,
+                    "activity_name": act.get("activity_name") or "",
+                    "end_date": act.get("end_date") or "",
+                })
+                links_removed += 1
+                pulls.setdefault(lid, []).append(m.get("id"))
+                if not dry_run:
+                    act["level_id"] = None
+                    changed = True
+        if changed:
+            writes.append((m.get("id"), acts))
+
+    if not dry_run:
+        for mid, acts in writes:
+            await db.members.update_one({"id": mid}, {"$set": {"activities": acts}})
+        for lid, mids in pulls.items():
+            # Only pull members that no longer have ANY activity linking here
+            # (a member could hold a second, still-active link to this level).
+            still_linked = {
+                m2["id"]
+                for m2 in await db.members.find(
+                    {"id": {"$in": mids}, "activities.level_id": lid},
+                    {"_id": 0, "id": 1},
+                ).to_list(len(mids))
+            }
+            to_pull = [x for x in mids if x not in still_linked]
+            if to_pull:
+                await db.levels.update_one(
+                    {"id": lid}, {"$pull": {"members": {"$in": to_pull}}}
+                )
+        cache_invalidate("levels:")
+
     return {
-        "message": f"تم إزالة {removed_count} عضو من المستويات المنتهية اشتراكاتهم",
-        "removed_count": removed_count
+        "dry_run": dry_run,
+        "members_affected": len({it["member_id"] for it in items}),
+        "links_removed": links_removed,
+        "items": items[:200],
+        "message": (
+            f"سيتم فصل {links_removed} ارتباط منتهي" if dry_run
+            else f"تم فصل {links_removed} ارتباط منتهي من المستويات"
+        ),
     }

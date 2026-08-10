@@ -55,11 +55,31 @@ const ACTIVITY_GROUPS = [
   { id: 'football', label: 'كرة القدم', icon: '⚽', keywords: ['قدم', 'كره', 'كرة', 'foot', 'soccer'] },
   { id: 'karate',   label: 'الكاراتيه', icon: '🥋', keywords: ['كارات', 'كاراتيه', 'كارتيه', 'karate'] },
 ];
+const mainPrefixOf = (n) => String(n || '').split(' - ')[0].trim();
 const matchesGroup = (activityName, groupId) => {
+  // Custom groups (any activity that isn't swimming/football/karate) use the
+  // id "custom:<main prefix>" and match by main-name containment.
+  if (groupId && groupId.startsWith('custom:')) {
+    const prefix = groupId.slice(7).toLowerCase();
+    const main = mainPrefixOf(activityName).toLowerCase();
+    return !!prefix && !!main && (main === prefix || main.includes(prefix) || prefix.includes(main));
+  }
   const g = ACTIVITY_GROUPS.find(g => g.id === groupId);
   if (!g) return false;
   const name = (activityName || '').toLowerCase();
   return g.keywords.some(k => name.includes(k));
+};
+// Distinct custom-activity filter options from a list of activity names.
+const customGroupOptions = (names) => {
+  const seen = new Map();
+  (names || []).forEach((n) => {
+    const main = mainPrefixOf(n);
+    if (!main) return;
+    if (ACTIVITY_GROUPS.some(g => g.keywords.some(k => main.toLowerCase().includes(k)))) return;
+    const key = main.toLowerCase();
+    if (!seen.has(key)) seen.set(key, { id: `custom:${main}`, icon: '🏷️', label: main, custom: true });
+  });
+  return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, 'ar'));
 };
 // Unified matching rule (same as the manage-members dialog): trust the actual
 // level link (level_id) FIRST, then fall back to keyword name matching —
@@ -183,6 +203,7 @@ export const LevelsPage = () => {
   const [autoAssignExpanded, setAutoAssignExpanded] = useState({});
   const [autoAssignShowUnmatched, setAutoAssignShowUnmatched] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupExpiredLoading, setCleanupExpiredLoading] = useState(false);
   const [scheduleBuilderOpen, setScheduleBuilderOpen] = useState(false);
   // When opening the schedule builder from a level card's "needs scheduling"
   // badge, pass the target level id so the dialog can scroll to it and flash
@@ -2062,14 +2083,29 @@ ${slotTables}
       return a.end_date >= todayStr;
     });
   };
-  // Build activity filter options — only show groups that have at least one member
+  // Build activity filter options — only show groups that have at least one member.
+  // Custom activities (any prefix that isn't a built-in sport) get their own
+  // dynamic options so they're findable, not hidden under "all" only.
   const activityFilterOptions = useMemo(() => {
-    return ACTIVITY_GROUPS.filter(g =>
+    const builtIn = ACTIVITY_GROUPS.filter(g =>
       members.some(m =>
         (m.activities || []).some(a => a.status === 'active' && matchesGroup(a.activity_name, g.id))
       )
     );
-  }, [members]);
+    const names = [];
+    members.forEach(m => (m.activities || []).forEach(a => {
+      if (a.status === 'active') {
+        names.push(a.activity_name);
+        // A member linked to a custom level should surface that level's
+        // activity too (legacy subscription names may differ).
+        if (a.level_id) {
+          const lvl = levels.find(l => l.id === a.level_id);
+          if (lvl) names.push(lvl.activity_name);
+        }
+      }
+    }));
+    return [...builtIn, ...customGroupOptions(names)];
+  }, [members, levels]);
 
   const timeFilterOptions = useMemo(() => {
     const times = new Set();
@@ -2727,6 +2763,41 @@ ${slotTables}
                     <Trash2 className="w-4 h-4 shrink-0" />
                     <span className="hidden sm:inline">{t('تنظيف الأعضاء المكررين', 'Clean duplicate members')}</span>
                     <span className="sm:hidden">{t('تنظيف المكررات', 'Dedupe')}</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-red-300 text-red-700 hover:bg-red-50 text-xs sm:text-sm"
+                    disabled={cleanupExpiredLoading}
+                    onClick={async () => {
+                      setCleanupExpiredLoading(true);
+                      try {
+                        const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+                        const dry = await levelsAPI.cleanupExpired(true, branchParams);
+                        const d = dry.data || dry;
+                        if (!d.links_removed) {
+                          toast.info(t('لا يوجد أعضاء منتهية اشتراكاتهم مرتبطين بالمستويات', 'No expired members linked to levels'));
+                          return;
+                        }
+                        if (!window.confirm(t(
+                          `سيتم فصل ${d.links_removed} ارتباط منتهي (${d.members_affected} عضو) من المستويات. يعودون للظهور عند التجديد وإعادة التسكين. متابعة؟`,
+                          `${d.links_removed} expired link(s) (${d.members_affected} member(s)) will be unlinked from levels. They reappear once they renew and are re-placed. Continue?`
+                        ))) return;
+                        const res = await levelsAPI.cleanupExpired(false, branchParams);
+                        const r = res.data || res;
+                        toast.success(t(`تم فصل ${r.links_removed} ارتباط منتهي من المستويات`, `Unlinked ${r.links_removed} expired link(s) from levels`));
+                        loadData();
+                      } catch (e) {
+                        toast.error(t('فشل تنظيف المنتهين', 'Failed to clean expired members'));
+                      } finally {
+                        setCleanupExpiredLoading(false);
+                      }
+                    }}
+                    data-testid="open-levels-cleanup-expired-btn"
+                  >
+                    <Trash2 className="w-4 h-4 shrink-0" />
+                    <span className="hidden sm:inline">{cleanupExpiredLoading ? t('جارٍ التنظيف...', 'Cleaning...') : t('تنظيف المنتهية اشتراكاتهم', 'Clean expired members')}</span>
+                    <span className="sm:hidden">{t('تنظيف المنتهين', 'Expired')}</span>
                   </Button>
                   <Button
                     variant="ghost"
@@ -3901,6 +3972,12 @@ ${slotTables}
                   <SelectContent>
                     <SelectItem value="__all__">{t('كل الأنشطة', 'All activities')}</SelectItem>
                     {ACTIVITY_GROUPS.map(g => (
+                      <SelectItem key={g.id} value={g.id}>{g.icon} {g.label}</SelectItem>
+                    ))}
+                    {customGroupOptions([
+                      ...(unassignedData || []).flatMap(m => (m.unassigned_activities || []).map(a => a.activity_name)),
+                      ...levels.map(l => l.activity_name),
+                    ]).map(g => (
                       <SelectItem key={g.id} value={g.id}>{g.icon} {g.label}</SelectItem>
                     ))}
                   </SelectContent>
