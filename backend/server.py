@@ -7386,14 +7386,24 @@ async def get_attendance_by_activity(
 @api_router.get("/attendance/quick-search/{search_term}")
 async def quick_search_member(
     search_term: str,
+    branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Search member by member_code or name for quick attendance"""
     import re as _rk1
     from utils.text import normalize_digits, dearabize_keyboard
+    from utils.auth import resolve_branch_filter
     search_term = normalize_digits(search_term).strip()
+    # Scope results to the active branch (VIP members attend any branch,
+    # so they stay visible everywhere).
+    _bid = resolve_branch_filter(current_user, branch_filter)
+    _branch_q = {"$or": [{"branch_id": _bid}, {"is_vip": True}]} if _bid else {}
+
+    def _with_branch(q):
+        return {"$and": [q, _branch_q]} if _bid else q
+
     # First try to find by member_code
-    member = await db.members.find_one({"member_code": search_term}, {"_id": 0})
+    member = await db.members.find_one(_with_branch({"member_code": search_term}), {"_id": 0})
 
     if not member:
         # Recover a code mangled by an Arabic keyboard layout (hardware scanner)
@@ -7401,7 +7411,7 @@ async def quick_search_member(
         alt = dearabize_keyboard(search_term)
         if alt and alt != search_term:
             member = await db.members.find_one(
-                {"member_code": {"$regex": f"^{_rk1.escape(alt)}$", "$options": "i"}},
+                _with_branch({"member_code": {"$regex": f"^{_rk1.escape(alt)}$", "$options": "i"}}),
                 {"_id": 0}
             )
 
@@ -7409,12 +7419,12 @@ async def quick_search_member(
     if not member:
         # Search in name_ar or name (case insensitive for English)
         name_rx = _rk1.escape(search_term)
-        member = await db.members.find_one({
+        member = await db.members.find_one(_with_branch({
             "$or": [
                 {"name_ar": {"$regex": name_rx, "$options": "i"}},
                 {"name": {"$regex": name_rx, "$options": "i"}}
             ]
-        }, {"_id": 0})
+        }), {"_id": 0})
 
     if not member:
         raise HTTPException(status_code=404, detail="لم يتم العثور على العضو")
@@ -7505,29 +7515,39 @@ async def quick_search_member(
 @api_router.get("/attendance/quick-search-multi/{search_term}")
 async def quick_search_members_multi(
     search_term: str,
+    branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Search multiple members by member_code or name for quick attendance"""
     import re as _rk2
     from utils.text import normalize_digits, dearabize_keyboard
+    from utils.auth import resolve_branch_filter
     search_term = normalize_digits(search_term).strip()
+    # Scope results to the active branch (VIP members attend any branch,
+    # so they stay visible everywhere).
+    _bid = resolve_branch_filter(current_user, branch_filter)
+    _branch_q = {"$or": [{"branch_id": _bid}, {"is_vip": True}]} if _bid else {}
+
+    def _with_branch(q):
+        return {"$and": [q, _branch_q]} if _bid else q
+
     # Search by member_code or name (escape user input so mangled codes
     # containing regex metacharacters like [ ] don't break the query).
     term_rx = _rk2.escape(search_term)
-    members = await db.members.find({
+    members = await db.members.find(_with_branch({
         "$or": [
             {"member_code": {"$regex": term_rx, "$options": "i"}},
             {"name_ar": {"$regex": term_rx, "$options": "i"}},
             {"name": {"$regex": term_rx, "$options": "i"}}
         ]
-    }, {"_id": 0}).limit(10).to_list(10)
+    }), {"_id": 0}).limit(10).to_list(10)
 
     if not members:
         # Recover a code mangled by an Arabic keyboard layout (hardware scanner).
         alt = dearabize_keyboard(search_term)
         if alt and alt != search_term:
             members = await db.members.find(
-                {"member_code": {"$regex": f"^{_rk2.escape(alt)}$", "$options": "i"}},
+                _with_branch({"member_code": {"$regex": f"^{_rk2.escape(alt)}$", "$options": "i"}}),
                 {"_id": 0}
             ).limit(10).to_list(10)
 

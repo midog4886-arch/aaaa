@@ -523,8 +523,8 @@ export const attendanceAPI = {
   getByActivity: (activityId, date) => axios.get(`${API}/attendance/by-activity/${activityId}`, { params: { date } }),
   record: (data) => axios.post(`${API}/attendance`, data),
   recordBulk: (data) => axios.post(`${API}/attendance/bulk`, data),
-  quickSearch: (searchTerm) => axios.get(`${API}/attendance/quick-search/${encodeURIComponent(searchTerm)}`),
-  quickSearchMulti: (searchTerm) => axios.get(`${API}/attendance/quick-search-multi/${encodeURIComponent(searchTerm)}`),
+  quickSearch: (searchTerm, branchId = null) => axios.get(`${API}/attendance/quick-search/${encodeURIComponent(searchTerm)}`, { params: branchId && branchId !== 'all' ? { branch_filter: branchId } : {} }),
+  quickSearchMulti: (searchTerm, branchId = null) => axios.get(`${API}/attendance/quick-search-multi/${encodeURIComponent(searchTerm)}`, { params: branchId && branchId !== 'all' ? { branch_filter: branchId } : {} }),
   quickAttendance: (memberCode, activityId) => axios.post(`${API}/attendance/quick?member_code=${memberCode}&activity_id=${activityId}`),
   qrCheckin: (memberCode, activityId, force = false, method = null) => {
     let url = `${API}/attendance/qr-checkin?member_code=${encodeURIComponent(memberCode)}`;

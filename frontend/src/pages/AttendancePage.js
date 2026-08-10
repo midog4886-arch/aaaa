@@ -348,7 +348,7 @@ export default function AttendancePage() {
     
     try {
       // Try multi-search first
-      const res = await attendanceAPI.quickSearchMulti(toAsciiDigits(quickMemberCode).trim());
+      const res = await attendanceAPI.quickSearchMulti(toAsciiDigits(quickMemberCode).trim(), selectedBranchId || user?.branch_id || null);
       
       if (res.data && res.data.length > 0) {
         if (res.data.length === 1) {
