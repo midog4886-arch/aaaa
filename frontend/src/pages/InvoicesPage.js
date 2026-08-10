@@ -380,6 +380,16 @@ export const InvoicesPage = () => {
           </TabsList>
 
           <TabsContent value="invoices">
+            {filterRenewalOnly && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-800" data-testid="renewal-summary-bar">
+                <RefreshCcw className="w-4 h-4" />
+                <span className="font-semibold">
+                  {language === 'ar'
+                    ? `${filteredInvoices.length} فاتورة تجديد — الإجمالي ${filteredInvoices.reduce((s, inv) => s + (inv.total || 0), 0).toFixed(2)} ر.س`
+                    : `${filteredInvoices.length} renewal invoice(s) — total ${filteredInvoices.reduce((s, inv) => s + (inv.total || 0), 0).toFixed(2)} SAR`}
+                </span>
+              </div>
+            )}
             <Card>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
