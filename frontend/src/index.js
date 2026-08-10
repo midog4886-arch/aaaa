@@ -4,6 +4,20 @@ import "./index.css";
 import App from "./App";
 import { getTenantSlug } from "./config/api";
 
+// Global guard: mouse-wheel over a focused number input must never change its
+// value (fees, discounts, quantities...). Covers raw <input type="number">
+// everywhere; the shared ui/Input has the same guard component-side.
+document.addEventListener(
+  "wheel",
+  (e) => {
+    const el = document.activeElement;
+    if (el && el.tagName === "INPUT" && el.type === "number" && (el === e.target || el.contains(e.target))) {
+      el.blur();
+    }
+  },
+  { passive: true, capture: true }
+);
+
 // Optional Sentry error monitoring — only initialised when the deploy supplies
 // REACT_APP_SENTRY_DSN, so local/dev builds and customers who haven't opted in
 // stay zero-cost. Loaded lazily so a missing dependency cannot break boot.
