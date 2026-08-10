@@ -1039,6 +1039,16 @@ const RenewalsPage = () => {
                 <Activity className="w-3 h-3 me-1" />
                 {language === 'ar' ? 'احتمال التجديد:' : 'Likelihood:'} {likelihood.label}
               </Badge>
+              {item.prepaid && (
+                <Badge
+                  className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px]"
+                  data-testid={`renewal-prepaid-${item.member_code}`}
+                  title={item.prepaid_start ? `${item.prepaid_start} → ${item.prepaid_end || ''}` : undefined}
+                >
+                  {language === 'ar' ? 'مدفوع مقدماً' : 'Prepaid'}
+                  {item.prepaid_start ? ` · ${language === 'ar' ? 'يبدأ' : 'starts'} ${item.prepaid_start}` : ''}
+                </Badge>
+              )}
             </div>
           </div>
           <div className="space-y-1.5 text-sm">

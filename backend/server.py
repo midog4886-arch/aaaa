@@ -4026,6 +4026,17 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
             errors.append(msg)
             local_errors.append(msg)
 
+        # Prepaid activation sweep BEFORE renewal checks, so members whose
+        # prepaid window started overnight are rolled forward and no longer
+        # flagged as needing renewal.
+        try:
+            from utils.prepaid import roll_forward_all_prepaid
+            rolled = await roll_forward_all_prepaid(db)
+            if rolled:
+                print(f"Daily checks [{slug}]: prepaid roll-forward updated {rolled} member(s)")
+        except Exception as e:
+            _record(f"[{slug}] prepaid roll-forward failed: {e}")
+
         try:
             admin_user = {"is_admin": True, "branch_id": None}
             result = await check_subscription_renewals(current_user=admin_user)

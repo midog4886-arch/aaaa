@@ -10,14 +10,17 @@ import { invoicesAPI } from '../../services/api';
 
 /**
  * Fetch a map: activity_id -> { start, end } from the member's PAID invoices.
- * For renewals (several paid invoices per activity) the latest window wins.
+ * When several paid windows exist for one activity (renewals, prepaid
+ * multi-period invoices) prefer the window COVERING today, else the earliest
+ * upcoming one, else the latest ended — NOT simply the latest end, which
+ * would show a prepaid future period on today's card.
  * Returns {} on any failure so callers can fall back to activity dates.
  */
 export const fetchOriginalActivityDates = async (memberId) => {
   if (!memberId) return {};
   try {
     const res = await invoicesAPI.getAll({ member_id: memberId, status: 'paid' });
-    const map = {};
+    const windows = {}; // aid -> [{start, end}]
     (res.data || []).forEach((inv) => {
       if (inv.status !== 'paid') return;
       (inv.items || []).forEach((it) => {
@@ -31,9 +34,24 @@ export const fetchOriginalActivityDates = async (memberId) => {
           end = end || (e || '').trim();
         }
         if (!end) return;
-        const prev = map[aid];
-        if (!prev || end > prev.end) map[aid] = { start, end };
+        (windows[aid] = windows[aid] || []).push({ start, end });
       });
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const map = {};
+    Object.entries(windows).forEach(([aid, list]) => {
+      const covering = list.filter((w) => (!w.start || w.start <= today) && w.end >= today);
+      if (covering.length) {
+        // Latest-start window that covers today (renewal replacing an old window).
+        map[aid] = covering.sort((a, b) => (b.start || '').localeCompare(a.start || ''))[0];
+        return;
+      }
+      const upcoming = list.filter((w) => w.start && w.start > today);
+      if (upcoming.length) {
+        map[aid] = upcoming.sort((a, b) => a.start.localeCompare(b.start))[0];
+        return;
+      }
+      map[aid] = list.sort((a, b) => a.end.localeCompare(b.end))[list.length - 1];
     });
     return map;
   } catch {

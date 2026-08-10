@@ -13,6 +13,11 @@ display the ORIGINAL purchased period from the member's PAID invoices, not
 back, freezes/closures extend it — and the owner decided the card must match
 the invoice (الفترة الأصلية زي الفاتورة).
 
+**Window selection:** per activity, prefer the paid window COVERING today,
+else the earliest upcoming, else the latest ended — never "latest end", which
+shows a prepaid future period while the current one is still running (invoice
+card print dedupes multi-period items the same way).
+
 **How to apply:** use `fetchOriginalActivityDates` + `applyOriginalDates`
 (frontend/src/pages/invoices/cardDates.js): map activity_id → latest paid
 invoice item window (falls back to item `period` string), override activity

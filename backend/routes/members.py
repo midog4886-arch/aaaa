@@ -362,6 +362,16 @@ async def get_member(member_id: str, current_user: dict = Depends(get_current_us
     member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+    # On-demand prepaid activation: if a paid future window's start date has
+    # arrived, roll the activity subdoc forward before returning the profile.
+    try:
+        from utils.prepaid import roll_forward_member_prepaid
+        if await roll_forward_member_prepaid(db, member):
+            member = await db.members.find_one(
+                _scoped_member_query(member_id, current_user), {"_id": 0}
+            ) or member
+    except Exception:
+        pass
     if not await _can_view_member_phones(current_user):
         member["phone"] = _mask_phone(member.get("phone"))
         if member.get("guardian_phone"):

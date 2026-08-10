@@ -8,15 +8,38 @@ export const useMemberCardPrint = ({ members, language }) => {
 
   const handleOpenCardPrint = (invoice) => {
     const today = new Date().toISOString().split('T')[0];
-    const activitiesWithDates = invoice.items?.filter(item => !item.is_product).map(item => {
+    const allWindows = invoice.items?.filter(item => !item.is_product).map(item => {
       let startDate = item.start_date || '';
       let endDate = item.end_date || '';
       if ((!startDate || !endDate) && item.period) {
         const parts = item.period.split(' - ');
         if (parts.length === 2) { startDate = startDate || parts[0].trim(); endDate = endDate || parts[1].trim(); }
       }
-      return { activity_name: item.activity_name, start_date: startDate, end_date: endDate, schedule: item.schedule || '', status: endDate ? endDate >= today ? 'active' : 'expired' : 'active' };
+      return { activity_id: item.activity_id || '', activity_name: item.activity_name, start_date: startDate, end_date: endDate, schedule: item.schedule || '', status: endDate ? endDate >= today ? 'active' : 'expired' : 'active' };
     }) || [];
+    // One entry per activity: with prepaid multi-period invoices prefer the
+    // window covering TODAY, else the earliest upcoming, else the latest end
+    // — so the card never shows a future prepaid period while the current
+    // one is still running.
+    const byAct = {};
+    allWindows.forEach((w) => {
+      const key = w.activity_id || w.activity_name || '';
+      const rank = (x) => {
+        if (!x.end_date) return [2, ''];
+        const covers = (!x.start_date || x.start_date <= today) && x.end_date >= today;
+        if (covers) return [0, x.start_date || ''];
+        if (x.start_date && x.start_date > today) return [1, x.start_date];
+        return [2, x.end_date];
+      };
+      const prev = byAct[key];
+      if (!prev) { byAct[key] = w; return; }
+      const [ra, ka] = rank(w); const [rb, kb] = rank(prev);
+      if (ra < rb || (ra === rb && ((ra === 1 && ka < kb) || (ra !== 1 && ka > kb)))) byAct[key] = w;
+    });
+    const activitiesWithDates = Object.values(byAct).sort((a, b) => {
+      const covers = (x) => x.end_date && (!x.start_date || x.start_date <= today) && x.end_date >= today ? 0 : 1;
+      return covers(a) - covers(b);
+    });
     const member = members.find(m => m.id === invoice.member_id);
     if (member) {
       setCardPrintMember({ ...member, activities: activitiesWithDates });

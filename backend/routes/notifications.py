@@ -1017,19 +1017,37 @@ async def get_expiring_subscriptions(
             for r in att_rows:
                 att_by.setdefault((r.get("member_id"), r.get("activity_id")), []).append(r)
             inv_rows = await db.invoices.find(
-                {"member_id": {"$in": item_mids}, "status": {"$in": ["paid", "partial"]}},
-                {"_id": 0, "member_id": 1, "items": 1}
+                {
+                    "$or": [
+                        {"member_id": {"$in": item_mids}},
+                        # Family invoices: items can belong to a different
+                        # member than the invoice-level payer.
+                        {"items.member_id": {"$in": item_mids}},
+                    ],
+                    "status": {"$in": ["paid", "partial"]},
+                },
+                {"_id": 0, "member_id": 1, "status": 1, "items": 1}
             ).to_list(20000)
             orig_win = {}  # lookup keys -> (orig_start, orig_end)
+            future_paid = {}  # (member_id, activity_id) -> latest (start, end) paid window
             for inv in inv_rows:
-                mid = inv.get("member_id")
+                inv_mid = inv.get("member_id")
+                fully_paid = inv.get("status") == "paid"
                 for itm in inv.get("items", []):
                     if itm.get("is_product"):
                         continue
+                    # Family invoices: the item's own member wins over the payer.
+                    mid = itm.get("member_id") or inv_mid
                     ist, ien = itm.get("start_date", ""), itm.get("end_date", "")
                     if not ien:
                         continue
                     aid = itm.get("activity_id", "")
+                    # Prepaid badge requires a FULLY paid invoice (same
+                    # predicate as utils/prepaid roll-forward eligibility).
+                    if fully_paid and aid and ist:
+                        prev = future_paid.get((mid, aid))
+                        if not prev or ist > prev[0]:
+                            future_paid[(mid, aid)] = (ist, ien)
                     if aid and ist:
                         orig_win[(mid, aid, ist)] = (ist, ien)
                     if aid:
@@ -1037,6 +1055,14 @@ async def get_expiring_subscriptions(
                     if ist:
                         orig_win.setdefault((mid, "@start", ist), (ist, ien))
             for it in expiring:
+                # Prepaid flag: a PAID invoice already covers a window that
+                # starts after this subscription ends — the member renewed in
+                # advance, so label them «مدفوع مقدماً» instead of chasing them.
+                fp = future_paid.get((it["member_id"], it.get("activity_id", "")))
+                if fp and fp[0] > (it.get("end_date") or ""):
+                    it["prepaid"] = True
+                    it["prepaid_start"] = fp[0]
+                    it["prepaid_end"] = fp[1]
                 sched = it.get("schedule") or ""
                 days = _parse_sched_days(sched) if sched else []
                 dpw = len(days) or len(it.get("training_days") or []) or len(it.get("day_times") or {})
