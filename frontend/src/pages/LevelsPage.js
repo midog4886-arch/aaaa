@@ -2907,7 +2907,7 @@ ${slotTables}
               <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
                 <CardContent className="p-4 text-center">
                   <Users className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                  <div className="text-2xl font-bold text-green-700">{levels.reduce((sum, l) => sum + (l.members || []).length, 0)}</div>
+                  <div className="text-2xl font-bold text-green-700">{levels.reduce((sum, l) => sum + getFilteredLevelForDay(l).members.length, 0)}</div>
                   <div className="text-xs text-green-600">{t('إجمالي اللاعبين', 'Total Players')}</div>
                 </CardContent>
               </Card>
@@ -2922,7 +2922,7 @@ ${slotTables}
                 <CardContent className="p-4 text-center">
                   <BarChart3 className="w-8 h-8 text-purple-600 mx-auto mb-2" />
                   <div className="text-2xl font-bold text-purple-700">
-                    {levels.length > 0 ? Math.round(levels.reduce((sum, l) => sum + ((l.members || []).length / (l.capacity || 1)) * 100, 0) / levels.length) : 0}%
+                    {levels.length > 0 ? Math.round(levels.reduce((sum, l) => sum + (getFilteredLevelForDay(l).members.length / (l.capacity || 1)) * 100, 0) / levels.length) : 0}%
                   </div>
                   <div className="text-xs text-purple-600">{t('نسبة الامتلاء', 'Occupancy Rate')}</div>
                 </CardContent>
@@ -2934,7 +2934,7 @@ ${slotTables}
               {visibleWeekdays.map((day) => {
                 const dayMembers = levels.reduce((sum, l) => {
                   if (!levelMatchesDay(l, day.id)) return sum;
-                  const filtered = (l.members_details || []).filter(m => memberMatchesDay(m, day.id));
+                  const filtered = (l.members_details || []).filter(m => m.has_active_sub !== false && memberMatchesDay(m, day.id));
                   return sum + filtered.length;
                 }, 0);
                 return (
