@@ -82,6 +82,7 @@ class InvoiceCreate(BaseModel):
     customer_phone: Optional[str] = ""
     customer_address: Optional[str] = ""
     branch_id: Optional[str] = None
+    is_renewal: Optional[bool] = False
 
 class Invoice(BaseModel):
     id: str
@@ -98,6 +99,7 @@ class Invoice(BaseModel):
     payment_method: str
     payment_split: Optional[Dict[str, float]] = None
     notes: Optional[str] = ""
+    is_renewal: Optional[bool] = False
     branch_id: Optional[str] = None
     branch_name: Optional[str] = ""
     created_at: str
@@ -449,6 +451,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "payment_method": payment_method,
         "payment_split": payment_split,
         "notes": invoice.notes,
+        "is_renewal": bool(invoice.is_renewal),
         "branch_id": branch_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "paid_at": None,

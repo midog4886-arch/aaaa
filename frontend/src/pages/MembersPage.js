@@ -1599,6 +1599,7 @@ export const MembersPage = () => {
         discount_code: renewalAppliedCoupon?.code || null,
         status: 'paid',
         payment_method: renewalForm.payment_method,
+        is_renewal: true,
         notes: renewalForm.notes || `تجديد اشتراك ${newActivityName}`
       };
       

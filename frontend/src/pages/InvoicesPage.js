@@ -400,11 +400,26 @@ export const InvoicesPage = () => {
                             <div className="text-xs text-muted-foreground">{inv.customer_phone}</div>
                           </td>
                           <td className="p-3 font-semibold">{inv.total?.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</td>
-                          <td className="p-3">{getStatusBadge(inv.status)}</td>
-                          <td className="p-3 text-xs text-muted-foreground">
-                            {new Date(inv.created_at).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US')}
+                          <td className="p-3">
+                            <div className="flex flex-col items-start gap-1">
+                              {getStatusBadge(inv.status)}
+                              {(inv.is_renewal || (inv.notes || '').includes('تجديد')) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-100 text-purple-700" data-testid={`inv-row-renewal-${inv.invoice_number}`}>
+                                  <RotateCcw className="w-3 h-3" />
+                                  {language === 'ar' ? 'تجديد' : 'Renewal'}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">
+                            <span className="block font-medium text-foreground/80" dir="ltr" data-testid={`inv-row-date-${inv.invoice_number}`}>
+                              {new Date(inv.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Riyadh' })}
+                            </span>
                             <span className="block text-[11px]" dir="ltr" data-testid={`inv-row-time-${inv.invoice_number}`}>
-                              {new Date(inv.created_at).toLocaleTimeString(language === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' })}
+                              {(() => {
+                                const t = new Date(inv.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Riyadh' });
+                                return language === 'ar' ? t.replace(/am/i, 'ص').replace(/pm/i, 'م') : t.toUpperCase();
+                              })()}
                             </span>
                           </td>
                           <td className="p-3">

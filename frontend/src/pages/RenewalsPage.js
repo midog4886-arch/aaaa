@@ -686,6 +686,7 @@ const RenewalsPage = () => {
       }],
       subtotal: fee, vat, total, discount: 0,
       status: 'paid', payment_method: 'card',
+      is_renewal: true,
       notes: language === 'ar' ? `تجديد جماعي - ${item.activity_name}` : `Bulk renewal - ${item.activity_name}`,
     };
     const invRes = await invoicesAPI.create(invoiceData);
@@ -899,6 +900,7 @@ const RenewalsPage = () => {
         discount_code: appliedCoupon?.code || null,
         status: 'paid',
         payment_method: renewalForm.payment_method,
+        is_renewal: true,
         notes: renewalForm.notes || `تجديد اشتراك ${newActivityName}`
       };
 
