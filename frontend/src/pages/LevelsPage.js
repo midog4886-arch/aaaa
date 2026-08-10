@@ -61,6 +61,20 @@ const matchesGroup = (activityName, groupId) => {
   const name = (activityName || '').toLowerCase();
   return g.keywords.some(k => name.includes(k));
 };
+// Unified matching rule (same as the manage-members dialog): trust the actual
+// level link (level_id) FIRST, then fall back to keyword name matching —
+// custom-prefix levels (e.g. "سباحه سيدات") don't always keyword-match legacy
+// subscription names, which made filtered lists lose those members.
+const activityMatchesGroup = (act, groupId, levelsList) => {
+  if (!groupId) return true;
+  // Authoritative link FIRST: if the activity is linked to a level, that
+  // level's activity decides the group — the name is only a fallback.
+  if (act?.level_id && Array.isArray(levelsList)) {
+    const lvl = levelsList.find(l => l.id === act.level_id);
+    if (lvl) return matchesGroup(lvl.activity_name, groupId) || matchesGroup(act?.activity_name, groupId);
+  }
+  return matchesGroup(act?.activity_name, groupId);
+};
 
 // Time slots
 const TIME_SLOTS = ['الساعة 3', 'الساعة 4', 'الساعة 5', 'الساعة 6', 'الساعة 7', 'الساعة 8'];
@@ -444,7 +458,7 @@ export const LevelsPage = () => {
             const isRecent = !!recentlyAssigned[_recentKey(m.id, a)];
             if (isRecent) return false;
           }
-          if (unassignedActivityFilter && !matchesGroup(a.activity_name, unassignedActivityFilter)) return false;
+          if (unassignedActivityFilter && !activityMatchesGroup(a, unassignedActivityFilter, levels)) return false;
           return true;
         });
         return { ...m, unassigned_activities: acts };
@@ -514,10 +528,21 @@ export const LevelsPage = () => {
     const branchOk = (l) =>
       !memberBranch || !l.branch_id || l.branch_id === memberBranch;
 
+    // 0) Authoritative link first (same rule as the manage-members dialog):
+    // a level the activity is already linked to is always a valid candidate,
+    // even when custom-prefix names don't match any convention.
+    const linkedLevel = levels.find(l => l.id === assignTarget.activity?.level_id) || null;
+    const withLinked = (list) => {
+      if (linkedLevel && branchOk(linkedLevel) && !list.some(l => l.id === linkedLevel.id)) {
+        return [linkedLevel, ...list];
+      }
+      return list;
+    };
+
     // 1) Exact activity_name match (preferred, schedule-aware).
     const exact = levels.filter(l => branchOk(l) && (l.activity_name || '') === actName);
     if (exact.length > 0) {
-      return exact.slice().sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
+      return withLinked(exact.slice().sort((a, b) => (a.level_number || 0) - (b.level_number || 0)));
     }
 
     // 2) Fallback: same activity group AND, when both have a schedule/time
@@ -562,7 +587,7 @@ export const LevelsPage = () => {
       }
       return commonHour;
     };
-    return levels
+    return withLinked(levels
       .filter(l => {
         if (!branchOk(l)) return false;
         const ln = l.activity_name || '';
@@ -571,6 +596,15 @@ export const LevelsPage = () => {
           if (g.keywords.some(k => actName.includes(k)) && g.keywords.some(k => ln.includes(k))) {
             groupMatch = true; break;
           }
+        }
+        if (!groupMatch) {
+          // Custom-prefix activities (e.g. "سباحه سيدات" or a fully custom
+          // sport) don't hit the built-in keyword groups; match by main-name
+          // containment (text before " - ") so their levels stay reachable.
+          const mainOf = (n) => String(n || '').split(' - ')[0].trim();
+          const lm = mainOf(ln);
+          const am = mainOf(actName);
+          if (lm && am && (lm === am || am.includes(lm) || lm.includes(am))) groupMatch = true;
         }
         if (!groupMatch) return false;
         // The level matches when the member's hour on at least one of the
@@ -586,7 +620,7 @@ export const LevelsPage = () => {
         }
         return true;
       })
-      .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
+      .sort((a, b) => (a.level_number || 0) - (b.level_number || 0)));
   }, [assignTarget, levels]);
 
   // Free manual placement: ALL levels in the member's branch, no schedule/hour/
@@ -2145,7 +2179,7 @@ ${slotTables}
     if (!filterActivity && !filterTime) return true;
     const activeActs = (m.activities || []).filter(isActivityNonExpired);
     return activeActs.some(a => {
-      const actMatch = !filterActivity || matchesGroup(a.activity_name, filterActivity);
+      const actMatch = !filterActivity || activityMatchesGroup(a, filterActivity, levels);
       const timeMatch = !filterTime || (a.schedule || '') === filterTime;
       return actMatch && timeMatch;
     });
@@ -3904,7 +3938,7 @@ ${slotTables}
                             </div>
                             <div className="mt-2 space-y-1.5">
                               {(member.unassigned_activities || [])
-                                .filter(a => !unassignedActivityFilter || matchesGroup(a.activity_name, unassignedActivityFilter))
+                                .filter(a => !unassignedActivityFilter || activityMatchesGroup(a, unassignedActivityFilter, levels))
                                 .map((act, idx) => {
                                   const rowKey = _recentKey(member.id, act);
                                   const recentEntry = recentlyAssigned[rowKey];

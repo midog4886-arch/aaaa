@@ -1821,9 +1821,22 @@ async def auto_assign_members_to_levels(
             l_aname = (lvl.get("activity_name") or "").strip().lower()
             activity_match = 0
             if aid and l_aid and l_aid == aid:
-                activity_match = 2
+                activity_match = 3
             elif aname_l and l_aname and l_aname == aname_l:
-                activity_match = 1
+                activity_match = 2
+            elif aname_l and l_aname:
+                # Custom-prefix levels: the level name usually carries a
+                # " - <slot>" suffix the member's subscription name lacks
+                # (e.g. level "سباحه سيدات - الساعة 5" vs subscription
+                # "سباحه سيدات"). Match on the main prefix so a custom
+                # subscription prefers ITS level over an unrelated level that
+                # merely shares the same (branch, day, hour).
+                l_main = l_aname.split(" - ")[0].strip()
+                a_main = aname_l.split(" - ")[0].strip()
+                if l_main and a_main and (
+                    l_main == a_main or a_main in l_main or l_main in a_main
+                ):
+                    activity_match = 1
             return (-activity_match, lvl.get("level_number") or 999)
         candidates = sorted(levels, key=_rank)
 
