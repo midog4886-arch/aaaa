@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import api from '../services/api';
+import api, { branchesAPI } from '../services/api';
 import {
   BookOpen, Calendar, ChevronLeft, ChevronRight, Plus, Trash2,
   TrendingUp, TrendingDown, Wallet, Receipt, ArrowDownCircle,
@@ -48,7 +48,7 @@ const hiddenValue = '****';
 
 export const DailyLedgerPage = () => {
   const { language } = useLanguage();
-  const { selectedBranchId } = useAuth();
+  const { selectedBranchId, isAdmin } = useAuth();
   const isAr = language === 'ar';
 
   const today = new Date();
@@ -66,6 +66,22 @@ export const DailyLedgerPage = () => {
   const [editingExpense, setEditingExpense] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+
+  const [branches, setBranches] = useState([]);
+  const [branchFilter, setBranchFilter] = useState(selectedBranchId || 'all');
+
+  // Keep page-level branch filter in sync with the global branch switcher.
+  useEffect(() => {
+    setBranchFilter(selectedBranchId || 'all');
+  }, [selectedBranchId]);
+
+  // Admins only: load branch list for the page filter.
+  useEffect(() => {
+    if (!isAdmin) return;
+    branchesAPI.getAll()
+      .then(res => setBranches(res.data || []))
+      .catch(() => setBranches([]));
+  }, [isAdmin]);
 
   const [statsUnlocked, setStatsUnlocked] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -91,8 +107,8 @@ export const DailyLedgerPage = () => {
     try {
       setLoading(true);
       const [summaryRes, comparisonRes] = await Promise.all([
-        api.dailyLedger.getSummary(selectedDate, selectedBranchId),
-        api.dailyLedger.getComparison(selectedDate, selectedBranchId)
+        api.dailyLedger.getSummary(selectedDate, branchFilter),
+        api.dailyLedger.getComparison(selectedDate, branchFilter)
       ]);
       setSummary(summaryRes.data);
       setComparison(comparisonRes.data);
@@ -101,19 +117,19 @@ export const DailyLedgerPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, selectedBranchId]);
+  }, [selectedDate, branchFilter]);
 
   const loadCalendar = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.dailyLedger.getCalendar(calendarMonth, selectedBranchId);
+      const res = await api.dailyLedger.getCalendar(calendarMonth, branchFilter);
       setCalendarData(res.data);
     } catch (err) {
       console.error('Error loading calendar:', err);
     } finally {
       setLoading(false);
     }
-  }, [calendarMonth, selectedBranchId]);
+  }, [calendarMonth, branchFilter]);
 
   useEffect(() => {
     if (viewMode === 'daily') loadDailySummary();
@@ -288,6 +304,21 @@ export const DailyLedgerPage = () => {
             <h1 className="text-2xl font-bold">{isAr ? 'اليومية المالية' : 'Daily Financial Ledger'}</h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin && (
+              <Select value={branchFilter} onValueChange={setBranchFilter}>
+                <SelectTrigger className="w-[160px] h-9" data-testid="ledger-branch-filter">
+                  <SelectValue placeholder={isAr ? 'الفرع' : 'Branch'} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{isAr ? 'كل الفروع' : 'All Branches'}</SelectItem>
+                  {branches.map(branch => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {isAr ? (branch.name_ar || branch.name) : (branch.name || branch.name_ar)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant={viewMode === 'daily' ? 'default' : 'outline'}
               size="sm"
