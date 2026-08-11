@@ -233,6 +233,7 @@ export const MembersPage = () => {
   const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
   const [memberTournaments, setMemberTournaments] = useState([]);
   const [memberFreezes, setMemberFreezes] = useState([]);
+  const [memberAuditLog, setMemberAuditLog] = useState([]);
   const [memberFreezeStats, setMemberFreezeStats] = useState(null);
   const [freezeLoading, setFreezeLoading] = useState(false);
   const [appliedClosures, setAppliedClosures] = useState([]);
@@ -1262,6 +1263,11 @@ export const MembersPage = () => {
       setMemberFreezes(freezesRes.data);
       setMemberFreezeStats(statsRes.data);
     } catch (e) {}
+    try {
+      setMemberAuditLog([]);
+      const auditRes = await membersAPI.getSubscriptionAudit(member.id);
+      setMemberAuditLog(Array.isArray(auditRes.data) ? auditRes.data : []);
+    } catch (e) { setMemberAuditLog([]); }
   };
 
   const closeDialog = () => {
@@ -3642,6 +3648,81 @@ export const MembersPage = () => {
                         {t('no_data')}
                       </div>
                     )}
+
+                    {/* Immutable subscription edit history (append-only audit log) */}
+                    <div className="mt-6 border-t pt-4" data-testid="member-subscription-audit">
+                      <h4 className="font-semibold flex items-center gap-2 mb-3 text-sm">
+                        <History className="w-4 h-4 text-primary" />
+                        {language === 'ar' ? 'سجل التعديلات (غير قابل للمسح)' : 'Edit History (permanent)'}
+                      </h4>
+                      {memberAuditLog.length > 0 ? (
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {memberAuditLog.map((log) => {
+                            const ACTION_LABELS = {
+                              'subscription.add': language === 'ar' ? 'إضافة نشاط' : 'Activity added',
+                              'subscription.update': language === 'ar' ? 'تعديل نشاط' : 'Activity edited',
+                              'subscription.delete': language === 'ar' ? 'حذف نشاط' : 'Activity deleted',
+                              'member.update': language === 'ar' ? 'تعديل بيانات العضو' : 'Member data edited',
+                              'member.transfer': language === 'ar' ? 'نقل فرع' : 'Branch transfer',
+                              'day_extension.manual': language === 'ar' ? 'تمديد أيام' : 'Days extension',
+                            };
+                            const FIELD_LABELS = {
+                              start_date: language === 'ar' ? 'تاريخ البداية' : 'Start date',
+                              end_date: language === 'ar' ? 'تاريخ النهاية' : 'End date',
+                              fee: language === 'ar' ? 'الرسوم' : 'Fee',
+                              status: language === 'ar' ? 'الحالة' : 'Status',
+                              schedule: language === 'ar' ? 'الموعد' : 'Schedule',
+                              training_days: language === 'ar' ? 'أيام التدريب' : 'Training days',
+                              training_time: language === 'ar' ? 'وقت التدريب' : 'Training time',
+                              activity_name: language === 'ar' ? 'النشاط' : 'Activity',
+                              day_times: language === 'ar' ? 'مواعيد الأيام' : 'Day times',
+                              level_id: language === 'ar' ? 'المستوى' : 'Level',
+                              coach_id: language === 'ar' ? 'المدرب' : 'Coach',
+                            };
+                            const fmtVal = (v) => {
+                              if (v === null || v === undefined || v === '') return '—';
+                              if (Array.isArray(v)) return v.join('، ');
+                              if (typeof v === 'object') return JSON.stringify(v);
+                              return String(v);
+                            };
+                            const diffEntries = Object.entries(log.diff || {}).filter(([k]) => FIELD_LABELS[k]);
+                            const when = (log.created_at || '').replace('T', ' ').substring(0, 16);
+                            const isDelete = log.action === 'subscription.delete';
+                            const isAdd = log.action === 'subscription.add';
+                            return (
+                              <div key={log.id} className={`rounded-lg border p-2.5 text-xs ${isDelete ? 'border-red-200 bg-red-50/50' : isAdd ? 'border-green-200 bg-green-50/50' : 'border-slate-200 bg-slate-50/50'}`}>
+                                <div className="flex items-center justify-between flex-wrap gap-1">
+                                  <span className="font-semibold">
+                                    {ACTION_LABELS[log.action] || log.action}
+                                    {log.entity_name ? ` — ${log.entity_name}` : ''}
+                                  </span>
+                                  <span className="text-muted-foreground" dir="ltr">{when}</span>
+                                </div>
+                                <div className="text-muted-foreground mt-0.5">
+                                  {(language === 'ar' ? 'بواسطة: ' : 'By: ') + (log.actor_username || '—')}
+                                </div>
+                                {diffEntries.length > 0 && (
+                                  <div className="mt-1.5 space-y-0.5">
+                                    {diffEntries.map(([field, ch]) => (
+                                      <div key={field} className="flex flex-wrap items-center gap-1">
+                                        <span className="font-medium">{FIELD_LABELS[field]}:</span>
+                                        <span className="line-through text-red-600/80">{fmtVal(ch.before)}</span>
+                                        <span>←</span>
+                                        <span className="text-green-700 font-medium">{fmtVal(ch.after)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-muted-foreground text-xs">
+                          {language === 'ar' ? 'لا توجد تعديلات مسجلة بعد — سيتم تسجيل أي تعديل قادم تلقائياً' : 'No recorded edits yet — future edits are logged automatically'}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

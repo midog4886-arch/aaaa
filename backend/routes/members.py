@@ -777,6 +777,29 @@ async def add_member_activity(member_id: str, activity: MemberActivity, current_
     )
     return {"message": "Activity added"}
 
+@router.get("/{member_id}/subscription-audit")
+async def get_member_subscription_audit(member_id: str, current_user: dict = Depends(get_current_user)):
+    """Read-only edit history of a member's subscriptions (audit trail).
+
+    Entries come from the append-only audit log — there is no delete
+    endpoint, so the history cannot be erased from the UI.
+    """
+    member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0, "id": 1})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    import re as _re
+    logs = await db.audit_logs.find(
+        {
+            "entity_type": {"$in": ["member", "member_activity"]},
+            # subscription.* entries store entity_id as "<member_id>:<activity_id>"
+            "entity_id": {"$regex": f"^{_re.escape(member_id)}(:|$)"},
+            "action": {"$regex": "^(subscription\\.|member\\.update|member\\.transfer|day_extension\\.)"},
+        },
+        {"_id": 0},
+    ).sort("created_at", -1).limit(200).to_list(200)
+    return logs
+
+
 _PROFILE_CHANGE_FIELD_MAP = {
     "name": "name_ar",
     "phone": "phone",
