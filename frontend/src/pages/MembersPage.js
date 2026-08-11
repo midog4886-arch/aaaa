@@ -908,7 +908,7 @@ export const MembersPage = () => {
             .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
             .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
             .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
-            .logo-card img { max-width: 100%; max-height: 55%; object-fit: contain; }
+            .logo-card img { width: 92%; max-width: 92%; max-height: 78%; object-fit: contain; }
             .logo-card .lost-card-notice { font-size: 7pt; color: #DC2626; text-align: center; margin-top: 2mm; font-weight: 700; line-height: 1.5; background: #FEF2F2; padding: 2mm 3mm; border-radius: 2mm; border: 1.5px solid #EF4444; }
             .logo-card .contact-info { font-size: 7pt; color: #374151; text-align: center; margin-top: 2mm; font-weight: 600; line-height: 1.6; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
@@ -5416,7 +5416,7 @@ export const MembersPage = () => {
                   
                   {/* Logo Card */}
                   <div className="w-[300px] shrink-0 h-auto rounded-xl overflow-hidden shadow-lg bg-white flex flex-col items-center justify-center p-4 gap-2">
-                    <img src="/images/academy-logo.png" alt="شعار الأكاديمية" className="max-w-[80%] max-h-[55%] object-contain" />
+                    <img src="/images/academy-logo.png" alt="شعار الأكاديمية" className="max-w-[92%] max-h-[78%] object-contain" />
                     <p className="text-sm font-semibold text-gray-700">📞 {memberCardData?.branch_phone || '0566238384'}</p>
                     <div className="text-center text-xs text-red-600 font-bold bg-red-50 border border-red-300 rounded px-3 py-2">
                       ⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س

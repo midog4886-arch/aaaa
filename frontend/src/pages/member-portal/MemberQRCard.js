@@ -106,7 +106,7 @@ const buildStickerHtml = (cardData, brand) => {
       .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
       .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
       .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
-      .logo-card img { max-width: 100%; max-height: 55%; object-fit: contain; }
+      .logo-card img { width: 92%; max-width: 92%; max-height: 78%; object-fit: contain; }
       .logo-card .contact-info { font-size: 7pt; color: #374151; text-align: center; margin-top: 2mm; font-weight: 600; line-height: 1.6; }
       .logo-card .terms { text-align: right; font-size: 5.5pt; color: #374151; margin-top: 2mm; line-height: 1.6; padding: 0 2mm; }
       .logo-card .terms-title { font-weight: 700; color: #1f2937; font-size: 6.5pt; margin-bottom: 1mm; text-align: center; }
