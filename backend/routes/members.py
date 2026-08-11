@@ -782,8 +782,10 @@ async def get_member_subscription_audit(member_id: str, current_user: dict = Dep
     """Read-only edit history of a member's subscriptions (audit trail).
 
     Entries come from the append-only audit log — there is no delete
-    endpoint, so the history cannot be erased from the UI.
+    endpoint, so the history cannot be erased from the UI. Admin-only.
     """
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="هذا السجل متاح للأدمن فقط")
     member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0, "id": 1})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")

@@ -1263,11 +1263,13 @@ export const MembersPage = () => {
       setMemberFreezes(freezesRes.data);
       setMemberFreezeStats(statsRes.data);
     } catch (e) {}
-    try {
-      setMemberAuditLog([]);
-      const auditRes = await membersAPI.getSubscriptionAudit(member.id);
-      setMemberAuditLog(Array.isArray(auditRes.data) ? auditRes.data : []);
-    } catch (e) { setMemberAuditLog([]); }
+    setMemberAuditLog([]);
+    if (isAdmin) {
+      try {
+        const auditRes = await membersAPI.getSubscriptionAudit(member.id);
+        setMemberAuditLog(Array.isArray(auditRes.data) ? auditRes.data : []);
+      } catch (e) { setMemberAuditLog([]); }
+    }
   };
 
   const closeDialog = () => {
@@ -3649,7 +3651,8 @@ export const MembersPage = () => {
                       </div>
                     )}
 
-                    {/* Immutable subscription edit history (append-only audit log) */}
+                    {/* Immutable subscription edit history (append-only audit log) — admins only */}
+                    {isAdmin && (
                     <div className="mt-6 border-t pt-4" data-testid="member-subscription-audit">
                       <h4 className="font-semibold flex items-center gap-2 mb-3 text-sm">
                         <History className="w-4 h-4 text-primary" />
@@ -3723,6 +3726,7 @@ export const MembersPage = () => {
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
                 )}
 
