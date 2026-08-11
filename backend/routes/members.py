@@ -437,6 +437,8 @@ async def _create_member_core(member: MemberCreate, current_user: dict) -> Membe
 async def create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
     """Create a new member (Members page) — requires the members-create permission."""
     await require_permission(current_user, "members-create")
+    from utils.subscription_dates import validate_subscription_windows
+    validate_subscription_windows(member.activities or [])
     return await _create_member_core(member, current_user)
 
 
@@ -449,11 +451,15 @@ async def quick_create_member(member: MemberCreate, current_user: dict = Depends
     """
     if not (member.nationality or "").strip():
         raise HTTPException(status_code=422, detail="الجنسية مطلوبة")
+    from utils.subscription_dates import validate_subscription_windows
+    validate_subscription_windows(member.activities or [])
     return await _create_member_core(member, current_user)
 
 @router.put("/{member_id}", response_model=Member)
 async def update_member(member_id: str, member: MemberUpdate, current_user: dict = Depends(get_current_user)):
     """Update an existing member"""
+    from utils.subscription_dates import validate_subscription_windows
+    validate_subscription_windows(member.activities or [])
     update_data = {k: v for k, v in member.model_dump().items() if v is not None}
     # Phone privacy: callers without the 'member-phones' permission only ever
     # see masked numbers, so never let a masked value overwrite the real one.
@@ -751,6 +757,8 @@ async def add_member_activity(member_id: str, activity: MemberActivity, current_
         perms = (user_doc or {}).get("permissions") or []
         if not ("members-add-activity" in perms or "renewals" in perms):
             raise HTTPException(status_code=403, detail="تتطلب هذه العملية صلاحية 'إضافة نشاط لعضو' أو 'التجديدات'")
+    from utils.subscription_dates import validate_subscription_windows
+    validate_subscription_windows([activity])
     result = await db.members.update_one(
         _scoped_member_query(member_id, current_user),
         {"$push": {"activities": activity.model_dump()}}
@@ -1000,6 +1008,8 @@ async def reject_profile_change_request(
 @router.put("/{member_id}/activities/{activity_id}")
 async def update_member_activity(member_id: str, activity_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
     """Update a member's activity"""
+    from utils.subscription_dates import validate_subscription_windows
+    validate_subscription_windows([activity])
     scoped = _scoped_member_query(member_id, current_user)
     scoped["activities.activity_id"] = activity_id
     before_member = await db.members.find_one(scoped, {"_id": 0, "activities": 1, "name_ar": 1, "name": 1})

@@ -280,14 +280,8 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
 
     # Reject inverted subscription windows (end before start) — they corrupt
     # the member card and attendance windows downstream.
-    for item in (invoice.items or []):
-        s = (item.start_date or "").strip()
-        e = (item.end_date or "").strip()
-        if s and e and e < s:
-            raise HTTPException(
-                status_code=422,
-                detail=f"تاريخ نهاية الاشتراك ({e}) قبل تاريخ البداية ({s}) في «{item.activity_name}» — صحّح التواريخ",
-            )
+    from utils.subscription_dates import validate_invoice_payload_windows
+    validate_invoice_payload_windows(invoice)
 
     # Get supervisor name
     user_doc = await db.users.find_one({"id": current_user["user_id"]}, {"_id": 0})

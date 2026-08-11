@@ -1567,6 +1567,10 @@ async def create_registration_form(
             continue
     next_reg = max(max_reg + 1, reg_seq_start)
     form_number = f"REG-{next_reg:05d}"
+
+    # Reject inverted subscription windows (end before start).
+    from utils.subscription_dates import validate_invoice_payload_windows
+    validate_invoice_payload_windows(form)
     
     form_doc = {
         "id": str(uuid.uuid4()),
@@ -1817,7 +1821,11 @@ async def update_registration_form(form_id: str, form_data: RegistrationFormCrea
     
     if existing["status"] == "converted":
         raise HTTPException(status_code=400, detail="Cannot edit converted form")
-    
+
+    # Reject inverted subscription windows (end before start).
+    from utils.subscription_dates import validate_invoice_payload_windows
+    validate_invoice_payload_windows(form_data)
+
     update_data = {
         "customer_name": form_data.customer_name,
         "customer_phone": form_data.customer_phone,
@@ -1849,6 +1857,11 @@ async def convert_registration_form(form_id: str, current_user: dict = Depends(g
     
     if form["status"] == "converted":
         raise HTTPException(status_code=400, detail="Form already converted to invoice")
+
+    # Defensive: legacy forms may hold inverted windows — block them from
+    # becoming an invoice (end before start corrupts card/attendance).
+    from utils.subscription_dates import validate_invoice_payload_windows
+    validate_invoice_payload_windows(form)
 
     # Carry the member link from the form to the invoice. A subscription
     # (activity) invoice must be linked to a member record — otherwise the
@@ -2376,7 +2389,11 @@ async def update_invoice(invoice_id: str, invoice: InvoiceCreate, current_user: 
     
     if existing["status"] != "pending":
         raise HTTPException(status_code=400, detail="Can only edit pending invoices")
-    
+
+    # Reject inverted subscription windows (end before start).
+    from utils.subscription_dates import validate_invoice_payload_windows
+    validate_invoice_payload_windows(invoice)
+
     # Calculate totals (fee * quantity, matching the create path)
     subtotal = sum(item.fee * (getattr(item, "quantity", None) or 1) for item in invoice.items)
     discount = invoice.discount
