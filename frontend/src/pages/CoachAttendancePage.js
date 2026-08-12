@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
+import { useNavigate } from 'react-router-dom';
 import { 
   Clock, LogIn, LogOut, UserX, Calendar, ChevronLeft, ChevronRight,
   FileText, Download, Edit2, Trash2, Save, X, AlertCircle, CheckCircle,
   Users, Timer, CalendarDays, UserPlus, Phone, Mail, QrCode, Printer,
   FileSpreadsheet, TrendingUp, Award, AlarmClock, List, Camera,
-  ArrowRightLeft, UserMinus, Archive, ClipboardList
+  ArrowRightLeft, UserMinus, Archive, ClipboardList, Wallet
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import axios from 'axios';
@@ -40,6 +41,7 @@ const computeNoteAverages = (notes) => {
 
 const CoachAttendancePage = () => {
   const { user, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const canViewNotes = isAdmin || (user?.permissions || []).includes('coach-notes');
   const [coaches, setCoaches] = useState([]);
   const [records, setRecords] = useState([]);
@@ -1177,6 +1179,17 @@ const CoachAttendancePage = () => {
               <FileText className="w-4 h-4 inline ml-1" />
               الملابس
             </button>
+            {(isAdmin || (user?.permissions || []).includes('salaries')) && (
+              <button
+                onClick={() => navigate('/admin/coach-salaries')}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-emerald-500 text-white hover:bg-emerald-600"
+                data-testid="salary-report-btn"
+                title="فتح صفحة الرواتب وتقرير الرواتب"
+              >
+                <Wallet className="w-4 h-4 inline ml-1" />
+                تقرير الرواتب
+              </button>
+            )}
           </div>
         </div>
 
