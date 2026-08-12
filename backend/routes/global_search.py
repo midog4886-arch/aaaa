@@ -77,7 +77,7 @@ async def global_search(
     }
     invoices_raw = await db.invoices.find(
         invoice_query,
-        {"_id": 0, "id": 1, "invoice_number": 1, "member_name": 1, "total": 1, "status": 1},
+        {"_id": 0, "id": 1, "invoice_number": 1, "member_name": 1, "total": 1, "status": 1, "created_at": 1},
     ).limit(10).to_list(10)
     invoices = [
         {
@@ -86,6 +86,7 @@ async def global_search(
             "member_name": i.get("member_name") or "",
             "total": i.get("total") or 0,
             "status": i.get("status") or "pending",
+            "created_at": i.get("created_at") or "",
         }
         for i in invoices_raw
     ]
