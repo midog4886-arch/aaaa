@@ -241,6 +241,9 @@ const GlobalSearch = () => {
                         <p className="text-sm font-medium truncate">#{inv.invoice_number} - {inv.member_name}</p>
                         <p className="text-xs text-muted-foreground">
                           {inv.total?.toLocaleString()} {language === 'ar' ? 'ر.س' : 'SAR'}
+                          {inv.created_at && (
+                            <span className="text-gray-400"> • {new Date(inv.created_at).toLocaleDateString('en-GB')}</span>
+                          )}
                         </p>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded ${
