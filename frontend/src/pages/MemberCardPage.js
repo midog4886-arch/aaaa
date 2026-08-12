@@ -166,8 +166,8 @@ const MemberCardPage = () => {
             .activity-status { font-size: 5.5pt; font-weight: 700; }
             .activity-item.active .activity-status { color: #059669; }
             .activity-item.expired .activity-status { color: #DC2626; }
-            .logo-card { width: 60mm; height: 95mm; background: linear-gradient(180deg,#FFFFFF,#FFF7ED); border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5mm 4mm; gap: 3mm; }
-            .logo-card img { width: 95%; max-width: 95%; max-height: 78%; object-fit: contain; }
+            .logo-card { width: 60mm; height: 95mm; background: linear-gradient(180deg,#FFFFFF,#FFF7ED); border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2mm 1mm; gap: 2mm; }
+            .logo-card img { width: 100%; max-width: 100%; max-height: 85%; object-fit: contain; }
             .logo-card .contact-block { display: flex; flex-direction: column; gap: 1.5mm; align-items: center; width: 100%; }
             .logo-card .contact-row { font-size: 9pt; color: #111827; text-align: center; font-weight: 800; line-height: 1.3; direction: ltr; }
             .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
