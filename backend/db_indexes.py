@@ -106,6 +106,10 @@ INDEXES = {
     "discounts": [
         ([("branch_id", 1)], {}),
     ],
+    "audit_logs": [
+        ([("member_id", 1), ("created_at", -1)], {}),
+        ([("entity_type", 1), ("action", 1)], {}),
+    ],
 }
 
 

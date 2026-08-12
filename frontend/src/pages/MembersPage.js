@@ -2220,6 +2220,15 @@ export const MembersPage = () => {
                                   <Crown className="w-3 h-3" /> VIP
                                 </span>
                               )}
+                              {isAdmin && member.has_edits && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-300 rounded px-1.5 py-0.5"
+                                  data-testid={`edited-badge-${member.id}`}
+                                  title={language === 'ar' ? 'تم تعديل بيانات/اشتراك هذا العضو — راجع سجل التعديلات' : 'This member has recorded edits — see the audit log'}
+                                >
+                                  <History className="w-3 h-3" /> {language === 'ar' ? 'مُعدَّل' : 'Edited'}
+                                </span>
+                              )}
                             </div>
                             {(member.guardian_name_ar || member.guardian_name) && (
                               <div className="text-xs text-gray-500">{language === 'ar' ? member.guardian_name_ar : member.guardian_name}</div>

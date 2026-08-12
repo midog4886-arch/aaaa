@@ -323,7 +323,27 @@ async def get_members(
 
     can_view_phones = await _can_view_member_phones(current_user)
 
+    # Admin-only: flag members that have recorded subscription/profile edits
+    # in the append-only audit log (entity_id may be "<mid>" or "<mid>:<aid>").
+    edited_ids = set()
+    if current_user.get("is_admin", False) and members:
+        try:
+            member_ids = [m.get("id") for m in members if m.get("id")]
+            edited_ids = set(await db.audit_logs.distinct(
+                "member_id",
+                {
+                    "member_id": {"$in": member_ids},
+                    "action": {"$regex": "^(subscription\\.|member\\.update|member\\.transfer|day_extension\\.)"},
+                },
+            ))
+        except Exception:
+            import logging
+            logging.getLogger("members").warning("has_edits audit enrichment failed", exc_info=True)
+            edited_ids = set()
+
     for member in members:
+        if current_user.get("is_admin", False):
+            member["has_edits"] = member.get("id") in edited_ids
         member.setdefault("age", 0)
         member.setdefault("guardian_name", "")
         member.setdefault("guardian_name_ar", "")
@@ -789,12 +809,10 @@ async def get_member_subscription_audit(member_id: str, current_user: dict = Dep
     member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0, "id": 1})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
-    import re as _re
     logs = await db.audit_logs.find(
         {
-            "entity_type": {"$in": ["member", "member_activity"]},
-            # subscription.* entries store entity_id as "<member_id>:<activity_id>"
-            "entity_id": {"$regex": f"^{_re.escape(member_id)}(:|$)"},
+            # normalized indexed linkage (see utils/audit.py + backfill)
+            "member_id": member_id,
             "action": {"$regex": "^(subscription\\.|member\\.update|member\\.transfer|day_extension\\.)"},
         },
         {"_id": 0},

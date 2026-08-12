@@ -312,3 +312,6 @@ frontend/node_modules/.cache/default-development/1.pack_
 # Environment files
 *.env
 *.env.*
+
+# Database backups (contain PII) — never version
+backend/backups/

@@ -81,6 +81,10 @@ async def log_audit(
             "extra": _shorten(extra or {}),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Normalized member linkage for fast, indexed lookups — subscription
+        # entries store entity_id as "<member_id>:<activity_id>".
+        if entity_type in ("member", "member_activity") and entity_id:
+            doc["member_id"] = entity_id.split(":", 1)[0]
         await db.audit_logs.insert_one(doc)
     except Exception as e:  # pragma: no cover — best-effort
         logger.warning("audit log failed for %s: %s", action, e)
