@@ -86,6 +86,7 @@ export const MembersPage = () => {
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterEditedOnly, setFilterEditedOnly] = useState(false); // admin-only: members with audited edits
   const [filterSchedule, setFilterSchedule] = useState('');
   const [filterNationality, setFilterNationality] = useState('all');
   const [filterVIP, setFilterVIP] = useState('all');
@@ -1862,8 +1863,10 @@ export const MembersPage = () => {
 
     const matchesVIP = filterVIP === 'all' ||
       (filterVIP === 'vip' ? !!member.is_vip : !member.is_vip);
-    
-    return matchesSearch && matchesActivity && matchesStatus && matchesSchedule && matchesNationality && matchesVIP;
+
+    const matchesEdited = !filterEditedOnly || !!member.has_edits;
+
+    return matchesSearch && matchesActivity && matchesStatus && matchesSchedule && matchesNationality && matchesVIP && matchesEdited;
   });
 
   const uniqueNationalities = [...new Set(
@@ -1994,6 +1997,18 @@ export const MembersPage = () => {
                 {language === 'ar' ? 'منتهي' : 'Expired'}
               </button>
             </div>
+
+            {isAdmin && (
+              <button
+                onClick={() => setFilterEditedOnly(v => !v)}
+                data-testid="filter-edited-only"
+                title={language === 'ar' ? 'عرض الأعضاء الذين تم تعديل بياناتهم فقط' : 'Show only members with edited data'}
+                className={`h-8 px-3 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1 ${filterEditedOnly ? 'bg-violet-600 text-white border-violet-600' : 'text-violet-700 border-violet-300 hover:bg-violet-50'}`}
+              >
+                <History className="w-3 h-3" />
+                {language === 'ar' ? 'المعدَّلون فقط' : 'Edited only'}
+              </button>
+            )}
 
             {/* Schedule Combobox */}
             <Popover open={schedulePopoverOpen} onOpenChange={setSchedulePopoverOpen}>
