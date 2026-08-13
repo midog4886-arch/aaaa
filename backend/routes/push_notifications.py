@@ -898,6 +898,26 @@ async def send_push_to_admins(payload: NotificationPayload, branch_id: Optional[
         return {"total": 0, "success": 0, "failed": 0}
 
 
+async def expand_family_member_ids(member_id: str) -> List[str]:
+    """Return the member id plus every linked family member id (members
+    sharing the same guardian phone — the portal's family-linkage rule).
+
+    A guardian's device subscribes under whichever family member they logged
+    in as, so pushes about ONE child must target the subscriptions of ALL
+    siblings or the guardian's device is silently missed."""
+    try:
+        m = await db.members.find_one({"id": member_id}, {"_id": 0, "phone": 1})
+        phone = ((m or {}).get("phone") or "").strip()
+        if not phone:
+            return [member_id]
+        sibs = await db.members.find({"phone": phone}, {"_id": 0, "id": 1}).to_list(20)
+        ids = {s["id"] for s in sibs if s.get("id")}
+        ids.add(member_id)
+        return list(ids)
+    except Exception:
+        return [member_id]
+
+
 async def send_push_to_members(payload: NotificationPayload, member_ids: List[str]) -> dict:
     """Send a push notification to a specific list of member ids. Each
     recipient's saved language is honoured by ``send_push_notification``.

@@ -1010,8 +1010,11 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
         })
     
     # Get member-specific notifications (videos, loyalty, etc.)
+    # Include notifications of ALL linked family members (same guardian
+    # phone) — a guardian logged in via one child must still see the other
+    # children's attendance/etc. (mark-all-read already spans linked ids).
     member_notifs = await db.member_notifications.find(
-        {"member_id": member["id"]},
+        {"member_id": {"$in": linked_ids_list}},
         {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     

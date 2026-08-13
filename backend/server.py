@@ -7757,8 +7757,12 @@ async def _push_attendance_notice(member_id: str, member_name: str, activity_nam
             title_en="Attendance recorded ✅",
             body_en=f"{member_name}'s attendance for {activity_name} was recorded on {date_str}",
         )
+        # Target the whole family: the guardian's device may be subscribed
+        # under a sibling account (same guardian phone), not this member.
+        from routes.push_notifications import expand_family_member_ids
+        family_ids = await expand_family_member_ids(member_id)
         async with _ATTENDANCE_PUSH_SEM:
-            await push_send_to_members(payload, [member_id])
+            await push_send_to_members(payload, family_ids)
     except Exception:
         logging.getLogger(__name__).exception("attendance push notification failed")
 
@@ -8076,28 +8080,31 @@ async def record_bulk_attendance(
             }
             await db.attendance.insert_one(record_doc)
         
-        try:
-            attendance_notif = {
-                "id": str(uuid.uuid4()),
-                "member_id": rec["member_id"],
-                "type": "attendance_recorded",
-                "title_ar": "تم تسجيل حضورك",
-                "title": "Attendance Recorded",
-                "message_ar": f"تم تسجيل حضورك في {activity['name']} بنجاح - {request.date}",
-                "message": f"Your attendance for {activity.get('name', '')} has been recorded - {request.date}",
-                "link": "/member-attendance",
-                "is_read": False,
-                "created_at": now
-            }
-            await db.member_notifications.insert_one(attendance_notif)
-        except Exception:
-            pass
-        asyncio.create_task(_push_attendance_notice(
-            rec["member_id"],
-            member.get("name_ar") or member.get("name", ""),
-            activity.get("name_ar") or activity.get("name", ""),
-            request.date,
-        ))
+        # Notify guardian ONLY for a present check-in — marking a child
+        # absent must never send "attendance recorded" to the family.
+        if rec.get("status", "present") == "present":
+            try:
+                attendance_notif = {
+                    "id": str(uuid.uuid4()),
+                    "member_id": rec["member_id"],
+                    "type": "attendance_recorded",
+                    "title_ar": "تم تسجيل حضورك",
+                    "title": "Attendance Recorded",
+                    "message_ar": f"تم تسجيل حضورك في {activity['name']} بنجاح - {request.date}",
+                    "message": f"Your attendance for {activity.get('name', '')} has been recorded - {request.date}",
+                    "link": "/member-attendance",
+                    "is_read": False,
+                    "created_at": now
+                }
+                await db.member_notifications.insert_one(attendance_notif)
+            except Exception:
+                pass
+            asyncio.create_task(_push_attendance_notice(
+                rec["member_id"],
+                member.get("name_ar") or member.get("name", ""),
+                activity.get("name_ar") or activity.get("name", ""),
+                request.date,
+            ))
 
         recorded_count += 1
     

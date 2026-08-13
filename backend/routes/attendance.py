@@ -13,11 +13,14 @@ from utils.auth import resolve_branch_filter
 async def send_attendance_push(member_id: str, member_name: str, activity_name: str, check_in_time: str):
     """Send push notification to ALL member subscriptions (web + android)"""
     try:
-        from .push_notifications import send_push_notification, NotificationPayload
+        from .push_notifications import send_push_notification, NotificationPayload, expand_family_member_ids
         from utils.i18n import t
+        # Target the whole family: the guardian's device may be subscribed
+        # under a sibling account (same guardian phone), not this member.
+        family_ids = await expand_family_member_ids(member_id)
         subs = await db.push_subscriptions.find(
-            {"member_id": member_id, "is_active": True}, {"_id": 0}
-        ).to_list(10)
+            {"member_id": {"$in": family_ids}, "is_active": True}, {"_id": 0}
+        ).to_list(50)
         if not subs:
             return
         # Populate both Arabic and English variants on the payload; the
