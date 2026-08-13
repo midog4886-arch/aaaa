@@ -71,6 +71,7 @@ const ScannerStationPage = lazy(() => import('./pages/ScannerStationPage'));
 const MarketersPage = lazy(() => import('./pages/MarketersPage'));
 const MarketerPortalPage = lazy(() => import('./pages/MarketerPortalPage'));
 const LevelsBoardPage = lazy(() => import('./pages/LevelsBoardPage'));
+const BranchDisplayPage = lazy(() => import('./pages/BranchDisplayPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
 const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
@@ -520,6 +521,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute permission="attendance">
             <LevelsBoardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/branch-display"
+        element={
+          <ProtectedRoute permission="attendance">
+            <BranchDisplayPage />
           </ProtectedRoute>
         }
       />

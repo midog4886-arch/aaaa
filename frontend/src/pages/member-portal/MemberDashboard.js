@@ -498,6 +498,66 @@ const MemberDashboard = () => {
             </Card>
           </motion.div>
 
+          {/* ── Remaining sessions + renew (prominent) ── */}
+          {(() => {
+            const RENEW_WA = `https://wa.me/966566238384?text=${encodeURIComponent(
+              `السلام عليكم، أرغب بتجديد الاشتراك.\nالاسم: ${member?.name_ar || member?.name || ''}\nرقم العضوية: #${member?.member_code || ''}`
+            )}`;
+            const quotaSubs = (subscriptions.active || []).filter(s => s.sessions_total != null);
+            const hasExpired = (subscriptions.expired || []).length > 0;
+            const noActive = (subscriptions.active || []).length === 0;
+            if (!quotaSubs.length && !(hasExpired && noActive)) return null;
+            const low = quotaSubs.some(s => (s.sessions_remaining ?? 99) <= 2);
+            const urgent = (hasExpired && noActive) || low;
+            return (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }}>
+                <Card data-testid="sessions-remaining-card" className={`${urgent
+                  ? (darkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200')
+                  : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white')}`}>
+                  <CardContent className="p-4">
+                    {quotaSubs.length > 0 ? (
+                      <div className="space-y-2">
+                        {quotaSubs.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{s.activity_name}{s._owner_name ? ` — ${s._owner_name}` : ''}</p>
+                              <p className={`text-xl font-black ${((s.sessions_remaining ?? 99) <= 2) ? 'text-red-500' : (darkMode ? 'text-white' : 'text-gray-900')}`}>
+                                {language === 'ar'
+                                  ? `متبقي ${s.sessions_remaining} من ${s.sessions_total} حصة`
+                                  : `${s.sessions_remaining} of ${s.sessions_total} sessions left`}
+                              </p>
+                            </div>
+                            <div className={`h-2 flex-1 max-w-[120px] rounded-full overflow-hidden ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}>
+                              <div
+                                className={`h-full rounded-full ${((s.sessions_remaining ?? 99) <= 2) ? 'bg-red-500' : 'bg-green-500'}`}
+                                style={{ width: `${s.sessions_total ? Math.min(100, Math.round(100 * (s.sessions_remaining || 0) / s.sessions_total)) : 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className={`font-bold ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
+                        {language === 'ar' ? '⚠️ اشتراكك منتهي — جدّد الآن لمواصلة التدريب' : '⚠️ Your subscription has expired — renew to keep training'}
+                      </p>
+                    )}
+                    {(urgent || hasExpired) && (
+                      <a
+                        href={RENEW_WA}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        data-testid="renew-subscription-btn"
+                        className="mt-3 w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition-colors"
+                      >
+                        💬 {language === 'ar' ? 'تجديد الاشتراك عبر واتساب' : 'Renew via WhatsApp'}
+                      </a>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })()}
+
           {/* ── Info Cards Row: Attendance + Loyalty + Active subs count ── */}
           <div className="grid grid-cols-2 gap-4">
 

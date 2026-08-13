@@ -58,7 +58,8 @@ import {
   MapPin,
   Search,
   ScanLine,
-  KeyRound
+  KeyRound,
+  MonitorPlay
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -193,6 +194,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/activities', icon: Dumbbell, label: 'activities', permission: 'activities', feature: 'activities_levels' },
         { to: '/admin/levels', icon: Layers, label: 'levels', permission: 'levels', feature: 'activities_levels' },
         { to: '/admin/levels-board', icon: MapPin, label: 'levels_board', permission: 'attendance', feature: 'attendance' },
+        { to: '/admin/branch-display', icon: MonitorPlay, label: 'branch_display', permission: 'attendance', feature: 'attendance' },
         { to: '/admin/schedule', icon: CalendarDays, label: 'schedule', permission: 'schedule', feature: 'activities_levels' },
         { to: '/admin/coach-ratings', icon: Star, label: 'coach_ratings', permission: 'coach-ratings' },
         { to: '/admin/coach-attendance', icon: Clock, label: 'coach_attendance', permission: 'coach-attendance', feature: 'coach_attendance' },

@@ -99,6 +99,9 @@ const RenewalsPage = () => {
   const [activeTab, setActiveTab] = useState('expiring');
   const [filterActivity, setFilterActivity] = useState('all');
   const [endDateFilter, setEndDateFilter] = useState('');
+  // «متأخرات» filter: only show subscriptions expired MORE than X days ago
+  // (0 = show all expired). Applies to the expired tab only.
+  const [overdueMin, setOverdueMin] = useState('0');
   const [branches, setBranches] = useState(_hasCache && Array.isArray(_renewalsCache.branches) ? _renewalsCache.branches : []);
 
   const [isRenewalDialogOpen, setIsRenewalDialogOpen] = useState(false);
@@ -170,8 +173,12 @@ const RenewalsPage = () => {
   // Auto-prune selections when filters/tabs change so the bulk action count
   // never reflects items that are no longer visible.
   useEffect(() => {
+    // Prune against what is actually VISIBLE on the active tab (all filters
+    // applied), so the bulk-action bar count always matches actionable cards
+    // — e.g. tightening the «متأخرات» threshold drops hidden selections.
+    const baseList = activeTab === 'expiring' ? expiringList : activeTab === 'expired' ? expiredList : [];
     const visibleKeys = new Set(
-      [...expiringList, ...expiredList].map(it =>
+      filterItems(baseList).map(it =>
         `${it.member_id}|${it.activity_name || ''}|${it.end_date || ''}`
       )
     );
@@ -184,7 +191,7 @@ const RenewalsPage = () => {
       });
       return changed ? pruned : prev;
     });
-  }, [expiringList, expiredList]);
+  }, [expiringList, expiredList, activeTab, searchTerm, filterActivity, endDateFilter, overdueMin]);
 
   useEffect(() => {
     // One-time template load. Uses the renewals-scoped endpoint so users
@@ -348,6 +355,12 @@ const RenewalsPage = () => {
       filtered = filtered.filter(item => (item.end_date || '') === endDateFilter);
     }
     if (activeTab === 'expired') {
+      const minDays = parseInt(overdueMin) || 0;
+      if (minDays > 0) {
+        // days_remaining is negative for expired items; "overdue more than X
+        // days" means it ended strictly more than X days ago.
+        filtered = filtered.filter(item => item.days_remaining < -minDays);
+      }
       filtered.sort((a, b) => b.days_remaining - a.days_remaining);
     } else {
       filtered.sort((a, b) => a.days_remaining - b.days_remaining);
@@ -1242,6 +1255,22 @@ const RenewalsPage = () => {
               </button>
             )}
           </div>
+          {activeTab === 'expired' && (
+            <Select value={overdueMin} onValueChange={setOverdueMin}>
+              <SelectTrigger className="w-[190px]" data-testid="overdue-min-filter">
+                <AlertTriangle className="w-3.5 h-3.5 me-1 text-red-500" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">{language === 'ar' ? 'كل المنتهين' : 'All expired'}</SelectItem>
+                <SelectItem value="3">{language === 'ar' ? 'متأخر أكثر من 3 أيام' : 'Overdue > 3 days'}</SelectItem>
+                <SelectItem value="7">{language === 'ar' ? 'متأخر أكثر من 7 أيام' : 'Overdue > 7 days'}</SelectItem>
+                <SelectItem value="14">{language === 'ar' ? 'متأخر أكثر من 14 يوم' : 'Overdue > 14 days'}</SelectItem>
+                <SelectItem value="30">{language === 'ar' ? 'متأخر أكثر من 30 يوم' : 'Overdue > 30 days'}</SelectItem>
+                <SelectItem value="60">{language === 'ar' ? 'متأخر أكثر من 60 يوم' : 'Overdue > 60 days'}</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Button onClick={loadData} variant="outline" size="icon">
             <RefreshCcw className="w-4 h-4" />
           </Button>

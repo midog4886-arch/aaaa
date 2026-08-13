@@ -193,6 +193,24 @@ async def get_attendance(
 
     return records
 
+async def _insert_attendance_inapp_notif(member_id: str, activity_name: str, date_str: str):
+    """Persist an in-app portal notification for a recorded attendance."""
+    import uuid as _uuid
+    from datetime import timezone as _tz
+    await db.member_notifications.insert_one({
+        "id": str(_uuid.uuid4()),
+        "member_id": member_id,
+        "type": "attendance_recorded",
+        "title_ar": "تم تسجيل حضورك",
+        "title": "Attendance Recorded",
+        "message_ar": f"تم تسجيل حضورك في {activity_name} بنجاح - {date_str}",
+        "message": f"Your attendance for {activity_name} has been recorded - {date_str}",
+        "link": "/member-attendance",
+        "is_read": False,
+        "created_at": datetime.now(_tz.utc).isoformat(),
+    })
+
+
 @router.post("")
 async def create_attendance(
     attendance: AttendanceCreate,
@@ -303,7 +321,13 @@ async def create_attendance(
         await send_attendance_push(attendance.member_id, record["member_name"], activity_name, check_in_time)
     except Exception as e:
         print(f"Attendance push error: {e}")
-    
+
+    # In-app portal notification (guardian sees it in الإشعارات)
+    try:
+        await _insert_attendance_inapp_notif(attendance.member_id, activity_name, record.get("date", ""))
+    except Exception:
+        pass
+
     return {"message": "Attendance recorded", "record": {k: v for k, v in record.items() if k != "_id"}}
 
 ARABIC_DAY_MAP = {
@@ -1205,12 +1229,29 @@ async def get_levels_board(
         {**query, "date": today_str}, {"_id": 0}
     ).sort("created_at", 1).to_list(5000)
 
-    members = await db.members.find(query, {"_id": 0}).to_list(10000)
+    # Lean projection — full member docs embed base64 photos (MBs per branch)
+    # and this endpoint is polled by live boards/TV displays. Photos are
+    # backfilled below ONLY for present members whose attendance record
+    # lacks an embedded photo.
+    _member_proj = {"_id": 0, "id": 1, "status": 1, "activities": 1,
+                    "name_ar": 1, "name": 1, "member_code": 1}
+    members = await db.members.find(query, _member_proj).to_list(10000)
     active_member_ids = {
         m.get("id") for m in members
         if m.get("id") and m.get("status", "active") == "active"
     }
     members_by_id = {m.get("id"): m for m in members if m.get("id")}
+
+    _need_photo_ids = list({
+        r.get("member_id") for r in today_records
+        if r.get("member_id") and not r.get("member_photo")
+    })
+    photo_by_id = {}
+    if _need_photo_ids:
+        async for pm in db.members.find(
+            {"id": {"$in": _need_photo_ids}}, {"_id": 0, "id": 1, "photo": 1}
+        ):
+            photo_by_id[pm["id"]] = pm.get("photo", "")
 
     # Include VIP visitors from other branches: their attendance is tagged to
     # THIS branch, but the member doc lives under their home branch, so pull them
@@ -1222,7 +1263,7 @@ async def get_levels_board(
             if r.get("member_id") and r.get("member_id") not in members_by_id
         })
         if _foreign_ids:
-            async for fm in db.members.find({"id": {"$in": _foreign_ids}}, {"_id": 0}):
+            async for fm in db.members.find({"id": {"$in": _foreign_ids}}, _member_proj):
                 fid = fm.get("id")
                 if not fid:
                     continue
@@ -1310,7 +1351,7 @@ async def get_levels_board(
             "member_id": mid,
             "member_name": r.get("member_name", "") or m_doc.get("name_ar", "") or m_doc.get("name", ""),
             "member_code": r.get("member_code", "") or m_doc.get("member_code", ""),
-            "member_photo": r.get("member_photo", "") or m_doc.get("photo", ""),
+            "member_photo": r.get("member_photo", "") or photo_by_id.get(mid, ""),
             "check_in_time": r.get("check_in_time", ""),
             "activity_name": r.get("activity_name", ""),
             "off_schedule": bool(r.get("off_schedule")),
@@ -1604,6 +1645,12 @@ async def qr_checkin(
         await send_attendance_push(member["id"], record["member_name"], activity_name, check_in_time)
     except Exception as e:
         print(f"QR Attendance push error: {e}")
+
+    # In-app portal notification (guardian sees it in الإشعارات)
+    try:
+        await _insert_attendance_inapp_notif(member["id"], activity_name, record.get("date", ""))
+    except Exception:
+        pass
     
     session_quota_warning = None
     try:

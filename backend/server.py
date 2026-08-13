@@ -95,7 +95,12 @@ from routes.bank_reports import router as bank_reports_router
 from routes.advertisements import router as advertisements_router
 from routes.daily_videos import router as daily_videos_router, set_loyalty_award_function as set_videos_loyalty, set_push_notify_function
 from routes.loyalty import router as loyalty_router, set_database as set_loyalty_db, award_points as loyalty_award_points
-from routes.push_notifications import router as push_notifications_router, notify_new_video as push_notify_new_video
+from routes.push_notifications import (
+    router as push_notifications_router,
+    notify_new_video as push_notify_new_video,
+    send_push_to_members as push_send_to_members,
+    NotificationPayload as PushNotificationPayload,
+)
 from routes.messages import router as messages_router
 from routes.daily_ledger import router as daily_ledger_router
 from routes.day_extensions import router as day_extensions_router
@@ -3748,6 +3753,32 @@ async def _process_pending_ops_alerts() -> int:
     return processed
 
 
+async def _process_all_tenants_ops_alerts() -> int:
+    """Run a delivery tick under EVERY active tenant's context.
+
+    ``_emit_ops_alert`` writes into the emitting tenant's ``ops_alerts``
+    collection, so the worker must visit each tenant DB — a context-less
+    tick would only ever drain the default tenant and alerts raised for
+    other tenants (e.g. by the backup watchdog) would never be delivered.
+    """
+    from utils.tenant import list_active_tenants, set_current_tenant, reset_current_tenant
+    total = 0
+    try:
+        tenants = await list_active_tenants()
+    except Exception as e:
+        print(f"ops_alerts worker: could not list tenants: {e}")
+        return 0
+    for t in tenants:
+        token = set_current_tenant(t)
+        try:
+            total += await _process_pending_ops_alerts()
+        except Exception as e:
+            print(f"ops_alerts worker: tenant {t.get('slug')} tick failed: {e}")
+        finally:
+            reset_current_tenant(token)
+    return total
+
+
 async def ops_alerts_delivery_loop():
     """Background worker that drains ``db.ops_alerts`` for unacknowledged
     rows and attempts the outbound transports with exponential backoff.
@@ -3758,7 +3789,7 @@ async def ops_alerts_delivery_loop():
     print("Ops alerts delivery worker started (interval: 30s)")
     while True:
         try:
-            await _process_pending_ops_alerts()
+            await _process_all_tenants_ops_alerts()
             await asyncio.sleep(30)
         except asyncio.CancelledError:
             break
@@ -3855,8 +3886,12 @@ async def _backup_one_tenant(tenant: dict) -> dict:
         except Exception as e:
             skipped.append(f"{col_name}: {e}")
 
-    with open(filepath, 'w', encoding='utf-8') as f:
-        _json.dump(backup_data, f, ensure_ascii=False, default=str)
+    def _write_backup_file():
+        # JSON serialization of a full tenant dump is CPU/IO heavy (70MB+) —
+        # keep it off the event loop so the app stays responsive during backups.
+        with open(filepath, 'w', encoding='utf-8') as f:
+            _json.dump(backup_data, f, ensure_ascii=False, default=str)
+    await asyncio.to_thread(_write_backup_file)
 
     cols = len(backup_data["collections"])
     size_mb = filepath.stat().st_size / (1024 * 1024)
@@ -3867,21 +3902,30 @@ async def _backup_one_tenant(tenant: dict) -> dict:
     return {"file": filename, "collections": cols, "size_mb": round(size_mb, 2), "skipped": len(skipped)}
 
 
+# Serializes backup runs — the midnight scheduler and the freshness watchdog
+# could otherwise run _create_auto_backup concurrently and write the same
+# date-based filenames at the same time.
+_backup_run_lock = asyncio.Lock()
+
+
 async def _create_auto_backup():
     from utils.tenant import for_each_active_tenant
-    summary = await for_each_active_tenant(_backup_one_tenant, label="daily-backup")
-    print(f"Auto backup summary: processed={summary['processed']} succeeded={summary['succeeded']} failed={summary['failed']}")
+    async with _backup_run_lock:
+        summary = await for_each_active_tenant(_backup_one_tenant, label="daily-backup")
+        print(f"Auto backup summary: processed={summary['processed']} succeeded={summary['succeeded']} failed={summary['failed']}")
 
-    auto_backups = sorted(BACKUPS_DIR.glob("auto_backup_*.json"), key=lambda x: x.stat().st_mtime)
-    tenants_count = max(1, summary.get("processed", 1))
-    keep = tenants_count * 7
-    while len(auto_backups) > keep:
-        oldest = auto_backups.pop(0)
-        try:
-            oldest.unlink()
-            print(f"Auto backup deleted (retention limit): {oldest.name}")
-        except Exception:
-            pass
+        # Retention pruning stays inside the lock so a concurrent run can't
+        # delete files while another is still writing/counting them.
+        auto_backups = sorted(BACKUPS_DIR.glob("auto_backup_*.json"), key=lambda x: x.stat().st_mtime)
+        tenants_count = max(1, summary.get("processed", 1))
+        keep = tenants_count * 7
+        while len(auto_backups) > keep:
+            oldest = auto_backups.pop(0)
+            try:
+                oldest.unlink()
+                print(f"Auto backup deleted (retention limit): {oldest.name}")
+            except Exception:
+                pass
 
     if summary.get("failed", 0) > 0:
         await _emit_ops_alert(
@@ -3950,6 +3994,92 @@ def start_backup_scheduler():
     global _backup_scheduler_started
     if not _backup_scheduler_started:
         asyncio.ensure_future(backup_scheduler_loop())
+
+
+# ── Backup freshness watchdog ────────────────────────────────────────────────
+# The midnight scheduler can silently miss a day (server asleep/restarting at
+# midnight, task crashed, disk error) — that happened before with no alert.
+# This watchdog independently verifies every active tenant has a recent,
+# non-trivial backup file; if not it first retries the backup, and only then
+# raises an ops alert (in-app for admins + email/WhatsApp via the delivery
+# worker) inside that tenant's context.
+_BACKUP_STALE_HOURS = 26
+_BACKUP_MIN_BYTES = 1024  # anything smaller is a failed/empty dump
+_backup_watchdog_started = False
+_backup_stale_alerted_on: dict = {}  # slug -> YYYY-MM-DD of last alert (once/day)
+
+
+def _newest_backup_age_hours(slug: str, now_ts: float) -> float:
+    """Age (hours) of the newest non-trivial auto backup for a tenant; inf if none."""
+    newest = 0.0
+    for f in BACKUPS_DIR.glob(f"auto_backup_{slug}_*.json"):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        if st.st_size >= _BACKUP_MIN_BYTES and st.st_mtime > newest:
+            newest = st.st_mtime
+    return float("inf") if not newest else (now_ts - newest) / 3600.0
+
+
+async def backup_watchdog_loop():
+    from utils.tenant import list_active_tenants, set_current_tenant, reset_current_tenant
+    print("Backup watchdog started (stale check every 6h, threshold "
+          f"{_BACKUP_STALE_HOURS}h)")
+    await asyncio.sleep(900)  # let startup catch-up finish first
+    while True:
+        try:
+            now = datetime.now(_RIYADH_TZ)
+            today = now.strftime("%Y-%m-%d")
+            tenants = await list_active_tenants()
+            stale = [
+                t for t in tenants
+                if _newest_backup_age_hours(
+                    (t.get("slug") or "default").replace("/", "_"), now.timestamp()
+                ) > _BACKUP_STALE_HOURS
+            ]
+            if stale:
+                # Recovery attempt before alerting — a missed midnight run is
+                # best fixed by just taking the backup now.
+                try:
+                    await _create_auto_backup()
+                except Exception as e:
+                    print(f"Backup watchdog: recovery backup failed: {e}")
+                for t in stale:
+                    slug = (t.get("slug") or "default").replace("/", "_")
+                    age = _newest_backup_age_hours(slug, now.timestamp())
+                    if age <= _BACKUP_STALE_HOURS:
+                        continue  # recovery fixed it
+                    if _backup_stale_alerted_on.get(slug) == today:
+                        continue  # already alerted today
+                    _backup_stale_alerted_on[slug] = today
+                    age_txt = "لا توجد أي نسخة" if age == float("inf") else f"آخر نسخة قبل {age:.0f} ساعة"
+                    token = set_current_tenant(t)
+                    try:
+                        await _emit_ops_alert(
+                            kind="backup.stale",
+                            title="النسخ الاحتياطي اليومي متوقف",
+                            body=(
+                                f"لم يتم إنشاء نسخة احتياطية حديثة لقاعدة البيانات ({slug}) — "
+                                f"{age_txt}، وفشلت محاولة الاستدراك التلقائية. "
+                                "يرجى مراجعة صفحة النسخ الاحتياطي فوراً."
+                            ),
+                            severity="error",
+                        )
+                    finally:
+                        reset_current_tenant(token)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Backup watchdog error: {e}")
+        await asyncio.sleep(6 * 3600)
+
+
+def start_backup_watchdog():
+    global _backup_watchdog_started
+    if not _backup_watchdog_started:
+        _backup_watchdog_started = True
+        asyncio.ensure_future(backup_watchdog_loop())
 
 
 # ── Daily renewal & ad-expiry checks ────────────────────────────────────────
@@ -7606,6 +7736,33 @@ async def quick_search_members_multi(
     
     return results
 
+# Bound concurrent outbound push sends so a large bulk check-in cannot spawn
+# unbounded network tasks.
+_ATTENDANCE_PUSH_SEM = asyncio.Semaphore(10)
+
+
+async def _push_attendance_notice(member_id: str, member_name: str, activity_name: str, date_str: str):
+    """Fire a push notification to the member/guardian portal devices when
+    attendance is recorded. Best-effort: failures are swallowed so the
+    check-in flow (esp. the scanner) is never blocked or slowed — callers
+    should schedule this via asyncio.create_task."""
+    try:
+        payload = PushNotificationPayload(
+            title="تم تسجيل الحضور ✅",
+            body=f"تم تسجيل حضور {member_name} في {activity_name} بتاريخ {date_str}",
+            icon="/logo-new.png",
+            url="/member-attendance",
+            tag=f"attendance-{member_id}-{date_str}",
+            data={"type": "attendance_recorded", "date": date_str},
+            title_en="Attendance recorded ✅",
+            body_en=f"{member_name}'s attendance for {activity_name} was recorded on {date_str}",
+        )
+        async with _ATTENDANCE_PUSH_SEM:
+            await push_send_to_members(payload, [member_id])
+    except Exception:
+        logging.getLogger(__name__).exception("attendance push notification failed")
+
+
 @api_router.post("/attendance/quick")
 async def quick_attendance(
     member_code: str,
@@ -7769,7 +7926,29 @@ async def quick_attendance(
     }
     
     await db.attendance.insert_one(record_doc)
-    
+
+    # Guardian/member notification (in-app + push). The scanner path never
+    # had one — add it best-effort, and push in the background so scanner
+    # throughput is unaffected.
+    try:
+        await db.member_notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "member_id": member["id"],
+            "type": "attendance_recorded",
+            "title_ar": "تم تسجيل حضورك",
+            "title": "Attendance Recorded",
+            "message_ar": f"تم تسجيل حضورك في {record_doc['activity_name']} بنجاح - {today}",
+            "message": f"Your attendance for {record_doc['activity_name']} has been recorded - {today}",
+            "link": "/member-attendance",
+            "is_read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    except Exception:
+        pass
+    asyncio.create_task(_push_attendance_notice(
+        member["id"], record_doc["member_name"], record_doc["activity_name"], today
+    ))
+
     return {
         "message": "تم تسجيل الحضور بنجاح ✓",
         "already_recorded": False,
@@ -7913,7 +8092,13 @@ async def record_bulk_attendance(
             await db.member_notifications.insert_one(attendance_notif)
         except Exception:
             pass
-        
+        asyncio.create_task(_push_attendance_notice(
+            rec["member_id"],
+            member.get("name_ar") or member.get("name", ""),
+            activity.get("name_ar") or activity.get("name", ""),
+            request.date,
+        ))
+
         recorded_count += 1
     
     return {"message": f"تم تسجيل حضور {recorded_count} عضو", "count": recorded_count}
@@ -10903,6 +11088,11 @@ async def create_default_admin():
     asyncio.create_task(_keep_proxy_alive())
     # Start auto backup scheduler (daily at midnight Riyadh time)
     start_backup_scheduler()
+    # Watchdog: alert if any tenant's backup goes stale (>26h) despite the scheduler
+    try:
+        start_backup_watchdog()
+    except Exception as e:
+        print(f"Backup watchdog start failed: {e}")
     # Start ops-alerts delivery worker (drains db.ops_alerts → email/WhatsApp)
     try:
         start_ops_alerts_worker()

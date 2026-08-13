@@ -39,6 +39,7 @@ const translations = {
     scanner_station: 'محطة المسح',
     marketers: 'المسوّقون',
     levels_board: 'خريطة المستويات',
+    branch_display: 'شاشة العرض',
     member_card: 'بطاقة العضوية',
     daily_new_cards: 'كروت العضوية اليومية',
     coach_ratings: 'تقييمات المدربين',
@@ -249,6 +250,7 @@ const translations = {
     scanner_station: 'Scanner Station',
     marketers: 'Marketers',
     levels_board: 'Levels Map',
+    branch_display: 'Display Screen',
     accounting: 'Accounting',
     my_expenses: 'My Expenses (pending approval)',
     

@@ -460,6 +460,33 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
         ).to_list(len(coach_ids))
         coaches_map = {c["id"]: c for c in coach_docs}
 
+    # ── Session quota per subscription (used X of Y paid sessions) ──
+    # Computed by the same authoritative helper the admin app uses
+    # (routes.attendance.check_member_session_quota). Sibling-aggregated
+    # subscriptions carry _owner_id, so compute quota per owner member.
+    quota_map = {}
+    try:
+        from routes.attendance import check_member_session_quota
+        owner_ids = {member["id"]} | {
+            a.get("_owner_id") for a in activities if a.get("_owner_id")
+        }
+        import asyncio as _asyncio
+
+        async def _quota_for(oid):
+            try:
+                return oid, await check_member_session_quota(oid)
+            except Exception:
+                return oid, []
+
+        # Run linked-family owners concurrently so guardian accounts with
+        # several children don't pay a sequential latency penalty.
+        for oid, quotas in await _asyncio.gather(*[_quota_for(o) for o in owner_ids]):
+            for q in quotas:
+                if q.get("activity_id"):
+                    quota_map[(oid, q["activity_id"])] = q
+    except Exception:
+        quota_map = {}
+
     for activity in activities:
         end_date = activity.get("end_date", "")
         start_date = activity.get("start_date", "")
@@ -488,6 +515,14 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
             "_owner_member_code": activity.get("_owner_member_code", ""),
             "_owner_photo": activity.get("_owner_photo", ""),
         }
+
+        _oid = activity.get("_owner_id") or member["id"]
+        _q = quota_map.get((_oid, activity.get("activity_id")))
+        if _q:
+            subscription["sessions_total"] = _q.get("total_allowed")
+            subscription["sessions_used"] = _q.get("used_sessions")
+            subscription["sessions_remaining"] = _q.get("remaining")
+
         
         # Check if active or expired
         if end_date and end_date >= today:

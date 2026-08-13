@@ -198,6 +198,15 @@ const MemberSubscriptions = () => {
                           {sub.schedule && (
                             <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>📅 {sub.schedule}</p>
                           )}
+                          {sub.sessions_total != null && (
+                            <p className={`mt-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-bold ${
+                              (sub.sessions_remaining ?? 99) <= 2
+                                ? (darkMode ? 'bg-red-900/40 text-red-300' : 'bg-red-100 text-red-700')
+                                : (darkMode ? 'bg-green-900/40 text-green-300' : 'bg-green-100 text-green-700')
+                            }`}>
+                              🎟️ متبقي {sub.sessions_remaining} من {sub.sessions_total} حصة
+                            </p>
+                          )}
                         </div>
                         {/* Coach Card */}
                         {sub.coach_name && (
@@ -277,9 +286,16 @@ const MemberSubscriptions = () => {
                       </span>
                     </div>
                     <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-red-700' : 'border-red-200'}`}>
-                      <p className={`text-center font-medium ${darkMode ? 'text-red-400' : 'text-red-700'}`}>
-                        ⚠️ يرجى التواصل للتجديد
-                      </p>
+                      <a
+                        href={`https://wa.me/966566238384?text=${encodeURIComponent(
+                          `السلام عليكم، أرغب بتجديد اشتراك (${sub.activity_name || ''})${sub._owner_name ? ` للعضو ${sub._owner_name}` : ''}.`
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition-colors"
+                      >
+                        💬 تجديد الاشتراك عبر واتساب
+                      </a>
                     </div>
                   </div>
                 ))}
