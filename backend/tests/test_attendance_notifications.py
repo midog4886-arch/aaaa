@@ -59,13 +59,13 @@ def _today():
     return datetime.now(SAUDI_TZ).strftime("%Y-%m-%d")
 
 
-async def _make_fixture(db):
+async def _make_fixture(db, tag):
     """Per check-in path: a CHILD member (with an active subscription
     scheduled today) + a GUARDIAN-side sibling member sharing the same phone,
     whose device holds the active push subscription. This mirrors the real
     family flow: guardian logs in via one child account; another child is the
-    one who checks in."""
-    tag = uuid.uuid4().hex[:8]
+    one who checks in. `tag` is provided by the caller so cleanup can run by
+    tag even when creation fails midway."""
     start = (datetime.now(SAUDI_TZ) - timedelta(days=3)).strftime("%Y-%m-%d")
     end = (datetime.now(SAUDI_TZ) + timedelta(days=30)).strftime("%Y-%m-%d")
     schedule = ARABIC_DAYS[datetime.now(SAUDI_TZ).strftime("%A").lower()]
@@ -86,6 +86,9 @@ async def _make_fixture(db):
         child_id = f"test-child-{path}-{tag}"
         guardian_id = f"test-guard-{path}-{tag}"
         code = f"TSTN-{path[:2].upper()}-{tag[:4]}"
+        # Register the pair BEFORE inserting so a mid-creation failure still
+        # lets the caller's cleanup remove whatever was already written.
+        pairs[path] = {"child_id": child_id, "guardian_id": guardian_id, "code": code}
         await db.members.insert_one({
             "id": child_id, "member_code": code,
             "name": f"Test child {path} {tag}", "name_ar": f"طفل اختبار {path}",
@@ -115,20 +118,20 @@ async def _make_fixture(db):
             "is_active": True,
             "created_at": now_iso,
         })
-        pairs[path] = {"child_id": child_id, "guardian_id": guardian_id, "code": code}
     return {"tag": tag, "activity_id": activity_id, "pairs": pairs}
 
 
-async def _cleanup(db, fx):
-    ids = []
-    for p in fx["pairs"].values():
-        ids += [p["child_id"], p["guardian_id"]]
-    await db.members.delete_many({"id": {"$in": ids}})
-    await db.activities.delete_many({"id": fx["activity_id"]})
-    await db.attendance.delete_many({"member_id": {"$in": ids}})
-    await db.member_notifications.delete_many({"member_id": {"$in": ids}})
-    await db.member_points.delete_many({"member_id": {"$in": ids}})
-    await db.push_subscriptions.delete_many({"member_id": {"$in": ids}})
+async def _cleanup(db, tag):
+    """Delete every fixture doc carrying `tag` — id patterns are fixed
+    (test-child-*/test-guard-*/test-act-*), so this works even after a
+    partial fixture creation and guarantees no test-* docs remain."""
+    id_re = {"$regex": f"^test-(child|guard)-[a-z]+-{tag}$"}
+    await db.members.delete_many({"id": id_re})
+    await db.activities.delete_many({"id": f"test-act-{tag}"})
+    await db.attendance.delete_many({"member_id": id_re})
+    await db.member_notifications.delete_many({"member_id": id_re})
+    await db.member_points.delete_many({"member_id": id_re})
+    await db.push_subscriptions.delete_many({"member_id": id_re})
 
 
 async def _drain_background_tasks(pushed, guardian_id, attempts=20):
@@ -176,9 +179,12 @@ async def test_all_four_checkin_paths_notify_guardian(monkeypatch):
 
     monkeypatch.setattr(push_mod, "send_push_notification", _fake_send_push_notification)
 
-    fx = await _make_fixture(db)
     failures = []
+    tag = uuid.uuid4().hex[:8]
     try:
+        # Inside try so a mid-creation failure still reaches the tag-based
+        # cleanup below (which removes even a partially created fixture).
+        fx = await _make_fixture(db, tag)
         # 1) manual — routes/attendance.py POST /attendance
         p = fx["pairs"]["manual"]
         res = await att_routes.create_attendance(
@@ -265,6 +271,6 @@ async def test_all_four_checkin_paths_notify_guardian(monkeypatch):
                 if not is_attendance:
                     failures.append(f"{path}: push payload not attendance-typed: {s}")
     finally:
-        await _cleanup(db, fx)
+        await _cleanup(db, tag)
 
     assert not failures, " | ".join(failures)

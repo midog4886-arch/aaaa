@@ -30,6 +30,10 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "attendance-notifs"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -41,6 +45,17 @@ outputType = "webview"
 task = "shell.exec"
 args = "cd /home/runner/workspace/backend && python main.py"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "attendance-notifs"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd backend && python -m pytest tests/test_attendance_notifications.py tests/test_subscription_date_guard.py -q"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [[ports]]
 localPort = 5000
