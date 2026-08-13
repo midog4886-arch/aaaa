@@ -1,11 +1,38 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional
+from datetime import datetime, timezone, timedelta
 import re
 
 from .common import db, get_current_user
 from utils.auth import resolve_branch_filter
 
 router = APIRouter(prefix="/global-search", tags=["global-search"])
+
+
+def _member_overall_status(activities: list) -> str:
+    """Mirror the Members page rule (member-status-consistency): a member is
+    'expired' only when ALL subscriptions have ended; 'active' when ANY
+    activity's end_date is today or later (or has status=active with no date).
+    Returns: active | expired | inactive | no_activity."""
+    if not activities:
+        return "no_activity"
+    today = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")
+
+    def _end(a):
+        # end_date strings are ISO (YYYY-MM-DD...) — lexicographic compare is safe
+        return str(a.get("end_date") or "").strip()[:10]
+
+    has_active = any(
+        (_end(a) >= today) if _end(a) else (a.get("status") == "active")
+        for a in activities
+    )
+    if has_active:
+        return "active"
+    all_expired = all(
+        (_end(a) < today) if _end(a) else (a.get("status") == "expired")
+        for a in activities
+    )
+    return "expired" if all_expired else "inactive"
 
 
 def _safe_regex(q: str) -> dict:
@@ -63,6 +90,7 @@ async def global_search(
             "guardian_name": m.get("guardian_name_ar") or m.get("guardian_name") or "",
             "guardian_phone": m.get("guardian_phone") or "",
             "activities_count": len(m.get("activities") or []),
+            "subscription_status": _member_overall_status(m.get("activities") or []),
         }
         for m in members_raw
     ]

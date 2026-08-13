@@ -214,8 +214,21 @@ const GlobalSearch = () => {
                         </p>
                         <p className="text-xs text-muted-foreground" dir="ltr">{m.phone}</p>
                       </div>
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                        {m.activities_count} {language === 'ar' ? 'نشاط' : 'activities'}
+                      <span className="flex flex-col items-end gap-1 flex-shrink-0">
+                        {m.subscription_status && m.subscription_status !== 'no_activity' && (
+                          <span data-testid={`member-status-${m.id}`} className={`text-[11px] font-medium px-2 py-0.5 rounded-full border ${
+                            m.subscription_status === 'active' ? 'bg-green-100 text-green-700 border-green-300' :
+                            m.subscription_status === 'expired' ? 'bg-red-100 text-red-700 border-red-300' :
+                            'bg-gray-100 text-gray-600 border-gray-300'
+                          }`}>
+                            {m.subscription_status === 'active' ? (language === 'ar' ? 'نشط' : 'Active') :
+                             m.subscription_status === 'expired' ? (language === 'ar' ? 'منتهي' : 'Expired') :
+                             (language === 'ar' ? 'غير نشط' : 'Inactive')}
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                          {m.activities_count} {language === 'ar' ? 'نشاط' : 'activities'}
+                        </span>
                       </span>
                     </button>
                   ))}
