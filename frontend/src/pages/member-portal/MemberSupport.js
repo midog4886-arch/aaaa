@@ -1,14 +1,15 @@
 import React from 'react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Phone, MessageCircle } from 'lucide-react';
-import MemberLayout, { getLanguage, getDarkMode } from './MemberLayout';
+import MemberLayout, { getLanguage, getDarkMode, useSupportContact } from './MemberLayout';
+import { whatsappChatUrl } from '../../utils/whatsapp';
 
 const MemberSupport = () => {
   const language = getLanguage();
   const darkMode = getDarkMode();
   const t = (ar, en) => language === 'ar' ? ar : en;
-  const phoneNumber = '0566238384';
-  const whatsappNumber = '966566238384';
+  const supportContact = useSupportContact();
+  const phoneNumber = supportContact.phone || '0566238384';
 
   return (
     <MemberLayout>
@@ -37,7 +38,7 @@ const MemberSupport = () => {
               {phoneNumber}
             </p>
             <a
-              href={`https://wa.me/${whatsappNumber}`}
+              href={whatsappChatUrl(supportContact.whatsapp)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg hover:shadow-xl transition-all hover:scale-105 w-full justify-center"

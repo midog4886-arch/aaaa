@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { CheckCircle, XCircle, Clock, Calendar, Loader2, ChevronLeft, Printer } from 'lucide-react';
-import MemberLayout, { memberAPI, getDarkMode, getMemberData } from './MemberLayout';
+import MemberLayout, { memberAPI, getDarkMode, getMemberData, useSupportContact, supportContactFor } from './MemberLayout';
+import { whatsappChatUrl } from '../../utils/whatsapp';
 
 const CoachCard = ({ name, photo, coachId, darkMode }) => {
   const [imgError, setImgError] = useState(false);
@@ -52,6 +53,7 @@ const MemberSubscriptions = () => {
   const [subscriptions, setSubscriptions] = useState({ active: [], expired: [] });
   const darkMode = getDarkMode();
   const navigate = useNavigate();
+  const supportContact = useSupportContact();
 
   useEffect(() => {
     fetchSubscriptions();
@@ -287,9 +289,10 @@ const MemberSubscriptions = () => {
                     </div>
                     <div className={`mt-3 pt-3 border-t ${darkMode ? 'border-red-700' : 'border-red-200'}`}>
                       <a
-                        href={`https://wa.me/966566238384?text=${encodeURIComponent(
+                        href={whatsappChatUrl(
+                          supportContactFor(supportContact, sub._owner_id).whatsapp,
                           `السلام عليكم، أرغب بتجديد اشتراك (${sub.activity_name || ''})${sub._owner_name ? ` للعضو ${sub._owner_name}` : ''}.`
-                        )}`}
+                        )}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-white bg-green-600 hover:bg-green-700 transition-colors"

@@ -42,6 +42,9 @@ class BranchBase(BaseModel):
     # expired (past-tense wording). Empty -> global expired template.
     whatsapp_manual_expired_template: Optional[str] = ""
     whatsapp_welcome_template: Optional[str] = ""
+    # Member-portal renewal/support WhatsApp number for THIS branch.
+    # Empty -> falls back to branch phone, then the global default number.
+    support_whatsapp: Optional[str] = ""
     # Days the branch operates. None/empty = open all week (backward compatible).
     working_days: Optional[List[str]] = None
 

@@ -33,6 +33,7 @@ export const memberLogout = () => {
   localStorage.removeItem('member_token');
   localStorage.removeItem('member_data');
   try { localStorage.removeItem('member_dashboard_cache_v1'); } catch {}
+  clearSupportContactCache();
   // Forget the remembered phone so an explicit logout does NOT auto-login again.
   clearRememberedMemberPhone();
 };
@@ -77,6 +78,57 @@ memberAPI.interceptors.request.use((config) => {
   config.headers['X-Tenant-Slug'] = getTenantSlug();
   return config;
 });
+
+// ── Branch-aware support/renewal contact ─────────────────────────────────────
+// Fetches the member's branch WhatsApp/phone once and caches it (localStorage)
+// so renew buttons render instantly with the last known number.
+// The cache key is scoped per tenant AND per member so that on shared devices
+// (or after switching accounts) a new login never inherits the previous
+// member's branch number — stale entries are also wiped on logout.
+const SUPPORT_CONTACT_KEY_PREFIX = 'member_support_contact_v2';
+const DEFAULT_SUPPORT_CONTACT = { whatsapp: '966566238384', phone: '0566238384' };
+const _supportContactKey = () => {
+  const memberId = getMemberData()?.id || 'anon';
+  return `${SUPPORT_CONTACT_KEY_PREFIX}:${getTenantSlug() || 'default'}:${memberId}`;
+};
+export const clearSupportContactCache = () => {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith(SUPPORT_CONTACT_KEY_PREFIX) || k === 'member_support_contact_v1')) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch {}
+};
+
+export const useSupportContact = () => {
+  const [contact, setContact] = useState(() => {
+    try {
+      return { ...DEFAULT_SUPPORT_CONTACT, ...(JSON.parse(localStorage.getItem(_supportContactKey())) || {}) };
+    } catch { return DEFAULT_SUPPORT_CONTACT; }
+  });
+  useEffect(() => {
+    let cancelled = false;
+    memberAPI.get('/api/member-portal/support-contact')
+      .then(res => {
+        if (cancelled || !res.data?.whatsapp) return;
+        setContact(prev => ({ ...prev, ...res.data }));
+        try { localStorage.setItem(_supportContactKey(), JSON.stringify(res.data)); } catch {}
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  return contact;
+};
+
+// Resolve the contact for a specific subscription owner (linked family members
+// may train at DIFFERENT branches — each renewal must target the owner's own
+// branch). Falls back to the primary member's contact.
+export const supportContactFor = (contact, ownerId) => {
+  const c = ownerId && contact?.by_member?.[ownerId];
+  return (c && c.whatsapp) ? c : (contact || DEFAULT_SUPPORT_CONTACT);
+};
 
 const MemberLayout = ({ children }) => {
   const navigate = useNavigate();

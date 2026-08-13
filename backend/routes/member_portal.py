@@ -216,6 +216,52 @@ async def member_login(data: MemberLogin):
     }
 
 
+# ============ SUPPORT CONTACT ============
+
+# Global default renewal/support number (legacy hardcoded value) — used only
+# when the member's branch defines neither support_whatsapp nor phone.
+DEFAULT_SUPPORT_WHATSAPP = "966566238384"
+DEFAULT_SUPPORT_PHONE = "0566238384"
+
+
+def _branch_contact(branch: dict) -> dict:
+    branch = branch or {}
+    wa = (branch.get("support_whatsapp") or "").strip() or (branch.get("phone") or "").strip() or DEFAULT_SUPPORT_WHATSAPP
+    phone = (branch.get("phone") or "").strip() or (branch.get("support_whatsapp") or "").strip() or DEFAULT_SUPPORT_PHONE
+    return {
+        "whatsapp": wa,
+        "phone": phone,
+        "branch_name": branch.get("name_ar") or branch.get("name") or "",
+    }
+
+
+@router.get("/support-contact")
+async def get_support_contact(member: dict = Depends(get_current_member)):
+    """Renewal/support contact per branch: branch support_whatsapp -> branch
+    phone -> global default. Because the portal merges subscriptions of ALL
+    linked family members (who may train at different branches), the response
+    also carries a per-member map so each renewal button can target the
+    subscription owner's OWN branch."""
+    linked_ids = member.get("_linked_member_ids", [member["id"]])
+    linked_members = await db.members.find(
+        {"id": {"$in": linked_ids}}, {"_id": 0, "id": 1, "branch_id": 1}
+    ).to_list(len(linked_ids) or 1)
+    branch_ids = {m.get("branch_id") for m in linked_members if m.get("branch_id")}
+    branches = {}
+    if branch_ids:
+        async for b in db.branches.find(
+            {"id": {"$in": list(branch_ids)}},
+            {"_id": 0, "id": 1, "support_whatsapp": 1, "phone": 1, "name_ar": 1, "name": 1},
+        ):
+            branches[b["id"]] = b
+    primary = _branch_contact(branches.get(member.get("branch_id")))
+    by_member = {
+        m["id"]: _branch_contact(branches.get(m.get("branch_id")))
+        for m in linked_members
+    }
+    return {**primary, "by_member": by_member}
+
+
 # ============ PROFILE ============
 
 @router.get("/profile")

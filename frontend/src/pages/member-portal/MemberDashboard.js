@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
-import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
+import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage, useSupportContact, supportContactFor } from './MemberLayout';
+import { whatsappChatUrl } from '../../utils/whatsapp';
 import { useBrandColor } from '../../services/branding';
 import { HeroBannerAds, InlineAds, PopupAd } from './MemberAds';
 import PullToRefresh from '../../components/PullToRefresh';
@@ -352,6 +353,7 @@ const MemberDashboard = () => {
   const language = getLanguage();
   const today = new Date().toISOString().slice(0, 10);
   const primary = useBrandColor();
+  const supportContact = useSupportContact();
 
   useEffect(() => { fetchData(); }, []);
 
@@ -500,14 +502,19 @@ const MemberDashboard = () => {
 
           {/* ── Remaining sessions + renew (prominent) ── */}
           {(() => {
-            const RENEW_WA = `https://wa.me/966566238384?text=${encodeURIComponent(
-              `السلام عليكم، أرغب بتجديد الاشتراك.\nالاسم: ${member?.name_ar || member?.name || ''}\nرقم العضوية: #${member?.member_code || ''}`
-            )}`;
             const quotaSubs = (subscriptions.active || []).filter(s => s.sessions_total != null);
             const hasExpired = (subscriptions.expired || []).length > 0;
             const noActive = (subscriptions.active || []).length === 0;
             if (!quotaSubs.length && !(hasExpired && noActive)) return null;
             const low = quotaSubs.some(s => (s.sessions_remaining ?? 99) <= 2);
+            // Target the branch of the subscription that actually needs renewing
+            // (linked family members can belong to different branches).
+            const urgentSub = quotaSubs.find(s => (s.sessions_remaining ?? 99) <= 2)
+              || ((hasExpired && noActive) ? (subscriptions.expired || [])[0] : null);
+            const RENEW_WA = whatsappChatUrl(
+              supportContactFor(supportContact, urgentSub?._owner_id).whatsapp,
+              `السلام عليكم، أرغب بتجديد الاشتراك.\nالاسم: ${(urgentSub?._owner_name) || member?.name_ar || member?.name || ''}\nرقم العضوية: #${member?.member_code || ''}`
+            );
             const urgent = (hasExpired && noActive) || low;
             return (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }}>

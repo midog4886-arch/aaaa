@@ -47,6 +47,7 @@ const BranchesPage = () => {
     location_url: '',
     code_prefix: '',
     whatsapp_group_url: '',
+    support_whatsapp: '',
     whatsapp_renewal_template: '',
     whatsapp_manual_template: '',
     whatsapp_manual_expired_template: '',
@@ -99,6 +100,7 @@ const BranchesPage = () => {
         is_active: true,
         code_prefix: cleanedPrefix,
         whatsapp_group_url: (formData.whatsapp_group_url || '').trim(),
+        support_whatsapp: (formData.support_whatsapp || '').trim(),
         whatsapp_renewal_template: (formData.whatsapp_renewal_template || '').trim(),
         whatsapp_manual_template: (formData.whatsapp_manual_template || '').trim(),
         whatsapp_manual_expired_template: (formData.whatsapp_manual_expired_template || '').trim(),
@@ -146,6 +148,7 @@ const BranchesPage = () => {
       location_url: branch.location_url || '',
       code_prefix: branch.code_prefix || '',
       whatsapp_group_url: branch.whatsapp_group_url || '',
+      support_whatsapp: branch.support_whatsapp || '',
       whatsapp_renewal_template: branch.whatsapp_renewal_template || '',
       whatsapp_manual_template: branch.whatsapp_manual_template || '',
       whatsapp_manual_expired_template: branch.whatsapp_manual_expired_template || '',
@@ -169,6 +172,7 @@ const BranchesPage = () => {
       location_url: '',
       code_prefix: '',
       whatsapp_group_url: '',
+      support_whatsapp: '',
       whatsapp_renewal_template: '',
       whatsapp_manual_template: '',
       whatsapp_manual_expired_template: '',
@@ -425,6 +429,22 @@ const BranchesPage = () => {
                   {language === 'ar'
                     ? 'سيتم إدراج هذا الرابط في رسائل واتساب الفواتير واستمارات التسجيل لهذا الفرع. اتركه فارغًا لإخفاء الرابط من الرسائل.'
                     : 'This link will be inserted in WhatsApp messages for invoices and registration forms of this branch. Leave empty to omit the link.'}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{language === 'ar' ? 'رقم واتساب التجديد والدعم (بوابة العضو)' : 'Renewal & Support WhatsApp (member portal)'}</Label>
+                <Input
+                  value={formData.support_whatsapp}
+                  onChange={(e) => setFormData({ ...formData, support_whatsapp: e.target.value })}
+                  placeholder="05xxxxxxxx"
+                  dir="ltr"
+                  data-testid="branch-support-whatsapp-input"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {language === 'ar'
+                    ? 'يستخدمه أعضاء هذا الفرع في أزرار «تجديد الاشتراك عبر واتساب» وصفحة الدعم. فارغ = رقم هاتف الفرع، ثم الرقم العام.'
+                    : "Used by this branch's members in the renew-via-WhatsApp buttons and the support page. Empty = branch phone, then the global default."}
                 </p>
               </div>
 
