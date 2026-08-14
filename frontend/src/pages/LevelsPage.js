@@ -204,6 +204,7 @@ export const LevelsPage = () => {
   const [autoAssignShowUnmatched, setAutoAssignShowUnmatched] = useState(false);
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupExpiredLoading, setCleanupExpiredLoading] = useState(false);
+  const [cleanupExpiredPreview, setCleanupExpiredPreview] = useState(null); // {items, links_removed, members_affected, branchParams}
   const [scheduleBuilderOpen, setScheduleBuilderOpen] = useState(false);
   // When opening the schedule builder from a level card's "needs scheduling"
   // badge, pass the target level id so the dialog can scroll to it and flash
@@ -2779,14 +2780,8 @@ ${slotTables}
                           toast.info(t('لا يوجد أعضاء منتهية اشتراكاتهم مرتبطين بالمستويات', 'No expired members linked to levels'));
                           return;
                         }
-                        if (!window.confirm(t(
-                          `سيتم فصل ${d.links_removed} ارتباط منتهي (${d.members_affected} عضو) من المستويات. يعودون للظهور عند التجديد وإعادة التسكين. متابعة؟`,
-                          `${d.links_removed} expired link(s) (${d.members_affected} member(s)) will be unlinked from levels. They reappear once they renew and are re-placed. Continue?`
-                        ))) return;
-                        const res = await levelsAPI.cleanupExpired(false, branchParams);
-                        const r = res.data || res;
-                        toast.success(t(`تم فصل ${r.links_removed} ارتباط منتهي من المستويات`, `Unlinked ${r.links_removed} expired link(s) from levels`));
-                        loadData();
+                        // Show the full member list in a dialog before confirming.
+                        setCleanupExpiredPreview({ ...d, branchParams });
                       } catch (e) {
                         toast.error(t('فشل تنظيف المنتهين', 'Failed to clean expired members'));
                       } finally {
@@ -3628,6 +3623,77 @@ ${slotTables}
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cleanup expired — preview & confirm dialog */}
+        <Dialog open={!!cleanupExpiredPreview} onOpenChange={(open) => { if (!open) setCleanupExpiredPreview(null); }}>
+          <DialogContent className="max-w-2xl w-[95vw] max-h-[85vh] overflow-hidden flex flex-col" data-testid="cleanup-expired-preview-dialog">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-700">
+                <Trash2 className="w-5 h-5" />
+                {t('تأكيد تنظيف المنتهية اشتراكاتهم', 'Confirm cleaning expired members')}
+              </DialogTitle>
+            </DialogHeader>
+            {cleanupExpiredPreview && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    `سيتم فصل ${cleanupExpiredPreview.links_removed} ارتباط منتهي (${cleanupExpiredPreview.members_affected} عضو) من المستويات. يعودون للظهور عند التجديد وإعادة التسكين.`,
+                    `${cleanupExpiredPreview.links_removed} expired link(s) (${cleanupExpiredPreview.members_affected} member(s)) will be unlinked from levels. They reappear once they renew and are re-placed.`
+                  )}
+                </p>
+                <div className="flex-1 overflow-y-auto border rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-muted">
+                      <tr className="text-start">
+                        <th className="p-2 text-start">{t('العضو', 'Member')}</th>
+                        <th className="p-2 text-start">{t('الكود', 'Code')}</th>
+                        <th className="p-2 text-start">{t('النشاط', 'Activity')}</th>
+                        <th className="p-2 text-start">{t('تاريخ الانتهاء', 'End date')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(cleanupExpiredPreview.items || []).map((it, idx) => (
+                        <tr key={`${it.member_id}-${it.level_id}-${idx}`} className="border-t" data-testid={`cleanup-expired-row-${idx}`}>
+                          <td className="p-2 font-medium">{it.member_name || '—'}</td>
+                          <td className="p-2" dir="ltr">{it.member_code || '—'}</td>
+                          <td className="p-2">{it.activity_name || '—'}</td>
+                          <td className="p-2" dir="ltr">{it.end_date || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setCleanupExpiredPreview(null)} data-testid="cleanup-expired-cancel-btn">
+                    {t('إلغاء', 'Cancel')}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    disabled={cleanupExpiredLoading}
+                    data-testid="cleanup-expired-confirm-btn"
+                    onClick={async () => {
+                      setCleanupExpiredLoading(true);
+                      try {
+                        const res = await levelsAPI.cleanupExpired(false, cleanupExpiredPreview.branchParams || {});
+                        const r = res.data || res;
+                        toast.success(t(`تم فصل ${r.links_removed} ارتباط منتهي من المستويات`, `Unlinked ${r.links_removed} expired link(s) from levels`));
+                        setCleanupExpiredPreview(null);
+                        loadData();
+                      } catch (e) {
+                        toast.error(t('فشل تنظيف المنتهين', 'Failed to clean expired members'));
+                      } finally {
+                        setCleanupExpiredLoading(false);
+                      }
+                    }}
+                  >
+                    {cleanupExpiredLoading && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                    {t('تأكيد الفصل', 'Confirm unlink')}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
           </DialogContent>
         </Dialog>
 

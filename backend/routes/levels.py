@@ -2268,7 +2268,9 @@ async def cleanup_expired_subscriptions(
         "dry_run": dry_run,
         "members_affected": len({it["member_id"] for it in items}),
         "links_removed": links_removed,
-        "items": items[:200],
+        # Full list — the UI shows it as a confirmation preview, so truncating
+        # would ask admins to approve members they cannot see.
+        "items": items,
         "message": (
             f"سيتم فصل {links_removed} ارتباط منتهي" if dry_run
             else f"تم فصل {links_removed} ارتباط منتهي من المستويات"
