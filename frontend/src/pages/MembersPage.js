@@ -214,6 +214,15 @@ export const MembersPage = () => {
   const [isMemberCardDialogOpen, setIsMemberCardDialogOpen] = useState(false);
   const [memberCardData, setMemberCardData] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
+  // Generation counter for member-view requests: bumped on every
+  // openViewDialog/openFreezeDialog call and on dialog close, so late
+  // responses from a previously opened member are dropped instead of
+  // overwriting the currently displayed member's data.
+  const viewReqGenRef = useRef(0);
+  // The member the view/freeze dialog is currently showing. All member-scoped
+  // refreshes (attendance, reminders, freezes...) must drop their responses
+  // when this no longer matches the member they were fetched for.
+  const activeViewMemberIdRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const [memberInvoices, setMemberInvoices] = useState([]);
   const [memberProductPurchases, setMemberProductPurchases] = useState([]);
@@ -454,11 +463,17 @@ export const MembersPage = () => {
 
   // When the global search (or any link) sends ?focus=<member_id>, open the
   // member's view dialog directly once members are loaded.
+  const consumedFocusRef = useRef(null);
   useEffect(() => {
     const focusId = searchParams.get('focus');
     if (!focusId || !members || members.length === 0) return;
+    // Consume each focus id once: without this, any later members reload
+    // (loadData after freeze/renewal...) re-opens the focused member on top
+    // of whatever the admin navigated to.
+    if (consumedFocusRef.current === focusId) return;
     const target = members.find(m => m.id === focusId);
     if (target) {
+      consumedFocusRef.current = focusId;
       openViewDialog(target);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1152,6 +1167,10 @@ export const MembersPage = () => {
         attendanceAPI.getMemberReport(memberId),
         attendanceAPI.getSessionQuota(memberId)
       ]);
+      // Guard by member id (not generation): the preceding mutation may have
+      // been awaited while another member was opened; this refresh must only
+      // write if ITS member is still the one on screen.
+      if (activeViewMemberIdRef.current !== memberId) return;
       setMemberAttendance(attendanceRes.data);
       setMemberSessionQuota(Array.isArray(quotaRes.data) ? quotaRes.data : []);
     } catch (e) {
@@ -1225,15 +1244,27 @@ export const MembersPage = () => {
   };
 
   const openViewDialog = async (member) => {
+    // Request-generation guard: opening member (A) then quickly member (B)
+    // must never let A's late responses overwrite B's displayed data.
+    // Every open bumps the generation; closing the dialog bumps it too, so
+    // any in-flight response from a stale generation is dropped.
+    const gen = ++viewReqGenRef.current;
+    const fresh = () => viewReqGenRef.current === gen;
+    activeViewMemberIdRef.current = member.id;
     setSelectedMember(member);
     setViewTab('info');
+    setMemberReminders([]);
     setExpandedQuotaIdx(new Set());
     setExpandedOldDatesIdx(new Set());
     setIsViewDialogOpen(true);
     setMemberAttendance(null);
+    setMemberInvoices([]);
     setMemberProductPurchases([]);
     setMemberSessionQuota([]);
     setMemberTournaments([]);
+    setMemberFreezes([]);
+    setMemberFreezeStats(null);
+    setMemberAuditLog([]);
     try {
       const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes, closuresRes, fullMemberRes] = await Promise.all([
         invoicesAPI.getAll({ member_id: member.id }),
@@ -1246,6 +1277,7 @@ export const MembersPage = () => {
         // header avatar has the photo (falls back to initials on failure).
         membersAPI.getById(member.id).catch(() => null)
       ]);
+      if (!fresh()) return;
       if (fullMemberRes?.data?.id === member.id) {
         setSelectedMember(prev => (prev && prev.id === member.id ? { ...prev, ...fullMemberRes.data } : prev));
       }
@@ -1257,6 +1289,7 @@ export const MembersPage = () => {
       const closuresList = Array.isArray(closuresRes.data) ? closuresRes.data : [];
       setAppliedClosures(closuresList.filter(c => c.applied));
     } catch (error) {
+      if (!fresh()) return;
       console.error('Failed to load member data:', error);
       setMemberInvoices([]);
       setMemberAttendance(null);
@@ -1268,15 +1301,18 @@ export const MembersPage = () => {
         freezesAPI.getMemberFreezes(member.id),
         freezesAPI.getMemberStats(member.id)
       ]);
+      if (!fresh()) return;
       setMemberFreezes(freezesRes.data);
       setMemberFreezeStats(statsRes.data);
     } catch (e) {}
+    if (!fresh()) return;
     setMemberAuditLog([]);
     if (isAdmin) {
       try {
         const auditRes = await membersAPI.getSubscriptionAudit(member.id);
+        if (!fresh()) return;
         setMemberAuditLog(Array.isArray(auditRes.data) ? auditRes.data : []);
-      } catch (e) { setMemberAuditLog([]); }
+      } catch (e) { if (fresh()) setMemberAuditLog([]); }
     }
   };
 
@@ -1299,7 +1335,11 @@ export const MembersPage = () => {
   };
 
   const openFreezeDialog = async (member) => {
+    const gen = ++viewReqGenRef.current;
+    activeViewMemberIdRef.current = member.id;
     setSelectedMember(member);
+    setMemberFreezes([]);
+    setMemberFreezeStats(null);
     setFreezeForm({ start_date: new Date().toISOString().split('T')[0], end_date: '', reason: 'personal' });
     setIsFreezeDialogOpen(true);
     try {
@@ -1307,6 +1347,7 @@ export const MembersPage = () => {
         freezesAPI.getMemberFreezes(member.id),
         freezesAPI.getMemberStats(member.id)
       ]);
+      if (viewReqGenRef.current !== gen) return;
       setMemberFreezes(freezesRes.data);
       setMemberFreezeStats(statsRes.data);
     } catch (err) {
@@ -1320,20 +1361,23 @@ export const MembersPage = () => {
       return;
     }
     setFreezeLoading(true);
+    const targetId = selectedMember.id;
     try {
       await freezesAPI.create({
-        member_id: selectedMember.id,
+        member_id: targetId,
         start_date: freezeForm.start_date,
         end_date: freezeForm.end_date,
         reason: freezeForm.reason
       });
       toast.success(language === 'ar' ? 'تم تجميد العضوية بنجاح' : 'Membership frozen successfully');
       const [freezesRes, statsRes] = await Promise.all([
-        freezesAPI.getMemberFreezes(selectedMember.id),
-        freezesAPI.getMemberStats(selectedMember.id)
+        freezesAPI.getMemberFreezes(targetId),
+        freezesAPI.getMemberStats(targetId)
       ]);
-      setMemberFreezes(freezesRes.data);
-      setMemberFreezeStats(statsRes.data);
+      if (activeViewMemberIdRef.current === targetId) {
+        setMemberFreezes(freezesRes.data);
+        setMemberFreezeStats(statsRes.data);
+      }
       loadData();
     } catch (err) {
       toast.error(err.response?.data?.detail || (language === 'ar' ? 'فشل في تجميد العضوية' : 'Failed to freeze membership'));
@@ -1347,12 +1391,15 @@ export const MembersPage = () => {
       await freezesAPI.cancel(freezeId);
       toast.success(language === 'ar' ? 'تم إلغاء التجميد' : 'Freeze cancelled');
       if (selectedMember) {
+        const targetId = selectedMember.id;
         const [freezesRes, statsRes] = await Promise.all([
-          freezesAPI.getMemberFreezes(selectedMember.id),
-          freezesAPI.getMemberStats(selectedMember.id)
+          freezesAPI.getMemberFreezes(targetId),
+          freezesAPI.getMemberStats(targetId)
         ]);
-        setMemberFreezes(freezesRes.data);
-        setMemberFreezeStats(statsRes.data);
+        if (activeViewMemberIdRef.current === targetId) {
+          setMemberFreezes(freezesRes.data);
+          setMemberFreezeStats(statsRes.data);
+        }
       }
       loadData();
     } catch (err) {
@@ -2978,6 +3025,9 @@ export const MembersPage = () => {
         <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
           setIsViewDialogOpen(open);
           if (!open) {
+            // Invalidate any still-pending member-data requests.
+            viewReqGenRef.current++;
+            activeViewMemberIdRef.current = null;
             // When the dialog was opened via a ?focus= link from another page
             // (today-attendance, levels board, renewals, global search, ...),
             // closing it should land the admin back on the page they came
@@ -3152,18 +3202,20 @@ export const MembersPage = () => {
                     onClick={async () => {
                       setViewTab('reminders');
                       if (selectedMember) {
+                        const memberId = selectedMember.id;
                         setMemberRemindersLoading(true);
                         try {
                           const r = await whatsappAPI.getReminderHistory({
-                            member_id: selectedMember.id,
+                            member_id: memberId,
                             limit: 200,
                           });
+                          if (activeViewMemberIdRef.current !== memberId) return;
                           setMemberReminders(r.data?.rows || []);
                         } catch (e) {
                           console.error('Failed to load reminder history:', e);
-                          setMemberReminders([]);
+                          if (activeViewMemberIdRef.current === memberId) setMemberReminders([]);
                         } finally {
-                          setMemberRemindersLoading(false);
+                          if (activeViewMemberIdRef.current === memberId) setMemberRemindersLoading(false);
                         }
                       }
                     }}
@@ -3180,8 +3232,13 @@ export const MembersPage = () => {
                     onClick={() => {
                       setViewTab('freeze');
                       if (selectedMember) {
-                        freezesAPI.getMemberFreezes(selectedMember.id).then(r => setMemberFreezes(r.data));
-                        freezesAPI.getMemberStats(selectedMember.id).then(r => setMemberFreezeStats(r.data));
+                        const memberId = selectedMember.id;
+                        freezesAPI.getMemberFreezes(memberId).then(r => {
+                          if (activeViewMemberIdRef.current === memberId) setMemberFreezes(r.data);
+                        });
+                        freezesAPI.getMemberStats(memberId).then(r => {
+                          if (activeViewMemberIdRef.current === memberId) setMemberFreezeStats(r.data);
+                        });
                       }
                     }}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
