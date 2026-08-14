@@ -114,4 +114,26 @@ webpackConfig.devServer = (devServerConfig) => {
   return devServerConfig;
 };
 
+// Jest (craco test): react-router v7 uses package "exports" subpaths
+// (react-router/dom) that CRA's jest 27 resolver can't handle — map them
+// to the concrete CJS files.
+webpackConfig.jest = {
+  configure: (jestConfig) => {
+    // CRA defaults resetMocks to true, which strips mock implementations
+    // between tests (breaking lazily-created default API mocks).
+    jestConfig.resetMocks = false;
+    jestConfig.moduleNameMapper = {
+      "^@/(.*)$": "<rootDir>/src/$1",
+      "^@radix-ui/primitive/is-development$":
+        "<rootDir>/node_modules/@radix-ui/primitive/dist/internal/is-development.true.js",
+      "^react-router/dom$":
+        "<rootDir>/node_modules/react-router/dist/development/dom-export.js",
+      "^react-router$":
+        "<rootDir>/node_modules/react-router/dist/development/index.js",
+      ...(jestConfig.moduleNameMapper || {}),
+    };
+    return jestConfig;
+  },
+};
+
 module.exports = webpackConfig;
