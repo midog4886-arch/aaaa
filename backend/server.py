@@ -64,6 +64,41 @@ def _decode_photo_data_url(photo):
         return None
 
 
+def _photo_thumbnail(photo, max_px=64):
+    """Decode a base64 data-URL photo and downscale it to at most
+    ``max_px``×``max_px`` JPEG bytes for embedding in exports.
+
+    Stored member photos are full-resolution; embedding them raw inflates
+    XLSX/PDF exports to many MB. Returns ``None`` on empty/malformed input;
+    falls back to the raw bytes if Pillow can't process the image.
+    """
+    raw = _decode_photo_data_url(photo)
+    if not raw:
+        return None
+    try:
+        import warnings
+        from PIL import Image as PILImage
+        img = PILImage.open(BytesIO(raw))
+        # Header-only size check BEFORE any pixel decode: a small, highly
+        # compressible PNG can expand to hundreds of megapixels (decompression
+        # bomb) and stall the export. Skip such photos entirely.
+        w, h = img.size
+        if w <= 0 or h <= 0 or w * h > 25_000_000:
+            return None
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", PILImage.DecompressionBombWarning)
+            img.thumbnail((max_px, max_px))
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=80)
+        return out.getvalue()
+    except Exception:
+        # Never fall back to raw bytes — undecodable/oversized input must not
+        # reach the XLSX/PDF embedders either. The export shows a blank cell.
+        return None
+
+
 def _get_qrcode():
     import qrcode
     return qrcode
@@ -8503,7 +8538,7 @@ async def export_attendance_excel(
 
         def _photo_cell(photo_data_url):
             """Build a small Image flowable from a base64 data URL, or return empty Paragraph."""
-            raw = _decode_photo_data_url(photo_data_url)
+            raw = _photo_thumbnail(photo_data_url)
             if not raw:
                 return Paragraph("", cell_style)
             try:
@@ -8613,7 +8648,7 @@ async def export_attendance_excel(
                 cell.fill = fill
 
         # Embed the member photo thumbnail in the photo column
-        raw_photo = _decode_photo_data_url(r.get("member_photo", ""))
+        raw_photo = _photo_thumbnail(r.get("member_photo", ""))
         if raw_photo:
             try:
                 img = XLImage(BytesIO(raw_photo))
