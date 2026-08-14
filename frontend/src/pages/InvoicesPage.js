@@ -321,8 +321,8 @@ export const InvoicesPage = () => {
       <div className="space-y-6" data-testid="invoices-page">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-            <div className="flex flex-1 gap-3 w-full sm:w-auto">
-              <div className="relative flex-1 sm:max-w-xs">
+            <div className="flex flex-1 flex-wrap gap-3 w-full sm:w-auto items-center">
+              <div className="relative flex-1 min-w-[160px] sm:max-w-xs">
                 <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input placeholder={language === 'ar' ? 'بحث...' : 'Search...'} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="ps-10" />
               </div>
@@ -346,6 +346,15 @@ export const InvoicesPage = () => {
                 {language === 'ar' ? 'تجديد فقط' : 'Renewals'}
               </Button>
               <Button variant="outline" onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}><Filter className="w-4 h-4" /></Button>
+              <div className="flex flex-wrap items-center gap-2" data-testid="inline-date-filter">
+                <Label className="whitespace-nowrap text-muted-foreground">{t('from')}</Label>
+                <Input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-36 sm:w-40" data-testid="filter-date-from" />
+                <Label className="whitespace-nowrap text-muted-foreground">{t('to')}</Label>
+                <Input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="w-36 sm:w-40" data-testid="filter-date-to" />
+                {(filterStartDate || filterEndDate) && (
+                  <Button variant="ghost" size="icon" onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }} title={language === 'ar' ? 'مسح فلتر التاريخ' : 'Clear date filter'} data-testid="clear-date-filter-btn"><X className="w-4 h-4" /></Button>
+                )}
+              </div>
             </div>
             <div className="flex gap-2 flex-wrap">
               {isAdmin && (<>
