@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
 import { NationalitySelect } from '../components/NationalitySelect';
+import MemberAvatar from '../components/MemberAvatar';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import { fetchOriginalActivityDates, applyOriginalDates } from './invoices/cardDates';
@@ -1234,14 +1235,20 @@ export const MembersPage = () => {
     setMemberSessionQuota([]);
     setMemberTournaments([]);
     try {
-      const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes, closuresRes] = await Promise.all([
+      const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes, closuresRes, fullMemberRes] = await Promise.all([
         invoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getMemberReport(member.id),
         productInvoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getSessionQuota(member.id),
         tournamentsAPI.getByMember(member.id).catch(() => ({ data: [] })),
-        dayExtensionsAPI.getClosures().catch(() => ({ data: [] }))
+        dayExtensionsAPI.getClosures().catch(() => ({ data: [] })),
+        // List rows are fetched with exclude_photo — pull the full doc so the
+        // header avatar has the photo (falls back to initials on failure).
+        membersAPI.getById(member.id).catch(() => null)
       ]);
+      if (fullMemberRes?.data?.id === member.id) {
+        setSelectedMember(prev => (prev && prev.id === member.id ? { ...prev, ...fullMemberRes.data } : prev));
+      }
       setMemberInvoices(invoicesRes.data);
       setMemberAttendance(attendanceRes.data);
       setMemberProductPurchases(Array.isArray(productInvRes.data) ? productInvRes.data : []);
@@ -2994,9 +3001,7 @@ export const MembersPage = () => {
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="w-5 h-5 text-primary" />
-                </div>
+                <MemberAvatar photo={selectedMember?.photo} name={language === 'ar' ? (selectedMember?.name_ar || selectedMember?.name) : (selectedMember?.name || selectedMember?.name_ar)} size="md" className="w-10 h-10" />
                 <span className="flex-1">{language === 'ar' ? selectedMember?.name_ar : selectedMember?.name}</span>
                 {selectedMember && (
                   <>
@@ -3893,6 +3898,10 @@ export const MembersPage = () => {
                     <h3 className="font-semibold flex items-center gap-2 mb-4">
                       <Calendar className="w-5 h-5 text-primary" />
                       {language === 'ar' ? 'سجل الحضور' : 'Attendance Record'}
+                      <span className="flex items-center gap-2 ms-2 text-sm text-muted-foreground" data-testid="attendance-history-member">
+                        <MemberAvatar photo={selectedMember?.photo} name={language === 'ar' ? (selectedMember?.name_ar || selectedMember?.name) : (selectedMember?.name || selectedMember?.name_ar)} size="sm" />
+                        {language === 'ar' ? (selectedMember?.name_ar || selectedMember?.name) : (selectedMember?.name || selectedMember?.name_ar)}
+                      </span>
                     </h3>
                     
                     {memberSessionQuota.length > 0 && (
