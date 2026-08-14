@@ -99,17 +99,36 @@ async def update_activity(activity_id: str, activity: ActivityCreate, current_us
 
 @router.get("/member-counts")
 async def get_activity_member_counts(current_user: dict = Depends(get_current_user)):
+    """Count ACTIVE subscribers per activity.
+
+    Must line up with what the members dialog displays: the dialog
+    (``/{activity_id}/members`` + frontend filter) shows only members whose
+    matching subscription has ``end_date >= today``, so the card count uses
+    the same criterion — otherwise expired members inflate the number.
+    Branch scoping mirrors the dialog too (fail-closed for non-admins).
+    """
     activities = await db.activities.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(100)
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    effective_branch = resolve_branch_filter(current_user, None)
     counts = {}
     for act in activities:
-        name = act.get("name_ar") or act.get("name", "")
-        count = await db.members.count_documents({
-            "$or": [
-                {"activities.activity_name": name},
-                {"activities.activity_name": act.get("name", "")},
-            ]
-        })
-        counts[act["id"]] = count
+        name_ar = act.get("name_ar") or act.get("name", "")
+        name_en = act.get("name", "")
+        names = [n for n in {name_ar, name_en} if n]
+        query = {
+            "activities": {
+                "$elemMatch": {
+                    "$or": [
+                        {"activity_id": act["id"]},
+                        {"activity_name": {"$in": names}},
+                    ],
+                    "end_date": {"$gte": today_str},
+                }
+            }
+        }
+        if effective_branch:
+            query["branch_id"] = effective_branch
+        counts[act["id"]] = await db.members.count_documents(query)
     return counts
 
 
@@ -128,10 +147,19 @@ async def get_activity_members(activity_id: str, current_user: dict = Depends(ge
 
     name_ar = activity.get("name_ar") or activity.get("name", "")
     name_en = activity.get("name", "")
-    or_clauses = [{"activities.activity_name": name_ar}]
-    if name_en and name_en != name_ar:
-        or_clauses.append({"activities.activity_name": name_en})
-    query = {"$or": or_clauses}
+    names = [n for n in {name_ar, name_en} if n]
+    # Same identity predicate as /member-counts (id OR name) so ID-only
+    # legacy links show up in the dialog too.
+    query = {
+        "activities": {
+            "$elemMatch": {
+                "$or": [
+                    {"activity_id": activity_id},
+                    {"activity_name": {"$in": names}},
+                ]
+            }
+        }
+    }
 
     effective_branch = resolve_branch_filter(current_user, None)
     if effective_branch:
@@ -146,11 +174,18 @@ async def get_activity_members(activity_id: str, current_user: dict = Depends(ge
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     result = []
     for m in members:
+        # Among ALL matching entries prefer an active one (end_date >= today),
+        # else the one with the latest end_date — a member with an expired old
+        # period plus a renewed one must show (and count) as active.
+        matching = [
+            a for a in (m.get("activities") or [])
+            if a.get("activity_id") == activity_id or a.get("activity_name") in names
+        ]
         entry = None
-        for a in (m.get("activities") or []):
-            if a.get("activity_id") == activity_id or a.get("activity_name") in (name_ar, name_en):
-                entry = a
-                break
+        if matching:
+            active_entries = [a for a in matching if (a.get("end_date") or "") >= today_str]
+            pool = active_entries or matching
+            entry = max(pool, key=lambda a: a.get("end_date") or "")
         end_date = (entry or {}).get("end_date") or ""
         result.append({
             "id": m.get("id"),
