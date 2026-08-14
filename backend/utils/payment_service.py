@@ -759,6 +759,25 @@ def extract_event_id(provider: str, payload: Dict) -> Optional[str]:
     return eid or None
 
 
+def payload_fingerprint(payload: Any) -> Optional[str]:
+    """Deterministic fallback identity for events with NO provider event id.
+
+    Without an id the two-phase dedup is skipped entirely, so a provider
+    (or an attacker replaying a captured body) could re-apply the same
+    renewal/failure side effects on every delivery. Hash the canonical JSON
+    of the payload instead; identical bodies map to the same claim key.
+    Prefixed with ``fp-`` so it can never collide with a real provider id.
+    """
+    try:
+        canon = json.dumps(
+            payload, sort_keys=True, separators=(",", ":"),
+            ensure_ascii=False, default=str,
+        )
+    except Exception:
+        return None
+    return "fp-" + hashlib.sha256(canon.encode("utf-8")).hexdigest()
+
+
 def _is_duplicate_key_error(e: Exception) -> bool:
     try:
         from pymongo.errors import DuplicateKeyError

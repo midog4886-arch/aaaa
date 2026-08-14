@@ -32,6 +32,7 @@ from utils.payment_service import (
     claim_event,
     confirm_event,
     extract_event_id,
+    payload_fingerprint,
     get_payment_settings,
     parse_failure_event,
     parse_success_event,
@@ -384,6 +385,10 @@ async def payment_webhook(provider: str, request: Request):
     # can reprocess — we never want to suppress retries for events whose
     # side effects didn't actually commit.
     event_id = extract_event_id(cfg_provider, payload)
+    if not event_id:
+        # No provider event id — fall back to a payload fingerprint so
+        # byte-identical retries/replays still cannot double-apply renewals.
+        event_id = payload_fingerprint(payload)
     claim_state = "new"
     if event_id:
         claim_state = await claim_event(cfg_provider, event_id)
