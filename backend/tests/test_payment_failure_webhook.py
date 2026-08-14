@@ -206,6 +206,10 @@ def webhook_client(monkeypatch):
         return dict(settings_doc) if (query or {}).get("key") == "payment" else None
 
     fake_settings.find_one = AsyncMock(side_effect=fake_settings_find)
+    # Alert-throttle state writes (delivery/signature alert counters) go to
+    # platform_settings.update_one; a plain MagicMock isn't awaitable and
+    # would raise TypeError inside the webhook's error path.
+    fake_settings.update_one = AsyncMock(return_value=MagicMock())
 
     # Fake processed_payment_events: in-memory dict keyed by (provider, event_id)
     # that mimics the unique-index DuplicateKeyError on re-insert and supports
@@ -598,9 +602,12 @@ def test_webhook_releases_claim_when_processing_fails(webhook_client, monkeypatc
     assert boom_calls["n"] == 1
     # Claim row must have been released, not left as "processing".
     assert ("stripe", "evt_recover_1") not in state["processed_events"]
-    # No side effects committed yet.
+    # No renewal side effects committed yet. The handler intentionally sends
+    # a best-effort owner notification about the processing error.
     assert state["tenant"]["renewal_history"] == []
-    assert email_calls == []
+    error_notices = [c for c in email_calls if c["kind"] == "payment_failed"]
+    assert len(error_notices) == 1
+    assert "processing error" in error_notices[0]["ctx"]["reason"]
 
     # Restore the real handler and let the provider retry succeed.
     monkeypatch.setattr(_sa, "apply_renewal", real_apply_renewal, raising=True)
@@ -608,10 +615,116 @@ def test_webhook_releases_claim_when_processing_fails(webhook_client, monkeypatc
     assert r2.status_code == 200, r2.text
     assert r2.json()["status"] == "renewed"
 
-    # Exactly one renewal row + one email — retry was processed, not dropped.
+    # Exactly one renewal row + one success email — retry processed, not dropped.
+    assert len(state["tenant"]["renewal_history"]) == 1
+    assert len([c for c in email_calls if c["kind"] == "payment_success"]) == 1
+    assert state["processed_events"][("stripe", "evt_recover_1")]["status"] == "processed"
+
+
+def test_webhook_dedupes_idless_success_event(webhook_client):
+    """A success event with NO provider event id must still dedupe on retry
+    via the payload fingerprint (fp-…) — one renewal row, one email."""
+    client, state, email_calls = webhook_client
+    payload = {
+        "type": "invoice.payment_succeeded",
+        # no top-level "id" → extract_event_id returns nothing
+        "data": {"object": {
+            "id": "in_noid_1",
+            "amount_paid": 29900,
+            "currency": "sar",
+            "metadata": {"tenant_id": "tenant-xyz",
+                         "months": "12", "cycle": "yearly"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    headers = {"Stripe-Signature": sig, "Content-Type": "application/json"}
+
+    r1 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["status"] == "renewed"
+
+    r2 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "duplicate"
+    fp_id = r2.json()["event_id"]
+    assert fp_id.startswith("fp-")
+
     assert len(state["tenant"]["renewal_history"]) == 1
     assert len(email_calls) == 1
-    assert state["processed_events"][("stripe", "evt_recover_1")]["status"] == "processed"
+    assert ("stripe", fp_id) in state["processed_events"]
+    assert state["processed_events"][("stripe", fp_id)]["status"] == "processed"
+
+
+def test_webhook_dedupes_idless_failure_event(webhook_client):
+    """Id-less failure events also dedupe by fingerprint: one row, one email."""
+    client, state, email_calls = webhook_client
+    payload = {
+        "type": "invoice.payment_failed",
+        "data": {"object": {
+            "id": "in_noid_fail",
+            "amount_due": 29900,
+            "currency": "sar",
+            "failure_message": "Your card was declined.",
+            "metadata": {"tenant_id": "tenant-xyz"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    headers = {"Stripe-Signature": sig, "Content-Type": "application/json"}
+
+    r1 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r1.status_code == 200
+    assert r1.json()["status"] == "recorded"
+
+    r2 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "duplicate"
+    assert r2.json()["event_id"].startswith("fp-")
+
+    assert len(state["tenant"]["renewal_history"]) == 1
+    assert len(email_calls) == 1
+
+
+def test_webhook_idless_transient_failure_releases_claim(webhook_client, monkeypatch):
+    """If processing an id-less event crashes, the fingerprint claim must be
+    released so the provider's identical retry is processed, not dropped."""
+    client, state, email_calls = webhook_client
+    payload = {
+        "type": "invoice.payment_succeeded",
+        "data": {"object": {
+            "id": "in_noid_recover",
+            "amount_paid": 29900,
+            "currency": "sar",
+            "metadata": {"tenant_id": "tenant-xyz",
+                         "months": "12", "cycle": "yearly"},
+        }},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = _stripe_signature(body, WEBHOOK_SECRET)
+    headers = {"Stripe-Signature": sig, "Content-Type": "application/json"}
+
+    async def boom_apply_renewal(**kwargs):
+        raise RuntimeError("simulated transient failure")
+
+    import routes.super_admin as _sa
+    real_apply_renewal = _sa.apply_renewal
+    monkeypatch.setattr(_sa, "apply_renewal", boom_apply_renewal, raising=True)
+
+    with pytest.raises(RuntimeError, match="simulated transient failure"):
+        client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+
+    # Fingerprint claim released — no lingering fp-… row blocks the retry.
+    assert not any(k[1].startswith("fp-") for k in state["processed_events"]), \
+        state["processed_events"]
+    assert state["tenant"]["renewal_history"] == []
+
+    monkeypatch.setattr(_sa, "apply_renewal", real_apply_renewal, raising=True)
+    r2 = client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["status"] == "renewed"
+    assert len(state["tenant"]["renewal_history"]) == 1
+    assert len([c for c in email_calls if c["kind"] == "payment_success"]) == 1
 
 
 def test_webhook_ignores_unrecognized_event(webhook_client):
