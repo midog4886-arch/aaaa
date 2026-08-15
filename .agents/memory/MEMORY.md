@@ -1,3 +1,4 @@
+- [التواصل page is WhatsAppPage](communication-page-whatsapppage.md) — internal-messages UI lives in WhatsAppPage 'internal' tab at /admin/whatsapp; pages/MessagesPage.js is unrouted dead code.
 - [Invoices page duplicate tables](invoices-page-duplicate-tables.md) — /invoices renders pages/InvoicesPage.js, NOT pages/invoices/* table; check App.js routing before editing lookalike components.
 - [Member portal tenant header](member-portal-tenant.md) — native app uses ONE fixed domain, so member API + login must send X-Tenant-Slug explicitly; backend 403s on token/request tenant mismatch.
 - [Android logo vs launcher icon](android-logo-and-icon.md) — native app loads from server.url (in-app logo = server+SW cache bump); launcher icon is APK-baked in mipmap-*, needs rebuild+republish.

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
@@ -31,6 +32,7 @@ export default function WhatsAppPage() {
   const { language } = useLanguage();
   const { user, selectedBranchId } = useAuth();
   const t = (ar, en) => language === 'ar' ? ar : en;
+  const navigate = useNavigate();
   const isRTL = language === 'ar';
   const isAdmin = user?.is_admin === true;
 
@@ -2117,7 +2119,15 @@ export default function WhatsAppPage() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary" />{threadMember?.name}
+                    <User className="w-5 h-5 text-primary" />
+                    <button
+                      type="button"
+                      onClick={() => selectedThread && navigate(`/admin/members?focus=${selectedThread}`)}
+                      className="hover:underline hover:text-primary transition-colors"
+                      title={t('فتح ملف العضو', 'Open member profile')}
+                    >
+                      {threadMember?.name}
+                    </button>
                     {threadMember?.member_code && <Badge variant="outline" className="text-xs">#{threadMember.member_code}</Badge>}
                     {threadMember?.phone && <span className="text-sm text-muted-foreground font-normal" dir="ltr">{threadMember.phone}</span>}
                   </CardTitle>

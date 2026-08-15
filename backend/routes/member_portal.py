@@ -2096,6 +2096,59 @@ class ProfileChangeRequest(BaseModel):
     reason: Optional[str] = None
 
 
+async def _notify_admins_new_member_message(member: dict, title_ar: str, title_en: str, preview: str):
+    """Best-effort: after a member writes to the admin inbox, surface it to
+    admins via 1) a bell notification (Layout polls /notifications) and 2) a
+    push to admin devices. Failures are swallowed so a notification hiccup
+    never breaks the member's send."""
+    import logging
+    logger = logging.getLogger(__name__)
+    member_name = member.get("name_ar") or member.get("name") or ""
+    preview = (preview or "").strip().replace("\n", " ")
+    if len(preview) > 120:
+        preview = preview[:120] + "…"
+    message_ar = f"{member_name}: {preview}" if preview else member_name
+    try:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "title": title_ar,
+            "title_ar": title_ar,
+            "title_en": title_en,
+            "message": message_ar,
+            "message_ar": message_ar,
+            "message_en": message_ar,
+            "type": "member_message",
+            "member_id": member.get("id"),
+            "is_read": False,
+            "branch_id": member.get("branch_id"),
+            "action_url": "/admin/whatsapp",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as exc:
+        logger.error(f"member message bell notification failed: {exc}")
+    # Push fan-out is branch-scoped. Fail closed when the member has no
+    # branch: pushing with branch_id=None would blast the message preview to
+    # EVERY admin across branches. The bell notification above still surfaces
+    # it to global admins.
+    if not member.get("branch_id"):
+        return
+    try:
+        from .push_notifications import send_push_to_admins, NotificationPayload
+        await send_push_to_admins(
+            NotificationPayload(
+                title=title_ar,
+                body=message_ar,
+                title_en=title_en,
+                body_en=message_ar,
+                url="/admin/whatsapp",
+                tag=f"member-message-{member.get('id')}",
+            ),
+            branch_id=member.get("branch_id"),
+        )
+    except Exception as exc:
+        logger.error(f"member message admin push failed: {exc}")
+
+
 @router.post("/profile/change-request")
 async def submit_profile_change_request(
     data: ProfileChangeRequest,
@@ -2160,6 +2213,12 @@ async def submit_profile_change_request(
     }
 
     await db.messages.insert_one(message)
+    await _notify_admins_new_member_message(
+        member,
+        title_ar="طلب تعديل بيانات من عضو",
+        title_en="Member profile change request",
+        preview=f"طلب تعديل {label_ar}: {new_value}",
+    )
     return {"success": True, "id": msg_id, "message": "تم إرسال طلب التعديل إلى الإدارة"}
 
 
@@ -2281,6 +2340,12 @@ async def member_reply(data: MemberMessageReply, member: dict = Depends(get_curr
     }
 
     await db.messages.insert_one(message)
+    await _notify_admins_new_member_message(
+        member,
+        title_ar="رسالة جديدة من عضو",
+        title_en="New member message",
+        preview=data.body,
+    )
     return {"message": "تم إرسال الرسالة", "id": msg_id}
 
 
