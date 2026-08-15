@@ -607,6 +607,7 @@ async def transfer_members_bulk(req: MemberBulkTransferRequest, current_user: di
             entity_type="member",
             entity_id="",
             entity_name=f"{moved} → {new_branch}",
+            after={"new_branch_id": new_branch, "moved": moved, "skipped": skipped, "transfer_date": transfer_date},
         )
     except Exception:
         pass
@@ -636,12 +637,20 @@ async def transfer_member(member_id: str, req: MemberTransferRequest, current_us
     cache_invalidate("levels:")
     from utils.audit import log_audit
     try:
+        old_branch_id = member.get("branch_id") or ""
+        branch_docs = await db.branches.find(
+            {"id": {"$in": [b for b in (old_branch_id, new_branch) if b]}},
+            {"_id": 0, "id": 1, "name": 1, "name_ar": 1},
+        ).to_list(2)
+        bname = {b["id"]: (b.get("name_ar") or b.get("name") or b["id"]) for b in branch_docs}
         await log_audit(
             actor=current_user,
             action="member.transfer",
             entity_type="member",
             entity_id=member_id,
             entity_name=(member.get("name_ar") or member.get("name") or ""),
+            before={"branch_id": old_branch_id, "branch_name": bname.get(old_branch_id, old_branch_id)},
+            after={"branch_id": new_branch, "branch_name": bname.get(new_branch, new_branch), "transfer_date": transfer_date},
         )
     except Exception:
         pass

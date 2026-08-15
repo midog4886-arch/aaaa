@@ -1518,7 +1518,27 @@ async def refund_invoice(invoice_id: str, refund: RefundRequest, current_user: d
     # Remove _id before returning
     if "_id" in credit_note:
         del credit_note["_id"]
-    
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="invoice.refund",
+            entity_type="invoice",
+            entity_id=invoice_id,
+            entity_name=invoice.get("invoice_number", ""),
+            before={"status": invoice.get("status"), "total": invoice.get("total")},
+            after={
+                "status": update_data.get("status"),
+                "refund_type": refund.refund_type,
+                "refund_amount": refund.amount,
+                "credit_note_number": next_cn_number,
+                "reason": refund.reason,
+            },
+        )
+    except Exception:
+        pass
+
     return {
         "message": f"تم إنشاء إشعار دائن بمبلغ {refund.amount} ر.س",
         "credit_note": credit_note
@@ -1544,7 +1564,25 @@ async def delete_credit_note(credit_note_id: str, current_user: dict = Depends(g
     result = await db.credit_notes.delete_one({"id": credit_note_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Credit note not found")
-    
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="credit_note.delete",
+            entity_type="credit_note",
+            entity_id=credit_note_id,
+            entity_name=str(credit_note.get("credit_note_number", "")),
+            before={
+                "credit_note_number": credit_note.get("credit_note_number"),
+                "original_invoice_number": credit_note.get("original_invoice_number"),
+                "refund_amount": credit_note.get("refund_amount"),
+                "reason": credit_note.get("reason"),
+            },
+        )
+    except Exception:
+        pass
+
     return {"message": "Credit note deleted"}
 
 # ============ REGISTRATION FORMS ROUTES ============

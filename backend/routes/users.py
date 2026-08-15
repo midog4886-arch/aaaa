@@ -125,7 +125,25 @@ async def create_user(user_data: UserCreateAdmin, current_user: dict = Depends(g
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_doc)
-    
+
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="user.create",
+            entity_type="user",
+            entity_id=user_id,
+            entity_name=user_data.name or user_data.username,
+            after={
+                "username": user_data.username,
+                "is_admin": user_data.is_admin,
+                "branch_ids": branch_ids,
+                "permissions_count": len(permissions),
+            },
+        )
+    except Exception:
+        pass
+
     # Return user without password and _id
     return {k: v for k, v in user_doc.items() if k not in ["password", "_id"]}
 
