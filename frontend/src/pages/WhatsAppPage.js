@@ -229,6 +229,7 @@ export default function WhatsAppPage() {
   const [pushForm, setPushForm] = useState({ title: '', body: '', url: '/', branch_id: '' });
   const [showPushSubscribers, setShowPushSubscribers] = useState(false);
   const [pushSubscribers, setPushSubscribers] = useState([]);
+  const [pushSubBranchFilter, setPushSubBranchFilter] = useState('all');
   const [loadingPushSubscribers, setLoadingPushSubscribers] = useState(false);
 
   // ── Activity Notification State ──
@@ -2364,13 +2365,24 @@ export default function WhatsAppPage() {
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <Users className="w-5 h-5 text-blue-600" />
-                    {t(`المشتركون (${pushSubscribers.length})`, `Subscribers (${pushSubscribers.length})`)}
+                    {t(`المشتركون (${(pushSubBranchFilter === 'all' ? pushSubscribers : pushSubscribers.filter(s => (s.branch_id || '') === pushSubBranchFilter)).length})`, `Subscribers (${(pushSubBranchFilter === 'all' ? pushSubscribers : pushSubscribers.filter(s => (s.branch_id || '') === pushSubBranchFilter)).length})`)}
                   </DialogTitle>
                 </DialogHeader>
+                {branches.length > 1 && (
+                  <Select value={pushSubBranchFilter} onValueChange={setPushSubBranchFilter}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder={t('كل الفروع', 'All branches')} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('كل الفروع', 'All branches')}</SelectItem>
+                      {branches.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{getBranchName(b.id) || b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <div className="overflow-y-auto flex-1">
                   {loadingPushSubscribers ? <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div> :
                    pushSubscribers.length === 0 ? <div className="text-center py-12 text-muted-foreground">{t('لا يوجد مشتركين', 'No subscribers')}</div> :
-                   <div className="space-y-2 p-1">{pushSubscribers.map((sub, i) => (
+                   <div className="space-y-2 p-1">{(pushSubBranchFilter === 'all' ? pushSubscribers : pushSubscribers.filter(s => (s.branch_id || '') === pushSubBranchFilter)).map((sub, i) => (
                     <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border hover:bg-blue-50">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><Users className="w-4 h-4 text-blue-600" /></div>
