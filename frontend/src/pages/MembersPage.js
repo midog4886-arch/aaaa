@@ -474,6 +474,14 @@ export const MembersPage = () => {
     if (target) {
       consumedFocusRef.current = focusId;
       openViewDialog(target);
+    } else {
+      // Not in the currently-loaded (branch-filtered) list — e.g. an admin
+      // arriving from the messages inbox while another branch is selected.
+      // Fetch the member directly by id (server enforces scoping) and open.
+      consumedFocusRef.current = focusId;
+      membersAPI.getById(focusId)
+        .then(res => { if (res?.data?.id) openViewDialog(res.data); })
+        .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [members, searchParams]);
