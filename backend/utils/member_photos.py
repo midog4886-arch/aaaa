@@ -115,6 +115,110 @@ async def delete_member_photo(db, member_id: str) -> None:
     await db.member_photos.delete_one({"member_id": member_id})
 
 
+# ── Generic entity photo store (coaches, supervisors) ──────────────────────
+# Same design as member photos, generalized: photo lives in a per-kind
+# collection, the entity doc keeps only a signed relative URL that every
+# existing <img src> consumer renders unchanged. Member photos keep their
+# original URL/signature shape (unprefixed payload) for backward
+# compatibility with already-issued URLs.
+
+ENTITY_PHOTO_KINDS = {
+    "member": {"collection": "member_photos", "id_field": "member_id"},
+    "coach": {"collection": "coach_photos", "id_field": "coach_id"},
+    "supervisor": {"collection": "supervisor_photos", "id_field": "supervisor_id"},
+}
+
+
+def _kind_conf(kind: str) -> dict:
+    conf = ENTITY_PHOTO_KINDS.get(kind)
+    if not conf:
+        raise ValueError(f"unknown photo kind: {kind}")
+    return conf
+
+
+def entity_photo_sig(kind: str, tenant_slug: str, entity_id: str) -> str:
+    if kind == "member":
+        return photo_sig(tenant_slug, entity_id)
+    return hmac.new(_secret(), f"{kind}:{tenant_slug}:{entity_id}".encode(),
+                    hashlib.sha256).hexdigest()[:20]
+
+
+def verify_entity_photo_sig(kind: str, tenant_slug: str, entity_id: str, sig: str) -> bool:
+    return bool(sig) and hmac.compare_digest(entity_photo_sig(kind, tenant_slug, entity_id), sig)
+
+
+def build_entity_photo_url(kind: str, tenant_slug: str, entity_id: str, content_hash: str) -> str:
+    _kind_conf(kind)
+    return (
+        f"/api/public/{kind}-photo/{tenant_slug}/{entity_id}"
+        f"?v={content_hash[:10]}&sig={entity_photo_sig(kind, tenant_slug, entity_id)}"
+    )
+
+
+def is_entity_photo_url(value) -> bool:
+    return isinstance(value, str) and value.startswith("/api/public/") and "-photo/" in value
+
+
+_ENTITY_URL_RE = None
+
+
+def is_own_entity_photo_url(kind: str, tenant_slug: str, entity_id: str, value) -> bool:
+    """Strict write-boundary check for an echoed photo URL.
+
+    True only when ``value`` is the signed photo URL of EXACTLY this kind,
+    tenant and entity (signature verified). Anything else — another entity's
+    URL, another kind's URL, a foreign tenant's URL, or a forged sig — is
+    rejected, so a signed URL obtained elsewhere can't be grafted onto a
+    different entity through the edit form.
+    """
+    if not isinstance(value, str):
+        return False
+    _kind_conf(kind)
+    import re
+    m = re.match(
+        r"^/api/public/([a-z]+)-photo/([a-z0-9_]{1,64})/([^/?]+)\?v=[0-9a-f]{1,64}&sig=([0-9a-f]{20})$",
+        value,
+    )
+    if not m:
+        return False
+    url_kind, url_slug, url_id, sig = m.groups()
+    if url_kind != kind or url_slug != tenant_slug or url_id != entity_id:
+        return False
+    return verify_entity_photo_sig(kind, tenant_slug, entity_id, sig)
+
+
+async def store_entity_photo(db, kind: str, tenant_slug: str, entity_id: str, data_url: str) -> Optional[str]:
+    """Compress + upsert an entity photo; return the stable signed URL (or None)."""
+    conf = _kind_conf(kind)
+    compressed = compress_photo_data_url(data_url)
+    if not compressed:
+        return None
+    content_hash = hashlib.sha256(compressed.encode()).hexdigest()
+    await db[conf["collection"]].update_one(
+        {conf["id_field"]: entity_id},
+        {"$set": {
+            conf["id_field"]: entity_id,
+            "data": compressed,
+            "hash": content_hash,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return build_entity_photo_url(kind, tenant_slug, entity_id, content_hash)
+
+
+async def delete_entity_photo(db, kind: str, entity_id: str) -> None:
+    conf = _kind_conf(kind)
+    await db[conf["collection"]].delete_one({conf["id_field"]: entity_id})
+
+
+async def get_entity_photo_doc(db, kind: str, entity_id: str) -> Optional[dict]:
+    conf = _kind_conf(kind)
+    return await db[conf["collection"]].find_one(
+        {conf["id_field"]: entity_id}, {"_id": 0, "data": 1, "hash": 1}
+    )
+
+
 async def load_photo_data_map(db, member_ids: List[str]) -> Dict[str, str]:
     """Bulk map member_id -> photo data URL from the photo store (for exports)."""
     ids = [m for m in set(member_ids) if m]

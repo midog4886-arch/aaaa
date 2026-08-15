@@ -399,6 +399,52 @@ async def get_member_photo_public(tenant_slug: str, member_id: str, v: str = "",
     )
 
 
+async def _serve_entity_photo(kind: str, tenant_slug: str, entity_id: str, sig: str):
+    """Shared serving path for coach/supervisor photos (same design as the
+    member photo route above: public-but-signed, tenant from URL path,
+    immutable cache keyed by content hash)."""
+    import re as _re
+    from utils.member_photos import verify_entity_photo_sig, get_entity_photo_doc
+    from utils.tenant import slug_to_db_name
+    from database import _raw_client
+    from fastapi.responses import Response as _PhotoResp
+
+    slug = (tenant_slug or "").strip().lower()
+    if not _re.match(r"^[a-z0-9_]{1,64}$", slug) or not verify_entity_photo_sig(kind, slug, entity_id, sig):
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    tdb = _raw_client[slug_to_db_name(slug)]
+    doc = await get_entity_photo_doc(tdb, kind, entity_id)
+    if not doc or not doc.get("data"):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    try:
+        header, b64 = doc["data"].split(",", 1)
+        raw = base64.b64decode(b64)
+        media_type = header.split(":", 1)[1].split(";", 1)[0] or "image/jpeg"
+    except Exception:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    etag = (doc.get("hash") or "")[:16]
+    return _PhotoResp(
+        content=raw,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{etag}"' if etag else "",
+        },
+    )
+
+
+@api_router.get("/public/coach-photo/{tenant_slug}/{entity_id}")
+async def get_coach_photo_public(tenant_slug: str, entity_id: str, v: str = "", sig: str = ""):
+    return await _serve_entity_photo("coach", tenant_slug, entity_id, sig)
+
+
+@api_router.get("/public/supervisor-photo/{tenant_slug}/{entity_id}")
+async def get_supervisor_photo_public(tenant_slug: str, entity_id: str, v: str = "", sig: str = ""):
+    return await _serve_entity_photo("supervisor", tenant_slug, entity_id, sig)
+
+
 # ============ PUBLIC API - Member Card ============
 
 @api_router.get("/public/member-card/{search_term}")

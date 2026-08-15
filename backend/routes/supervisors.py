@@ -11,6 +11,13 @@ import uuid
 
 from database import db
 from utils.auth import get_current_user
+from utils.member_photos import (
+    store_entity_photo,
+    delete_entity_photo,
+    is_entity_photo_url,
+    is_own_entity_photo_url,
+)
+from utils.tenant import get_current_tenant_slug
 
 router = APIRouter(prefix="/supervisors", tags=["Supervisors"])
 
@@ -20,10 +27,29 @@ MAX_PHOTO_BYTES = 3 * 1024 * 1024  # ~2MB after base64 overhead, matches fronten
 def _validate_photo(photo: Optional[str]) -> None:
     if not photo:
         return
+    if is_entity_photo_url(photo):
+        # Already-stored photo URL echoed back by the edit form — pass through.
+        return
     if not photo.startswith("data:image/"):
         raise HTTPException(status_code=400, detail="نوع الملف غير مدعوم، يجب أن تكون صورة")
     if len(photo.encode()) > MAX_PHOTO_BYTES:
         raise HTTPException(status_code=400, detail="حجم الصورة كبير جداً، الحد الأقصى 2 ميجابايت")
+
+
+async def _resolve_photo_field(supervisor_id: str, photo: Optional[str]) -> Optional[str]:
+    """data URL -> store + signed URL; stored URL -> keep; empty -> delete."""
+    if photo and photo.startswith("data:image/"):
+        url = await store_entity_photo(db, "supervisor", get_current_tenant_slug(), supervisor_id, photo)
+        if not url:
+            raise HTTPException(status_code=400, detail="تعذر معالجة الصورة — يرجى اختيار صورة أخرى")
+        return url
+    if photo and is_entity_photo_url(photo):
+        # Only this supervisor's own signed URL may be echoed back.
+        if not is_own_entity_photo_url("supervisor", get_current_tenant_slug(), supervisor_id, photo):
+            raise HTTPException(status_code=400, detail="رابط الصورة غير صالح")
+        return photo
+    await delete_entity_photo(db, "supervisor", supervisor_id)
+    return None
 
 
 def _require_admin(current_user: dict) -> None:
@@ -66,10 +92,11 @@ async def create_supervisor(
     name = (payload.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="الاسم مطلوب")
+    sup_id = str(uuid.uuid4())
     doc = {
-        "id": str(uuid.uuid4()),
+        "id": sup_id,
         "name": name,
-        "photo": payload.photo or None,
+        "photo": await _resolve_photo_field(sup_id, payload.photo),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.supervisors.insert_one(doc)
@@ -91,7 +118,7 @@ async def update_supervisor(
     existing = await db.supervisors.find_one({"id": supervisor_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="المشرف غير موجود")
-    update_doc = {"name": name, "photo": payload.photo or None}
+    update_doc = {"name": name, "photo": await _resolve_photo_field(supervisor_id, payload.photo)}
     await db.supervisors.update_one({"id": supervisor_id}, {"$set": update_doc})
     existing.update(update_doc)
     existing.setdefault("created_at", None)
@@ -107,4 +134,5 @@ async def delete_supervisor(
     result = await db.supervisors.delete_one({"id": supervisor_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="المشرف غير موجود")
+    await delete_entity_photo(db, "supervisor", supervisor_id)
     return {"message": "deleted"}

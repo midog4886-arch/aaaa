@@ -11,6 +11,13 @@ import uuid
 from database import db
 from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
 from utils.cache import cache_get, cache_set, cache_invalidate
+from utils.member_photos import (
+    store_entity_photo,
+    delete_entity_photo,
+    is_entity_photo_url,
+    is_own_entity_photo_url,
+)
+from utils.tenant import get_current_tenant_slug
 
 router = APIRouter(prefix="/coaches", tags=["Coaches"])
 
@@ -137,10 +144,35 @@ MAX_PHOTO_BYTES = 3 * 1024 * 1024  # ~2MB actual file after base64 overhead (~33
 def _validate_photo(photo: Optional[str]) -> None:
     if not photo:
         return
+    if is_entity_photo_url(photo):
+        # Already-stored photo URL echoed back by the edit form — pass through.
+        return
     if not photo.startswith("data:image/"):
         raise HTTPException(status_code=400, detail="نوع الملف غير مدعوم، يجب أن تكون صورة")
     if len(photo.encode()) > MAX_PHOTO_BYTES:
         raise HTTPException(status_code=400, detail="حجم الصورة كبير جداً، الحد الأقصى 2 ميجابايت")
+
+
+async def _resolve_photo_field(coach_id: str, photo: Optional[str]) -> Optional[str]:
+    """Turn an incoming photo value into what the coach doc should store.
+
+    - data URL  -> compress into the coach_photos store, return the signed URL
+    - stored URL -> keep as-is (unchanged photo echoed back by the edit form)
+    - empty/None -> remove the stored photo, return None
+    """
+    if photo and photo.startswith("data:image/"):
+        url = await store_entity_photo(db, "coach", get_current_tenant_slug(), coach_id, photo)
+        if not url:
+            raise HTTPException(status_code=400, detail="تعذر معالجة الصورة — يرجى اختيار صورة أخرى")
+        return url
+    if photo and is_entity_photo_url(photo):
+        # URL echo is ONLY valid when it is this exact coach's own signed URL —
+        # a member/supervisor/foreign URL grafted in via the API is rejected.
+        if not is_own_entity_photo_url("coach", get_current_tenant_slug(), coach_id, photo):
+            raise HTTPException(status_code=400, detail="رابط الصورة غير صالح")
+        return photo
+    await delete_entity_photo(db, "coach", coach_id)
+    return None
 
 
 @router.post("", response_model=Coach)
@@ -165,6 +197,7 @@ async def create_coach(coach: CoachCreate, current_user: dict = Depends(get_curr
         "id": coach_id,
         "employee_id": employee_id,
         **coach.model_dump(),
+        "photo": await _resolve_photo_field(coach_id, coach.photo),
         "branch_id": final_branch_id,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -196,9 +229,16 @@ async def assign_employee_ids(current_user: dict = Depends(get_current_user)):
 @router.put("/{coach_id}", response_model=Coach)
 async def update_coach(coach_id: str, coach: CoachCreate, current_user: dict = Depends(get_current_user)):
     _validate_photo(coach.photo)
+    # Existence check BEFORE photo side effects, so a bad id can't leave an
+    # orphan coach_photos doc (or delete a photo) without a coach update.
+    exists = await db.coaches.find_one({"id": coach_id}, {"_id": 1})
+    if not exists:
+        raise HTTPException(status_code=404, detail="Coach not found")
+    update_doc = coach.model_dump()
+    update_doc["photo"] = await _resolve_photo_field(coach_id, coach.photo)
     result = await db.coaches.find_one_and_update(
         {"id": coach_id},
-        {"$set": coach.model_dump()},
+        {"$set": update_doc},
         return_document=True
     )
     if not result:
@@ -212,6 +252,7 @@ async def delete_coach(coach_id: str, current_user: dict = Depends(get_current_u
     result = await db.coaches.delete_one({"id": coach_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Coach not found")
+    await delete_entity_photo(db, "coach", coach_id)
     cache_invalidate("coaches:")
     return {"message": "Coach deleted"}
 
