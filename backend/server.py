@@ -5237,12 +5237,79 @@ def start_tenant_purge_digest_scheduler():
         asyncio.ensure_future(tenant_purge_digest_loop())
 
 
+# ── Backup file safety & tenant ownership helpers ────────────────────────────
+import re as _bk_re
+
+_BACKUP_NAME_RE = _bk_re.compile(r"^(auto_backup|backup)_[A-Za-z0-9_\-\.]+\.json$")
+
+
+def _safe_backup_path(filename: str):
+    """Resolve a backup filename inside BACKUPS_DIR, rejecting traversal."""
+    if not filename or not _BACKUP_NAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid backup filename")
+    filepath = (BACKUPS_DIR / filename).resolve()
+    if filepath.parent != BACKUPS_DIR.resolve():
+        raise HTTPException(status_code=400, detail="Invalid backup filename")
+    return filepath
+
+
+def _current_backup_slug() -> str:
+    from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
+    return ((get_current_tenant_slug() or DEFAULT_TENANT_SLUG) or "default").replace("/", "_")
+
+
+def _backup_owned_by_current_tenant(filename: str) -> bool:
+    """A tenant may only see/touch its own backup files.
+
+    Slugs may contain underscores, so a bare prefix match is ambiguous
+    (tenant "foo" must not own tenant "foo_bar"'s files). Ownership is
+    therefore matched against the exact shapes this app writes:
+      - auto_backup_<slug>_<YYYYMMDD>.json           (nightly scheduler)
+      - backup_<slug>_<YYYYMMDD_HHMMSS>.json         (manual create)
+      - backup_<slug>_pre_restore_<YYYYMMDD_HHMMSS>.json (restore safety net)
+      - backup_<slug>--<name>.json                   (uploads; slugs cannot
+                                                      contain dashes, so the
+                                                      "--" separator is
+                                                      unambiguous)
+    Legacy manual backups (backup_<digits/underscores>.json, no slug) belong
+    to the default tenant only.
+    """
+    slug = _bk_re.escape(_current_backup_slug())
+    owned_patterns = (
+        rf"^auto_backup_{slug}_\d{{8}}\.json$",
+        # Everything this app writes manually (create / upload / pre-restore)
+        # lives in the "backup_<slug>--..." namespace: slugs are ^[a-z0-9_]+$
+        # so the "--" separator can never be produced by another slug, unlike
+        # "_" (tenant "foo" vs "foo_bar", or numeric slugs vs timestamps).
+        rf"^backup_{slug}--[A-Za-z0-9_\-\.]+\.json$",
+    )
+    if any(_bk_re.match(pat, filename) for pat in owned_patterns):
+        return True
+    from utils.tenant import DEFAULT_TENANT_SLUG
+    if _current_backup_slug() == (DEFAULT_TENANT_SLUG or "default"):
+        # Legacy manual backups predate tenant-scoped names. New manual names
+        # always contain "--", so this shape can no longer be produced by any
+        # tenant (including all-numeric slugs) and cannot collide.
+        if _bk_re.match(r"^backup_[0-9_]+\.json$", filename):
+            return True
+    return False
+
+
+def _require_owned_backup(filename: str):
+    filepath = _safe_backup_path(filename)
+    if not _backup_owned_by_current_tenant(filename):
+        raise HTTPException(status_code=404, detail="Backup file not found")
+    if not filepath.exists() or not filepath.is_file():
+        raise HTTPException(status_code=404, detail="Backup file not found")
+    return filepath
+
+
 @api_router.post("/backup/create")
 async def create_backup(token: Optional[str] = None):
     _require_export_admin_token(token)
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    filename = f"backup_{timestamp}.json"
+    filename = f"backup_{_current_backup_slug()}--{timestamp}.json"
     filepath = BACKUPS_DIR / filename
 
     backup_data = {
@@ -5285,6 +5352,7 @@ async def list_backups(token: Optional[str] = None):
     backups = []
     if BACKUPS_DIR.exists():
         all_files = list(BACKUPS_DIR.glob("backup_*.json")) + list(BACKUPS_DIR.glob("auto_backup_*.json"))
+        all_files = [f for f in all_files if _backup_owned_by_current_tenant(f.name)]
         for f in sorted(all_files, key=lambda x: x.stat().st_mtime, reverse=True):
             stat = f.stat()
             backups.append({
@@ -5302,9 +5370,7 @@ async def list_backups(token: Optional[str] = None):
 async def download_backup(filename: str, token: Optional[str] = None):
     _require_export_admin_token(token)
 
-    filepath = BACKUPS_DIR / filename
-    if not filepath.exists() or not filepath.is_file():
-        raise HTTPException(status_code=404, detail="Backup file not found")
+    filepath = _require_owned_backup(filename)
 
     return FileResponse(
         path=str(filepath),
@@ -5316,24 +5382,53 @@ async def download_backup(filename: str, token: Optional[str] = None):
 
 @api_router.post("/backup/restore/{filename}")
 async def restore_backup(filename: str, token: Optional[str] = None):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        actor_payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        _enforce_tenant_match_local(actor_payload)
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    # Restore wipes and replaces the tenant's data — admin only, own files only.
+    actor_payload = _require_export_admin_token(token)
 
-    filepath = BACKUPS_DIR / filename
-    if not filepath.exists() or not filepath.is_file():
-        raise HTTPException(status_code=404, detail="Backup file not found")
+    filepath = _require_owned_backup(filename)
 
     with open(filepath, 'r', encoding='utf-8') as f:
         backup_data = json.load(f)
 
     collections = backup_data.get("collections", {})
-    restored = {}
+    if not isinstance(collections, dict) or not collections:
+        raise HTTPException(status_code=400, detail="ملف النسخة الاحتياطية فارغ أو غير صالح")
+    unknown = [c for c in collections if c not in _ALL_COLLECTIONS]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"النسخة تحتوي مجموعات غير معروفة: {', '.join(unknown[:5])}")
+    # Validate shapes up-front so a malformed file can never wipe a
+    # collection and then crash before re-inserting.
+    for col_name, documents in collections.items():
+        if not isinstance(documents, list) or any(not isinstance(d, dict) for d in documents):
+            raise HTTPException(status_code=400, detail=f"بيانات غير صالحة في المجموعة: {col_name}")
 
+    # Safety net: snapshot the CURRENT data before overwriting, so a wrong
+    # restore can itself be undone by restoring the pre_restore file.
+    slug = _current_backup_slug()
+    safety_name = f"backup_{slug}--pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    safety_data = {"timestamp": datetime.now(timezone.utc).isoformat(), "collections": {}}
+    for col_name in _ALL_COLLECTIONS:
+        try:
+            documents = await db[col_name].find({}, {"_id": 0}).to_list(100000)
+            if documents:
+                safety_data["collections"][col_name] = documents
+        except Exception:
+            pass
+
+    def _write_safety():
+        with open(BACKUPS_DIR / safety_name, 'w', encoding='utf-8') as f:
+            json.dump(safety_data, f, ensure_ascii=False, default=str)
+    await asyncio.to_thread(_write_safety)
+
+    # Keep only the 3 newest pre_restore snapshots per tenant.
+    pre_files = sorted(BACKUPS_DIR.glob(f"backup_{slug}--pre_restore_*.json"), key=lambda x: x.stat().st_mtime)
+    while len(pre_files) > 3:
+        try:
+            pre_files.pop(0).unlink()
+        except Exception:
+            break
+
+    restored = {}
     for col_name, documents in collections.items():
         collection = db[col_name]
         await collection.delete_many({})
@@ -5364,28 +5459,31 @@ async def restore_backup(filename: str, token: Optional[str] = None):
         "message": "Backup restored successfully",
         "restored_collections": restored,
         "total_collections": len(restored),
-        "backup_timestamp": backup_data.get("timestamp", "")
+        "backup_timestamp": backup_data.get("timestamp", ""),
+        "safety_backup": safety_name,
     }
 
 
 @api_router.post("/backup/upload")
 async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Query(None)):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        actor_payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        _enforce_tenant_match_local(actor_payload)
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    actor_payload = _require_export_admin_token(token)
 
     if not file.filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="يجب أن يكون الملف بصيغة JSON")
 
-    filename = file.filename
-    if not filename.startswith("backup_"):
-        filename = f"backup_{filename}"
+    # Force the stored name into this tenant's namespace with safe characters.
+    slug = _current_backup_slug()
+    base = _bk_re.sub(r"[^A-Za-z0-9_\-\.]", "_", file.filename[:-5])
+    for prefix in ("auto_backup_", "backup_"):
+        if base.startswith(prefix):
+            base = base[len(prefix):]
+    if base.startswith(f"{slug}--"):
+        base = base[len(slug) + 2:]
+    elif base.startswith(f"{slug}_"):
+        base = base[len(slug) + 1:]
+    filename = f"backup_{slug}--{base or 'upload'}.json"
 
-    filepath = BACKUPS_DIR / filename
+    filepath = _safe_backup_path(filename)
     content = await file.read()
 
     try:
@@ -5419,17 +5517,9 @@ async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Que
 
 @api_router.delete("/backup/{filename}")
 async def delete_backup(filename: str, token: Optional[str] = None):
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        actor_payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        _enforce_tenant_match_local(actor_payload)
-    except:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    actor_payload = _require_export_admin_token(token)
 
-    filepath = BACKUPS_DIR / filename
-    if not filepath.exists() or not filepath.is_file():
-        raise HTTPException(status_code=404, detail="Backup file not found")
+    filepath = _require_owned_backup(filename)
 
     file_size = filepath.stat().st_size
     filepath.unlink()

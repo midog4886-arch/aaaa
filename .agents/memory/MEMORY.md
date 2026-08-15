@@ -62,4 +62,6 @@
 - [Scanner throughput flow](scanner-throughput-flow.md) — lite=1 lookups, same-code-only debounce, different card interrupts a settled dialog (never mid-request), stale guards after every await.
 - [Attendance route shadowing](attendance-route-shadowing.md) — manual + QR check-in are served by routes/attendance.py, NOT the lookalike server.py handlers (dead code); quick/bulk live in server.py.
 - [Attendance branch stamp](attendance-branch-stamp.md) — every attendance write must stamp branch_id (VIP=scanning branch, else member's) or the record vanishes from all branch-filtered views; quick/bulk paths live in server.py.
+- [Backup file tenant namespace](backup-file-tenant-namespace.md) — manual/upload/pre-restore backups must use backup_<slug>--<suffix>.json; plain "_" is ambiguous across slugs and leaked cross-tenant.
+- [Frontend jest setup](frontend-jest-setup.md) — craco test needs resetMocks:false + exports-subpath moduleNameMapper; mock radix Dialog (no portal in jsdom); query tabs by role+name.
 - [Multi-branch non-admin active branch](multi-branch-active-branch.md) — user.branch_ids[]; client sends active branch via X-Branch-Id header; apply_active_branch pins current_user.branch_id to it (multi-branch only) so all legacy branch_id readers follow the switch; spoof falls back to allowed[0]. ALL 3 get_current_user + 2 from_token copies must wire it.
