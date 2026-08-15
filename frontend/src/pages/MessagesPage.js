@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -226,6 +227,7 @@ export const MessagesPage = () => {
 
   // Internal Messages State
   const [conversations, setConversations] = useState([]);
+  const navigate = useNavigate();
   const [selectedThread, setSelectedThread] = useState(null);
   const [threadMessages, setThreadMessages] = useState([]);
   const [threadMember, setThreadMember] = useState(null);
@@ -1312,7 +1314,14 @@ export const MessagesPage = () => {
                       name={threadMember?.name}
                       size="sm"
                     />
-                    {threadMember?.name || ''}
+                    <button
+                      type="button"
+                      onClick={() => selectedThread && navigate(`/admin/members?focus=${selectedThread}`)}
+                      className="hover:underline hover:text-primary transition-colors"
+                      title={language === 'ar' ? 'فتح ملف العضو' : 'Open member profile'}
+                    >
+                      {threadMember?.name || ''}
+                    </button>
                     {threadMember?.member_code && (
                       <Badge variant="outline" className="text-xs">#{threadMember.member_code}</Badge>
                     )}
