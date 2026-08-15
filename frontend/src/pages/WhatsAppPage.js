@@ -22,6 +22,115 @@ import {
   MessageCircle, CheckCircle,
 } from 'lucide-react';
 
+const PROFILE_FIELD_LABELS = {
+  name: { ar: 'الاسم', en: 'Name' },
+  phone: { ar: 'رقم الجوال', en: 'Phone' },
+  date_of_birth: { ar: 'تاريخ الميلاد', en: 'Date of birth' },
+};
+
+const ChangeRequestCard = ({ msg, language, onApply, onReject, disabled }) => {
+  const cr = msg.change_request || {};
+  const fieldKey = cr.field;
+  const fieldLabel =
+    language === 'ar'
+      ? cr.field_label_ar || (PROFILE_FIELD_LABELS[fieldKey] || {}).ar || fieldKey
+      : cr.field_label_en || (PROFILE_FIELD_LABELS[fieldKey] || {}).en || fieldKey;
+  const status = msg.change_request_status;
+  const isApplied = status === 'applied';
+  const isRejected = status === 'rejected';
+  const isResolved = isApplied || isRejected;
+  const dash = '—';
+
+  return (
+    <div className="space-y-2 min-w-[260px]">
+      <p className="text-sm font-medium">
+        {language === 'ar' ? `طلب تعديل ${fieldLabel}` : `Requested change: ${fieldLabel}`}
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-md border border-amber-200 bg-white/60 p-2">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {language === 'ar' ? 'القيمة الحالية' : 'Current value'}
+          </p>
+          <p className="text-sm break-words">{cr.current_value || dash}</p>
+        </div>
+        <div className="rounded-md border border-amber-300 bg-amber-100/70 p-2">
+          <p className="text-[10px] uppercase tracking-wide text-amber-800">
+            {language === 'ar' ? 'القيمة المطلوبة' : 'Requested value'}
+          </p>
+          <p className="text-sm font-medium break-words">{cr.new_value || dash}</p>
+        </div>
+      </div>
+      {cr.reason && (
+        <p className="text-xs text-muted-foreground">
+          <span className="font-semibold">{language === 'ar' ? 'السبب: ' : 'Reason: '}</span>
+          {cr.reason}
+        </p>
+      )}
+      {isApplied && (
+        <div className="flex items-center gap-2 text-xs text-green-800 bg-green-100 border border-green-200 rounded-md px-2 py-1">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          <span>
+            {language === 'ar' ? 'تم تطبيق التعديل' : 'Change applied'}
+            {msg.change_request_applied_at && (
+              <span className="text-muted-foreground ms-1">
+                · {new Date(msg.change_request_applied_at).toLocaleString('ar-SA')}
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+      {isRejected && (
+        <div className="flex flex-col gap-1 text-xs text-red-800 bg-red-100 border border-red-200 rounded-md px-2 py-1">
+          <div className="flex items-center gap-2">
+            <XCircle className="w-3.5 h-3.5" />
+            <span>
+              {language === 'ar' ? 'تم رفض الطلب' : 'Request rejected'}
+              {msg.change_request_rejected_at && (
+                <span className="text-muted-foreground ms-1">
+                  · {new Date(msg.change_request_rejected_at).toLocaleString('ar-SA')}
+                </span>
+              )}
+            </span>
+          </div>
+          {msg.change_request_rejection_reason && (
+            <p className="text-xs">
+              <span className="font-semibold">
+                {language === 'ar' ? 'السبب: ' : 'Reason: '}
+              </span>
+              {msg.change_request_rejection_reason}
+            </p>
+          )}
+        </div>
+      )}
+      {!isResolved && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            onClick={() => onApply(msg)}
+            disabled={disabled}
+            className="gap-1 h-8"
+            data-testid={`button-apply-change-${msg.id}`}
+          >
+            <CheckCircle className="w-3.5 h-3.5" />
+            {language === 'ar' ? 'تطبيق التعديل' : 'Apply change'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onReject(msg)}
+            disabled={disabled}
+            className="gap-1 h-8 border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+            data-testid={`button-reject-change-${msg.id}`}
+          >
+            <XCircle className="w-3.5 h-3.5" />
+            {language === 'ar' ? 'رفض الطلب' : 'Reject'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const HOURS = Array.from({ length: 24 }, (_, i) => {
   const ampm = i < 12 ? 'ص' : 'م';
   const h = i === 0 ? 12 : i > 12 ? i - 12 : i;
@@ -756,6 +865,61 @@ export default function WhatsAppPage() {
       setSelectedThread(memberId);
       loadConversations();
     } catch { toast.error(t('خطأ في تحميل المحادثة', 'Failed to load thread')); }
+  };
+
+  const handleApplyChangeRequest = async (msg) => {
+    if (!selectedThread || !msg?.id) return;
+    const cr = msg.change_request || {};
+    const fieldLabel = (PROFILE_FIELD_LABELS[cr.field] || {})[language] || cr.field || '';
+    const confirmText = language === 'ar'
+      ? `تأكيد تطبيق التعديل على ${fieldLabel}؟\nسيتم تحديث بيانات العضو واعتبار الطلب منتهياً.`
+      : `Apply the requested change to ${fieldLabel}?\nThe member record will be updated and the request marked resolved.`;
+    if (!window.confirm(confirmText)) return;
+
+    setSendingMsg(true);
+    try {
+      await membersAPI.applyChangeRequest(selectedThread, msg.id);
+      toast.success(language === 'ar' ? 'تم تطبيق التعديل' : 'Change applied');
+      await openThread(selectedThread);
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      toast.error(detail || (language === 'ar' ? 'فشل تطبيق التعديل' : 'Failed to apply change'));
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
+  const handleRejectChangeRequest = async (msg) => {
+    if (!selectedThread || !msg?.id) return;
+    const cr = msg.change_request || {};
+    const fieldLabel = (PROFILE_FIELD_LABELS[cr.field] || {})[language] || cr.field || '';
+    const confirmText = language === 'ar'
+      ? `رفض طلب تعديل ${fieldLabel}؟\nلن يتم تحديث بيانات العضو وسيتم اعتبار الطلب منتهياً.`
+      : `Reject the change request for ${fieldLabel}?\nThe member record will not be updated and the request will be marked resolved.`;
+    if (!window.confirm(confirmText)) return;
+
+    const reasonPrompt = language === 'ar'
+      ? 'سبب الرفض (اختياري) — سيُرسل للعضو كرسالة:'
+      : 'Reason for rejecting (optional) — will be sent to the member as a reply:';
+    const rawReason = window.prompt(reasonPrompt, '');
+    if (rawReason === null) return;
+    const reason = rawReason.trim();
+    if (reason.length > 500) {
+      toast.error(language === 'ar' ? 'السبب طويل جداً' : 'Reason is too long');
+      return;
+    }
+
+    setSendingMsg(true);
+    try {
+      await membersAPI.rejectChangeRequest(selectedThread, msg.id, reason);
+      toast.success(language === 'ar' ? 'تم رفض الطلب' : 'Request rejected');
+      await openThread(selectedThread);
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      toast.error(detail || (language === 'ar' ? 'فشل رفض الطلب' : 'Failed to reject request'));
+    } finally {
+      setSendingMsg(false);
+    }
   };
 
   const handleSendInternalMessage = async () => {
@@ -2135,14 +2299,29 @@ export default function WhatsAppPage() {
                 <CardContent>
                   <div className="space-y-3 max-h-[400px] overflow-y-auto mb-4 p-2">
                     {threadMessages.length === 0 ? <div className="text-center py-8 text-muted-foreground text-sm">{t('لا توجد رسائل', 'No messages')}</div> :
-                     threadMessages.map(msg => (
-                      <div key={msg.id} className={`p-3 rounded-lg max-w-[80%] ${msg.sender_type === 'admin' ? 'bg-primary/10 border border-primary/20 me-auto' : 'bg-accent border border-border ms-auto'}`}>
+                     threadMessages.map(msg => {
+                      const isChangeRequest = msg.kind === 'profile_change_request' && msg.change_request;
+                      return (
+                      <div key={msg.id} className={`p-3 rounded-lg max-w-[80%] ${msg.sender_type === 'admin' ? 'bg-primary/10 border border-primary/20 me-auto' : isChangeRequest ? 'bg-amber-50 border border-amber-200 ms-auto' : 'bg-accent border border-border ms-auto'}`}>
                         <p className="text-xs font-medium mb-1 text-muted-foreground">{msg.sender_type === 'admin' ? t('أنت', 'You') : threadMember?.name}</p>
-                        {msg.subject && <p className="text-xs font-bold mb-1">{msg.subject}</p>}
-                        <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                        {isChangeRequest ? (
+                          <ChangeRequestCard
+                            msg={msg}
+                            language={language}
+                            onApply={handleApplyChangeRequest}
+                            onReject={handleRejectChangeRequest}
+                            disabled={sendingMsg}
+                          />
+                        ) : (
+                          <>
+                            {msg.subject && <p className="text-xs font-bold mb-1">{msg.subject}</p>}
+                            <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                          </>
+                        )}
                         <p className="text-xs text-muted-foreground mt-1">{new Date(msg.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}</p>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div className="flex gap-2 border-t pt-3">
                     <Textarea value={replyText} onChange={e => setReplyText(e.target.value)} rows={2} placeholder={t('اكتب ردك...', 'Write reply...')} className="resize-none flex-1" />

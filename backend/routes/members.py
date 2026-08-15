@@ -865,6 +865,10 @@ async def apply_profile_change_request(
     records that the request has been resolved so it stops appearing as
     pending in the inbox and on the member's profile page.
     """
+    # Same gate as the inbox UI that hosts this action: staff need the
+    # 'messages' permission (admins bypass). Without this, any authenticated
+    # user could mutate member PII via a raw API call.
+    await require_permission(current_user, "messages")
     msg = await db.messages.find_one(
         {"id": message_id, "kind": "profile_change_request"},
         {"_id": 0},
@@ -976,6 +980,7 @@ async def reject_profile_change_request(
     request message is also marked ``read_by_admin=True`` so it disappears
     from the pending count and from the member's "request pending" indicator.
     """
+    await require_permission(current_user, "messages")
     msg = await db.messages.find_one(
         {"id": message_id, "kind": "profile_change_request"},
         {"_id": 0},
