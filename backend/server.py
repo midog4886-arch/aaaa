@@ -3927,11 +3927,21 @@ def start_ops_alerts_worker():
     asyncio.ensure_future(ops_alerts_delivery_loop())
 
 
+def _offsite_backup_configured() -> bool:
+    return bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
+
+
 async def _send_backup_to_telegram(filepath, filename):
+    """Push a backup file offsite via Telegram bot.
+
+    Returns a status dict: ``{"status": "sent"|"failed"|"unconfigured"|"skipped",
+    "message_id": int|None, "error": str}``. Callers use it to surface offsite
+    delivery failures through ops alerts and to prune old offsite copies.
+    """
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
-        return
+        return {"status": "unconfigured", "message_id": None, "error": ""}
     gz_path = None
     try:
         send_path = filepath
@@ -3948,7 +3958,8 @@ async def _send_backup_to_telegram(filepath, filename):
             gz_mb = gz_path.stat().st_size / (1024 * 1024)
             if gz_mb > 49:
                 print(f"Telegram backup skipped: {filename} is {size_mb:.1f}MB ({gz_mb:.1f}MB gzipped, limit 50MB)")
-                return
+                return {"status": "skipped", "message_id": None,
+                        "error": f"file too large for Telegram ({gz_mb:.1f}MB gzipped, limit 50MB)"}
             send_path = gz_path
             send_name = filename + ".gz"
             mime = "application/gzip"
@@ -3961,12 +3972,21 @@ async def _send_backup_to_telegram(filepath, filename):
             data = {"chat_id": chat_id, "caption": caption}
             async with httpx.AsyncClient(timeout=300.0) as client:
                 resp = await client.post(url, data=data, files=files)
-        if resp.status_code == 200 and resp.json().get("ok"):
+        body = {}
+        try:
+            body = resp.json()
+        except Exception:
+            pass
+        if resp.status_code == 200 and body.get("ok"):
             print(f"Telegram backup sent: {send_name}")
-        else:
-            print(f"Telegram backup failed: {resp.status_code} {resp.text[:200]}")
+            msg_id = (body.get("result") or {}).get("message_id")
+            return {"status": "sent", "message_id": msg_id, "error": ""}
+        print(f"Telegram backup failed: {resp.status_code} {resp.text[:200]}")
+        return {"status": "failed", "message_id": None,
+                "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
     except Exception as e:
         print(f"Telegram backup error: {e}")
+        return {"status": "failed", "message_id": None, "error": str(e)[:300]}
     finally:
         if gz_path is not None:
             try:
@@ -3980,6 +4000,53 @@ def _gzip_file(src, dst):
     with open(src, "rb") as fin, _gzip.open(dst, "wb", compresslevel=6) as fout:
         import shutil as _shutil
         _shutil.copyfileobj(fin, fout)
+
+
+# Offsite retention: mirror the local policy (7 auto backups per tenant).
+# Sent auto backups are recorded in the control DB (offsite_backups) with the
+# Telegram message_id, so old offsite copies can be pruned via deleteMessage.
+# Pruning is best-effort — Telegram may refuse deleting old messages, in which
+# case the registry row is still dropped (extra offsite history is harmless).
+_OFFSITE_KEEP_PER_TENANT = 7
+
+
+async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id) -> None:
+    try:
+        from control_db import control_db
+        now_iso = datetime.now(timezone.utc).isoformat()
+        await control_db.offsite_backups.insert_one({
+            "id": str(uuid.uuid4()),
+            "tenant_slug": slug,
+            "filename": filename,
+            "message_id": message_id,
+            "sent_at": now_iso,
+        })
+        rows = await control_db.offsite_backups.find(
+            {"tenant_slug": slug}, {"_id": 0, "id": 1, "message_id": 1, "sent_at": 1, "filename": 1}
+        ).to_list(1000)
+        rows.sort(key=lambda r: r.get("sent_at") or "")
+        excess = rows[:-_OFFSITE_KEEP_PER_TENANT] if len(rows) > _OFFSITE_KEEP_PER_TENANT else []
+        if not excess:
+            return
+        token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+        import httpx
+        for row in excess:
+            msg_id = row.get("message_id")
+            if msg_id and token and chat_id:
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        await client.post(
+                            f"https://api.telegram.org/bot{token}/deleteMessage",
+                            data={"chat_id": chat_id, "message_id": msg_id},
+                        )
+                except Exception as e:
+                    print(f"Offsite backup prune: deleteMessage failed for {row.get('filename')}: {e}")
+            await control_db.offsite_backups.delete_one({"id": row["id"]})
+            print(f"Offsite backup pruned (retention limit): {row.get('filename')}")
+    except Exception as e:
+        # Bookkeeping must never fail the backup itself.
+        print(f"Offsite backup registry error: {e}")
 
 
 async def _backup_one_tenant(tenant: dict) -> dict:
@@ -4014,9 +4081,15 @@ async def _backup_one_tenant(tenant: dict) -> dict:
     size_mb = filepath.stat().st_size / (1024 * 1024)
     print(f"Auto backup created for tenant '{slug}': {filename} ({cols} collections, {size_mb:.2f}MB)")
 
-    await _send_backup_to_telegram(filepath, filename)
+    offsite = await _send_backup_to_telegram(filepath, filename)
+    if offsite.get("status") == "sent":
+        await _record_and_prune_offsite_backup(slug, filename, offsite.get("message_id"))
 
-    return {"file": filename, "collections": cols, "size_mb": round(size_mb, 2), "skipped": len(skipped)}
+    return {
+        "file": filename, "collections": cols, "size_mb": round(size_mb, 2),
+        "skipped": len(skipped),
+        "offsite": offsite.get("status"), "offsite_error": offsite.get("error", ""),
+    }
 
 
 # Serializes backup runs — the midnight scheduler and the freshness watchdog
@@ -4049,6 +4122,25 @@ async def _create_auto_backup():
             kind="backup.partial_failure",
             title="Backup completed with errors",
             body=f"{summary['failed']}/{summary['processed']} tenants failed during the daily backup. Errors: {summary.get('errors', {})}",
+            severity="warning",
+        )
+
+    # Offsite delivery health: surface failed/skipped pushes via ops alerts.
+    # "unconfigured" is intentionally NOT alerted nightly (it would spam every
+    # day until credentials exist) — the backup watchdog and logs cover that.
+    offsite_problems = {
+        slug: f"{res.get('offsite')}: {res.get('offsite_error') or 'no detail'}"
+        for slug, res in (summary.get("results") or {}).items()
+        if isinstance(res, dict) and res.get("offsite") in ("failed", "skipped")
+    }
+    if offsite_problems and _offsite_backup_configured():
+        await _emit_ops_alert(
+            kind="backup.offsite_failure",
+            title="فشل إرسال النسخة الاحتياطية الخارجية",
+            body=(
+                "تم إنشاء النسخ الاحتياطية محلياً لكن فشل رفعها للوجهة الخارجية (Telegram) "
+                f"لـ {len(offsite_problems)} أكاديمية: {offsite_problems}"
+            ),
             severity="warning",
         )
 
