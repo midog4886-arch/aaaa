@@ -4002,12 +4002,16 @@ def _gzip_file(src, dst):
         _shutil.copyfileobj(fin, fout)
 
 
-# Offsite retention: mirror the local policy (7 auto backups per tenant).
-# Sent auto backups are recorded in the control DB (offsite_backups) with the
-# Telegram message_id, so old offsite copies can be pruned via deleteMessage.
-# Pruning is best-effort — Telegram may refuse deleting old messages, in which
-# case the registry row is still dropped (extra offsite history is harmless).
+# Offsite retention: mirror the local policy (7 auto backups per tenant)
+# WHERE THE API ALLOWS IT. Telegram's Bot API hard-refuses deleteMessage for
+# messages older than 48 hours, so copies that age past that window are
+# append-only by platform design — they are kept, and their registry rows are
+# marked ``retained`` (never silently dropped) so the registry always reflects
+# what actually exists offsite. Extra offsite history is a deliberate safety
+# tradeoff, not a bug; the 7-copy policy is fully enforced on local disk.
 _OFFSITE_KEEP_PER_TENANT = 7
+_TELEGRAM_DELETE_WINDOW_HOURS = 47  # stay under Telegram's 48h delete limit
+_OFFSITE_DELETE_MAX_ATTEMPTS = 3
 
 
 async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id) -> None:
@@ -4022,28 +4026,75 @@ async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id)
             "sent_at": now_iso,
         })
         rows = await control_db.offsite_backups.find(
-            {"tenant_slug": slug}, {"_id": 0, "id": 1, "message_id": 1, "sent_at": 1, "filename": 1}
-        ).to_list(1000)
+            {"tenant_slug": slug},
+            {"_id": 0, "id": 1, "message_id": 1, "sent_at": 1, "filename": 1,
+             "delete_attempts": 1, "retained": 1},
+        ).to_list(100000)
         rows.sort(key=lambda r: r.get("sent_at") or "")
         excess = rows[:-_OFFSITE_KEEP_PER_TENANT] if len(rows) > _OFFSITE_KEEP_PER_TENANT else []
         if not excess:
             return
         token = os.environ.get("TELEGRAM_BOT_TOKEN")
         chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+        now = datetime.now(timezone.utc)
         import httpx
+
+        async def _mark_retained(row, reason):
+            if row.get("retained"):
+                return
+            await control_db.offsite_backups.update_one(
+                {"id": row["id"]}, {"$set": {"retained": True, "retained_reason": reason}}
+            )
+            print(f"Offsite backup retained (cannot delete: {reason}): {row.get('filename')} — "
+                  "Telegram copy remains; local 7-copy retention still enforced")
+
         for row in excess:
             msg_id = row.get("message_id")
-            if msg_id and token and chat_id:
+            if not (msg_id and token and chat_id):
+                # Nothing exists/reachable remotely — safe to drop the row.
+                await control_db.offsite_backups.delete_one({"id": row["id"]})
+                continue
+            # Telegram refuses deleting messages older than 48h — don't burn
+            # attempts on a call that can never succeed; record reality instead.
+            try:
+                sent_at = datetime.fromisoformat(str(row.get("sent_at")))
+                if sent_at.tzinfo is None:
+                    sent_at = sent_at.replace(tzinfo=timezone.utc)
+                age_h = (now - sent_at).total_seconds() / 3600.0
+            except Exception:
+                age_h = float("inf")
+            if age_h > _TELEGRAM_DELETE_WINDOW_HOURS:
+                await _mark_retained(row, "older than Telegram 48h delete window")
+                continue
+            deleted = False
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        f"https://api.telegram.org/bot{token}/deleteMessage",
+                        data={"chat_id": chat_id, "message_id": msg_id},
+                    )
                 try:
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        await client.post(
-                            f"https://api.telegram.org/bot{token}/deleteMessage",
-                            data={"chat_id": chat_id, "message_id": msg_id},
-                        )
-                except Exception as e:
-                    print(f"Offsite backup prune: deleteMessage failed for {row.get('filename')}: {e}")
-            await control_db.offsite_backups.delete_one({"id": row["id"]})
-            print(f"Offsite backup pruned (retention limit): {row.get('filename')}")
+                    deleted = resp.status_code == 200 and resp.json().get("ok") is True
+                except Exception:
+                    deleted = False
+                if not deleted:
+                    print(f"Offsite backup prune: deleteMessage refused for {row.get('filename')}: "
+                          f"{resp.status_code} {resp.text[:150]}")
+            except Exception as e:
+                print(f"Offsite backup prune: deleteMessage failed for {row.get('filename')}: {e}")
+            if deleted:
+                await control_db.offsite_backups.delete_one({"id": row["id"]})
+                print(f"Offsite backup pruned (retention limit): {row.get('filename')}")
+                continue
+            # Keep the row and retry on the next run; after repeated refusals
+            # record it as permanently retained (registry mirrors reality).
+            attempts = int(row.get("delete_attempts") or 0) + 1
+            await control_db.offsite_backups.update_one(
+                {"id": row["id"]}, {"$set": {"delete_attempts": attempts}}
+            )
+            if attempts >= _OFFSITE_DELETE_MAX_ATTEMPTS:
+                row["retained"] = False
+                await _mark_retained(row, f"delete refused {attempts} times")
     except Exception as e:
         # Bookkeeping must never fail the backup itself.
         print(f"Offsite backup registry error: {e}")
