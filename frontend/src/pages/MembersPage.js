@@ -3250,6 +3250,10 @@ export const MembersPage = () => {
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 bg-muted/50 rounded-lg">
                       <div>
+                        <p className="text-sm text-muted-foreground">{language === 'ar' ? 'رقم العضوية' : 'Member ID'}</p>
+                        <p className="font-bold text-orange-600">{selectedMember.member_code || '-'}</p>
+                      </div>
+                      <div>
                         <p className="text-sm text-muted-foreground">{t('guardian_name')}</p>
                         <p className="font-medium">
                           {language === 'ar' ? selectedMember.guardian_name_ar : selectedMember.guardian_name}
