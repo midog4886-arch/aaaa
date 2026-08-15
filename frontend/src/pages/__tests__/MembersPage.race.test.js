@@ -276,10 +276,8 @@ test("A's slow freeze data never lands in B's freshly opened view", async () => 
 
   await renderMembersPage();
 
-  // Trigger A's freeze load (openFreezeDialog) — its list request hangs.
-  // Note: the freeze dialog markup itself is not rendered by the page (dead
-  // state flag), but the handler still fires A's requests and must be
-  // generation-guarded.
+  // Trigger A's freeze load (openFreezeDialog opens the view dialog on the
+  // freeze tab) — its list request hangs; it must be generation-guarded.
   await user.click(
     screen.getAllByTitle('Freeze')[0] // row order: A first
   );

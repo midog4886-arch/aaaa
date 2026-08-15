@@ -240,7 +240,6 @@ export const MembersPage = () => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
-  const [isFreezeDialogOpen, setIsFreezeDialogOpen] = useState(false);
   const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
   const [memberTournaments, setMemberTournaments] = useState([]);
   const [memberFreezes, setMemberFreezes] = useState([]);
@@ -1243,7 +1242,7 @@ export const MembersPage = () => {
     }
   };
 
-  const openViewDialog = async (member) => {
+  const openViewDialog = async (member, initialTab = 'info') => {
     // Request-generation guard: opening member (A) then quickly member (B)
     // must never let A's late responses overwrite B's displayed data.
     // Every open bumps the generation; closing the dialog bumps it too, so
@@ -1252,7 +1251,7 @@ export const MembersPage = () => {
     const fresh = () => viewReqGenRef.current === gen;
     activeViewMemberIdRef.current = member.id;
     setSelectedMember(member);
-    setViewTab('info');
+    setViewTab(initialTab);
     setMemberReminders([]);
     setExpandedQuotaIdx(new Set());
     setExpandedOldDatesIdx(new Set());
@@ -1334,25 +1333,11 @@ export const MembersPage = () => {
     });
   };
 
-  const openFreezeDialog = async (member) => {
-    const gen = ++viewReqGenRef.current;
-    activeViewMemberIdRef.current = member.id;
-    setSelectedMember(member);
-    setMemberFreezes([]);
-    setMemberFreezeStats(null);
+  const openFreezeDialog = (member) => {
+    // No standalone freeze modal exists — reuse the member view dialog,
+    // landing directly on its freeze tab (which openViewDialog fully loads).
     setFreezeForm({ start_date: new Date().toISOString().split('T')[0], end_date: '', reason: 'personal' });
-    setIsFreezeDialogOpen(true);
-    try {
-      const [freezesRes, statsRes] = await Promise.all([
-        freezesAPI.getMemberFreezes(member.id),
-        freezesAPI.getMemberStats(member.id)
-      ]);
-      if (viewReqGenRef.current !== gen) return;
-      setMemberFreezes(freezesRes.data);
-      setMemberFreezeStats(statsRes.data);
-    } catch (err) {
-      console.error('Failed to load freeze data:', err);
-    }
+    openViewDialog(member, 'freeze');
   };
 
   const handleCreateFreeze = async () => {
