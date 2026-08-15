@@ -56,7 +56,6 @@ const RegistrationRequestsPage = lazy(() => import('./pages/RegistrationRequests
 const LevelsPage = lazy(() => import('./pages/LevelsPage'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
-// MessagesPage import retained (used as fallback redirect target previously)
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const OperationPasswordsPage = lazy(() => import('./pages/OperationPasswordsPage'));
