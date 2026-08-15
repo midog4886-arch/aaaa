@@ -356,7 +356,10 @@ async def update_member_profile(
 
     if data.photo is not None:
         photo = data.photo
+        from utils.member_photos import store_member_photo, delete_member_photo
+        from utils.tenant import get_current_tenant_slug
         if photo == "":
+            await delete_member_photo(db, member["id"])
             update_fields["photo"] = ""
         else:
             if not photo.startswith("data:image/"):
@@ -369,7 +372,17 @@ async def update_member_profile(
                     status_code=400,
                     detail="حجم الصورة كبير جداً، الحد الأقصى 2 ميجابايت"
                 )
-            update_fields["photo"] = photo
+            # Photos live in the member_photos store; the member doc keeps
+            # only a small stable URL (keeps list/report payloads tiny).
+            photo_url = await store_member_photo(
+                db, get_current_tenant_slug(), member["id"], photo
+            )
+            if not photo_url:
+                raise HTTPException(
+                    status_code=400,
+                    detail="تعذر معالجة الصورة، جرّب صورة أخرى"
+                )
+            update_fields["photo"] = photo_url
 
     if data.preferred_language is not None:
         lang = "en" if str(data.preferred_language).lower().startswith("en") else "ar"

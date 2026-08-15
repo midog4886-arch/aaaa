@@ -355,6 +355,50 @@ async def serve_ad_image(filename: str):
     raise HTTPException(status_code=404, detail="Image not found")
 
 
+# ============ PUBLIC API - Member Photo (signed, cacheable) ============
+
+@api_router.get("/public/member-photo/{tenant_slug}/{member_id}")
+async def get_member_photo_public(tenant_slug: str, member_id: str, v: str = "", sig: str = ""):
+    """Serve a member photo from the member_photos store.
+
+    Public-but-signed: <img> tags can't attach JWT headers, and the native
+    member app is served from one fixed domain so the tenant must come from
+    the URL path, not X-Tenant-Slug. The HMAC sig binds tenant+member; the
+    ``v`` content hash makes the URL immutable-cacheable.
+    """
+    import re as _re
+    from utils.member_photos import verify_photo_sig
+    from utils.tenant import slug_to_db_name
+    from database import _raw_client
+    from fastapi.responses import Response as _PhotoResp
+
+    slug = (tenant_slug or "").strip().lower()
+    if not _re.match(r"^[a-z0-9_]{1,64}$", slug) or not verify_photo_sig(slug, member_id, sig):
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    tdb = _raw_client[slug_to_db_name(slug)]
+    doc = await tdb.member_photos.find_one({"member_id": member_id}, {"_id": 0, "data": 1, "hash": 1})
+    if not doc or not doc.get("data"):
+        raise HTTPException(status_code=404, detail="Photo not found")
+    data_url = doc["data"]
+    try:
+        header, b64 = data_url.split(",", 1)
+        raw = base64.b64decode(b64)
+        media_type = header.split(":", 1)[1].split(";", 1)[0] or "image/jpeg"
+    except Exception:
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    etag = (doc.get("hash") or "")[:16]
+    return _PhotoResp(
+        content=raw,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "ETag": f'"{etag}"' if etag else "",
+        },
+    )
+
+
 # ============ PUBLIC API - Member Card ============
 
 @api_router.get("/public/member-card/{search_term}")
@@ -8571,17 +8615,18 @@ async def export_attendance_excel(
             entry["dates"].append(d)
         entry["session_count"] += 1
 
-    # Fill in any missing photos from members collection (records may pre-date photo enrichment)
-    member_ids_for_photo = [mid for mid, e in member_map.items() if not e["member_photo"]]
-    if member_ids_for_photo:
-        photo_docs = await db.members.find(
-            {"id": {"$in": member_ids_for_photo}},
-            {"_id": 0, "id": 1, "photo": 1}
-        ).to_list(len(member_ids_for_photo))
-        for d in photo_docs:
-            mid = d.get("id")
-            if mid in member_map:
-                member_map[mid]["member_photo"] = d.get("photo", "") or ""
+    # Photos now live in the member_photos store (members.photo is just a URL);
+    # exports must embed pixels, so bulk-load actual data for every member and
+    # replace URL placeholders. Legacy inline data URLs (old attendance copies)
+    # are kept as-is; anything else non-embeddable is blanked.
+    from utils.member_photos import load_photo_data_map, is_photo_url
+    photo_data = await load_photo_data_map(db, list(member_map.keys()))
+    for mid, entry in member_map.items():
+        current = entry.get("member_photo", "")
+        if mid in photo_data:
+            entry["member_photo"] = photo_data[mid]
+        elif is_photo_url(current):
+            entry["member_photo"] = ""
 
     rows = []
     for idx, (mid, entry) in enumerate(sorted(member_map.items(), key=lambda x: x[1]["member_name"]), 1):

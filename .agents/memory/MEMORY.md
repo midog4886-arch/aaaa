@@ -57,6 +57,7 @@
 - [VIP cross-branch attendance](vip-cross-branch-attendance.md) — is_vip member attends ANY branch; record tags SCANNING branch not home branch; branch summary/board must enrich foreign visitors from today_records or VIP visits vanish from counts.
 - [Split payment on invoices](split-payment-invoices.md) — invoice can be cash+card+transfer; payment_method="split" + payment_split{}; reports distribute each leg to its method; screen-only breakdown must live OUTSIDE printRef (html2canvas ignores print: classes).
 - [Invoice paid status & coupon count](invoice-paid-status-coupon-count.md) — invoice create ALWAYS inserts "pending" (payload status ignored); coupon used_count/stock/loyalty run only at /pay.
+- [Member photo store](member-photo-store.md) — member photos live in member_photos collection + signed public URL in members.photo; never write data URLs into member docs; exports need load_photo_data_map.
 - [List endpoints photo bloat](list-endpoints-photo-bloat.md) — base64 photos live inside member/coach docs; lists hit MBs and Atlas timeouts. Pass exclude_photo=true wherever avatars aren't shown.
 - [Dashboard SWR cache](dashboard-swr-cache.md) — Atlas free tier ~100KB/s + no compression makes cold loads wire-bound; dashboard trio serves via cache_swr, every dashboard-affecting write must call invalidate_dashboard_caches().
 - [Scanner throughput flow](scanner-throughput-flow.md) — lite=1 lookups, same-code-only debounce, different card interrupts a settled dialog (never mid-request), stale guards after every await.

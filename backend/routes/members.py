@@ -696,6 +696,12 @@ async def delete_member(member_id: str, current_user: dict = Depends(get_current
     result = await db.members.delete_one(_scoped_member_query(member_id, current_user))
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Member not found")
+    # Photos live in the member_photos store — clean up the orphan doc.
+    try:
+        from utils.member_photos import delete_member_photo
+        await delete_member_photo(db, member_id)
+    except Exception:
+        pass
     invalidate_dashboard_caches()
     from utils.audit import log_audit
     await log_audit(
