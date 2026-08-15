@@ -167,6 +167,8 @@ export default function WhatsAppPage() {
     portal_enabled: true,
     push_title_template: 'تنبيه: اشتراكك ينتهي قريباً 🔔',
     push_body_template: 'اشتراكك في {activity} ينتهي خلال {days} أيام ({end_date})',
+    admin_alert_enabled: false,
+    admin_alert_phone: '',
   });
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -1398,6 +1400,31 @@ export default function WhatsAppPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Manager WhatsApp alerts for new admin notifications (admin-only) */}
+              {user?.is_admin && (
+              <div className="border rounded-xl p-4 space-y-3 bg-muted/30">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{t('تنبيه المدير على واتساب 🔔', 'Manager WhatsApp alerts 🔔')}</p>
+                    <p className="text-xs text-muted-foreground">{t('يرسل كل إشعار جديد في جرس لوحة التحكم (رسائل الأعضاء، تنبيهات التجديد…) إلى رقم المدير. يتطلب اتصال الواتساب.', 'Forwards every new dashboard bell notification (member messages, renewal alerts…) to the manager. Requires WhatsApp connection.')}</p>
+                  </div>
+                  <button onClick={() => setWaSettings(s => ({ ...s, admin_alert_enabled: !s.admin_alert_enabled }))}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${waSettings.admin_alert_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.admin_alert_enabled ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
+                  </button>
+                </div>
+                {waSettings.admin_alert_enabled && (
+                  <div className="ps-2 border-s-2 border-green-400">
+                    <label className="block text-xs font-medium mb-1">{t('رقم واتساب المدير', "Manager's WhatsApp number")}</label>
+                    <input type="tel" value={waSettings.admin_alert_phone || ''}
+                      onChange={e => setWaSettings(s => ({ ...s, admin_alert_phone: e.target.value }))}
+                      placeholder="05xxxxxxxx" dir="ltr"
+                      className="w-full sm:w-64 border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
+                  </div>
+                )}
+              </div>
+              )}
 
               <Button onClick={handleSaveSettings} disabled={savingSettings} className="w-full">
                 {savingSettings ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Settings className="w-4 h-4 me-2" />}

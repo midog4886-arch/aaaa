@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, List
 import httpx
@@ -37,6 +37,10 @@ RIYADH_TZ = ZoneInfo("Asia/Riyadh")
 
 DEFAULT_SETTINGS = {
     "enabled": False,
+    # Forward NEW admin bell notifications (رسائل الأعضاء، تنبيهات التجديد…)
+    # to the manager's WhatsApp. Checked every minute by _admin_alert_loop.
+    "admin_alert_enabled": False,
+    "admin_alert_phone": "",
     "days_before": 3,
     "days_before_2": 1,
     "reminder_2_enabled": True,
@@ -584,10 +588,104 @@ async def _scheduler_loop():
             await asyncio.sleep(3600)
 
 
+_admin_alert_started = False
+
+# Max notifications forwarded to the manager per tenant per cycle; anything
+# older in the same batch is dropped (cursor advances past it) so a backlog
+# can never flood the manager's WhatsApp.
+ADMIN_ALERT_BATCH_LIMIT = 5
+
+
+async def _forward_admin_alerts_for_current_tenant():
+    """Forward NEW admin bell notifications to the manager's WhatsApp.
+
+    Cursor (`admin_alert_last_ts` on the whatsapp_settings doc) tracks the
+    last forwarded notification's created_at. First run initializes it to now
+    so history is never replayed. When WhatsApp is disconnected nothing is
+    sent and the cursor doesn't move; on reconnect only the newest
+    ADMIN_ALERT_BATCH_LIMIT items go out and the cursor jumps past the rest.
+    """
+    settings = await _get_settings()
+    if not settings.get("admin_alert_enabled"):
+        return
+    phone = (settings.get("admin_alert_phone") or "").strip()
+    if not phone:
+        return
+
+    coll = _db["whatsapp_settings"]
+    last_ts = settings.get("admin_alert_last_ts")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if not last_ts:
+        await coll.update_one({}, {"$set": {"admin_alert_last_ts": now_iso}}, upsert=True)
+        return
+
+    fresh = await _db["notifications"].find(
+        {"created_at": {"$gt": last_ts}},
+        {"_id": 0, "title_ar": 1, "title": 1, "message_ar": 1, "message": 1, "created_at": 1},
+    ).sort("created_at", 1).to_list(200)
+    if not fresh:
+        return
+
+    wa_status = await _get_wa_status()
+    if not wa_status.get("connected", False):
+        return  # keep cursor; retry when the bot reconnects
+
+    newest_ts = max(str(n.get("created_at") or "") for n in fresh)
+    to_send = fresh[-ADMIN_ALERT_BATCH_LIMIT:]
+    dropped = len(fresh) - len(to_send)
+
+    wa_phone = _format_phone(phone)
+    sent = 0
+    for n in to_send:
+        title = n.get("title_ar") or n.get("title") or "إشعار جديد"
+        body = n.get("message_ar") or n.get("message") or ""
+        message = f"🔔 {title}\n{body}".strip()
+        if await _send_wa_message(wa_phone, message):
+            sent += 1
+            # Advance cursor per success so a mid-batch failure retries the
+            # rest. $max keeps advancement monotonic (ISO strings compare
+            # lexicographically) even if another writer raced us.
+            await coll.update_one(
+                {}, {"$max": {"admin_alert_last_ts": str(n.get("created_at") or now_iso)}}, upsert=True
+            )
+        else:
+            logger.error("Admin WA alert send failed — will retry next cycle")
+            return
+    if dropped:
+        await coll.update_one({}, {"$max": {"admin_alert_last_ts": newest_ts}}, upsert=True)
+        logger.info(f"Admin WA alerts: sent {sent}, skipped {dropped} older backlog items")
+
+
+async def _admin_alert_loop():
+    global _admin_alert_started
+    _admin_alert_started = True
+    logger.info("WhatsApp admin-alert forwarder started (every 60s)")
+    from utils.tenant import list_active_tenants, set_current_tenant, reset_current_tenant
+    while True:
+        try:
+            await asyncio.sleep(60)
+            tenants = await list_active_tenants()
+            for tenant in tenants:
+                token = set_current_tenant(tenant)
+                try:
+                    await _forward_admin_alerts_for_current_tenant()
+                except Exception as e:
+                    logger.error(f"Admin WA alert tenant={tenant.get('slug')} error: {e}")
+                finally:
+                    reset_current_tenant(token)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Admin WA alert loop error: {e}")
+            await asyncio.sleep(300)
+
+
 def start_scheduler():
     global _scheduler_started
     if not _scheduler_started:
         asyncio.ensure_future(_scheduler_loop())
+    if not _admin_alert_started:
+        asyncio.ensure_future(_admin_alert_loop())
 
 
 @router.get("/status")
@@ -621,6 +719,8 @@ class WhatsAppSettings(BaseModel):
     portal_enabled: Optional[bool] = None
     push_title_template: Optional[str] = None
     push_body_template: Optional[str] = None
+    admin_alert_enabled: Optional[bool] = None
+    admin_alert_phone: Optional[str] = None
 
 
 @router.put("/settings")
@@ -678,10 +778,32 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
         # Sort descending so longer offsets fire first (T-7, T-3, T-1, T-0)
         cleaned.sort(key=lambda x: -x["days"])
         data.offsets = cleaned[:10]  # cap at 10 offsets
+    # Manager-alert destination is sensitive (receives every bell notification,
+    # incl. member messages) — only academy admins may change it. Non-admin
+    # saves that merely echo the stored values back (the settings form sends
+    # the whole object) are allowed; actual changes are rejected.
+    if not current_user.get("is_admin") and (
+        data.admin_alert_enabled is not None or data.admin_alert_phone is not None
+    ):
+        stored = await _get_settings()
+        changed = (
+            (data.admin_alert_enabled is not None
+             and bool(data.admin_alert_enabled) != bool(stored.get("admin_alert_enabled")))
+            or (data.admin_alert_phone is not None
+                and data.admin_alert_phone.strip() != (stored.get("admin_alert_phone") or "").strip())
+        )
+        if changed:
+            raise HTTPException(status_code=403, detail="تغيير تنبيهات المدير متاح للمدير فقط")
+        data.admin_alert_enabled = None
+        data.admin_alert_phone = None
     coll = _db["whatsapp_settings"]
     update = {k: v for k, v in data.dict().items() if v is not None}
     if not update:
         raise HTTPException(status_code=400, detail="No fields to update")
+    if data.admin_alert_enabled:
+        # Baseline at enable time: forward only notifications created from now
+        # on; never replay history produced before/while the feature was off.
+        update["admin_alert_last_ts"] = datetime.now(timezone.utc).isoformat()
     await coll.update_one({}, {"$set": update}, upsert=True)
     return await _get_settings()
 
