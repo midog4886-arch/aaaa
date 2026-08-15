@@ -209,17 +209,24 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 
     conversations = await db.messages.aggregate(pipeline).to_list(500)
 
+    # Branch names in one batch so each conversation can show the member's
+    # branch (admins see conversations across all branches).
+    branches = await db.branches.find({}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}).to_list(200)
+    branch_names = {b["id"]: (b.get("name_ar") or b.get("name") or "") for b in branches if b.get("id")}
+
     for conv in conversations:
         conv["member_id"] = conv.pop("_id")
         member = await db.members.find_one(
             {"id": conv["member_id"]},
-            {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1}
+            {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1, "branch_id": 1}
         )
         if member:
             conv["member_name"] = member.get("name_ar", member.get("name", ""))
             conv["member_phone"] = member.get("phone", "")
             conv["member_code"] = member.get("member_code", "")
             conv["member_photo"] = member.get("photo", "") or ""
+            conv["member_branch_id"] = member.get("branch_id") or ""
+            conv["member_branch_name"] = branch_names.get(member.get("branch_id"), "")
 
     return conversations
 
@@ -238,8 +245,13 @@ async def get_thread(member_id: str, current_user: dict = Depends(get_current_us
 
     member = await db.members.find_one(
         {"id": member_id},
-        {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1}
+        {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1, "branch_id": 1}
     )
+    if member and member.get("branch_id"):
+        branch = await db.branches.find_one(
+            {"id": member["branch_id"]}, {"_id": 0, "name": 1, "name_ar": 1}
+        )
+        member["branch_name"] = (branch or {}).get("name_ar") or (branch or {}).get("name") or ""
 
     member_photo = (member.get("photo", "") if member else "") or ""
 
@@ -271,6 +283,7 @@ async def get_thread(member_id: str, current_user: dict = Depends(get_current_us
             "name": member.get("name_ar", member.get("name", "")) if member else "",
             "phone": member.get("phone", "") if member else "",
             "member_code": member.get("member_code", "") if member else "",
+            "branch_name": member.get("branch_name", "") if member else "",
             "photo": member_photo,
         } if member else None
     }

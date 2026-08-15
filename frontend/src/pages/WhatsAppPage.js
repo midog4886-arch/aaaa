@@ -2262,6 +2262,11 @@ export default function WhatsAppPage() {
                             <div className="flex items-center gap-2">
                               <p className="font-semibold truncate">{conv.member_name || conv.recipient_name}</p>
                               {conv.member_code && <Badge variant="outline" className="text-xs">#{conv.member_code}</Badge>}
+                              {conv.member_branch_name && (
+                                <Badge variant="secondary" className="text-xs gap-1">
+                                  <Building2 className="w-3 h-3" />{conv.member_branch_name}
+                                </Badge>
+                              )}
                             </div>
                             <p className="text-sm text-muted-foreground truncate">
                               {conv.last_sender_type === 'member' ? t('العضو: ', 'Member: ') : t('أنت: ', 'You: ')}{conv.last_message}
@@ -2293,6 +2298,11 @@ export default function WhatsAppPage() {
                       {threadMember?.name}
                     </button>
                     {threadMember?.member_code && <Badge variant="outline" className="text-xs">#{threadMember.member_code}</Badge>}
+                    {threadMember?.branch_name && (
+                      <Badge variant="secondary" className="text-xs gap-1">
+                        <Building2 className="w-3 h-3" />{threadMember.branch_name}
+                      </Badge>
+                    )}
                     {threadMember?.phone && <span className="text-sm text-muted-foreground font-normal" dir="ltr">{threadMember.phone}</span>}
                   </CardTitle>
                 </CardHeader>
