@@ -2383,7 +2383,9 @@ export default function WhatsAppPage() {
                   {loadingPushSubscribers ? <div className="flex items-center justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div> :
                    pushSubscribers.length === 0 ? <div className="text-center py-12 text-muted-foreground">{t('لا يوجد مشتركين', 'No subscribers')}</div> :
                    <div className="space-y-2 p-1">{(pushSubBranchFilter === 'all' ? pushSubscribers : pushSubscribers.filter(s => (s.branch_id || '') === pushSubBranchFilter)).map((sub, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border hover:bg-blue-50">
+                    <div key={i}
+                      onClick={() => { if (sub.member_id) { setShowPushSubscribers(false); navigate(`/admin/members?focus=${sub.member_id}`); } }}
+                      className={`flex items-center justify-between p-3 bg-gray-50 rounded-lg border hover:bg-blue-50 ${sub.member_id ? 'cursor-pointer' : ''}`}>
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center"><Users className="w-4 h-4 text-blue-600" /></div>
                         <div>

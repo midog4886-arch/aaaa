@@ -5,6 +5,7 @@ Web Push + Firebase Cloud Messaging for Android
 from fastapi import APIRouter, HTTPException, Depends
 
 from .common import get_current_user
+from utils.auth import require_permission
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -1072,7 +1073,8 @@ async def _resolve_activity_member_ids(
 
 
 @router.post("/broadcast")
-async def broadcast_notification(data: BroadcastPayload):
+async def broadcast_notification(data: BroadcastPayload, current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     payload = NotificationPayload(
         title=data.title,
         body=data.body,
@@ -1104,7 +1106,8 @@ async def broadcast_notification(data: BroadcastPayload):
 
 
 @router.get("/subscribers-count")
-async def get_subscribers_count():
+async def get_subscribers_count(current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     total = await db.push_subscriptions.count_documents({"is_active": True})
     web_count = await db.push_subscriptions.count_documents({"is_active": True, "platform": "web"})
     android_count = await db.push_subscriptions.count_documents({"is_active": True, "platform": "android"})
@@ -1112,7 +1115,8 @@ async def get_subscribers_count():
 
 
 @router.get("/subscribers-list")
-async def get_subscribers_list():
+async def get_subscribers_list(current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     subscriptions = await db.push_subscriptions.find(
         {"is_active": True},
         {"_id": 0, "member_id": 1, "created_at": 1, "updated_at": 1, "platform": 1}

@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .common import db, get_current_user
+from utils.auth import require_permission
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -63,6 +64,7 @@ class MessageReply(BaseModel):
 
 @router.post("")
 async def send_message(data: MessageCreate, current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     now = datetime.now(timezone.utc).isoformat()
     sender_name = current_user.get("name", current_user.get("username", "الإدارة"))
 
@@ -154,6 +156,7 @@ async def get_messages(
     limit: int = 50,
     current_user: dict = Depends(get_current_user)
 ):
+    await require_permission(current_user, "messages")
     query = {}
     if member_id:
         query["recipient_member_id"] = member_id
@@ -172,6 +175,7 @@ async def get_messages(
 
 @router.get("/conversations")
 async def get_conversations(current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     pipeline = [
         {"$sort": {"created_at": -1}},
         {"$group": {
@@ -233,6 +237,7 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 
 @router.get("/thread/{member_id}")
 async def get_thread(member_id: str, current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     messages = await db.messages.find(
         {"recipient_member_id": member_id},
         {"_id": 0}
@@ -291,6 +296,7 @@ async def get_thread(member_id: str, current_user: dict = Depends(get_current_us
 
 @router.post("/thread/{member_id}/reply")
 async def admin_reply(member_id: str, data: MessageReply, current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     member = await db.members.find_one({"id": member_id}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="العضو غير موجود")
@@ -330,6 +336,7 @@ async def admin_reply(member_id: str, data: MessageReply, current_user: dict = D
 
 @router.get("/unread-count")
 async def get_unread_count(current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     count = await db.messages.count_documents({
         "sender_type": "member",
         "read_by_admin": False
@@ -339,6 +346,7 @@ async def get_unread_count(current_user: dict = Depends(get_current_user)):
 
 @router.delete("/{message_id}")
 async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "messages")
     result = await db.messages.delete_one({"id": message_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
