@@ -12,6 +12,15 @@ import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
+# Live-server integration tests: they hit a running backend over HTTP with
+# seeded credentials and live-DB data, so they are opt-in. Set
+# RUN_LIVE_API_TESTS=1 (and REACT_APP_BACKEND_URL) to run them.
+pytestmark = pytest.mark.skipif(
+    not (os.environ.get("RUN_LIVE_API_TESTS") and os.environ.get("REACT_APP_BACKEND_URL")),
+    reason="live-server integration test: set RUN_LIVE_API_TESTS=1 and REACT_APP_BACKEND_URL to run",
+)
+
+
 class TestRegistrationFormsViewUpdate:
     """Test registration forms view and update functionality"""
     

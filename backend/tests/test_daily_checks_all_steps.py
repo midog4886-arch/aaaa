@@ -73,6 +73,7 @@ def _install_job_spies(monkeypatch, server_module, **overrides):
     import routes.notifications as notifications_mod
     import routes.push_notifications as push_mod
     import utils.tenant as tenant_mod
+    import utils.prepaid as prepaid_mod
     import control_db as control_mod
 
     calls: dict = {}
@@ -121,6 +122,16 @@ def _install_job_spies(monkeypatch, server_module, **overrides):
     monkeypatch.setattr(
         notifications_mod, "check_ads_expiry",
         _wrap("check_ads_expiry", _default_check), raising=True,
+    )
+    # The per-tenant callback runs a prepaid roll-forward sweep before the
+    # renewal checks (lazily imported from utils.prepaid at call time). Stub it
+    # so tests with a fake db don't record a spurious per-tenant error.
+    async def _default_roll_forward(*_a, **_k):
+        return 0
+
+    monkeypatch.setattr(
+        prepaid_mod, "roll_forward_all_prepaid",
+        _wrap("roll_forward_all_prepaid", _default_roll_forward), raising=True,
     )
     monkeypatch.setattr(
         tenant_mod, "for_each_active_tenant",

@@ -22,7 +22,13 @@ import server  # noqa: E402
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Own loop per call: order-independent under the full suite (other tests
+    # may close/replace the process-global loop via asyncio.run).
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # ── _send_backup_to_telegram status contract ────────────────────────────────
