@@ -1,7 +1,8 @@
 import { getAcademyLogoUrl, getAcademyName } from '../services/branding';
 import SubscriptionBanner from './SubscriptionBanner';
 import OnboardingGuard from './OnboardingGuard';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -561,12 +562,65 @@ export const TopHeader = ({ onMenuClick, title }) => {
   const isAdmin = user?.is_admin;
   const isDailyLedger = location.pathname === '/admin/daily-ledger';
 
+  // Ids we've already seen: new unread ids after the first load trigger a
+  // popup toast + a short sound so admins notice without opening the bell.
+  const seenNotifIdsRef = useRef(null);
+
   useEffect(() => {
     loadNotifications();
-    // Refresh every 5 minutes
-    const interval = setInterval(loadNotifications, 5 * 60 * 1000);
+    // Refresh every minute so new-message alerts feel live
+    const interval = setInterval(loadNotifications, 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const playNotificationSound = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const play = (freq, start, dur) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + dur + 0.05);
+      };
+      play(880, 0, 0.18);
+      play(1174, 0.15, 0.22);
+      setTimeout(() => { try { ctx.close(); } catch { /* noop */ } }, 1000);
+    } catch { /* audio blocked/unsupported — toast alone is fine */ }
+  };
+
+  const announceNewNotifications = (list) => {
+    const unread = (list || []).filter(n => !n.is_read && n.id);
+    if (seenNotifIdsRef.current === null) {
+      // First load after page open: don't replay old notifications.
+      seenNotifIdsRef.current = new Set(unread.map(n => n.id));
+      return;
+    }
+    const fresh = unread.filter(n => !seenNotifIdsRef.current.has(n.id));
+    if (!fresh.length) return;
+    fresh.forEach(n => seenNotifIdsRef.current.add(n.id));
+    playNotificationSound();
+    fresh.slice(0, 3).forEach(n => {
+      const nTitle = (language === 'en' ? (n.title_en || n.title_ar) : (n.title_ar || n.title_en)) || n.title || (language === 'ar' ? 'إشعار جديد' : 'New notification');
+      const nBody = (language === 'en' ? (n.message_en || n.message_ar) : (n.message_ar || n.message_en)) || n.message || '';
+      toast(nTitle, {
+        description: nBody,
+        duration: 8000,
+        action: n.action_url ? {
+          label: language === 'ar' ? 'فتح' : 'Open',
+          onClick: () => { handleMarkAsRead(n.id); navigate(n.action_url); },
+        } : undefined,
+      });
+    });
+    if (fresh.length > 3) {
+      toast(language === 'ar' ? `و${fresh.length - 3} إشعارات أخرى...` : `and ${fresh.length - 3} more...`, { duration: 5000 });
+    }
+  };
 
   const loadNotifications = async () => {
     try {
@@ -576,6 +630,7 @@ export const TopHeader = ({ onMenuClick, title }) => {
       ]);
       setNotifications(notifRes.data || []);
       setUnreadCount(countRes.data?.count || 0);
+      announceNewNotifications(notifRes.data || []);
     } catch (error) {
       console.error('Failed to load notifications:', error);
     }
