@@ -24,7 +24,13 @@ from utils import member_photos as mp  # noqa: E402
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Own loop per call: order-independent under the full suite (other tests
+    # may close/replace the process-global loop via asyncio.run).
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 # 1x1 red pixel PNG
