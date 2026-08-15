@@ -6,9 +6,37 @@ import uuid
 from datetime import datetime, timezone
 
 from .common import db, get_current_user
-from utils.auth import require_permission
+from utils.auth import require_permission, resolve_branch_filter
 
 router = APIRouter(prefix="/messages", tags=["messages"])
+
+
+async def _scoped_member_ids(current_user: dict) -> Optional[list]:
+    """Member ids the caller may see, or ``None`` for tenant-wide (admin).
+
+    Non-admins are pinned to their active branch via ``resolve_branch_filter``
+    (fail-closed 403 when no branch is assigned; multi-branch users follow the
+    X-Branch-Id header logic).
+    """
+    effective_branch = resolve_branch_filter(current_user, None)
+    if not effective_branch:
+        return None
+    docs = await db.members.find(
+        {"branch_id": effective_branch}, {"_id": 0, "id": 1}
+    ).to_list(50000)
+    return [d["id"] for d in docs if d.get("id")]
+
+
+async def _scoped_member_or_404(member_id: str, current_user: dict, projection: Optional[dict] = None) -> dict:
+    """Load a member enforcing branch scope for non-admins (404 if out of scope)."""
+    query = {"id": member_id}
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+    member = await db.members.find_one(query, projection or {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    return member
 
 
 async def send_message_push(
@@ -72,8 +100,12 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
     body_en = (data.body_en or "").strip() or None
 
     if data.broadcast:
+        broadcast_query = {"status": {"$ne": "deleted"}}
+        effective_branch = resolve_branch_filter(current_user, None)
+        if effective_branch:
+            broadcast_query["branch_id"] = effective_branch
         members = await db.members.find(
-            {"status": {"$ne": "deleted"}},
+            broadcast_query,
             {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1}
         ).to_list(10000)
 
@@ -114,9 +146,7 @@ async def send_message(data: MessageCreate, current_user: dict = Depends(get_cur
     if not data.recipient_member_id:
         raise HTTPException(status_code=400, detail="يجب تحديد العضو المستلم")
 
-    member = await db.members.find_one({"id": data.recipient_member_id}, {"_id": 0})
-    if not member:
-        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    member = await _scoped_member_or_404(data.recipient_member_id, current_user)
 
     msg_id = str(uuid.uuid4())
     message = {
@@ -158,8 +188,13 @@ async def get_messages(
 ):
     await require_permission(current_user, "messages")
     query = {}
+    allowed_ids = await _scoped_member_ids(current_user)
     if member_id:
+        if allowed_ids is not None and member_id not in allowed_ids:
+            raise HTTPException(status_code=404, detail="العضو غير موجود")
         query["recipient_member_id"] = member_id
+    elif allowed_ids is not None:
+        query["recipient_member_id"] = {"$in": allowed_ids}
     if unread_only:
         query["$or"] = [
             {"sender_type": "member", "read_by_admin": False}
@@ -176,7 +211,11 @@ async def get_messages(
 @router.get("/conversations")
 async def get_conversations(current_user: dict = Depends(get_current_user)):
     await require_permission(current_user, "messages")
-    pipeline = [
+    allowed_ids = await _scoped_member_ids(current_user)
+    pipeline = []
+    if allowed_ids is not None:
+        pipeline.append({"$match": {"recipient_member_id": {"$in": allowed_ids}}})
+    pipeline += [
         {"$sort": {"created_at": -1}},
         {"$group": {
             "_id": "$recipient_member_id",
@@ -238,6 +277,13 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
 @router.get("/thread/{member_id}")
 async def get_thread(member_id: str, current_user: dict = Depends(get_current_user)):
     await require_permission(current_user, "messages")
+    # Branch scope first: opening a thread also marks it read, so an
+    # out-of-scope member must 404 BEFORE any read/mutation happens.
+    member = await _scoped_member_or_404(
+        member_id, current_user,
+        {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1, "branch_id": 1},
+    )
+
     messages = await db.messages.find(
         {"recipient_member_id": member_id},
         {"_id": 0}
@@ -248,10 +294,6 @@ async def get_thread(member_id: str, current_user: dict = Depends(get_current_us
         {"$set": {"read_by_admin": True}}
     )
 
-    member = await db.members.find_one(
-        {"id": member_id},
-        {"_id": 0, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1, "photo": 1, "branch_id": 1}
-    )
     if member and member.get("branch_id"):
         branch = await db.branches.find_one(
             {"id": member["branch_id"]}, {"_id": 0, "name": 1, "name_ar": 1}
@@ -297,9 +339,7 @@ async def get_thread(member_id: str, current_user: dict = Depends(get_current_us
 @router.post("/thread/{member_id}/reply")
 async def admin_reply(member_id: str, data: MessageReply, current_user: dict = Depends(get_current_user)):
     await require_permission(current_user, "messages")
-    member = await db.members.find_one({"id": member_id}, {"_id": 0})
-    if not member:
-        raise HTTPException(status_code=404, detail="العضو غير موجود")
+    member = await _scoped_member_or_404(member_id, current_user)
 
     sender_name = current_user.get("name", current_user.get("username", "الإدارة"))
 
@@ -337,17 +377,22 @@ async def admin_reply(member_id: str, data: MessageReply, current_user: dict = D
 @router.get("/unread-count")
 async def get_unread_count(current_user: dict = Depends(get_current_user)):
     await require_permission(current_user, "messages")
-    count = await db.messages.count_documents({
-        "sender_type": "member",
-        "read_by_admin": False
-    })
+    query = {"sender_type": "member", "read_by_admin": False}
+    allowed_ids = await _scoped_member_ids(current_user)
+    if allowed_ids is not None:
+        query["recipient_member_id"] = {"$in": allowed_ids}
+    count = await db.messages.count_documents(query)
     return {"unread_count": count}
 
 
 @router.delete("/{message_id}")
 async def delete_message(message_id: str, current_user: dict = Depends(get_current_user)):
     await require_permission(current_user, "messages")
-    result = await db.messages.delete_one({"id": message_id})
+    query = {"id": message_id}
+    allowed_ids = await _scoped_member_ids(current_user)
+    if allowed_ids is not None:
+        query["recipient_member_id"] = {"$in": allowed_ids}
+    result = await db.messages.delete_one(query)
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="الرسالة غير موجودة")
     return {"message": "تم حذف الرسالة"}
