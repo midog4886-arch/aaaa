@@ -35,5 +35,5 @@ title = "أيقونة التطبيق الجديدة (512×512 لمتجر جوج�
 id = "zLtvVZFwTh05kPxaU4awL"
 uri = "file://exports/app-release-v5-1.0.14.aab"
 type = "unspecified"
-title = "نسخة الأندرويد الجديدة v1.0.14 (versionCode 17)"
-description = "ملف AAB موقّع وجاهز للرفع على Google Play — يتضمن إصلاح فتح روابط الواتساب خارج التطبيق."
+title = "ملف التحديث v1.0.14 — جاهز للرفع على Google Play"
+description = "اضغط لتحميل ملف AAB الموقّع، ثم ارفعه في Google Play Console → الإنتاج → إصدار جديد."
