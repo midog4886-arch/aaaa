@@ -1,6 +1,7 @@
 - [التواصل page is WhatsAppPage](communication-page-whatsapppage.md) — internal-messages UI lives in WhatsAppPage 'internal' tab at /admin/whatsapp; pages/MessagesPage.js is unrouted dead code.
 - [Invoices page duplicate tables](invoices-page-duplicate-tables.md) — /invoices renders pages/InvoicesPage.js, NOT pages/invoices/* table; check App.js routing before editing lookalike components.
 - [Member portal tenant header](member-portal-tenant.md) — native app uses ONE fixed domain, so member API + login must send X-Tenant-Slug explicitly; backend 403s on token/request tenant mismatch.
+- [Capacitor external links](capacitor-external-links.md) — never allowNavigation:["*"]; it traps wa.me/whatsapp:// inside the WebView (ERR_UNKNOWN_URL_SCHEME); fix is APK-baked → rebuild+republish.
 - [Android logo vs launcher icon](android-logo-and-icon.md) — native app loads from server.url (in-app logo = server+SW cache bump); launcher icon is APK-baked in mipmap-*, needs rebuild+republish.
 - [Push cross-tenant dedup](push-cross-tenant-dedup.md) — push endpoint is per-browser/device, not per-login; subscribing must deactivate that endpoint in every OTHER tenant DB to stop shared-device leaks.
 - [Push notification base URL](push-notification-base-url.md) — push logo/image URLs must be absolute (FCM can't fetch relative); sent from bg tasks so resolve from env (REACT_APP_BACKEND_URL/PUBLIC_BASE_URL/REPLIT_DOMAINS), not request.

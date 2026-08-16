@@ -4,7 +4,6 @@
   "webDir": "build",
   "server": {
     "androidScheme": "https",
-    "allowNavigation": ["*"],
     "url": "https://adaa-alabtal.replit.app",
     "cleartext": true
   },
