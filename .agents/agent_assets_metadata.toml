@@ -37,3 +37,10 @@ uri = "file://exports/app-release-v5-1.0.14.aab"
 type = "unspecified"
 title = "ملف التحديث v1.0.14 — جاهز للرفع على Google Play"
 description = "اضغط لتحميل ملف AAB الموقّع، ثم ارفعه في Google Play Console → الإنتاج → إصدار جديد."
+
+[[outputs]]
+id = "I1exb-hdxtGuwEqwjDMaB"
+uri = "file://exports/app-release-v6-1.0.15.aab"
+type = "unspecified"
+title = "النسخة الجديدة v1.0.15 (versionCode 18)"
+description = "حمّل هذا الملف وارفعه في Google Play — رقم الإصدار الجديد 18 يتجاوز الخطأ السابق."
