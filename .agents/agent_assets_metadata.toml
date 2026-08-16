@@ -44,3 +44,10 @@ uri = "file://exports/app-release-v6-1.0.15.aab"
 type = "unspecified"
 title = "النسخة الجديدة v1.0.15 (versionCode 18)"
 description = "حمّل هذا الملف وارفعه في Google Play — رقم الإصدار الجديد 18 يتجاوز الخطأ السابق."
+
+[[outputs]]
+id = "39peHT_sQOiobD1o_i1sa"
+uri = "file://exports/app-release-v7-1.0.16.aab"
+type = "unspecified"
+title = "النسخة v1.0.16 (رمز الإصدار 20)"
+description = "حمّل هذا الملف وارفعه في Google Play Console → الإنتاج → إصدار جديد."
