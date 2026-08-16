@@ -195,7 +195,7 @@ const MemberCardPage = () => {
                     ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
                   </div>
                   <div class="qr-container">
-                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
+                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&ecc=H&margin=0&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
                     <div class="qr-dates">
                       <span>${L.from} ${startDate || '----'}</span>
                       <span>${L.to} ${endDate || '----'}</span>
@@ -236,7 +236,7 @@ const MemberCardPage = () => {
                   ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
                 </div>
                 <div class="qr-container">
-                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
+                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&ecc=H&margin=0&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
                   <div class="qr-dates">
                     <span>${L.from} ${startDate || '----'}</span>
                     <span>${L.to} ${endDate || '----'}</span>
@@ -301,7 +301,7 @@ const MemberCardPage = () => {
               ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
             </div>
             <div class="qr-container">
-              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=600x600&ecc=H&margin=1&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
+              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&ecc=H&margin=0&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
               <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
               ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
               ${member?.phone ? `<div class="phone-row">📱 ${member.phone}</div>` : ''}
@@ -324,8 +324,8 @@ const MemberCardPage = () => {
       <style>
         @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
         @page { size: 54mm 85.6mm; margin: 0; }
-        * { margin:0; padding:0; box-sizing:border-box; }
-        html, body { width:54mm; }
+        * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        html, body { width:54mm; text-rendering:geometricPrecision; }
         body { font-family:'Tajawal',Arial,sans-serif; background:#e5e7eb; direction:${L.dir}; }
         .toolbar { padding:14px; text-align:center; background:white; border-bottom:1px solid #e5e7eb; position:sticky; top:0; }
         .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:15px; margin:0 4px; }
