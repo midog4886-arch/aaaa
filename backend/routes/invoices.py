@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import uuid
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -605,18 +606,29 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         # bell notification above still surfaces it to global admins.
         if invoice.get("branch_id"):
             from .push_notifications import send_push_to_admins, NotificationPayload
-            await send_push_to_admins(
-                NotificationPayload(
-                    title=title_ar,
-                    body=message_ar,
-                    title_en=title_en,
-                    body_en=message_en,
-                    url="/invoices",
-                    tag=f"invoice-paid-{invoice.get('id')}",
-                    data={"type": "invoice_paid", "invoice_id": invoice.get("id")},
-                ),
-                branch_id=invoice.get("branch_id"),
+            payload = NotificationPayload(
+                title=title_ar,
+                body=message_ar,
+                title_en=title_en,
+                body_en=message_en,
+                url="/invoices",
+                tag=f"invoice-paid-{invoice.get('id')}",
+                data={"type": "invoice_paid", "invoice_id": invoice.get("id")},
             )
+
+            async def _push_bg(payload=payload, branch_id=invoice.get("branch_id")):
+                # Off the payment critical path: a hung/slow push service must
+                # never stall the cashier's confirmation. Hard 15s ceiling.
+                try:
+                    await asyncio.wait_for(
+                        send_push_to_admins(payload, branch_id=branch_id),
+                        timeout=15,
+                    )
+                except Exception as exc:
+                    logging.getLogger(__name__).error(
+                        f"pay_invoice: background admin push failed: {exc}")
+
+            asyncio.create_task(_push_bg())
     except Exception as exc:
         logging.getLogger(__name__).error(f"pay_invoice: admin notification failed: {exc}")
 
