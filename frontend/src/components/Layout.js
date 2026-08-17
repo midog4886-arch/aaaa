@@ -10,6 +10,7 @@ import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { branchesAPI, notificationsAPI, levelsAPI, internalExpensesAPI, registrationRequestsAPI } from '../services/api';
 import GlobalScanner from './GlobalScanner';
+import PushNotificationManager from './PushNotificationManager';
 import CameraQRScanner from './CameraQRScanner';
 import GlobalSearch from './GlobalSearch';
 import { 
@@ -775,6 +776,11 @@ export const TopHeader = ({ onMenuClick, title }) => {
             <RefreshCcw className={`w-4 h-4 ${checkingRenewals ? 'animate-spin' : ''}`} />
           </Button>
         )}
+
+        {/* Enable device push notifications for the logged-in staff user.
+            Subscriptions are keyed by member_id == user.id — the same channel
+            the backend's send_push_to_admins fan-out reads. */}
+        {user?.id && <PushNotificationManager memberId={user.id} compact />}
 
         {/* Notifications Bell */}
         <div className="relative">
