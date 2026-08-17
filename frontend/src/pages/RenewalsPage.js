@@ -83,9 +83,13 @@ const _renewalsCache = {
 };
 const _cacheKey = (days, branchId) => `${days || ''}::${branchId || 'all'}`;
 
+// Session-level list of subscriptions renewed from this page. Shown in the
+// "تم التجديد" tab so renewed members visibly move out of the other tabs.
+const _renewedSession = { items: [] };
+
 const RenewalsPage = () => {
   const { t, language } = useLanguage();
-  const { selectedBranchId } = useAuth();
+  const { user, selectedBranchId } = useAuth();
   const navigate = useNavigate();
 
   const _initialKey = _cacheKey('7', selectedBranchId);
@@ -94,6 +98,15 @@ const RenewalsPage = () => {
   const [loading, setLoading] = useState(!_hasCache);
   const [expiringList, setExpiringList] = useState(_hasCache ? _renewalsCache.expiring : []);
   const [expiredList, setExpiredList] = useState(_hasCache ? _renewalsCache.expired : []);
+  // Scope the session "renewed" list to the current user + active branch so
+  // branch switches or a different login never show someone else's renewals.
+  const _renewedKey = `${user?.id || ''}::${selectedBranchId || 'all'}`;
+  if (_renewedSession.key !== _renewedKey) {
+    _renewedSession.key = _renewedKey;
+    _renewedSession.items = [];
+  }
+  const [renewedList, setRenewedList] = useState(_renewedSession.items);
+  useEffect(() => { setRenewedList(_renewedSession.items); }, [_renewedKey]);
   const [searchTerm, setSearchTerm] = useState('');
   const [days, setDays] = useState('7');
   const [activeTab, setActiveTab] = useState('expiring');
@@ -640,6 +653,39 @@ const RenewalsPage = () => {
     return e?.message || (language === 'ar' ? 'خطأ غير معروف' : 'Unknown error');
   };
 
+  // Move a just-renewed item into the "تم التجديد" tab (session-scoped so the
+  // admin sees exactly what was renewed in this sitting).
+  const markRenewed = (item, newStart, newEnd) => {
+    const entry = {
+      ...item,
+      start_date: newStart,
+      end_date: newEnd,
+      days_remaining: Math.max(0, Math.ceil((new Date(newEnd) - new Date()) / 86400000)),
+      _renewed: true,
+    };
+    _renewedSession.items = [entry, ..._renewedSession.items.filter(i => getKey(i) !== getKey(item))];
+    setRenewedList(_renewedSession.items);
+    // Drop the item from its source tab (and the module cache) immediately —
+    // don't wait for the async reload to make it disappear.
+    const k = getKey(item);
+    setExpiringList(prev => {
+      const next = prev.filter(i => getKey(i) !== k);
+      if (_renewalsCache.expiring) _renewalsCache.expiring = next;
+      return next;
+    });
+    setExpiredList(prev => {
+      const next = prev.filter(i => getKey(i) !== k);
+      if (_renewalsCache.expired) _renewalsCache.expired = next;
+      return next;
+    });
+    setSelectedKeys(prev => {
+      if (!prev.has(k)) return prev;
+      const next = new Set(prev);
+      next.delete(k);
+      return next;
+    });
+  };
+
   // Renew a single item using the given bulk form (shared overrides).
   // Mirrors the single-renewal logic: paid invoice + in-place activity
   // replacement (old activity id in the URL) + level sync. Throws on failure.
@@ -738,6 +784,7 @@ const RenewalsPage = () => {
         } catch (e) { console.warn('Level membership sync warning:', e); }
       }
     }
+    markRenewed(item, startStr, endStr);
   };
 
   // Execute the bulk renewal for all selected items, applying the optional
@@ -961,6 +1008,7 @@ const RenewalsPage = () => {
       }
 
       toast.success(language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully');
+      markRenewed(selectedItem, renewalForm.start_date, renewalForm.end_date);
       setIsRenewalDialogOpen(false);
       loadData();
     } catch (error) {
@@ -971,7 +1019,7 @@ const RenewalsPage = () => {
     }
   };
 
-  const currentList = activeTab === 'expiring' ? filterItems(expiringList) : activeTab === 'expired' ? filterItems(expiredList) : [];
+  const currentList = activeTab === 'expiring' ? filterItems(expiringList) : activeTab === 'expired' ? filterItems(expiredList) : activeTab === 'renewed' ? filterItems(renewedList) : [];
 
   // Per-card renderer (shared between grouped-by-branch and flat layouts)
   const renderCard = (item, idx) => {
@@ -984,7 +1032,8 @@ const RenewalsPage = () => {
     // Already-expired keeps the existing red treatment.
     const dr = item.days_remaining;
     let gradientCls = '';
-    if (isExpired || dr === 0) gradientCls = 'from-red-100/60 via-red-50/30 to-transparent';
+    if (item._renewed) gradientCls = 'from-emerald-100/60 via-emerald-50/30 to-transparent';
+    else if (isExpired || dr === 0) gradientCls = 'from-red-100/60 via-red-50/30 to-transparent';
     else if (dr >= 1 && dr <= 3) gradientCls = 'from-orange-100/60 via-orange-50/30 to-transparent';
     else if (dr >= 4 && dr <= 7) gradientCls = 'from-yellow-100/60 via-yellow-50/30 to-transparent';
     else gradientCls = 'from-transparent to-transparent';
@@ -999,11 +1048,12 @@ const RenewalsPage = () => {
         role="button"
         tabIndex={0}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goToMember(); } }}
-        className={`overflow-hidden border-s-4 ${getCardBorderColor(item.days_remaining)} bg-gradient-to-bl ${gradientCls} ${isSelected ? 'ring-2 ring-primary' : ''} cursor-pointer hover:shadow-md transition-shadow`}
+        className={`overflow-hidden border-s-4 ${item._renewed ? 'border-emerald-400' : getCardBorderColor(item.days_remaining)} bg-gradient-to-bl ${gradientCls} ${isSelected ? 'ring-2 ring-primary' : ''} cursor-pointer hover:shadow-md transition-shadow`}
       >
         <CardContent className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
+              {!item._renewed && (
               <button
                 type="button"
                 onClick={stopAndCall(() => toggleSelect(item))}
@@ -1012,6 +1062,7 @@ const RenewalsPage = () => {
               >
                 {isSelected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
               </button>
+              )}
               <MemberAvatar
                 photo={item.member_photo}
                 name={item.member_name}
@@ -1028,7 +1079,9 @@ const RenewalsPage = () => {
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
               <Badge
                 className={
-                  isExpired
+                  item._renewed
+                    ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                    : isExpired
                     ? 'bg-red-100 text-red-700 border-red-300'
                     : item.days_remaining === 0
                       ? 'bg-red-100 text-red-700 border-red-300'
@@ -1039,7 +1092,9 @@ const RenewalsPage = () => {
                           : 'bg-gray-100 text-gray-700 border-gray-300'
                 }
               >
-                {isExpired
+                {item._renewed
+                  ? (language === 'ar' ? 'تم التجديد ✓' : 'Renewed ✓')
+                  : isExpired
                   ? (language === 'ar' ? 'منتهي' : 'Expired')
                   : item.days_remaining === 0
                     ? (language === 'ar' ? 'ينتهي اليوم' : 'Expires Today')
@@ -1146,6 +1201,12 @@ const RenewalsPage = () => {
                 )}
             </div>
           </div>
+          {item._renewed ? (
+            <div className="flex items-center justify-center gap-2 pt-2 text-emerald-700 font-semibold text-sm">
+              <CheckCircle2 className="w-4 h-4" />
+              {language === 'ar' ? `تم التجديد حتى ${item.end_date}` : `Renewed until ${item.end_date}`}
+            </div>
+          ) : (
           <div className="flex gap-2 pt-2">
             <Button size="sm" className="flex-1 bg-orange-500 hover:bg-orange-600 text-white" onClick={stopAndCall(() => openRenewalDialog(item))}>
               <RefreshCcw className="w-3.5 h-3.5 me-1" />
@@ -1156,6 +1217,7 @@ const RenewalsPage = () => {
               {language === 'ar' ? 'تذكير' : 'Remind'}
             </Button>
           </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -1164,6 +1226,7 @@ const RenewalsPage = () => {
   const tabs = [
     { key: 'expiring', label: language === 'ar' ? 'تنتهي قريباً' : 'Expiring Soon', count: expiringList.length, breakdown: getActivityBreakdown(expiringList) },
     { key: 'expired', label: language === 'ar' ? 'منتهية' : 'Expired', count: expiredList.length, breakdown: getActivityBreakdown(expiredList) },
+    { key: 'renewed', label: language === 'ar' ? 'تم التجديد ✓' : 'Renewed ✓', count: renewedList.length },
     { key: 'frozen', label: language === 'ar' ? 'نقاط مجمدة' : 'Frozen Points', count: 0, breakdown: '' },
   ];
 
