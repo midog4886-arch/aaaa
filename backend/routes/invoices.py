@@ -568,8 +568,19 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         total = invoice.get("total", 0)
         title_ar = "تم استلام دفعة فاتورة"
         title_en = "Invoice payment received"
-        message_ar = f"تم دفع الفاتورة {inv_no} — {customer} بقيمة {total}"
-        message_en = f"Invoice {inv_no} paid — {customer}, total {total}"
+        branch_ar = branch_en = ""
+        if invoice.get("branch_id"):
+            branch = await db.branches.find_one(
+                {"id": invoice["branch_id"]}, {"_id": 0, "name": 1, "name_ar": 1})
+            if branch:
+                bname_ar = branch.get("name_ar") or branch.get("name") or ""
+                bname_en = branch.get("name") or branch.get("name_ar") or ""
+                if bname_ar:
+                    branch_ar = f" — فرع {bname_ar}"
+                if bname_en:
+                    branch_en = f" — {bname_en} branch"
+        message_ar = f"تم دفع الفاتورة {inv_no} — {customer} بقيمة {total}{branch_ar}"
+        message_en = f"Invoice {inv_no} paid — {customer}, total {total}{branch_en}"
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()),
             "title": title_ar,
