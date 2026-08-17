@@ -535,13 +535,17 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     # Update invoice status (scoped filter — defence-in-depth in case of
     # future refactors that move the existence check away from the write).
     paid_at = datetime.now(timezone.utc).isoformat()
-    await db.invoices.update_one(
-        scoped_invoice_query,
+    # Conditional transition: only ONE concurrent /pay call can win, so the
+    # side effects below (admin notification, activity merge) run once.
+    pay_result = await db.invoices.update_one(
+        {**scoped_invoice_query, "status": {"$ne": "paid"}},
         {"$set": {
             "status": "paid",
             "paid_at": paid_at
         }}
     )
+    if getattr(pay_result, "modified_count", 1) == 0:
+        raise HTTPException(status_code=400, detail="Invoice already paid")
     try:
         from utils.audit import log_audit
         await log_audit(
@@ -555,7 +559,56 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         )
     except Exception:
         pass
-    
+
+    # Notify admins (bell + push) that a payment was received. Best-effort:
+    # a notification hiccup must never break the payment itself.
+    try:
+        customer = invoice.get("customer_name_ar") or invoice.get("customer_name") or ""
+        inv_no = invoice.get("invoice_number") or invoice.get("id", "")
+        total = invoice.get("total", 0)
+        title_ar = "تم استلام دفعة فاتورة"
+        title_en = "Invoice payment received"
+        message_ar = f"تم دفع الفاتورة {inv_no} — {customer} بقيمة {total}"
+        message_en = f"Invoice {inv_no} paid — {customer}, total {total}"
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "title": title_ar,
+            "title_ar": title_ar,
+            "title_en": title_en,
+            "message": message_ar,
+            "message_ar": message_ar,
+            "message_en": message_en,
+            "type": "invoice_paid",
+            "invoice_id": invoice.get("id"),
+            "member_id": invoice.get("member_id"),
+            "is_read": False,
+            "branch_id": invoice.get("branch_id"),
+            # Payment amounts are admin-only: the bell endpoints exclude
+            # audience="admins" rows for non-admin users.
+            "audience": "admins",
+            "action_url": "/invoices",
+            "created_at": paid_at,
+        })
+        # Fail closed on branchless invoices: pushing with branch_id=None
+        # would blast payment details to EVERY admin across branches. The
+        # bell notification above still surfaces it to global admins.
+        if invoice.get("branch_id"):
+            from .push_notifications import send_push_to_admins, NotificationPayload
+            await send_push_to_admins(
+                NotificationPayload(
+                    title=title_ar,
+                    body=message_ar,
+                    title_en=title_en,
+                    body_en=message_en,
+                    url="/invoices",
+                    tag=f"invoice-paid-{invoice.get('id')}",
+                    data={"type": "invoice_paid", "invoice_id": invoice.get("id")},
+                ),
+                branch_id=invoice.get("branch_id"),
+            )
+    except Exception as exc:
+        logging.getLogger(__name__).error(f"pay_invoice: admin notification failed: {exc}")
+
     # Group items by member_id for multi-member invoice support
     items_by_member = {}
     primary_member_id = invoice.get("member_id")

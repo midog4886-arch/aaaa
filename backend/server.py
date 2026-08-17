@@ -9855,6 +9855,9 @@ async def get_notifications(
             {"branch_id": None},
             {"branch_id": ""}
         ]
+    if not is_admin:
+        # Admin-only rows (e.g. invoice payment amounts) are hidden from staff.
+        query["audience"] = {"$ne": "admins"}
     
     if is_read is not None:
         query["is_read"] = is_read
@@ -9876,6 +9879,9 @@ async def get_unread_count(current_user: dict = Depends(get_current_user)):
             {"branch_id": None},
             {"branch_id": ""}
         ]
+    if not is_admin:
+        # Admin-only rows (e.g. invoice payment amounts) are hidden from staff.
+        query["audience"] = {"$ne": "admins"}
     
     count = await db.notifications.count_documents(query)
     return {"count": count}
@@ -9903,6 +9909,9 @@ async def mark_all_notifications_read(current_user: dict = Depends(get_current_u
             {"branch_id": None},
             {"branch_id": ""}
         ]
+    if not is_admin:
+        # Admin-only rows (e.g. invoice payment amounts) are hidden from staff.
+        query["audience"] = {"$ne": "admins"}
     
     result = await db.notifications.update_many(
         query,
