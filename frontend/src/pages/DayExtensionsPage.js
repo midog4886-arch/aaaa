@@ -869,7 +869,25 @@ export default function DayExtensionsPage() {
                   <select
                     className="w-full border rounded-md px-3 py-2 text-sm bg-white"
                     value={newClosure.branch_id}
-                    onChange={(e) => setNewClosure({ ...newClosure, branch_id: e.target.value })}
+                    onChange={(e) => {
+                      const bid = e.target.value;
+                      // Keep only selected activities still visible for the new branch
+                      // (branch-scoped OR global activities).
+                      const visible = new Set(
+                        activities
+                          .filter(a => bid === 'all' || !a.branch_id || a.branch_id === bid)
+                          .map(a => a.id || a._id)
+                      );
+                      const ids = [];
+                      const names = [];
+                      (newClosure.activity_ids || []).forEach((aid, i) => {
+                        if (visible.has(aid)) {
+                          ids.push(aid);
+                          names.push((newClosure.activity_names || [])[i]);
+                        }
+                      });
+                      setNewClosure({ ...newClosure, branch_id: bid, activity_ids: ids, activity_names: names });
+                    }}
                   >
                     <option value="all">{t('جميع الفروع', 'All Branches')}</option>
                     {branches.map(b => (
@@ -901,7 +919,9 @@ export default function DayExtensionsPage() {
                     <div>
                       <Label className="text-xs">{t('اختر الأنشطة * (يمكن اختيار أكثر من نشاط)', 'Select Activities * (multiple allowed)')}</Label>
                       <div className="mt-2 max-h-48 overflow-y-auto border rounded-md p-2 bg-white space-y-1">
-                        {activities.map(a => {
+                        {activities.filter(a =>
+                          newClosure.branch_id === 'all' || !a.branch_id || a.branch_id === newClosure.branch_id
+                        ).map(a => {
                           const aId = a.id || a._id;
                           const aName = a.name_ar || a.name || '';
                           const isSelected = (newClosure.activity_ids || []).includes(aId);
