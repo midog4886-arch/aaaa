@@ -4065,14 +4065,16 @@ export const MembersPage = () => {
                                         const key = `${q.activity_id}_${date}`;
                                         const isRegistering = registeringDate === key;
                                         const recordId = attendedRecordIdByDate[date];
-                                        const removable = attended && !isRegistering && !isTransferred && !!recordId;
-                                        const clickable = (!attended && !isRegistering && !isFuture && !isTransferred) || removable;
+                                        // Expired subscription card = read-only reference: no
+                                        // registering, replacing, or removing dates.
+                                        const removable = !q.expired && attended && !isRegistering && !isTransferred && !!recordId;
+                                        const clickable = !q.expired && ((!attended && !isRegistering && !isFuture && !isTransferred) || removable);
                                         return (
                                           <button
                                             key={date + (isReplacement ? '_r' : '')}
                                             disabled={!clickable}
                                             onClick={() => {
-                                              if (isRegistering || isTransferred) return;
+                                              if (q.expired || isRegistering || isTransferred) return;
                                               if (attended) {
                                                 if (!recordId) return;
                                                 handleReplaceDateAttendance(selectedMember.id, q.activity_id, date, recordId);
@@ -4084,7 +4086,9 @@ export const MembersPage = () => {
                                                 }
                                               }
                                             }}
-                                            title={isTransferred
+                                            title={q.expired
+                                              ? (language === 'ar' ? 'الاشتراك منتهي — للعرض فقط' : 'Subscription expired — view only')
+                                              : isTransferred
                                               ? (language === 'ar' ? `مُرحَّل (${transferMeta?.title || ''}) — تم التعويض بمدّ تاريخ نهاية الاشتراك` : `Transferred (${transferMeta?.title || ''}) — compensated by extending the subscription end date`)
                                               : isReplacement
                                                 ? (language === 'ar' ? 'حصة بديلة (تعويض ترحيل)' : 'Replacement session (make-up)')
