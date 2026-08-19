@@ -526,9 +526,15 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     # member.activities source); their stale invoice duplicates are skipped.
     produced_aids = set()
 
+    # Latest EXPIRED subscription per activity — shown only when the activity
+    # has no active card, so the member's used/paid sessions stay visible
+    # after expiry (e.g. on the attendance history page while renewing).
+    expired_candidates = {}
+
     async def _process_subscription(item_activity_id, activity_name, start_date, end_date,
                                      schedule_text, invoice_number="", quota_end_date=None,
-                                     quota_start_date=None, count_activity_ids=None):
+                                     quota_start_date=None, count_activity_ids=None,
+                                     force_expired=False):
         """Inner helper to build one quota result from a subscription item.
 
         ``end_date`` is the (possibly extended) deadline used for display and the
@@ -540,9 +546,24 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         invoice, where the activity dates are already the original ones)."""
         if not end_date or not schedule_text:
             return
-        if end_date < today_str:
-            return
         if activity_id and item_activity_id != activity_id:
+            return
+        if end_date < today_str and not force_expired:
+            # Remember the LATEST expired subscription per activity; it is
+            # surfaced after both passes only if no active card exists.
+            prev = expired_candidates.get(item_activity_id)
+            if not prev or end_date > prev["end_date"]:
+                expired_candidates[item_activity_id] = {
+                    "item_activity_id": item_activity_id,
+                    "activity_name": activity_name,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "schedule_text": schedule_text,
+                    "invoice_number": invoice_number,
+                    "quota_end_date": quota_end_date,
+                    "quota_start_date": quota_start_date,
+                    "count_activity_ids": count_activity_ids,
+                }
             return
 
         key = (item_activity_id, start_date, end_date)
@@ -604,7 +625,8 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             "exceeded": attendance_count >= total_allowed_sessions,
             "start_date": effective_start,
             "end_date": end_date,
-            "invoice_number": invoice_number
+            "invoice_number": invoice_number,
+            "expired": end_date < today_str,
         })
         produced_aids.add(item_activity_id)
 
@@ -752,6 +774,24 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
                 inv.get("invoice_number", "")
             )
 
+    # ── 3. Surface the latest EXPIRED subscription for activities that have no
+    #       active card, so the quota stays visible after expiry. ─────────────
+    for aid, cand in expired_candidates.items():
+        if aid in produced_aids:
+            continue
+        await _process_subscription(
+            cand["item_activity_id"],
+            cand["activity_name"],
+            cand["start_date"],
+            cand["end_date"],
+            cand["schedule_text"],
+            cand["invoice_number"],
+            quota_end_date=cand["quota_end_date"],
+            quota_start_date=cand["quota_start_date"],
+            count_activity_ids=cand["count_activity_ids"],
+            force_expired=True,
+        )
+
     return results
 
 
@@ -791,7 +831,9 @@ async def get_session_quota_alerts(
                 continue
             quotas = await check_member_session_quota(mid, act_id)
             for q in quotas:
-                if q["exceeded"]:
+                # Expired subscriptions are shown on the member page for
+                # reference but must not raise "quota exceeded" alerts.
+                if q["exceeded"] and not q.get("expired"):
                     alerts.append({
                         "member_id": mid,
                         "member_name": member.get("name_ar", member.get("name", "")),
@@ -1660,6 +1702,10 @@ async def qr_checkin(
         quotas = await check_member_session_quota(member["id"], target_activity_id)
         chosen = None
         for q in quotas:
+            # Expired-subscription reference cards must not trigger the
+            # check-in "quota exhausted / low" warning.
+            if q.get("expired"):
+                continue
             if q["exceeded"]:
                 chosen = {
                     "message": f"⚠️ استنفد حصصه! ({q['used_sessions']}/{q['total_allowed']})",

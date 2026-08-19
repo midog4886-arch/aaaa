@@ -3991,13 +3991,20 @@ export const MembersPage = () => {
                             const isOldExpanded = expandedOldDatesIdx.has(idx);
                             const todayStr = localDateStr(new Date());
                             return (
-                              <div key={idx} className={`rounded-lg border ${q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
+                              <div key={idx} className={`rounded-lg border ${q.expired ? 'bg-gray-50 border-gray-300' : q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
                                 <div className="p-3">
                                   <div className="flex items-center justify-between mb-1">
                                     <span className="font-medium text-sm">{q.activity_name}</span>
-                                    <Badge className={q.exceeded ? 'bg-red-100 text-red-700' : q.remaining <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
-                                      {q.exceeded ? (language === 'ar' ? 'استنفدت' : 'Exceeded') : `${q.remaining} ${language === 'ar' ? 'متبقي' : 'left'}`}
-                                    </Badge>
+                                    <span className="flex items-center gap-1">
+                                      {q.expired && (
+                                        <Badge className="bg-gray-200 text-gray-700">
+                                          {language === 'ar' ? 'اشتراك منتهي' : 'Expired'}
+                                        </Badge>
+                                      )}
+                                      <Badge className={q.exceeded ? 'bg-red-100 text-red-700' : q.remaining <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
+                                        {q.exceeded ? (language === 'ar' ? 'استنفدت' : 'Exceeded') : `${q.remaining} ${language === 'ar' ? 'متبقي' : 'left'}`}
+                                      </Badge>
+                                    </span>
                                   </div>
                                   <div className="flex items-center gap-3 text-xs text-gray-600">
                                     <span>{language === 'ar' ? `${q.days_per_week} أيام/أسبوع` : `${q.days_per_week} days/week`}</span>
