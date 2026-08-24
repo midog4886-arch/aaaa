@@ -79,6 +79,27 @@ def extend_end_by_training_days(schedule_text: str, end_dt: datetime, n: int) ->
     return cur
 
 
+def _current_period_window(member: dict, ref_date: str):
+    """(start, next_start) of the subscription period covering ref_date.
+
+    start = the member's LATEST activity start_date <= ref_date (renewals move
+    it forward, resetting the freeze quota); next_start = the earliest known
+    start AFTER it (an already-recorded upcoming renewal), or None when the
+    period is open-ended. Returns (None, None) when the member has no dated
+    subscriptions."""
+    starts = sorted({
+        a.get("start_date", "")
+        for a in (member or {}).get("activities", [])
+        if a.get("start_date")
+    })
+    if not starts:
+        return None, None
+    eligible = [s for s in starts if s <= ref_date]
+    start = eligible[-1] if eligible else starts[0]
+    later = [s for s in starts if s > start]
+    return start, (later[0] if later else None)
+
+
 class FreezeCreate(BaseModel):
     member_id: str
     start_date: str
@@ -116,19 +137,28 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     if overlapping:
         raise HTTPException(status_code=400, detail="Overlapping freeze exists for this member")
 
-    year_start = f"{start_dt.year}-01-01"
-    year_end = f"{start_dt.year}-12-31"
-    year_freezes = await db.member_freezes.find({
-        "member_id": freeze.member_id,
-        "start_date": {"$gte": year_start, "$lte": year_end}
-    }, {"_id": 0}).to_list(100)
+    # ── Quota: 30 freeze days PER SUBSCRIPTION PERIOD (per renewal), not per
+    #    calendar year. The period starts at the member's most recent
+    #    subscription start date, so every renewal resets the counter. ────────
+    period_start, next_period_start = _current_period_window(member, freeze.start_date)
+    quota_query = {"member_id": freeze.member_id}
+    if period_start:
+        quota_query["start_date"] = {"$gte": period_start}
+        if next_period_start:
+            # Don't let freezes scheduled inside a FUTURE renewal period eat
+            # this period's quota.
+            quota_query["start_date"]["$lt"] = next_period_start
+    else:
+        # No subscription dates on file: fall back to the calendar year.
+        quota_query["start_date"] = {"$gte": f"{start_dt.year}-01-01", "$lte": f"{start_dt.year}-12-31"}
+    period_freezes = await db.member_freezes.find(quota_query, {"_id": 0}).to_list(100)
 
-    total_frozen_days = sum(f.get("duration_days", 0) for f in year_freezes if f.get("status") != "cancelled")
+    total_frozen_days = sum(f.get("duration_days", 0) for f in period_freezes if f.get("status") != "cancelled")
     if total_frozen_days + duration_days > 30:
         remaining = 30 - total_frozen_days
         raise HTTPException(
             status_code=400,
-            detail=f"Exceeds max 30 days per year. Used: {total_frozen_days}, Remaining: {remaining}, Requested: {duration_days}"
+            detail=f"تجاوز الحد الأقصى 30 يوم تجميد لكل اشتراك. المستخدم: {total_frozen_days}، المتبقي: {remaining}، المطلوب: {duration_days}"
         )
 
     activities = member.get("activities", [])
@@ -434,28 +464,35 @@ async def get_active_freezes(current_user: dict = Depends(get_current_user)):
 @router.get("/member/{member_id}/stats")
 async def get_member_freeze_stats(member_id: str, current_user: dict = Depends(get_current_user)):
     now = datetime.now(timezone.utc)
-    year_start = f"{now.year}-01-01"
-    year_end = f"{now.year}-12-31"
     today_str = now.strftime("%Y-%m-%d")
 
-    year_freezes = await db.member_freezes.find({
+    member = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    period_start, next_period_start = _current_period_window(member, today_str)
+    quota_query = {"member_id": member_id}
+    if period_start:
+        quota_query["start_date"] = {"$gte": period_start}
+        if next_period_start:
+            quota_query["start_date"]["$lt"] = next_period_start
+    else:
+        quota_query["start_date"] = {"$gte": f"{now.year}-01-01", "$lte": f"{now.year}-12-31"}
+    period_freezes = await db.member_freezes.find(quota_query, {"_id": 0}).to_list(100)
+
+    total_days = sum(f.get("duration_days", 0) for f in period_freezes if f.get("status") != "cancelled")
+
+    # Active freeze may have started before the current period (e.g. right
+    # before a renewal) — look it up independently of the quota window.
+    active_freeze = await db.member_freezes.find_one({
         "member_id": member_id,
-        "start_date": {"$gte": year_start, "$lte": year_end}
-    }, {"_id": 0}).to_list(100)
-
-    total_days = sum(f.get("duration_days", 0) for f in year_freezes if f.get("status") != "cancelled")
-
-    active_freeze = None
-    for f in year_freezes:
-        if f.get("status") == "active" and f.get("start_date", "") <= today_str <= f.get("end_date", ""):
-            active_freeze = f
-            break
+        "status": "active",
+        "start_date": {"$lte": today_str},
+        "end_date": {"$gte": today_str},
+    }, {"_id": 0})
 
     return {
         "member_id": member_id,
-        "year": now.year,
+        "period_start": period_start,
         "total_days_frozen": total_days,
         "remaining_days": max(0, 30 - total_days),
         "active_freeze": active_freeze,
-        "freezes_count": len(year_freezes)
+        "freezes_count": len(period_freezes)
     }
