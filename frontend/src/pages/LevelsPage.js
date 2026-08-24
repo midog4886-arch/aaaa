@@ -4133,6 +4133,36 @@ ${slotTables}
                                             )}
                                           </p>
                                         )}
+                                        {!isAssigned && act.reason && (
+                                          <p className="text-xs mt-1 text-gray-600" data-testid={`unassigned-reason-${member.id}-${idx}`}>
+                                            {(() => {
+                                              const r = act.reason;
+                                              const d = r.date ? ` (${r.date})` : '';
+                                              switch (r.code) {
+                                                case 'removed_from_level':
+                                                  return t(`السبب: أُزيل يدوياً من مستوى${r.level_name ? ` «${r.level_name}»` : ''}${d}`,
+                                                           `Reason: manually removed from level${r.level_name ? ` "${r.level_name}"` : ''}${d}`);
+                                                case 'level_deleted':
+                                                  return t(`السبب: المستوى الذي كان فيه${r.level_name ? ` «${r.level_name}»` : ''} تم حذفه${d}`,
+                                                           `Reason: their level${r.level_name ? ` "${r.level_name}"` : ''} was deleted${d}`);
+                                                case 'renewal_reset':
+                                                  return t(`السبب: فقد المستوى عند تجديد/تعديل الاشتراك${d}`,
+                                                           `Reason: level was cleared when the subscription was renewed/edited${d}`);
+                                                case 'branch_transfer':
+                                                  return t(`السبب: نُقل لفرع آخر${d} — النقل يلغي المستوى`,
+                                                           `Reason: transferred to another branch${d} — transfers clear the level`);
+                                                case 'new_subscription':
+                                                  return t(`السبب: اشتراك جديد${d} لم يُعيَّن له مستوى بعد`,
+                                                           `Reason: new subscription${d} not yet assigned to a level`);
+                                                case 'invoice_not_linked':
+                                                  return t('السبب: الفاتورة تحدد مستوى لكنه لم يُربط تلقائياً — اضغط تأكيد التعيين',
+                                                           'Reason: the invoice specifies a level but it was not auto-linked — press confirm');
+                                                default:
+                                                  return t('السبب: لم يُعيَّن لمستوى منذ التسجيل', 'Reason: never assigned to a level');
+                                              }
+                                            })()}
+                                          </p>
+                                        )}
                                       </div>
                                       {isAssigned ? (
                                         <Button

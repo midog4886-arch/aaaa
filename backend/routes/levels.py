@@ -364,6 +364,7 @@ async def delete_level(level_id: str, current_user: dict = Depends(get_current_u
             {"branch_id": {"$exists": False}},
         ]
 
+    level_doc = await db.levels.find_one(filter_doc, {"_id": 0, "name": 1, "activity_name": 1})
     result = await db.levels.delete_one(filter_doc)
     if result.deleted_count == 0:
         exists = await db.levels.find_one({"id": level_id}, {"_id": 0, "id": 1})
@@ -375,11 +376,29 @@ async def delete_level(level_id: str, current_user: dict = Depends(get_current_u
     # (a deleted level_id can never be matched again). We blank the level_id on
     # the affected activity rows; admins can re-assign via the schedule builder
     # or the auto-assign tool.
+    affected = await db.members.find(
+        {"activities.level_id": level_id}, {"_id": 0, "id": 1, "activities": 1}
+    ).to_list(10000)
     await db.members.update_many(
         {"activities.level_id": level_id},
         {"$set": {"activities.$[elem].level_id": ""}},
         array_filters=[{"elem.level_id": level_id}],
     )
+    # Trace WHY these members became level-less (shown in the unassigned list).
+    from utils.audit import log_audit
+    lvl_name = (level_doc or {}).get("name") or ""
+    for mdoc in affected:
+        cleared = [a for a in (mdoc.get("activities") or []) if a.get("level_id") == level_id] or [{}]
+        for ca in cleared:
+            await log_audit(
+                actor=current_user, action="level.remove_member",
+                entity_type="member", entity_id=mdoc.get("id", ""),
+                entity_name=lvl_name,
+                extra={"level_id": level_id, "level_name": lvl_name,
+                       "activity_id": ca.get("activity_id") or "",
+                       "activity_name": ca.get("activity_name") or (level_doc or {}).get("activity_name") or "",
+                       "cause": "level_deleted"},
+            )
     cache_invalidate("levels:")
     return {"message": "Level deleted"}
 
@@ -633,9 +652,17 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
     or removing an assignment would not restore the row to the unassigned
     list. We look up the level first to know which activity to clear.
     """
-    level = await db.levels.find_one({"id": level_id}, {"_id": 0, "id": 1, "activity_id": 1, "activity_name": 1})
+    # Branch scope: non-admins may only detach members from levels in their own
+    # branch (or shared branchless levels).
+    require_branch_scope(current_user)
+    level = await db.levels.find_one({"id": level_id}, {"_id": 0, "id": 1, "name": 1, "activity_id": 1, "activity_name": 1, "branch_id": 1})
     if not level:
         raise HTTPException(status_code=404, detail="Level not found")
+    if not (current_user or {}).get("is_admin", False):
+        user_branch = (current_user or {}).get("branch_id")
+        lvl_branch = level.get("branch_id")
+        if lvl_branch and user_branch and lvl_branch != user_branch:
+            raise HTTPException(status_code=403, detail="Forbidden: level belongs to another branch")
 
     result = await db.levels.update_one(
         {"id": level_id},
@@ -651,6 +678,7 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
         activities = member_doc.get("activities", []) or []
         changed = False
         matched_any = False
+        cleared_acts = []
         for act in activities:
             matches = False
             if match_aid and act.get("activity_id") == match_aid:
@@ -662,6 +690,7 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
                 if act.get("level_id") == level_id:
                     act["level_id"] = ""
                     changed = True
+                    cleared_acts.append(act)
         # Mirror add_member_to_level's group fallback: a member can be linked to
         # this level via same-group matching (name mismatch), so clear by group
         # too — otherwise a stale level_id is left behind and the member never
@@ -676,17 +705,32 @@ async def remove_member_from_level(level_id: str, member_id: str, current_user: 
                     ):
                         act["level_id"] = ""
                         changed = True
+                        cleared_acts.append(act)
         if changed:
             await db.members.update_one(
                 {"id": member_id},
                 {"$set": {"activities": activities}}
             )
 
+    # Trace WHY the member became level-less (shown in the unassigned list) —
+    # one event per cleared activity, carrying the EXACT activity identity.
+    from utils.audit import log_audit
+    for ca in (cleared_acts if member_doc else []) or [{}]:
+        await log_audit(
+            actor=current_user, action="level.remove_member",
+            entity_type="member", entity_id=member_id,
+            entity_name=level.get("name") or match_aname or "",
+            extra={"level_id": level_id, "level_name": level.get("name") or "",
+                   "activity_id": ca.get("activity_id") or "",
+                   "activity_name": ca.get("activity_name") or match_aname or "",
+                   "cause": "manual_remove"},
+        )
+
     cache_invalidate("levels:")
     return {"message": "Member removed from level"}
 
 
-async def _compute_unassigned_members(effective_branch):
+async def _compute_unassigned_members(effective_branch, include_transfers=False):
     """Core logic: members with active subscriptions not assigned to any level.
 
     Returns the cleaned list (after same-activity-group dedupe) WITHOUT
@@ -697,19 +741,21 @@ async def _compute_unassigned_members(effective_branch):
         query["$or"] = [{"branch_id": effective_branch}, {"branch_id": None}, {"branch_id": {"$exists": False}}]
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    members = await db.members.find(
-        query,
-        {
-            "_id": 0,
-            "id": 1,
-            "name": 1,
-            "name_ar": 1,
-            "phone": 1,
-            "member_code": 1,
-            "branch_id": 1,
-            "activities": 1,
-        },
-    ).to_list(10000)
+    projection = {
+        "_id": 0,
+        "id": 1,
+        "name": 1,
+        "name_ar": 1,
+        "phone": 1,
+        "member_code": 1,
+        "branch_id": 1,
+        "activities": 1,
+    }
+    if include_transfers:
+        # Only the full list endpoint needs transfers (reason enrichment);
+        # keep the sidebar-count path light.
+        projection["transfers"] = {"$slice": -1}
+    members = await db.members.find(query, projection).to_list(10000)
 
     pre_result = []
     for m in members:
@@ -740,6 +786,9 @@ async def _compute_unassigned_members(effective_branch):
                 "member_code": m.get("member_code"),
                 "branch_id": m.get("branch_id"),
                 "unassigned_activities": unassigned_acts,
+                # Latest branch transfer (if any) — used to explain WHY the
+                # member lost their level (transfers clear level_id).
+                "_last_transfer": (m.get("transfers") or [None])[-1],
             })
 
     # Drop activities for members who are already in a level of the same
@@ -807,7 +856,7 @@ async def get_unassigned_members(
     again.
     """
     effective_branch = resolve_branch_filter(current_user, branch_filter)
-    pre_result = await _compute_unassigned_members(effective_branch)
+    pre_result = await _compute_unassigned_members(effective_branch, include_transfers=True)
 
     member_ids = [m["id"] for m in pre_result if m.get("id")]
     invoices_by_member: dict = {}
@@ -860,6 +909,77 @@ async def get_unassigned_members(
                     break
             a["invoice_level_id"] = chosen_lid
             a["invoice_level_name"] = chosen_lname
+
+    # ── WHY is each activity unassigned? Derive a per-activity reason from the
+    #    audit trail + member transfer history so the operator sees, under each
+    #    name, what caused the missing level. ─────────────────────────────────
+    audit_by_member: dict = {}
+    if member_ids:
+        audit_rows = await db.audit_logs.find(
+            {
+                "member_id": {"$in": member_ids},
+                "action": {"$in": ["level.remove_member", "subscription.update"]},
+            },
+            {"_id": 0, "member_id": 1, "action": 1, "entity_id": 1,
+             "entity_name": 1, "diff": 1, "extra": 1, "created_at": 1},
+        ).sort("created_at", -1).to_list(2000)
+        for row in audit_rows:
+            audit_by_member.setdefault(row.get("member_id"), []).append(row)
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for m in pre_result:
+        last_transfer = m.pop("_last_transfer", None)
+        rows = audit_by_member.get(m["id"], [])
+        for a in m["unassigned_activities"]:
+            aid = a.get("activity_id") or ""
+            aname = a.get("activity_name") or ""
+            reason = None
+            # Events are newest-first; take the most recent explaining event.
+            for row in rows:
+                created = (row.get("created_at") or "")[:10]
+                if row.get("action") == "level.remove_member":
+                    ex = row.get("extra") or {}
+                    ex_aid = ex.get("activity_id") or ""
+                    ex_aname = ex.get("activity_name") or ""
+                    # Prefer the exact activity identity; fall back to name for
+                    # legacy events. Blank both = member-wide event (applies).
+                    if ex_aid and aid:
+                        if ex_aid != aid:
+                            continue
+                    elif ex_aname and aname and ex_aname != aname:
+                        continue
+                    reason = {
+                        "code": "level_deleted" if ex.get("cause") == "level_deleted" else "removed_from_level",
+                        "date": created,
+                        "level_name": ex.get("level_name") or row.get("entity_name") or "",
+                    }
+                    break
+                if row.get("action") == "subscription.update":
+                    # Without a reliable activity id we cannot attribute the
+                    # reset to THIS activity — skip rather than guess.
+                    if not aid or not (row.get("entity_id") or "").endswith(f":{aid}"):
+                        continue
+                    d = (row.get("diff") or {}).get("level_id") or {}
+                    if d.get("before") and not d.get("after"):
+                        reason = {"code": "renewal_reset", "date": created, "level_name": ""}
+                        break
+            if not reason and last_transfer and isinstance(last_transfer, dict):
+                tdate = (last_transfer.get("transfer_date") or last_transfer.get("at") or "")[:10]
+                if tdate and (not a.get("start_date") or tdate >= a.get("start_date", "")):
+                    reason = {"code": "branch_transfer", "date": tdate, "level_name": ""}
+            if not reason:
+                start = a.get("start_date") or ""
+                try:
+                    is_new = start and (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(start, "%Y-%m-%d")).days <= 30
+                except ValueError:
+                    is_new = False
+                if is_new:
+                    reason = {"code": "new_subscription", "date": start, "level_name": ""}
+                elif a.get("invoice_level_id"):
+                    reason = {"code": "invoice_not_linked", "date": "", "level_name": a.get("invoice_level_name", "")}
+                else:
+                    reason = {"code": "never_assigned", "date": "", "level_name": ""}
+            a["reason"] = reason
 
     return {"count": len(pre_result), "members": pre_result}
 
