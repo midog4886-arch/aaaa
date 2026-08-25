@@ -299,7 +299,12 @@ export default function WhatsAppPage() {
   const loadMembers = async () => {
     setLoadingMembers(true);
     try {
-      const params = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+      // Admins need the full member pool because this screen has its OWN branch
+      // filter. Using the global header branch here made other branch choices
+      // look empty. Non-admins remain server-scoped to their allowed branch.
+      const params = !isAdmin && selectedBranchId && selectedBranchId !== 'all'
+        ? { branch_filter: selectedBranchId }
+        : {};
       const [mRes, aRes, bRes] = await Promise.all([
         membersAPI.getAll({ ...params, exclude_photo: true }),
         activitiesAPI.getAll({ branch_filter: 'all' }),
@@ -804,17 +809,36 @@ export default function WhatsAppPage() {
     return dayIds.some(d => activityHasDay(a, d));
   };
 
+  const normalizeActivityIdentity = (value) => (value || '').trim().toLocaleLowerCase();
+  // Member subscriptions contain a mixture of canonical activity UUIDs and
+  // legacy Arabic/English names. Treat each selected activity's id + names as
+  // aliases so the filter works for both kinds of records.
+  const selectedActivityAliases = new Set();
+  activities.forEach(a => {
+    if (!filterActivities.includes(a.id)) return;
+    [a.id, a.name, a.name_ar].forEach(value => {
+      const normalized = normalizeActivityIdentity(value);
+      if (normalized) selectedActivityAliases.add(normalized);
+    });
+  });
+  const activityMatchesSelected = (a) => {
+    if (filterActivities.length === 0) return true;
+    return [a.activity_id, a.activity_name, a.name, a.name_ar].some(value =>
+      selectedActivityAliases.has(normalizeActivityIdentity(value))
+    );
+  };
+
   const filteredMembers = members.filter(m => {
     const hasActive = m.activities?.some(a => isSubscriptionActive(a));
     if (!hasActive) return false;
     const matchActDay = m.activities?.some(a => {
       if (!isSubscriptionActive(a)) return false;
-      if (filterActivities.length > 0 && !filterActivities.includes(a.activity_id)) return false;
+      if (!activityMatchesSelected(a)) return false;
       if (!activityHasAnyDay(a, filterDays)) return false;
       return true;
     });
     if (!matchActDay) return false;
-    const brMatch = filterBranch === 'all' || m.branch_id === filterBranch;
+    const brMatch = filterBranch === 'all' || String(m.branch_id || '') === String(filterBranch);
     return brMatch;
   });
 
@@ -1747,7 +1771,10 @@ export default function WhatsAppPage() {
                     <MultiSelectPopover
                       values={filterActivities}
                       onChange={setFilterActivities}
-                      options={activities.filter(a => a.id).map(a => ({ id: a.id, label: isRTL ? a.name_ar : a.name }))}
+                      options={activities.filter(a => a.id).map(a => ({
+                        id: a.id,
+                        label: (isRTL ? a.name_ar : a.name) || a.name_ar || a.name || t('نشاط بدون اسم', 'Unnamed activity')
+                      }))}
                       allLabel={t('جميع الأنشطة', 'All Activities')}
                       minWidth={140}
                     />
@@ -1772,7 +1799,7 @@ export default function WhatsAppPage() {
                   <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg cursor-pointer" onClick={toggleSelectAll}>
                     <Checkbox checked={selectAll} onClick={e => e.stopPropagation()} onCheckedChange={toggleSelectAll} />
                     <span className="font-medium text-sm">{t('تحديد الكل', 'Select All')}</span>
-                    <span className="text-xs text-muted-foreground">({filteredMembers.length})</span>
+                    <span className="text-xs text-muted-foreground">({filteredMembers.length} {t('نتيجة', 'results')})</span>
                   </div>
 
                   {loadingMembers ? <div className="py-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></div> : (
