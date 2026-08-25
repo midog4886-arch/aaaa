@@ -762,7 +762,7 @@ export default function WhatsAppPage() {
     return opt.kw.some(k => text.includes(k));
   };
 
-  const MultiSelectPopover = ({ values, options, onChange, allLabel, placeholder, minWidth = 140 }) => {
+  const MultiSelectPopover = ({ values, options, onChange, allLabel, placeholder, minWidth = 140, grouped = false }) => {
     const toggle = (id) => {
       if (values.includes(id)) onChange(values.filter(v => v !== id));
       else onChange([...values, id]);
@@ -793,6 +793,24 @@ export default function WhatsAppPage() {
           </div>
           {options.length === 0 ? (
             <p className="text-xs text-muted-foreground p-2">{placeholder || t('لا توجد خيارات', 'No options')}</p>
+          ) : grouped ? (
+            Object.entries(options.reduce((acc, option) => {
+              const group = option.group || t('أنشطة مشتركة', 'Shared activities');
+              (acc[group] ||= []).push(option);
+              return acc;
+            }, {})).map(([group, groupOptions]) => (
+              <div key={group} className="mb-1 last:mb-0">
+                <div className="sticky top-0 z-10 px-2 py-1.5 text-xs font-bold text-primary bg-background border-b">
+                  {group}
+                </div>
+                {groupOptions.map(o => (
+                  <div key={o.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 rounded cursor-pointer" onClick={() => toggle(o.id)}>
+                    <Checkbox checked={values.includes(o.id)} onCheckedChange={() => toggle(o.id)} onClick={e => e.stopPropagation()} />
+                    <span className="text-sm">{o.label}</span>
+                  </div>
+                ))}
+              </div>
+            ))
           ) : options.map(o => (
             <div key={o.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 rounded cursor-pointer" onClick={() => toggle(o.id)}>
               <Checkbox checked={values.includes(o.id)} onCheckedChange={() => toggle(o.id)} onClick={e => e.stopPropagation()} />
@@ -1771,12 +1789,19 @@ export default function WhatsAppPage() {
                     <MultiSelectPopover
                       values={filterActivities}
                       onChange={setFilterActivities}
-                      options={activities.filter(a => a.id).map(a => ({
-                        id: a.id,
-                        label: (isRTL ? a.name_ar : a.name) || a.name_ar || a.name || t('نشاط بدون اسم', 'Unnamed activity')
-                      }))}
+                      options={activities
+                        .filter(a => a.id)
+                        .map(a => ({
+                          id: a.id,
+                          label: (isRTL ? a.name_ar : a.name) || a.name_ar || a.name || t('نشاط بدون اسم', 'Unnamed activity'),
+                          group: a.branch_id
+                            ? (branches.find(b => b.id === a.branch_id)?.name_ar || branches.find(b => b.id === a.branch_id)?.name || t('فرع غير معروف', 'Unknown branch'))
+                            : t('أنشطة مشتركة لكل الفروع', 'Shared activities for all branches')
+                        }))
+                        .sort((a, b) => a.group.localeCompare(b.group, isRTL ? 'ar' : 'en') || a.label.localeCompare(b.label, isRTL ? 'ar' : 'en'))}
                       allLabel={t('جميع الأنشطة', 'All Activities')}
                       minWidth={140}
+                      grouped
                     />
                     <MultiSelectPopover
                       values={filterDays}
