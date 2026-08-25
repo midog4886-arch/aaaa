@@ -800,7 +800,28 @@ export default function WhatsAppPage() {
               return acc;
             }, {})).map(([group, groupOptions]) => (
               <div key={group} className="mb-1 last:mb-0">
-                <div className="sticky top-0 z-10 px-2 py-1.5 text-xs font-bold text-primary bg-background border-b">
+                <div
+                  className="sticky top-0 z-10 flex items-center gap-2 px-2 py-1.5 text-xs font-bold text-primary bg-background border-b cursor-pointer hover:bg-muted/40"
+                  onClick={() => {
+                    const groupIds = groupOptions.map(o => o.id);
+                    const allSelected = groupIds.every(id => values.includes(id));
+                    onChange(allSelected
+                      ? values.filter(id => !groupIds.includes(id))
+                      : [...new Set([...values, ...groupIds])]);
+                  }}
+                >
+                  <Checkbox
+                    checked={groupOptions.every(o => values.includes(o.id))}
+                    className={groupOptions.some(o => values.includes(o.id)) && !groupOptions.every(o => values.includes(o.id)) ? 'opacity-50' : ''}
+                    onClick={e => e.stopPropagation()}
+                    onCheckedChange={() => {
+                      const groupIds = groupOptions.map(o => o.id);
+                      const allSelected = groupIds.every(id => values.includes(id));
+                      onChange(allSelected
+                        ? values.filter(id => !groupIds.includes(id))
+                        : [...new Set([...values, ...groupIds])]);
+                    }}
+                  />
                   {group}
                 </div>
                 {groupOptions.map(o => (
@@ -1791,13 +1812,15 @@ export default function WhatsAppPage() {
                       onChange={setFilterActivities}
                       options={activities
                         .filter(a => a.id)
-                        .map(a => ({
-                          id: a.id,
-                          label: (isRTL ? a.name_ar : a.name) || a.name_ar || a.name || t('نشاط بدون اسم', 'Unnamed activity'),
-                          group: a.branch_id
-                            ? (branches.find(b => b.id === a.branch_id)?.name_ar || branches.find(b => b.id === a.branch_id)?.name || t('فرع غير معروف', 'Unknown branch'))
-                            : t('أنشطة مشتركة لكل الفروع', 'Shared activities for all branches')
-                        }))
+                        .map(a => {
+                          const label = (isRTL ? a.name_ar : a.name) || a.name_ar || a.name || t('نشاط بدون اسم', 'Unnamed activity');
+                          const identity = `${a.name_ar || ''} ${a.name || ''}`.toLocaleLowerCase();
+                          let group = t('كل الأنشطة الأخرى', 'All other activities');
+                          if (/سباح|swim/.test(identity)) group = t('كل السباحة', 'All swimming');
+                          else if (/قدم|كره|كرة|football|soccer/.test(identity)) group = t('كل كرة القدم', 'All football');
+                          else if (/كارات|karate/.test(identity)) group = t('كل الكاراتيه', 'All karate');
+                          return { id: a.id, label, group };
+                        })
                         .sort((a, b) => a.group.localeCompare(b.group, isRTL ? 'ar' : 'en') || a.label.localeCompare(b.label, isRTL ? 'ar' : 'en'))}
                       allLabel={t('جميع الأنشطة', 'All Activities')}
                       minWidth={140}
