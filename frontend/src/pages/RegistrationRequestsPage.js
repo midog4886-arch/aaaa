@@ -165,6 +165,7 @@ export const RegistrationRequestsPage = () => {
     if (req.activity_name) noteLines.push(`النشاط المطلوب: ${req.activity_name}`);
     if (daysTxt) noteLines.push(`الأيام المفضّلة: ${daysTxt}`);
     if (req.preferred_time) noteLines.push(`الموعد المفضّل: ${req.preferred_time}`);
+    if (req.expected_start_date) noteLines.push(`تاريخ البداية المتوقع: ${req.expected_start_date}`);
     if (req.notes) noteLines.push(`ملاحظات ولي الأمر: ${req.notes}`);
     if (req.marketer_name) noteLines.push(`إحالة من مسوّق: ${req.marketer_name}${req.marketer_discount_percent ? ` (خصم ${req.marketer_discount_percent}%)` : ''}`);
     const prefill = {
@@ -172,6 +173,8 @@ export const RegistrationRequestsPage = () => {
       customer_name: req.customer_name,
       customer_phone: req.customer_phone,
       nationality: req.nationality || '',
+      age: req.age || '',
+      expected_start_date: req.expected_start_date || '',
       branch_id: req.branch_id,
       notes: noteLines.join('\n'),
       marketer_id: req.marketer_id || '',
@@ -461,6 +464,8 @@ export const RegistrationRequestsPage = () => {
                           <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3.5 h-3.5" />{req.customer_phone}</span>
                         )}
                         {req.nationality && <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5" />{req.nationality}</span>}
+                        {req.age && <span>العمر: {req.age} سنة</span>}
+                        {req.expected_start_date && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />البداية المتوقعة: {req.expected_start_date}</span>}
                         {req.activity_name && <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5" />{req.activity_name}</span>}
                         {(req.preferred_days || []).length > 0 && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{(req.preferred_days || []).join('، ')}</span>}
                         {req.preferred_time && <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{req.preferred_time}</span>}

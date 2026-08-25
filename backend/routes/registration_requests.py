@@ -126,6 +126,8 @@ def _activities_from_levels(activity_names) -> list:
 class PublicRegistrationCreate(BaseModel):
     customer_name: str
     customer_phone: str
+    age: int
+    expected_start_date: str
     nationality: Optional[str] = ""
     activity_id: Optional[str] = ""
     activity_name: Optional[str] = ""
@@ -240,12 +242,20 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     nationality = (payload.nationality or "").strip()
     if not nationality:
         raise HTTPException(status_code=400, detail="الجنسية مطلوبة")
+    if payload.age < 1 or payload.age > 100:
+        raise HTTPException(status_code=400, detail="العمر يجب أن يكون بين سنة و100 سنة")
+    try:
+        datetime.strptime(payload.expected_start_date, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="تاريخ البداية المتوقع مطلوب وغير صحيح")
 
     # Light anti-spam: cap repeated submissions from the same phone+branch.
     one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
     recent = await db.registration_requests.count_documents({
         "branch_id": branch_id,
         "customer_phone": phone,
+        "age": payload.age,
+        "expected_start_date": payload.expected_start_date,
         "created_at": {"$gte": one_hour_ago},
     })
     if recent >= 3:

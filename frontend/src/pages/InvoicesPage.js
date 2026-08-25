@@ -254,9 +254,13 @@ export const InvoicesPage = () => {
       name_ar: data.customer_name || '',
       phone: data.customer_phone || '',
       nationality: data.nationality || prev.nationality || '',
+      age: data.age || '',
     }));
     if (data.branch_id) setPrefillBranchId(data.branch_id);
     if (data.notes) setNotes(data.notes);
+    if (data.expected_start_date) {
+      setItems((prev) => prev.map(item => item.is_product ? item : { ...item, start_date: data.expected_start_date }));
+    }
     if (data.marketer_id) setPrefillMarketerId(data.marketer_id);
     if (data.marketer_discount_percent) setMarketerDiscountPercent(Number(data.marketer_discount_percent) || 0);
     if (data.marketer_name) setMarketerName(data.marketer_name);

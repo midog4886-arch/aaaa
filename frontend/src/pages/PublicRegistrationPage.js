@@ -40,8 +40,11 @@ const STRINGS = {
     intro: 'سجّل بيانات اللاعب وهنتواصل معاك لاستكمال الاشتراك.',
     referralApplied: (n) => `🎉 تم تطبيق إحالة من ${n}`,
     referralDiscount: (p) => `هتحصل على خصم ${p}% على أول اشتراك`,
-    childName: 'اسم الطفل',
+    childName: 'الاسم',
     fullNamePh: 'الاسم بالكامل',
+    age: 'العمر',
+    agePh: 'أدخل العمر بالسنوات',
+    expectedStartDate: 'تاريخ البداية المتوقع',
     mobile: 'رقم الموبايل',
     nationality: 'الجنسية',
     nationalityPh: 'ابحث واختر الجنسية',
@@ -56,7 +59,9 @@ const STRINGS = {
     notes: 'ملاحظات (اختياري)',
     notesPh: 'أي ملاحظات تحب تضيفها',
     submit: 'إرسال طلب التسجيل',
-    errName: 'من فضلك اكتب اسم الطفل',
+    errName: 'من فضلك اكتب الاسم',
+    errAge: 'من فضلك أدخل العمر بشكل صحيح',
+    errExpectedStartDate: 'من فضلك اختر تاريخ البداية المتوقع',
     errPhone: 'من فضلك اكتب رقم موبايل صحيح',
     errNationality: 'من فضلك اختر الجنسية',
     errBranch: 'من فضلك اختر الفرع',
@@ -74,8 +79,11 @@ const STRINGS = {
     intro: "Enter the player's details and we will contact you to complete the subscription.",
     referralApplied: (n) => `🎉 Referral applied from ${n}`,
     referralDiscount: (p) => `You will get a ${p}% discount on your first subscription`,
-    childName: "Child's name",
+    childName: 'Name',
     fullNamePh: 'Full name',
+    age: 'Age',
+    agePh: 'Enter age in years',
+    expectedStartDate: 'Expected start date',
     mobile: 'Mobile number',
     nationality: 'Nationality',
     nationalityPh: 'Search and select nationality',
@@ -90,7 +98,9 @@ const STRINGS = {
     notes: 'Notes (optional)',
     notesPh: 'Anything you would like to add',
     submit: 'Send registration request',
-    errName: "Please enter the child's name",
+    errName: 'Please enter the name',
+    errAge: 'Please enter a valid age',
+    errExpectedStartDate: 'Please select the expected start date',
     errPhone: 'Please enter a valid mobile number',
     errNationality: 'Please select a nationality',
     errBranch: 'Please select a branch',
@@ -138,6 +148,8 @@ export const PublicRegistrationPage = () => {
   const selectedBranchId = hasFixedBranch ? branchId : pickedBranchId;
 
   const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [expectedStartDate, setExpectedStartDate] = useState('');
   const [phone, setPhone] = useState('');
   const [nationality, setNationality] = useState('');
   const [activities, setActivities] = useState([]);
@@ -283,6 +295,9 @@ export const PublicRegistrationPage = () => {
     // Validation errors are stored as translation KEYS so they follow the
     // language toggle; server messages come through as raw text.
     if (!name.trim()) { setFormError('errName'); return; }
+    const parsedAge = Number(age);
+    if (!Number.isInteger(parsedAge) || parsedAge < 1 || parsedAge > 100) { setFormError('errAge'); return; }
+    if (!expectedStartDate) { setFormError('errExpectedStartDate'); return; }
     const digits = (phone || '').replace(/\D/g, '');
     if (digits.length < 8) { setFormError('errPhone'); return; }
     if (!nationality.trim()) { setFormError('errNationality'); return; }
@@ -297,6 +312,8 @@ export const PublicRegistrationPage = () => {
       const selectedDays = WEEK_DAYS.filter(d => days.includes(d.key)).map(d => d.label);
       await api.post(`/api/public/registration/${selectedBranchId}`, {
         customer_name: name.trim(),
+        age: parsedAge,
+        expected_start_date: expectedStartDate,
         customer_phone: phone.trim(),
         nationality: nationality.trim(),
         activity_id: '',
@@ -415,6 +432,21 @@ export const PublicRegistrationPage = () => {
               <input value={name} onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 placeholder={t.fullNamePh} />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">{t.age} *</label>
+                <input value={age} onChange={(e) => setAge(e.target.value)} type="number" min="1" max="100"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder={t.agePh} required />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Calendar className="w-4 h-4" /> {t.expectedStartDate} *</label>
+                <input value={expectedStartDate} onChange={(e) => setExpectedStartDate(e.target.value)} type="date"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required />
+              </div>
             </div>
 
             <div className="space-y-1.5">
