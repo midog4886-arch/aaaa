@@ -2173,12 +2173,14 @@ export default function WhatsAppPage() {
 
               {/* Send button */}
               <Button onClick={handleSendActivityNotif}
-                disabled={actNotifSending || !actNotifActivity || !actNotifTitle.trim() || !actNotifBody.trim() || actNotifMemberCount === 0}
-                className="w-full">
+                disabled={actNotifSending || !actNotifActivity || (actNotifChannel !== 'whatsapp' && !actNotifTitle.trim()) || !actNotifBody.trim() || actNotifMemberCount === 0}
+                className={`w-full ${actNotifChannel === 'whatsapp' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}>
                 {actNotifSending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Send className="w-4 h-4 me-2" />}
                 {actNotifMemberCount === 0
                   ? t('لا يوجد أعضاء في هذا المستوى', 'No members in this level')
-                  : t(`إرسال${actNotifMemberCount !== null ? ` لـ ${actNotifMemberCount} عضو` : ''}`, `Send${actNotifMemberCount !== null ? ` to ${actNotifMemberCount} members` : ''}`)}
+                  : actNotifChannel === 'whatsapp'
+                    ? t(`إرسال إلى ${actNotifMemberCount} رقم عبر واتساب`, `Send to ${actNotifMemberCount} numbers via WhatsApp`)
+                    : t(`إرسال${actNotifMemberCount !== null ? ` لـ ${actNotifMemberCount} عضو` : ''}`, `Send${actNotifMemberCount !== null ? ` to ${actNotifMemberCount} members` : ''}`)}
               </Button>
             </div>
           </div>
