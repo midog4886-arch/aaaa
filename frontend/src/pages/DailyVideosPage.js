@@ -39,6 +39,8 @@ const DailyVideosPage = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarData, setCalendarData] = useState({});
   const [selectedDate, setSelectedDate] = useState(null);
+  const [dayVideosDialogOpen, setDayVideosDialogOpen] = useState(false);
+  const [selectedDateVideos, setSelectedDateVideos] = useState([]);
   const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
   const [urlValidationStatus, setUrlValidationStatus] = useState(null); // null, 'valid', 'invalid'
   const [viewersDialogOpen, setViewersDialogOpen] = useState(false);
@@ -273,10 +275,11 @@ const DailyVideosPage = () => {
   const handleDateClick = (date) => {
     setSelectedDate(date);
     const dateStr = format(date, 'yyyy-MM-dd');
-    const existingVideo = calendarData[dateStr];
+    const dayVideos = calendarData[dateStr]?.videos || [];
     
-    if (existingVideo) {
-      handleOpenDialog(existingVideo);
+    if (dayVideos.length > 0) {
+      setSelectedDateVideos(dayVideos);
+      setDayVideosDialogOpen(true);
     } else {
       handleOpenDialog(null, date);
     }
@@ -585,6 +588,87 @@ const DailyVideosPage = () => {
           </Card>
         </>
       )}
+
+      {/* Videos for the selected calendar day */}
+      <Dialog open={dayVideosDialogOpen} onOpenChange={setDayVideosDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarIcon className="w-5 h-5 text-primary" />
+              فيديوهات يوم {selectedDate ? format(selectedDate, 'yyyy-MM-dd') : ''}
+              <Badge variant="secondary">{selectedDateVideos.length}</Badge>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {selectedDateVideos.map(video => (
+              <Card key={video.id} className={`overflow-hidden ${!video.is_active ? 'opacity-60' : ''}`}>
+                <div
+                  className="relative aspect-video group cursor-pointer"
+                  onClick={() => {
+                    setDayVideosDialogOpen(false);
+                    handleOpenDialog(video);
+                  }}
+                >
+                  <img
+                    src={getVideoThumbnail(video)}
+                    alt={video.title_ar || video.title}
+                    className="w-full h-full object-cover"
+                  />
+                  {video.video_platform === 'tiktok' && (
+                    <div className="absolute top-2 left-2 bg-black text-white text-xs px-2 py-0.5 rounded font-bold">TikTok</div>
+                  )}
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Pencil className="w-10 h-10 text-white" />
+                  </div>
+                </div>
+                <CardContent className="p-3">
+                  <h3 className="font-bold text-gray-900">{video.title_ar || video.title}</h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {video.activity_name && (
+                      <Badge variant="outline" className="gap-1">
+                        <Activity className="w-3 h-3" />
+                        {video.activity_name}
+                      </Badge>
+                    )}
+                    <Badge variant={video.is_active === false ? 'secondary' : 'default'}>
+                      {video.is_active === false ? 'غير نشط' : 'نشط'}
+                    </Badge>
+                    <Badge variant="outline" className="gap-1">
+                      <Eye className="w-3 h-3" /> {video.views_count || 0}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-3 gap-2"
+                    onClick={() => {
+                      setDayVideosDialogOpen(false);
+                      handleOpenDialog(video);
+                    }}
+                  >
+                    <Pencil className="w-4 h-4" /> عرض وتعديل الفيديو
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button
+              className="gap-2"
+              onClick={() => {
+                setDayVideosDialogOpen(false);
+                handleOpenDialog(null, selectedDate);
+              }}
+            >
+              <Plus className="w-4 h-4" />
+              إضافة فيديو آخر لهذا اليوم
+            </Button>
+            <Button variant="outline" onClick={() => setDayVideosDialogOpen(false)}>إغلاق</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
