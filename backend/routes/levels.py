@@ -763,6 +763,12 @@ async def _compute_unassigned_members(effective_branch, include_transfers=False)
         for a in (m.get("activities") or []):
             if a.get("status") != "active":
                 continue
+            # "ساري" means the subscription covers TODAY. Upcoming/prepaid
+            # periods must not appear in the unassigned-members queue before
+            # their start date.
+            start_date = a.get("start_date") or ""
+            if start_date and start_date > today:
+                continue
             end_date = a.get("end_date") or ""
             if end_date and end_date < today:
                 continue
