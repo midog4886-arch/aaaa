@@ -5,6 +5,8 @@ description: Rules for preserving rented-court booking links across branch and l
 
 Rented venues are optional attachments inside any normal branch; they are not a mutually exclusive branch type. A level may remain a normal unlinked level, or select both a venue and booking slot together.
 
+Admins manage these attachments from the independent **Rented Venues** page under Administration. Ordinary branch edits must preserve venue data but must not duplicate the venue editor.
+
 Every mutation that can change a linked level's day, time, active status, venue, or booking slot must revalidate the complete candidate level against the selected booking. This applies to bulk cleanup and schedule-builder routes, not only the main level create/update endpoints.
 
 An active level's venue and slot reference locks the slot's identity, weekday, time window, and validity dates. Do not delete, move, or redefine that booking—or convert the branch to permanent—until the level is closed or remapped.

@@ -60,6 +60,7 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const OperationPasswordsPage = lazy(() => import('./pages/OperationPasswordsPage'));
 const BranchesPage = lazy(() => import('./pages/BranchesPage'));
+const RentedVenuesPage = lazy(() => import('./pages/RentedVenuesPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const StorePage = lazy(() => import('./pages/StorePage'));
 const AccountingPage = lazy(() => import('./pages/AccountingPage'));
@@ -458,6 +459,14 @@ function AppRoutes() {
             <BranchesPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/rented-venues"
+        element={
+          <ProtectedRoute permission="branches">
+            <RentedVenuesPage />
+          </ProtectedRoute>
+        }
       />
       <Route 
         path="/admin/users" 

@@ -108,6 +108,8 @@ class _Collection:
         for doc in self.docs:
             if _matches(doc, query):
                 doc.update(update.get("$set", {}))
+                for field in update.get("$unset", {}):
+                    doc.pop(field, None)
                 return dict(doc)
         return None
 
@@ -375,6 +377,115 @@ def test_branch_detail_rejects_other_branch_staff(monkeypatch):
             "branch-b", current_user={"is_admin": False, "branch_id": "branch-a"}
         ))
     assert exc.value.status_code == 403
+
+
+@pytest.mark.parametrize("method", ["get", "put"])
+def test_branch_venues_endpoints_require_admin(monkeypatch, method):
+    monkeypatch.setattr(branches_mod, "db", _DB(_branch()))
+    user = {"is_admin": False, "branch_id": "branch-rented"}
+    with pytest.raises(HTTPException) as exc:
+        if method == "get":
+            run(branches_mod.get_branch_venues("branch-rented", current_user=user))
+        else:
+            run(branches_mod.update_branch_venues(
+                "branch-rented",
+                branches_mod.BranchVenuesUpdate(venues=[]),
+                current_user=user,
+            ))
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.parametrize("method", ["get", "put"])
+def test_branch_venues_endpoints_reject_missing_branch(monkeypatch, method):
+    monkeypatch.setattr(branches_mod, "db", _DB({"id": "another-branch"}))
+    with pytest.raises(HTTPException) as exc:
+        if method == "get":
+            run(branches_mod.get_branch_venues(
+                "missing", current_user={"is_admin": True}
+            ))
+        else:
+            run(branches_mod.update_branch_venues(
+                "missing",
+                branches_mod.BranchVenuesUpdate(venues=[]),
+                current_user={"is_admin": True},
+            ))
+    assert exc.value.status_code == 404
+
+
+def test_get_branch_venues_uses_legacy_fallback(monkeypatch):
+    monkeypatch.setattr(branches_mod, "db", _DB(_legacy_rented_branch()))
+    venues = run(branches_mod.get_branch_venues(
+        "branch-rented", current_user={"is_admin": True}
+    ))
+    assert len(venues) == 1
+    assert venues[0].id == "venue-1"
+    assert venues[0].booking_slots[0].id == "slot-1"
+
+
+def test_update_branch_venues_replaces_only_venues_and_generates_ids(monkeypatch):
+    branch = _branch(name="Keep this name")
+    fake_db = _DB(branch)
+    monkeypatch.setattr(branches_mod, "db", fake_db)
+    invalidated = []
+    monkeypatch.setattr(
+        branches_mod, "cache_invalidate", lambda prefix: invalidated.append(prefix)
+    )
+    start_date, end_date = _dates()
+    payload = branches_mod.BranchVenuesUpdate(venues=[{
+        "name": "New court",
+        "size": "10x20",
+        "booking_slots": [{
+            "day": "tuesday",
+            "start_time": "09:00",
+            "end_time": "10:00",
+            "start_date": start_date,
+            "end_date": end_date,
+            "cost": 50,
+            "cost_type": "hourly",
+        }],
+    }])
+
+    venues = run(branches_mod.update_branch_venues(
+        "branch-rented", payload, current_user={"is_admin": True}
+    ))
+
+    assert venues[0].id
+    assert venues[0].booking_slots[0].id
+    assert fake_db.branches.docs[0]["venues"][0]["id"] == venues[0].id
+    assert fake_db.branches.docs[0]["name"] == "Keep this name"
+    assert invalidated == ["branches:"]
+
+
+def test_branch_venues_payload_runs_nested_and_unique_validation():
+    venue = copy.deepcopy(_branch()["venues"][0])
+    with pytest.raises(ValidationError, match="valid English weekday"):
+        invalid = copy.deepcopy(venue)
+        invalid["booking_slots"][0]["day"] = "not-a-day"
+        branches_mod.BranchVenuesUpdate(venues=[invalid])
+
+    with pytest.raises(ValidationError, match="venue ids must be unique"):
+        branches_mod.BranchVenuesUpdate(venues=[venue, copy.deepcopy(venue)])
+
+
+def test_update_branch_venues_rejects_active_referenced_booking_change(monkeypatch):
+    branch = _branch()
+    referenced = {
+        "id": "level-1", "branch_id": "branch-rented", "venue_id": "venue-1",
+        "booking_slot_id": "slot-1", "is_active": True,
+    }
+    fake_db = _DB(branch, [referenced])
+    monkeypatch.setattr(branches_mod, "db", fake_db)
+    changed = copy.deepcopy(branch["venues"])
+    changed[0]["booking_slots"][0]["start_time"] = "16:00"
+
+    with pytest.raises(HTTPException) as exc:
+        run(branches_mod.update_branch_venues(
+            "branch-rented",
+            branches_mod.BranchVenuesUpdate(venues=changed),
+            current_user={"is_admin": True},
+        ))
+    assert exc.value.status_code == 409
+    assert fake_db.branches.docs[0]["venues"][0]["booking_slots"][0]["start_time"] == "17:00"
 
 
 def test_active_toggle_rejects_other_branch_staff(monkeypatch):

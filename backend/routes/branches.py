@@ -71,6 +71,19 @@ class Branch(BranchBase):
     created_at: str
 
 
+class BranchVenuesUpdate(BaseModel):
+    """Payload for replacing a branch's venue configuration."""
+
+    venues: List[VenueCourt] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_unique_venue_ids(self):
+        venue_ids = [venue.id for venue in self.venues]
+        if len(venue_ids) != len(set(venue_ids)):
+            raise ValueError("venue ids must be unique")
+        return self
+
+
 def _validate_location_url(data: dict):
     """Only allow plain web links (http/https) as the public location URL —
     it is rendered as an <a href> on the public registration page, so schemes
@@ -93,6 +106,77 @@ def _validate_branch_templates(data: dict):
                 status_code=400,
                 detail=f"{field} must not exceed 1000 characters",
             )
+
+
+def _stored_venues(branch: dict) -> list:
+    """Read the canonical field, falling back to the pre-venues field."""
+    return branch.get("venues") or branch.get("rented_venues") or []
+
+
+async def _protect_active_venue_references(
+    branch_id: str,
+    before_venues: list,
+    new_venues: list,
+):
+    """Prevent a venue edit from invalidating a live level's booking link."""
+    old_venue_ids = {venue.get("id") for venue in before_venues if venue.get("id")}
+    new_venue_ids = {venue.get("id") for venue in new_venues if venue.get("id")}
+    old_slot_pairs = {
+        (venue.get("id"), slot.get("id"))
+        for venue in before_venues
+        for slot in (venue.get("booking_slots") or [])
+        if venue.get("id") and slot.get("id")
+    }
+    new_slot_pairs = {
+        (venue.get("id"), slot.get("id"))
+        for venue in new_venues
+        for slot in (venue.get("booking_slots") or [])
+        if venue.get("id") and slot.get("id")
+    }
+    removed_venues = old_venue_ids - new_venue_ids
+    removed_slot_pairs = old_slot_pairs - new_slot_pairs
+    old_slots = {
+        (venue.get("id"), slot.get("id")): slot
+        for venue in before_venues
+        for slot in (venue.get("booking_slots") or [])
+        if venue.get("id") and slot.get("id")
+    }
+    new_slots = {
+        (venue.get("id"), slot.get("id")): slot
+        for venue in new_venues
+        for slot in (venue.get("booking_slots") or [])
+        if venue.get("id") and slot.get("id")
+    }
+    booking_fields = ("day", "start_time", "end_time", "start_date", "end_date")
+    changed_slot_pairs = {
+        pair for pair in (old_slot_pairs & new_slot_pairs)
+        if any(
+            old_slots[pair].get(field) != new_slots[pair].get(field)
+            for field in booking_fields
+        )
+    }
+    if not (removed_venues or removed_slot_pairs or changed_slot_pairs):
+        return
+
+    ref_filters = []
+    if removed_venues:
+        ref_filters.append({"venue_id": {"$in": list(removed_venues)}})
+    # A slot id is only unique within a venue. Treat its venue/id pair as the
+    # reference so moving/reusing an id cannot orphan a live level.
+    ref_filters.extend(
+        {"venue_id": venue_id, "booking_slot_id": slot_id}
+        for venue_id, slot_id in (removed_slot_pairs | changed_slot_pairs)
+    )
+    referenced = await db.levels.find_one({
+        "branch_id": branch_id,
+        "is_active": {"$ne": False},
+        "$or": ref_filters,
+    }, {"_id": 0, "id": 1})
+    if referenced:
+        raise HTTPException(
+            status_code=409,
+            detail="لا يمكن حذف أو تغيير حجز مرتبط بمستوى نشط. أغلق المستوى أو غيّر حجزه أولاً",
+        )
 
 
 # ============ ROUTES ============
@@ -222,6 +306,70 @@ async def get_branch(branch_id: str, current_user: dict = Depends(get_current_us
     return branch
 
 
+@router.get("/{branch_id}/venues", response_model=List[VenueCourt])
+async def get_branch_venues(
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Read one branch's canonical venue configuration - admin only."""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    branch = await db.branches.find_one(
+        {"id": branch_id},
+        {"_id": 0, "venues": 1, "rented_venues": 1},
+    )
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    return [VenueCourt.model_validate(venue) for venue in _stored_venues(branch)]
+
+
+@router.put("/{branch_id}/venues", response_model=List[VenueCourt])
+async def update_branch_venues(
+    branch_id: str,
+    payload: BranchVenuesUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    """Replace one branch's venues without resubmitting unrelated fields."""
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    before = await db.branches.find_one({"id": branch_id}, {"_id": 0})
+    if not before:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    before_venues = _stored_venues(before)
+    venues = [venue.model_dump() for venue in payload.venues]
+    await _protect_active_venue_references(branch_id, before_venues, venues)
+
+    result = await db.branches.find_one_and_update(
+        {"id": branch_id},
+        {
+            "$set": {"venues": venues},
+            "$unset": {"rented_venues": ""},
+        },
+        return_document=True,
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+    cache_invalidate("branches:")
+    try:
+        from utils.audit import log_audit
+        await log_audit(
+            actor=current_user,
+            action="branch.venues.update",
+            entity_type="branch",
+            entity_id=branch_id,
+            entity_name=before.get("name_ar") or before.get("name", ""),
+            before={"venues": before_venues},
+            after={"venues": venues},
+        )
+    except Exception:
+        pass
+    return payload.venues
+
+
 @router.put("/{branch_id}")
 async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict = Depends(get_current_user)):
     """Update a branch - admin only"""
@@ -247,60 +395,12 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
                 status_code=409,
                 detail=f"البادئة '{data['code_prefix']}' مستخدمة بالفعل في فرع آخر"
             )
-    before_venues = before.get("venues") or before.get("rented_venues") or []
-    old_venue_ids = {venue.get("id") for venue in before_venues if venue.get("id")}
-    new_venue_ids = {venue.get("id") for venue in (data.get("venues") or []) if venue.get("id")}
-    old_slot_pairs = {
-        (venue.get("id"), slot.get("id"))
-        for venue in before_venues
-        for slot in (venue.get("booking_slots") or [])
-        if venue.get("id") and slot.get("id")
-    }
-    new_slot_pairs = {
-        (venue.get("id"), slot.get("id"))
-        for venue in (data.get("venues") or [])
-        for slot in (venue.get("booking_slots") or [])
-        if venue.get("id") and slot.get("id")
-    }
-    removed_venues = old_venue_ids - new_venue_ids
-    removed_slot_pairs = old_slot_pairs - new_slot_pairs
-    old_slots = {
-        (venue.get("id"), slot.get("id")): slot
-        for venue in before_venues
-        for slot in (venue.get("booking_slots") or [])
-        if venue.get("id") and slot.get("id")
-    }
-    new_slots = {
-        (venue.get("id"), slot.get("id")): slot
-        for venue in (data.get("venues") or [])
-        for slot in (venue.get("booking_slots") or [])
-        if venue.get("id") and slot.get("id")
-    }
-    booking_fields = ("day", "start_time", "end_time", "start_date", "end_date")
-    changed_slot_pairs = {
-        pair for pair in (old_slot_pairs & new_slot_pairs)
-        if any(old_slots[pair].get(field) != new_slots[pair].get(field) for field in booking_fields)
-    }
-    if removed_venues or removed_slot_pairs or changed_slot_pairs:
-        ref_filters = []
-        if removed_venues:
-            ref_filters.append({"venue_id": {"$in": list(removed_venues)}})
-        # A slot id is only unique within a venue.  Treat its venue/id pair as
-        # the reference so moving/reusing an id cannot orphan a live level.
-        ref_filters.extend(
-            {"venue_id": venue_id, "booking_slot_id": slot_id}
-            for venue_id, slot_id in (removed_slot_pairs | changed_slot_pairs)
-        )
-        referenced = await db.levels.find_one({
-            "branch_id": branch_id,
-            "is_active": {"$ne": False},
-            "$or": ref_filters,
-        }, {"_id": 0, "id": 1})
-        if referenced:
-            raise HTTPException(
-                status_code=409,
-                detail="لا يمكن حذف أو تغيير حجز مرتبط بمستوى نشط. أغلق المستوى أو غيّر حجزه أولاً",
-            )
+    before_venues = _stored_venues(before)
+    await _protect_active_venue_references(
+        branch_id,
+        before_venues,
+        data.get("venues") or [],
+    )
     result = await db.branches.find_one_and_update(
         {"id": branch_id},
         {"$set": data},

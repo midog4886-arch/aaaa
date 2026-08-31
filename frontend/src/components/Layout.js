@@ -252,6 +252,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       items: [
         { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
         ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
+        ...(isAdmin ? [{ to: '/admin/rented-venues', icon: MapPin, label: 'rented_venues', permission: 'branches' }] : []),
         ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
         ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'backup', feature: 'backup' }] : []),
         ...(isAdmin ? [{ to: '/admin/audit', icon: ShieldCheck, label: 'audit_log', permission: 'settings' }] : []),

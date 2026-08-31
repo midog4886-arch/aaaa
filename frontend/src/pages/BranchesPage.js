@@ -132,24 +132,6 @@ const BranchesPage = () => {
       toast.error(language === 'ar' ? 'اختر يوم عمل واحد على الأقل للفرع' : 'Select at least one working day');
       return;
     }
-    if (formData.venues.length > 0) {
-      if (formData.venues.some(venue =>
-        !venue.name || !venue.contract_start_date || !venue.contract_end_date ||
-        venue.cost === '' || Number(venue.cost) < 0 || Number(venue.warning_days) < 0 ||
-        venue.booking_slots.length === 0
-      )) {
-        toast.error(language === 'ar' ? 'يرجى إكمال بيانات الملاعب المستأجرة' : 'Please complete the rented venue details');
-        return;
-      }
-      if (formData.venues.some(venue =>
-        new Date(venue.contract_end_date) < new Date(venue.contract_start_date) ||
-        venue.booking_slots.some(slot => !slot.start_time || !slot.end_time || slot.end_time <= slot.start_time)
-      )) {
-        toast.error(language === 'ar' ? 'تحقق من تواريخ العقود وأوقات الحجز' : 'Check contract dates and booking times');
-        return;
-      }
-    }
-
     setSaving(true);
     try {
       const cleanedPrefix = (formData.code_prefix || '')
@@ -179,33 +161,12 @@ const BranchesPage = () => {
           .filter(id => (formData.working_days || []).includes(id)),
         // Kept only for compatibility with APIs that still infer venue handling
         // from this legacy field; the UI treats every branch as a normal branch.
-        branch_type: formData.branch_type || 'permanent',
-        contract_warning_days: Math.max(0, ...formData.venues.map(venue => Number(venue.warning_days) || 0)),
-        venues: formData.venues.map(venue => ({
-              ...(venue.id ? { id: venue.id } : {}),
-              name: venue.name.trim(),
-              number: venue.number.trim(),
-              size: String(venue.size || venue.number || venue.name).trim(),
-              contract_start_date: venue.contract_start_date,
-              contract_end_date: venue.contract_end_date,
-              cost: Number(venue.cost),
-              cost_type: venue.cost_type,
-              warning_days: Number(venue.warning_days),
-              booking_slots: WEEKDAYS.flatMap(day =>
-                venue.booking_slots
-                  .filter(slot => slot.weekday === day.id)
-                  .map(slot => ({
-                    ...(slot.id ? { id: slot.id } : {}),
-                    day: day.id,
-                    start_time: slot.start_time,
-                    end_time: slot.end_time,
-                    start_date: slot.start_date || venue.contract_start_date,
-                    end_date: slot.end_date || venue.contract_end_date,
-                    cost: Number(slot.cost ?? venue.cost),
-                    cost_type: slot.cost_type || venue.cost_type
-                  }))
-              )
-            }))
+        branch_type: editingBranch?.branch_type || 'permanent',
+        // Venue management lives on /admin/rented-venues. Branch updates must
+        // pass the embedded records through byte-for-byte so their IDs and
+        // active level references are never accidentally removed.
+        contract_warning_days: editingBranch?.contract_warning_days ?? 30,
+        venues: editingBranch ? getBranchVenues(editingBranch) : []
       };
       
       if (editingBranch) {
@@ -579,7 +540,7 @@ const BranchesPage = () => {
                 </p>
               </div>
 
-              <div className="space-y-4" data-testid="rented-venues-editor">
+              {false && <div className="space-y-4" data-testid="rented-venues-editor">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <Label className="font-bold">{language === 'ar' ? 'الملاعب المستأجرة (اختياري)' : 'Rented Venues (optional)'}</Label>
@@ -759,7 +720,7 @@ const BranchesPage = () => {
                       </div>
                     </section>
                   ))}
-                </div>
+                </div>}
 
               <div className="space-y-2">
                 <Label>{language === 'ar' ? 'أيام عمل الفرع' : 'Branch Working Days'}</Label>

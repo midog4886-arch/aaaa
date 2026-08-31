@@ -68,6 +68,7 @@ const translations = {
     whatsapp: 'واتساب',
     whatsapp_bulk: 'واتساب جماعي',
     branches: 'الفروع',
+    rented_venues: 'الملاعب المستأجرة',
     users: 'المستخدمين',
     
     // Dashboard
@@ -230,6 +231,7 @@ const translations = {
     whatsapp: 'WhatsApp',
     whatsapp_bulk: 'Bulk WhatsApp',
     branches: 'Branches',
+    rented_venues: 'Rented Venues',
     users: 'Users',
     member_card: 'Member Card',
     daily_new_cards: 'Daily New Cards',
