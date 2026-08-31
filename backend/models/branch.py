@@ -141,14 +141,14 @@ class BranchBase(BaseModel):
     # Days the branch operates. None/empty = open all week (backward compatible).
     working_days: Optional[List[str]] = None
     # Missing on all historical rows, so permanent remains the safe legacy default.
-    branch_type: Literal["permanent", "rented"] = "permanent"
+    branch_type: Literal["permanent", "rented", "rented_venue"] = "permanent"
     venues: List[VenueCourt] = Field(default_factory=list)
     contract_warning_days: int = Field(default=30, ge=0, le=3650)
 
     @model_validator(mode="after")
     def validate_rented_venues(self):
-        if self.branch_type == "rented" and not self.venues:
-            raise ValueError("rented branches must contain at least one venue")
+        if self.branch_type == "rented_venue":
+            self.branch_type = "rented"
         venue_ids = [venue.id for venue in self.venues]
         if len(venue_ids) != len(set(venue_ids)):
             raise ValueError("venue ids must be unique")

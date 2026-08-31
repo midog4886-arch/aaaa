@@ -292,11 +292,20 @@ export const LevelsPage = () => {
   const [coaches, setCoaches] = useState([]);
   const formBranchId = isAdmin ? formData.branch_id : selectedBranchId;
   const formBranch = branches.find(branch => branch.id === formBranchId);
-  const rentedVenues = formBranch?.branch_type === 'rented' ? (formBranch.venues || []) : [];
+  const getBranchVenues = (branch) => {
+    if (Array.isArray(branch?.venues) && branch.venues.length > 0) return branch.venues;
+    if (Array.isArray(branch?.rented_venues)) return branch.rented_venues;
+    return Array.isArray(branch?.venues) ? branch.venues : [];
+  };
+  const rentedVenues = getBranchVenues(formBranch);
   const selectedVenue = rentedVenues.find(venue => venue.id === formData.venue_id);
   const selectedVenueSlots = selectedVenue?.booking_slots || [];
 
   const applyBookingSlot = (venueId, slotId) => {
+    if (venueId === '__none__') {
+      setFormData(prev => ({ ...prev, venue_id: '', booking_slot_id: '' }));
+      return;
+    }
     const venue = rentedVenues.find(item => item.id === venueId);
     const slot = (venue?.booking_slots || []).find(item => item.id === slotId);
     if (!slot) {
@@ -310,7 +319,7 @@ export const LevelsPage = () => {
       venue_id: venueId,
       booking_slot_id: slot.id,
       time_slot: slotLabel,
-      days: [slot.day],
+      days: [slot.day || slot.weekday || slot.day_of_week].filter(Boolean),
       activity_name: activityInfo && prev.main_activity !== 'other'
         ? `${activityInfo.name_ar} - ${slotLabel}`
         : (prev.activity_name || slotLabel)
@@ -1227,16 +1236,6 @@ export const LevelsPage = () => {
       toast.error(t('أدخل اسم الساعة', 'Enter time slot name'));
       return;
     }
-    const activeBranch = branches.find(branch => branch.id === selectedBranchId);
-    if (activeBranch?.branch_type === 'rented') {
-      toast.info(t(
-        'في الفرع المستأجر تُنشأ الساعة من فترة الحجز. أضف مستوى ثم اختر الملعب والفترة.',
-        'Rented-branch times come from booking slots. Add a level, then select its venue and slot.'
-      ));
-      setIsAddTimeSlotDialogOpen(false);
-      return;
-    }
-    
     const isCustom = dialogActivityId === '__custom__';
     if (isCustom && !customActivityName.trim()) {
       toast.error(t('أدخل اسم النشاط المخصص', 'Enter the custom activity name'));
@@ -1521,12 +1520,6 @@ ${slotTables}
       toast.error(t('اختر وقت أولاً', 'Select a time slot first'));
       return;
     }
-    const activeBranch = branches.find(branch => branch.id === selectedBranchId);
-    if (activeBranch?.branch_type === 'rented') {
-      handleAddNewLevel(selectedActivityId, selectedTimeSlotKey);
-      return;
-    }
-    
     // Get existing levels for this time slot to determine next level number
     const existingLevels = getLevelsForTimeSlot(selectedActivityId, selectedTimeSlotKey);
     const existingNumbers = existingLevels.map(l => l.level_number);
@@ -1704,16 +1697,24 @@ ${slotTables}
     }
     const levelBranchId = isAdmin ? formData.branch_id : selectedBranchId;
     const levelBranch = branches.find(branch => branch.id === levelBranchId);
-    if (levelBranch?.branch_type === 'rented' && (!formData.venue_id || !formData.booking_slot_id)) {
-      toast.error(t('اختر الملعب وفترة الحجز للمستوى', 'Select the venue and booking slot'));
+    if (Boolean(formData.venue_id) !== Boolean(formData.booking_slot_id)) {
+      toast.error(t('اختر الملعب وفترة الحجز معاً، أو اتركهما فارغين', 'Select both a venue and booking slot, or leave both empty'));
       return;
     }
     
     setSaving(true);
     
     try {
+      const branchVenues = getBranchVenues(levelBranch);
+      const bookedVenue = branchVenues.find(venue => venue.id === formData.venue_id);
+      const bookedSlot = (bookedVenue?.booking_slots || []).find(slot => slot.id === formData.booking_slot_id);
+      const slotDay = bookedSlot?.day || bookedSlot?.weekday || bookedSlot?.day_of_week;
       const data = {
         ...formData,
+        ...(bookedSlot ? {
+          time_slot: bookedSlot.start_time,
+          days: slotDay ? [slotDay] : formData.days
+        } : {}),
         branch_id: isAdmin ? formData.branch_id : undefined,
         coach_id: formData.coach_id && formData.coach_id !== '__none__' ? formData.coach_id : null
       };
@@ -3485,6 +3486,7 @@ ${slotTables}
                     <Label>{t('الوقت (الساعة)', 'Time Slot')}</Label>
                     <Select
                       value={formData.time_slot}
+                      disabled={Boolean(formData.booking_slot_id)}
                       onValueChange={(value) => {
                         const activityInfo = getMainActivityInfo(formData.main_activity);
                         setFormData({ 
@@ -3593,6 +3595,7 @@ ${slotTables}
                     <button
                       type="button"
                       className="text-xs text-blue-600 hover:underline"
+                      disabled={Boolean(formData.booking_slot_id)}
                       onClick={() => setFormData({ ...formData, days: [...ALL_DAY_IDS] })}
                     >
                       {t('تحديد الكل', 'Select all')}
@@ -3600,6 +3603,7 @@ ${slotTables}
                     <button
                       type="button"
                       className="text-xs text-gray-500 hover:underline"
+                      disabled={Boolean(formData.booking_slot_id)}
                       onClick={() => setFormData({ ...formData, days: [] })}
                     >
                       {t('إلغاء الكل', 'Clear')}
@@ -3617,6 +3621,7 @@ ${slotTables}
                         <input
                           type="checkbox"
                           checked={checked}
+                          disabled={Boolean(formData.booking_slot_id)}
                           onChange={(e) => {
                             const cur = new Set(formData.days || []);
                             if (e.target.checked) cur.add(d.id); else cur.delete(d.id);
@@ -3630,8 +3635,10 @@ ${slotTables}
                   })}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  {t('اختر الأيام التي يعمل فيها هذا المستوى. لو ما اخترت أي يوم، لن يظهر المستوى تحت أي يوم.',
-                     'Pick the days this level runs on. If none are selected, the level will not appear under any day.')}
+                  {formData.booking_slot_id
+                    ? t('يتم تحديد يوم التدريب من فترة الحجز المختارة.', 'The training day is set by the selected booking slot.')
+                    : t('اختر الأيام التي يعمل فيها هذا المستوى. لو ما اخترت أي يوم، لن يظهر المستوى تحت أي يوم.',
+                       'Pick the days this level runs on. If none are selected, the level will not appear under any day.')}
                 </p>
               </div>
 
@@ -3661,18 +3668,19 @@ ${slotTables}
                 </div>
               )}
 
-              {formBranch?.branch_type === 'rented' && (
+              {rentedVenues.length > 0 && (
                 <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
                   <div>
-                    <Label>{t('الملعب المستأجر', 'Rented venue')} *</Label>
+                    <Label>{t('الملعب المستأجر (اختياري)', 'Rented venue (optional)')}</Label>
                     <Select
-                      value={formData.venue_id || ''}
+                      value={formData.venue_id || '__none__'}
                       onValueChange={(value) => applyBookingSlot(value, '')}
                     >
                       <SelectTrigger data-testid="level-venue-select">
                         <SelectValue placeholder={t('اختر الملعب', 'Select venue')} />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="__none__">{t('بدون ملعب مستأجر', 'No rented venue')}</SelectItem>
                         {rentedVenues.map(venue => (
                           <SelectItem key={venue.id} value={venue.id}>
                             {venue.name}{venue.number ? ` #${venue.number}` : ''}
@@ -3684,7 +3692,7 @@ ${slotTables}
                   </div>
 
                   <div>
-                    <Label>{t('فترة الحجز', 'Booking slot')} *</Label>
+                    <Label>{t('فترة الحجز (اختيارها مع الملعب)', 'Booking slot (select with venue)')}</Label>
                     <Select
                       value={formData.booking_slot_id || ''}
                       onValueChange={(value) => applyBookingSlot(formData.venue_id, value)}
@@ -3695,7 +3703,8 @@ ${slotTables}
                       </SelectTrigger>
                       <SelectContent>
                         {selectedVenueSlots.map(slot => {
-                          const day = WEEKDAYS.find(item => item.id === slot.day);
+                          const slotDay = slot.day || slot.weekday || slot.day_of_week;
+                          const day = WEEKDAYS.find(item => item.id === slotDay);
                           const expired = slot.end_date && slot.end_date < new Date().toISOString().slice(0, 10);
                           return (
                             <SelectItem key={slot.id} value={slot.id} disabled={expired}>
@@ -3710,7 +3719,7 @@ ${slotTables}
                     <p className="mt-1 text-xs text-amber-800">
                       {t(
                         'اختيار الفترة يضبط يوم ووقت المستوى تلقائياً، والخادم يمنع التعارض أو الحجز المنتهي.',
-                        'Selecting a slot sets the level day and time. Expired or conflicting bookings are blocked.'
+                        'Selecting a slot sets and preserves the level day and time. Expired or conflicting bookings are blocked.'
                       )}
                     </p>
                   </div>

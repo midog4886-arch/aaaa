@@ -52,6 +52,14 @@ def _branch(**changes):
     return doc
 
 
+def _legacy_rented_branch(**changes):
+    """Build the venue shape stored before ``venues`` was introduced."""
+    branch = _branch()
+    branch["rented_venues"] = branch.pop("venues")
+    branch.update(changes)
+    return branch
+
+
 def _level(**changes):
     data = {
         "level_number": 1,
@@ -95,6 +103,13 @@ class _Collection:
                 continue
             results.append(doc)
         return _Cursor(results)
+
+    async def find_one_and_update(self, query, update, **_kwargs):
+        for doc in self.docs:
+            if _matches(doc, query):
+                doc.update(update.get("$set", {}))
+                return dict(doc)
+        return None
 
 
 def _matches(doc, query):
@@ -157,6 +172,43 @@ def test_legacy_permanent_branch_does_not_require_venues():
     assert branch.venues == []
 
 
+def test_permanent_branch_can_contain_venues():
+    branch_data = _branch(branch_type="permanent")
+    branch = BranchCreate(
+        name="Permanent",
+        name_ar="دائم",
+        phone="1",
+        branch_type="permanent",
+        venues=branch_data["venues"],
+    )
+    assert branch.branch_type == "permanent"
+    assert branch.venues[0].id == "venue-1"
+
+
+def test_rented_branch_does_not_require_venues():
+    branch = BranchCreate(
+        name="Rented", name_ar="مستأجر", phone="1", branch_type="rented"
+    )
+    assert branch.venues == []
+
+
+def test_legacy_rented_venue_type_normalizes_for_safe_updates():
+    branch = BranchCreate(
+        name="Legacy rented",
+        name_ar="مستأجر قديم",
+        phone="1",
+        branch_type="rented_venue",
+    )
+    route_branch = branches_mod.BranchCreate(
+        name="Legacy rented",
+        name_ar="مستأجر قديم",
+        phone="1",
+        branch_type="rented_venue",
+    )
+    assert branch.branch_type == "rented"
+    assert route_branch.branch_type == "rented"
+
+
 def test_overlapping_booking_windows_are_rejected():
     start_date, end_date = _dates()
     overlapping = _branch()["venues"][0]
@@ -186,6 +238,64 @@ def test_rented_level_must_match_booking(monkeypatch):
             "branch-rented", _level(time_slot="6:00 PM")
         ))
     assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize("branch_type", ["permanent", "rented"])
+def test_level_without_venue_booking_is_allowed_for_any_branch_type(
+    monkeypatch, branch_type
+):
+    monkeypatch.setattr(
+        levels_mod, "db", _DB(_branch(branch_type=branch_type, venues=[]))
+    )
+    run(levels_mod._validate_rented_level(
+        "branch-rented", _level(venue_id=None, booking_slot_id=None)
+    ))
+
+
+@pytest.mark.parametrize("missing_field", ["venue_id", "booking_slot_id"])
+def test_partial_venue_booking_link_is_rejected(monkeypatch, missing_field):
+    monkeypatch.setattr(levels_mod, "db", _DB(_branch(branch_type="permanent")))
+    with pytest.raises(HTTPException) as exc:
+        run(levels_mod._validate_rented_level(
+            "branch-rented", _level(**{missing_field: None})
+        ))
+    assert exc.value.status_code == 400
+
+
+def test_permanent_branch_venue_booking_gets_full_validation(monkeypatch):
+    monkeypatch.setattr(levels_mod, "db", _DB(_branch(branch_type="permanent")))
+    run(levels_mod._validate_rented_level("branch-rented", _level()))
+
+    with pytest.raises(HTTPException) as exc:
+        run(levels_mod._validate_rented_level(
+            "branch-rented", _level(days=["tuesday"])
+        ))
+    assert exc.value.status_code == 400
+
+
+def test_permanent_branch_venue_booking_conflicts_are_rejected(monkeypatch):
+    other = {
+        "id": "other-level",
+        "branch_id": "branch-rented",
+        "venue_id": "venue-1",
+        "booking_slot_id": "slot-1",
+        "days": ["monday"],
+        "time_slot": "17:00",
+        "is_active": True,
+    }
+    monkeypatch.setattr(
+        levels_mod,
+        "db",
+        _DB(_branch(branch_type="permanent"), [other]),
+    )
+    with pytest.raises(HTTPException) as exc:
+        run(levels_mod._validate_rented_level("branch-rented", _level()))
+    assert exc.value.status_code == 409
+
+
+def test_linked_level_validates_against_legacy_rented_venues(monkeypatch):
+    monkeypatch.setattr(levels_mod, "db", _DB(_legacy_rented_branch()))
+    run(levels_mod._validate_rented_level("branch-rented", _level()))
 
 
 def test_explicit_am_pm_does_not_match_opposite_half_day(monkeypatch):
@@ -342,7 +452,9 @@ def test_branch_update_rejects_changing_active_referenced_slot_booking_fields(
     assert exc.value.status_code == 409
 
 
-def test_branch_update_rejects_rented_to_permanent_with_active_link(monkeypatch):
+def test_branch_update_rejects_removing_referenced_venues_during_type_change(
+    monkeypatch
+):
     branch = _branch()
     referenced = {
         "id": "level-1", "branch_id": "branch-rented", "venue_id": "venue-1",
@@ -357,6 +469,54 @@ def test_branch_update_rejects_rented_to_permanent_with_active_link(monkeypatch)
             "branch-rented", payload, current_user={"is_admin": True}
         ))
     assert exc.value.status_code == 409
+
+
+@pytest.mark.parametrize("change", ["remove", "modify"])
+def test_branch_update_rejects_active_legacy_referenced_slot_changes(
+    monkeypatch, change
+):
+    branch = _legacy_rented_branch()
+    referenced = {
+        "id": "level-1", "branch_id": "branch-rented", "venue_id": "venue-1",
+        "booking_slot_id": "slot-1", "is_active": True,
+    }
+    monkeypatch.setattr(branches_mod, "db", _DB(branch, [referenced]))
+    venues = copy.deepcopy(branch["rented_venues"])
+    if change == "remove":
+        venues[0]["booking_slots"] = []
+    else:
+        venues[0]["booking_slots"][0]["start_time"] = "16:00"
+    payload = branches_mod.BranchCreate(
+        name="Legacy",
+        name_ar="قديم",
+        branch_type="permanent",
+        venues=venues,
+    )
+    with pytest.raises(HTTPException) as exc:
+        run(branches_mod.update_branch(
+            "branch-rented", payload, current_user={"is_admin": True}
+        ))
+    assert exc.value.status_code == 409
+
+
+def test_branch_type_change_keeps_active_venue_links_when_venues_remain(monkeypatch):
+    branch = _branch()
+    referenced = {
+        "id": "level-1", "branch_id": "branch-rented", "venue_id": "venue-1",
+        "booking_slot_id": "slot-1", "is_active": True,
+    }
+    monkeypatch.setattr(branches_mod, "db", _DB(branch, [referenced]))
+    payload = branches_mod.BranchCreate(
+        name="Permanent",
+        name_ar="دائم",
+        branch_type="permanent",
+        venues=copy.deepcopy(branch["venues"]),
+    )
+    result = run(branches_mod.update_branch(
+        "branch-rented", payload, current_user={"is_admin": True}
+    ))
+    assert result["branch_type"] == "permanent"
+    assert result["venues"][0]["id"] == "venue-1"
 
 
 def test_cleanup_bulk_still_allows_legacy_branchless_level(monkeypatch):

@@ -50,14 +50,14 @@ class BranchBase(BaseModel):
     # Days the branch operates. None/empty = open all week (backward compatible).
     working_days: Optional[List[str]] = None
     # Legacy branches have no type field and are therefore permanent.
-    branch_type: Literal["permanent", "rented"] = "permanent"
+    branch_type: Literal["permanent", "rented", "rented_venue"] = "permanent"
     venues: List[VenueCourt] = Field(default_factory=list)
     contract_warning_days: int = Field(default=30, ge=0, le=3650)
 
     @model_validator(mode="after")
     def validate_rented_venues(self):
-        if self.branch_type == "rented" and not self.venues:
-            raise ValueError("rented branches must contain at least one venue")
+        if self.branch_type == "rented_venue":
+            self.branch_type = "rented"
         venue_ids = [venue.id for venue in self.venues]
         if len(venue_ids) != len(set(venue_ids)):
             raise ValueError("venue ids must be unique")
@@ -247,11 +247,12 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
                 status_code=409,
                 detail=f"البادئة '{data['code_prefix']}' مستخدمة بالفعل في فرع آخر"
             )
-    old_venue_ids = {venue.get("id") for venue in (before.get("venues") or []) if venue.get("id")}
+    before_venues = before.get("venues") or before.get("rented_venues") or []
+    old_venue_ids = {venue.get("id") for venue in before_venues if venue.get("id")}
     new_venue_ids = {venue.get("id") for venue in (data.get("venues") or []) if venue.get("id")}
     old_slot_pairs = {
         (venue.get("id"), slot.get("id"))
-        for venue in (before.get("venues") or [])
+        for venue in before_venues
         for slot in (venue.get("booking_slots") or [])
         if venue.get("id") and slot.get("id")
     }
@@ -265,7 +266,7 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
     removed_slot_pairs = old_slot_pairs - new_slot_pairs
     old_slots = {
         (venue.get("id"), slot.get("id")): slot
-        for venue in (before.get("venues") or [])
+        for venue in before_venues
         for slot in (venue.get("booking_slots") or [])
         if venue.get("id") and slot.get("id")
     }
@@ -280,15 +281,9 @@ async def update_branch(branch_id: str, branch: BranchCreate, current_user: dict
         pair for pair in (old_slot_pairs & new_slot_pairs)
         if any(old_slots[pair].get(field) != new_slots[pair].get(field) for field in booking_fields)
     }
-    converting_to_permanent = (
-        before.get("branch_type") == "rented"
-        and data.get("branch_type") != "rented"
-    )
-    if removed_venues or removed_slot_pairs or changed_slot_pairs or converting_to_permanent:
+    if removed_venues or removed_slot_pairs or changed_slot_pairs:
         ref_filters = []
-        if converting_to_permanent:
-            ref_filters.append({"venue_id": {"$nin": [None, ""]}})
-        elif removed_venues:
+        if removed_venues:
             ref_filters.append({"venue_id": {"$in": list(removed_venues)}})
         # A slot id is only unique within a venue.  Treat its venue/id pair as
         # the reference so moving/reusing an id cannot orphan a live level.

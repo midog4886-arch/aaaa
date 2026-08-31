@@ -85,6 +85,12 @@ const normalizeVenue = (venue = {}) => ({
   warning_days: venue.warning_days ?? 30
 });
 
+const getBranchVenues = (branch = {}) => {
+  if (Array.isArray(branch.venues) && branch.venues.length > 0) return branch.venues;
+  if (Array.isArray(branch.rented_venues)) return branch.rented_venues;
+  return Array.isArray(branch.venues) ? branch.venues : [];
+};
+
 const BranchesPage = () => {
   const { language } = useLanguage();
   const { user } = useAuth();
@@ -126,8 +132,8 @@ const BranchesPage = () => {
       toast.error(language === 'ar' ? 'اختر يوم عمل واحد على الأقل للفرع' : 'Select at least one working day');
       return;
     }
-    if (formData.branch_type === 'rented') {
-      if (!formData.venues.length || formData.venues.some(venue =>
+    if (formData.venues.length > 0) {
+      if (formData.venues.some(venue =>
         !venue.name || !venue.contract_start_date || !venue.contract_end_date ||
         venue.cost === '' || Number(venue.cost) < 0 || Number(venue.warning_days) < 0 ||
         venue.booking_slots.length === 0
@@ -171,10 +177,11 @@ const BranchesPage = () => {
         working_days: WEEKDAYS
           .map(d => d.id)
           .filter(id => (formData.working_days || []).includes(id)),
-        branch_type: formData.branch_type,
+        // Kept only for compatibility with APIs that still infer venue handling
+        // from this legacy field; the UI treats every branch as a normal branch.
+        branch_type: formData.branch_type || 'permanent',
         contract_warning_days: Math.max(0, ...formData.venues.map(venue => Number(venue.warning_days) || 0)),
-        venues: formData.branch_type === 'rented'
-          ? formData.venues.map(venue => ({
+        venues: formData.venues.map(venue => ({
               ...(venue.id ? { id: venue.id } : {}),
               name: venue.name.trim(),
               number: venue.number.trim(),
@@ -199,7 +206,6 @@ const BranchesPage = () => {
                   }))
               )
             }))
-          : []
       };
       
       if (editingBranch) {
@@ -251,7 +257,7 @@ const BranchesPage = () => {
         ? branch.working_days
         : [...ALL_WEEKDAY_IDS],
       branch_type: ['rented', 'rented_venue'].includes(branch.branch_type) ? 'rented' : 'permanent',
-      venues: (Array.isArray(branch.venues) ? branch.venues : Array.isArray(branch.rented_venues) ? branch.rented_venues : []).map(normalizeVenue)
+      venues: getBranchVenues(branch).map(normalizeVenue)
     });
     setIsDialogOpen(true);
   };
@@ -331,13 +337,6 @@ const BranchesPage = () => {
 
   const slotHasActiveLevel = (slotId) =>
     Boolean(slotId) && branchLevels.some(level => level.booking_slot_id === slotId && level.is_active !== false);
-
-  const editingBranchHasVenueLevels = Boolean(editingBranch?.id) &&
-    branchLevels.some(level =>
-      level.branch_id === editingBranch.id &&
-      level.venue_id &&
-      level.is_active !== false
-    );
 
   const isAdmin = user?.is_admin;
 
@@ -436,20 +435,12 @@ const BranchesPage = () => {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">
-                      {language === 'ar' ? 'نوع الفرع:' : 'Branch type:'}
-                    </span>
-                    <Badge variant="outline" data-testid={`branch-type-${branch.id}`}>
-                      {['rented', 'rented_venue'].includes(branch.branch_type)
-                        ? (language === 'ar' ? 'ملاعب مستأجرة' : 'Rented venue')
-                        : (language === 'ar' ? 'دائم' : 'Permanent')}
-                    </Badge>
-                  </div>
-                  {['rented', 'rented_venue'].includes(branch.branch_type) &&
-                    (Array.isArray(branch.venues) || Array.isArray(branch.rented_venues)) && (
+                  {getBranchVenues(branch).length > 0 && (
                     <div className="space-y-2 border-t pt-3" data-testid={`branch-venues-summary-${branch.id}`}>
-                      {(branch.venues || branch.rented_venues || []).map((venue, venueIndex) => {
+                      <p className="text-sm font-medium">
+                        {language === 'ar' ? 'الملاعب المستأجرة' : 'Rented venues'}
+                      </p>
+                      {getBranchVenues(branch).map((venue, venueIndex) => {
                         const venueEndDate = venue.contract_end_date || venue.booking_slots?.[0]?.end_date;
                         const expired = Boolean(venueEndDate) &&
                           new Date(`${venueEndDate}T23:59:59`) < new Date();
@@ -588,34 +579,12 @@ const BranchesPage = () => {
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="branch-type">{language === 'ar' ? 'نوع الفرع' : 'Branch Type'}</Label>
-                <select
-                  id="branch-type"
-                  value={formData.branch_type}
-                  disabled={editingBranchHasVenueLevels}
-                  onChange={(e) => setFormData(current => ({
-                    ...current,
-                    branch_type: e.target.value,
-                    venues: e.target.value === 'rented'
-                      ? (current.venues.length ? current.venues : [emptyVenue()])
-                      : current.venues
-                  }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  data-testid="branch-type-select"
-                >
-                  <option value="permanent">{language === 'ar' ? 'فرع دائم' : 'Permanent branch'}</option>
-                  <option value="rented">{language === 'ar' ? 'ملاعب مستأجرة' : 'Rented venue'}</option>
-                </select>
-              </div>
-
-              {formData.branch_type === 'rented' && (
-                <div className="space-y-4" data-testid="rented-venues-editor">
+              <div className="space-y-4" data-testid="rented-venues-editor">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <Label className="font-bold">{language === 'ar' ? 'الملاعب المستأجرة' : 'Rented Venues'}</Label>
+                      <Label className="font-bold">{language === 'ar' ? 'الملاعب المستأجرة (اختياري)' : 'Rented Venues (optional)'}</Label>
                       <p className="text-xs text-muted-foreground">
-                        {language === 'ar' ? 'أضف ملعباً واحداً أو أكثر وجدول أوقات الحجز الأسبوعي.' : 'Add one or more venues and their weekly booking times.'}
+                        {language === 'ar' ? 'يمكن ربط الفرع بملعب مستأجر واحد أو أكثر وجدول أوقات الحجز الأسبوعي.' : 'Optionally link one or more rented venues and their weekly booking times to this branch.'}
                       </p>
                     </div>
                     <Button
@@ -626,7 +595,7 @@ const BranchesPage = () => {
                       data-testid="add-venue-btn"
                     >
                       <Plus className="w-4 h-4 me-1" />
-                      {language === 'ar' ? 'إضافة ملعب' : 'Add venue'}
+                      {language === 'ar' ? 'إضافة ملعب مستأجر' : 'Add rented venue'}
                     </Button>
                   </div>
 
@@ -647,7 +616,6 @@ const BranchesPage = () => {
                           size="sm"
                           className="text-red-600"
                           disabled={
-                            formData.venues.length === 1 ||
                             venueHasActiveLevel(venue.id)
                           }
                           onClick={() => setFormData(current => ({
@@ -792,7 +760,6 @@ const BranchesPage = () => {
                     </section>
                   ))}
                 </div>
-              )}
 
               <div className="space-y-2">
                 <Label>{language === 'ar' ? 'أيام عمل الفرع' : 'Branch Working Days'}</Label>

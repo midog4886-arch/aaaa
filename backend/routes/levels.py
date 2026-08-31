@@ -130,26 +130,29 @@ async def _validate_rented_level(
     *,
     exclude_level_id: str = None,
 ):
-    """Validate a rented venue assignment against the branch contract."""
-    # Shared branchless levels are a supported legacy shape and, by definition,
-    # cannot belong to a rented branch.  Schedule/cleanup/active handlers also
-    # operate on these rows, so do not turn an unrelated edit into a missing
-    # branch validation failure.
-    if not branch_id:
+    """Validate an optional venue assignment against the branch contract."""
+    has_venue = bool(level.venue_id)
+    has_slot = bool(level.booking_slot_id)
+    # Venue bookings are optional for every branch.  In particular, unrelated
+    # edits to normal and legacy branchless levels must remain valid.
+    if not has_venue and not has_slot:
         return
+    if has_venue != has_slot:
+        raise HTTPException(
+            status_code=400,
+            detail="يجب اختيار الملعب وفترة الحجز معاً",
+        )
+    if not branch_id:
+        raise HTTPException(
+            status_code=400,
+            detail="لا يمكن ربط حجز ملعب بمستوى غير تابع لفرع",
+        )
     branch = await db.branches.find_one({"id": branch_id}, {"_id": 0})
     if not branch:
         raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
-    # Historical/permanent branches continue to work exactly as before.
-    if branch.get("branch_type", "permanent") != "rented":
-        return
-    if not level.venue_id or not level.booking_slot_id:
-        raise HTTPException(
-            status_code=400,
-            detail="يجب اختيار الملعب وفترة الحجز للمستوى في الفرع المستأجر",
-        )
+    branch_venues = branch.get("venues") or branch.get("rented_venues") or []
     venue = next(
-        (item for item in (branch.get("venues") or []) if item.get("id") == level.venue_id),
+        (item for item in branch_venues if item.get("id") == level.venue_id),
         None,
     )
     if not venue:
