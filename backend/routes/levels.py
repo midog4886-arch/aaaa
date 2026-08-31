@@ -5,11 +5,12 @@ Handles member skill levels management
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+import re
 import uuid
 
 from database import db
-from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
+from utils.auth import get_allowed_branch_ids, get_current_user, require_branch_scope, resolve_branch_filter
 from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/levels", tags=["Levels"])
@@ -37,6 +38,8 @@ class LevelCreate(BaseModel):
     # Free-text time slot (e.g. "الساعة 4", "5:00 م"). Used by auto-assign
     # to match member subscription schedules.
     time_slot: Optional[str] = None
+    venue_id: Optional[str] = None
+    booking_slot_id: Optional[str] = None
 
 class Level(BaseModel):
     id: str
@@ -90,6 +93,117 @@ def _activity_group_name(name) -> str:
     if "كارات" in s or "karate" in s:
         return "karate"
     return ""
+
+
+def _time_slot_as_minutes(value: str):
+    """Return the possible minute-of-day values represented by UI time text.
+
+    Existing level values are often bare Arabic text such as ``الساعة 5``
+    while contract slots use explicit 24-hour values such as ``17:00``.
+    Preserve explicit AM/PM and 24-hour semantics, but let a genuinely
+    ambiguous legacy hour match either half of the day.
+    """
+    if not value:
+        return frozenset()
+    match = re.search(r"(?<!\d)([01]?\d|2[0-3])(?::([0-5]\d))?", str(value))
+    if not match:
+        return frozenset()
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    suffix = str(value).lower()
+    is_pm = "pm" in suffix or "م" in suffix
+    is_am = "am" in suffix or "ص" in suffix
+    if is_pm or is_am:
+        hour %= 12
+        if is_pm:
+            hour += 12
+        return frozenset({hour * 60 + minute})
+    if match.group(2) is not None or hour > 12 or hour == 0:
+        return frozenset({hour * 60 + minute})
+    base = (hour % 12) * 60 + minute
+    return frozenset({base, base + 12 * 60})
+
+
+async def _validate_rented_level(
+    branch_id: str,
+    level: LevelCreate,
+    *,
+    exclude_level_id: str = None,
+):
+    """Validate a rented venue assignment against the branch contract."""
+    # Shared branchless levels are a supported legacy shape and, by definition,
+    # cannot belong to a rented branch.  Schedule/cleanup/active handlers also
+    # operate on these rows, so do not turn an unrelated edit into a missing
+    # branch validation failure.
+    if not branch_id:
+        return
+    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0})
+    if not branch:
+        raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
+    # Historical/permanent branches continue to work exactly as before.
+    if branch.get("branch_type", "permanent") != "rented":
+        return
+    if not level.venue_id or not level.booking_slot_id:
+        raise HTTPException(
+            status_code=400,
+            detail="يجب اختيار الملعب وفترة الحجز للمستوى في الفرع المستأجر",
+        )
+    venue = next(
+        (item for item in (branch.get("venues") or []) if item.get("id") == level.venue_id),
+        None,
+    )
+    if not venue:
+        raise HTTPException(status_code=400, detail="الملعب المحدد لا ينتمي إلى هذا الفرع")
+    slot = next(
+        (item for item in (venue.get("booking_slots") or [])
+         if item.get("id") == level.booking_slot_id),
+        None,
+    )
+    if not slot:
+        raise HTTPException(status_code=400, detail="فترة الحجز المحددة لا تنتمي إلى هذا الملعب")
+
+    today = date.today().isoformat()
+    if slot.get("start_date", "") > today or slot.get("end_date", "") < today:
+        raise HTTPException(status_code=400, detail="فترة الحجز غير سارية أو منتهية")
+
+    selected_days = set(level.days or [])
+    if not selected_days or selected_days != {slot.get("day")}:
+        raise HTTPException(
+            status_code=400,
+            detail="أيام المستوى يجب أن تكون مغطاة بالكامل بفترة الحجز المحددة",
+        )
+    level_minutes = _time_slot_as_minutes(level.time_slot or "")
+    slot_minutes = _time_slot_as_minutes(slot.get("start_time") or "")
+    if not level_minutes or not slot_minutes or level_minutes.isdisjoint(slot_minutes):
+        raise HTTPException(
+            status_code=400,
+            detail="توقيت المستوى لا يطابق وقت بداية فترة الحجز",
+        )
+
+    query = {
+        "branch_id": branch_id,
+        "venue_id": level.venue_id,
+        "is_active": {"$ne": False},
+    }
+    if exclude_level_id:
+        query["id"] = {"$ne": exclude_level_id}
+    active_levels = await db.levels.find(
+        query,
+        {"_id": 0, "id": 1, "days": 1, "time_slot": 1, "booking_slot_id": 1},
+    ).to_list(1000)
+    for other in active_levels:
+        other_days = set(other.get("days") or [
+            "saturday", "sunday", "monday", "tuesday",
+            "wednesday", "thursday", "friday",
+        ])
+        same_booking = other.get("booking_slot_id") == level.booking_slot_id
+        other_minutes = _time_slot_as_minutes(other.get("time_slot") or "")
+        same_time = bool(other_minutes.intersection(level_minutes))
+        if selected_days.intersection(other_days) and (same_booking or same_time):
+            raise HTTPException(
+                status_code=409,
+                detail="يوجد مستوى نشط آخر على نفس الملعب وفي نفس التوقيت",
+            )
 
 
 # ============ ROUTES ============
@@ -268,6 +382,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
     branch_exists = await db.branches.find_one({"id": final_branch_id}, {"_id": 1})
     if not branch_exists:
         raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
+    await _validate_rented_level(final_branch_id, level)
     
     level_doc = {
         "id": level_id,
@@ -282,6 +397,8 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
         "capacity": int(level.capacity) if level.capacity else None,
         "days": list(level.days) if level.days else None,
         "time_slot": level.time_slot or None,
+        "venue_id": level.venue_id or None,
+        "booking_slot_id": level.booking_slot_id or None,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -292,6 +409,31 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
 
 @router.put("/{level_id}")
 async def update_level(level_id: str, level: LevelCreate, current_user: dict = Depends(get_current_user)):
+    existing = await db.levels.find_one({"id": level_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Level not found")
+
+    is_admin = current_user.get("is_admin", False)
+    existing_branch_id = existing.get("branch_id")
+    if is_admin:
+        final_branch_id = level.branch_id or existing_branch_id
+        if not final_branch_id or final_branch_id == "all":
+            raise HTTPException(status_code=400, detail="يجب اختيار فرع للمستوى")
+    else:
+        allowed = get_allowed_branch_ids(current_user)
+        if not allowed:
+            raise HTTPException(status_code=403, detail="No branch assigned")
+        if existing_branch_id not in allowed:
+            raise HTTPException(status_code=403, detail="Forbidden: level belongs to another branch")
+        if level.branch_id and level.branch_id != existing_branch_id:
+            raise HTTPException(status_code=403, detail="Forbidden: cannot move level to another branch")
+        final_branch_id = existing_branch_id
+
+    branch_exists = await db.branches.find_one({"id": final_branch_id}, {"_id": 1})
+    if not branch_exists:
+        raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
+    await _validate_rented_level(final_branch_id, level, exclude_level_id=level_id)
+
     update_data = {
         "level_number": level.level_number,
         "activity_name": level.activity_name,
@@ -305,10 +447,13 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
         "capacity": int(level.capacity) if level.capacity else None,
         "days": list(level.days) if level.days else None,
         "time_slot": level.time_slot or None,
+        "venue_id": level.venue_id or None,
+        "booking_slot_id": level.booking_slot_id or None,
+        "branch_id": final_branch_id,
     }
     
     result = await db.levels.find_one_and_update(
-        {"id": level_id},
+        {"id": level_id, "branch_id": existing_branch_id},
         {"$set": update_data},
         return_document=True
     )
@@ -335,8 +480,24 @@ async def set_level_active(
     onto it, while keeping its existing members and visibility in the levels
     management page intact.
     """
+    existing = await db.levels.find_one({"id": level_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Level not found")
+    filter_doc = {"id": level_id}
+    if not current_user.get("is_admin", False):
+        allowed = get_allowed_branch_ids(current_user)
+        existing_branch = existing.get("branch_id")
+        # Match the list/schedule/delete treatment of historical shared levels:
+        # staff may operate them, but never a level assigned to another branch.
+        if existing_branch and existing_branch not in allowed:
+            raise HTTPException(status_code=403, detail="Forbidden: level belongs to another branch")
+        if existing_branch:
+            filter_doc["branch_id"] = existing_branch
+    if payload.is_active:
+        candidate = LevelCreate(**existing)
+        await _validate_rented_level(existing.get("branch_id"), candidate, exclude_level_id=level_id)
     result = await db.levels.find_one_and_update(
-        {"id": level_id},
+        filter_doc,
         {"$set": {"is_active": payload.is_active}},
         return_document=True,
     )
@@ -1331,11 +1492,10 @@ async def apply_levels_cleanup_bulk(
     so unspecified fields are preserved. For non-admin users, the update is
     constrained to levels in their own branch (or shared branchless levels);
     foreign-branch IDs return `forbidden`. Returns per-item status."""
-    require_branch_scope(current_user)
-
-    user_branch = None
-    if not (current_user or {}).get("is_admin", False):
-        user_branch = (current_user or {}).get("branch_id")
+    # Use the resolver's result rather than the raw claim.  This matters for
+    # multi-branch users and prevents an inconsistent/stale ``branch_id`` from
+    # bypassing the validated ``branch_ids`` allow-list.
+    user_branch = require_branch_scope(current_user)
 
     results = []
     for it in payload.items:
@@ -1361,6 +1521,20 @@ async def apply_levels_cleanup_bulk(
             ]
 
         try:
+            current = await db.levels.find_one(filter_doc, {"_id": 0})
+            if not current:
+                exists = await db.levels.find_one({"id": it.id}, {"_id": 0, "id": 1})
+                if exists and user_branch:
+                    results.append({"id": it.id, "status": "forbidden"})
+                else:
+                    results.append({"id": it.id, "status": "not_found"})
+                continue
+            candidate = LevelCreate(**{**current, **update_doc})
+            await _validate_rented_level(
+                current.get("branch_id"),
+                candidate,
+                exclude_level_id=it.id,
+            )
             res = await db.levels.update_one(filter_doc, {"$set": update_doc})
             if getattr(res, "matched_count", 0) == 0:
                 exists = await db.levels.find_one({"id": it.id}, {"_id": 0, "id": 1})
@@ -1542,6 +1716,13 @@ async def update_level_schedule_slot(
 
     if payload.activity_id is not None:
         update["activity_id"] = payload.activity_id or None
+
+    candidate = LevelCreate(**{**lvl, **update})
+    await _validate_rented_level(
+        lvl.get("branch_id"),
+        candidate,
+        exclude_level_id=payload.level_id,
+    )
 
     # Re-apply the same branch-scoped filter on the write so a non-admin
     # can't race a foreign-branch level into their scope between the read

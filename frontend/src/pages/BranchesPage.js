@@ -31,29 +31,71 @@ const WEEKDAYS = [
 ];
 const ALL_WEEKDAY_IDS = WEEKDAYS.map(d => d.id);
 
+const emptyVenue = () => ({
+  id: '',
+  name: '',
+  number: '',
+  size: '',
+  booking_slots: [],
+  contract_start_date: '',
+  contract_end_date: '',
+  cost: '',
+  cost_type: 'monthly',
+  warning_days: '30'
+});
+
+const initialFormData = () => ({
+  name_ar: '',
+  public_name: '',
+  phone: '',
+  location_url: '',
+  code_prefix: '',
+  whatsapp_group_url: '',
+  support_whatsapp: '',
+  whatsapp_renewal_template: '',
+  whatsapp_manual_template: '',
+  whatsapp_manual_expired_template: '',
+  whatsapp_welcome_template: '',
+  working_days: [...ALL_WEEKDAY_IDS],
+  branch_type: 'permanent',
+  venues: []
+});
+
+const normalizeVenue = (venue = {}) => ({
+  id: venue.id || '',
+  name: venue.name || '',
+  number: venue.number || '',
+  size: venue.size ?? '',
+  booking_slots: Array.isArray(venue.booking_slots)
+    ? venue.booking_slots.map(slot => ({
+        id: slot.id || '',
+        weekday: slot.weekday || slot.day || slot.day_of_week || '',
+        start_time: slot.start_time || slot.start || '',
+        end_time: slot.end_time || slot.end || '',
+        start_date: slot.start_date || venue.contract_start_date || '',
+        end_date: slot.end_date || venue.contract_end_date || '',
+        cost: slot.cost ?? venue.cost ?? '',
+        cost_type: slot.cost_type || venue.cost_type || 'monthly'
+      })).filter(slot => slot.weekday)
+    : [],
+  contract_start_date: venue.contract_start_date || venue.start_date || venue.booking_slots?.[0]?.start_date || '',
+  contract_end_date: venue.contract_end_date || venue.end_date || venue.booking_slots?.[0]?.end_date || '',
+  cost: venue.cost ?? venue.booking_slots?.[0]?.cost ?? '',
+  cost_type: venue.cost_type || venue.booking_slots?.[0]?.cost_type || 'monthly',
+  warning_days: venue.warning_days ?? 30
+});
+
 const BranchesPage = () => {
   const { language } = useLanguage();
   const { user } = useAuth();
   const [branches, setBranches] = useState([]);
+  const [branchLevels, setBranchLevels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
   const [saving, setSaving] = useState(false);
   
-  const [formData, setFormData] = useState({
-    name_ar: '',
-    public_name: '',
-    phone: '',
-    location_url: '',
-    code_prefix: '',
-    whatsapp_group_url: '',
-    support_whatsapp: '',
-    whatsapp_renewal_template: '',
-    whatsapp_manual_template: '',
-    whatsapp_manual_expired_template: '',
-    whatsapp_welcome_template: '',
-    working_days: [...ALL_WEEKDAY_IDS]
-  });
+  const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
     loadBranches();
@@ -61,8 +103,12 @@ const BranchesPage = () => {
 
   const loadBranches = async () => {
     try {
-      const response = await api.get('/branches');
-      setBranches(response.data);
+      const [branchesResponse, levelsResponse] = await Promise.all([
+        api.get('/branches'),
+        api.get('/levels')
+      ]);
+      setBranches(branchesResponse.data);
+      setBranchLevels(levelsResponse.data || []);
     } catch (error) {
       toast.error(language === 'ar' ? 'خطأ في تحميل الفروع' : 'Error loading branches');
     } finally {
@@ -79,6 +125,23 @@ const BranchesPage = () => {
     if ((formData.working_days || []).length === 0) {
       toast.error(language === 'ar' ? 'اختر يوم عمل واحد على الأقل للفرع' : 'Select at least one working day');
       return;
+    }
+    if (formData.branch_type === 'rented') {
+      if (!formData.venues.length || formData.venues.some(venue =>
+        !venue.name || !venue.contract_start_date || !venue.contract_end_date ||
+        venue.cost === '' || Number(venue.cost) < 0 || Number(venue.warning_days) < 0 ||
+        venue.booking_slots.length === 0
+      )) {
+        toast.error(language === 'ar' ? 'يرجى إكمال بيانات الملاعب المستأجرة' : 'Please complete the rented venue details');
+        return;
+      }
+      if (formData.venues.some(venue =>
+        new Date(venue.contract_end_date) < new Date(venue.contract_start_date) ||
+        venue.booking_slots.some(slot => !slot.start_time || !slot.end_time || slot.end_time <= slot.start_time)
+      )) {
+        toast.error(language === 'ar' ? 'تحقق من تواريخ العقود وأوقات الحجز' : 'Check contract dates and booking times');
+        return;
+      }
     }
 
     setSaving(true);
@@ -107,7 +170,36 @@ const BranchesPage = () => {
         whatsapp_welcome_template: (formData.whatsapp_welcome_template || '').trim(),
         working_days: WEEKDAYS
           .map(d => d.id)
-          .filter(id => (formData.working_days || []).includes(id))
+          .filter(id => (formData.working_days || []).includes(id)),
+        branch_type: formData.branch_type,
+        contract_warning_days: Math.max(0, ...formData.venues.map(venue => Number(venue.warning_days) || 0)),
+        venues: formData.branch_type === 'rented'
+          ? formData.venues.map(venue => ({
+              ...(venue.id ? { id: venue.id } : {}),
+              name: venue.name.trim(),
+              number: venue.number.trim(),
+              size: String(venue.size || venue.number || venue.name).trim(),
+              contract_start_date: venue.contract_start_date,
+              contract_end_date: venue.contract_end_date,
+              cost: Number(venue.cost),
+              cost_type: venue.cost_type,
+              warning_days: Number(venue.warning_days),
+              booking_slots: WEEKDAYS.flatMap(day =>
+                venue.booking_slots
+                  .filter(slot => slot.weekday === day.id)
+                  .map(slot => ({
+                    ...(slot.id ? { id: slot.id } : {}),
+                    day: day.id,
+                    start_time: slot.start_time,
+                    end_time: slot.end_time,
+                    start_date: slot.start_date || venue.contract_start_date,
+                    end_date: slot.end_date || venue.contract_end_date,
+                    cost: Number(slot.cost ?? venue.cost),
+                    cost_type: slot.cost_type || venue.cost_type
+                  }))
+              )
+            }))
+          : []
       };
       
       if (editingBranch) {
@@ -120,7 +212,7 @@ const BranchesPage = () => {
       loadBranches();
       handleCloseDialog();
     } catch (error) {
-      toast.error(language === 'ar' ? 'خطأ في حفظ الفرع' : 'Error saving branch');
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'خطأ في حفظ الفرع' : 'Error saving branch'));
     } finally {
       setSaving(false);
     }
@@ -157,7 +249,9 @@ const BranchesPage = () => {
       // feature -> treat it as open all week.
       working_days: Array.isArray(branch.working_days) && branch.working_days.length > 0
         ? branch.working_days
-        : [...ALL_WEEKDAY_IDS]
+        : [...ALL_WEEKDAY_IDS],
+      branch_type: ['rented', 'rented_venue'].includes(branch.branch_type) ? 'rented' : 'permanent',
+      venues: (Array.isArray(branch.venues) ? branch.venues : Array.isArray(branch.rented_venues) ? branch.rented_venues : []).map(normalizeVenue)
     });
     setIsDialogOpen(true);
   };
@@ -165,20 +259,85 @@ const BranchesPage = () => {
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setEditingBranch(null);
-    setFormData({
-      name_ar: '',
-      public_name: '',
-      phone: '',
-      location_url: '',
-      code_prefix: '',
-      whatsapp_group_url: '',
-      support_whatsapp: '',
-      whatsapp_renewal_template: '',
-      whatsapp_manual_template: '',
-      whatsapp_manual_expired_template: '',
-      working_days: [...ALL_WEEKDAY_IDS]
+    setFormData(initialFormData());
+  };
+
+  const updateVenue = (index, patch) => {
+    const slotFieldMap = {
+      contract_start_date: 'start_date',
+      contract_end_date: 'end_date',
+      cost: 'cost',
+      cost_type: 'cost_type'
+    };
+    setFormData(current => ({
+      ...current,
+      venues: current.venues.map((venue, venueIndex) =>
+        venueIndex === index ? {
+          ...venue,
+          ...patch,
+          booking_slots: Object.keys(slotFieldMap).some(key => Object.prototype.hasOwnProperty.call(patch, key))
+            ? venue.booking_slots.map(slot => {
+                const slotPatch = {};
+                Object.entries(slotFieldMap).forEach(([venueField, slotField]) => {
+                  if (Object.prototype.hasOwnProperty.call(patch, venueField)) {
+                    slotPatch[slotField] = patch[venueField];
+                  }
+                });
+                return { ...slot, ...slotPatch };
+              })
+            : venue.booking_slots
+        } : venue
+      )
+    }));
+  };
+
+  const addVenueSlot = (venueIndex, weekday) => {
+    const venue = formData.venues[venueIndex];
+    updateVenue(venueIndex, {
+      booking_slots: [
+        ...venue.booking_slots,
+        {
+          id: '',
+          weekday,
+          start_time: '18:00',
+          end_time: '19:00',
+          start_date: venue.contract_start_date,
+          end_date: venue.contract_end_date,
+          cost: venue.cost,
+          cost_type: venue.cost_type
+        }
+      ]
     });
   };
+
+  const updateVenueSlot = (venueIndex, slotIndex, patch) => {
+    const venue = formData.venues[venueIndex];
+    updateVenue(venueIndex, {
+      booking_slots: venue.booking_slots.map((slot, index) =>
+        index === slotIndex ? { ...slot, ...patch } : slot
+      )
+    });
+  };
+
+  const removeVenueSlot = (venueIndex, slotIndex) => {
+    const venue = formData.venues[venueIndex];
+    updateVenue(venueIndex, {
+      booking_slots: venue.booking_slots.filter((_, index) => index !== slotIndex)
+    });
+  };
+
+  const venueHasActiveLevel = (venueId) =>
+    Boolean(venueId) && branchLevels.some(level => level.venue_id === venueId && level.is_active !== false);
+
+  const slotHasActiveLevel = (slotId) =>
+    Boolean(slotId) && branchLevels.some(level => level.booking_slot_id === slotId && level.is_active !== false);
+
+  const editingBranchHasVenueLevels = Boolean(editingBranch?.id) &&
+    branchLevels.some(level =>
+      level.branch_id === editingBranch.id &&
+      level.venue_id &&
+      level.is_active !== false
+    );
 
   const isAdmin = user?.is_admin;
 
@@ -277,6 +436,55 @@ const BranchesPage = () => {
                       </div>
                     )}
                   </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">
+                      {language === 'ar' ? 'نوع الفرع:' : 'Branch type:'}
+                    </span>
+                    <Badge variant="outline" data-testid={`branch-type-${branch.id}`}>
+                      {['rented', 'rented_venue'].includes(branch.branch_type)
+                        ? (language === 'ar' ? 'ملاعب مستأجرة' : 'Rented venue')
+                        : (language === 'ar' ? 'دائم' : 'Permanent')}
+                    </Badge>
+                  </div>
+                  {['rented', 'rented_venue'].includes(branch.branch_type) &&
+                    (Array.isArray(branch.venues) || Array.isArray(branch.rented_venues)) && (
+                    <div className="space-y-2 border-t pt-3" data-testid={`branch-venues-summary-${branch.id}`}>
+                      {(branch.venues || branch.rented_venues || []).map((venue, venueIndex) => {
+                        const venueEndDate = venue.contract_end_date || venue.booking_slots?.[0]?.end_date;
+                        const expired = Boolean(venueEndDate) &&
+                          new Date(`${venueEndDate}T23:59:59`) < new Date();
+                        const costLabels = {
+                          hourly: language === 'ar' ? 'بالساعة' : 'hour',
+                          period: language === 'ar' ? 'للفترة' : 'period',
+                          monthly: language === 'ar' ? 'شهرياً' : 'month'
+                        };
+                        return (
+                          <div key={venue.id || venueIndex} className="rounded-md bg-muted/40 p-2 text-sm">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium">
+                                {venue.name}
+                                {venue.number ? ` · #${venue.number}` : ''}
+                              </span>
+                              <Badge variant={expired ? 'destructive' : 'secondary'}>
+                                {expired
+                                  ? (language === 'ar' ? 'منتهي' : 'Expired')
+                                  : (language === 'ar' ? 'متاح' : 'Available')}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              {venue.contract_start_date || venue.booking_slots?.[0]?.start_date || '—'} → {venue.contract_end_date || venue.booking_slots?.[0]?.end_date || '—'}
+                              {(venue.cost !== undefined && venue.cost !== null) || venue.booking_slots?.[0]?.cost !== undefined ? (
+                                <span> · {venue.cost ?? venue.booking_slots?.[0]?.cost} {language === 'ar' ? 'ر.س' : 'SAR'}/{costLabels[venue.cost_type || venue.booking_slots?.[0]?.cost_type] || venue.cost_type || venue.booking_slots?.[0]?.cost_type}</span>
+                              ) : null}
+                              {venue.size !== undefined && venue.size !== null && venue.size !== '' && (
+                                <span> · {venue.size} m²</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="flex gap-2 pt-2">
                     <Button variant="outline" size="sm" onClick={() => handleEdit(branch)} data-testid={`edit-branch-${branch.id}`}>
                       <Edit className="w-4 h-4 me-1" />
@@ -295,7 +503,7 @@ const BranchesPage = () => {
 
         {/* Add/Edit Dialog - Simplified */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-sm max-h-[90vh] flex flex-col p-0">
+          <DialogContent className="w-[96vw] max-w-4xl max-h-[90vh] flex flex-col p-0">
             <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
               <DialogTitle>
                 {editingBranch 
@@ -379,6 +587,212 @@ const BranchesPage = () => {
                     : `New member codes in this branch will be ${formData.code_prefix || 'PREFIX'}-001, ${formData.code_prefix || 'PREFIX'}-002 ... (leave empty for auto)`}
                 </p>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="branch-type">{language === 'ar' ? 'نوع الفرع' : 'Branch Type'}</Label>
+                <select
+                  id="branch-type"
+                  value={formData.branch_type}
+                  disabled={editingBranchHasVenueLevels}
+                  onChange={(e) => setFormData(current => ({
+                    ...current,
+                    branch_type: e.target.value,
+                    venues: e.target.value === 'rented'
+                      ? (current.venues.length ? current.venues : [emptyVenue()])
+                      : current.venues
+                  }))}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  data-testid="branch-type-select"
+                >
+                  <option value="permanent">{language === 'ar' ? 'فرع دائم' : 'Permanent branch'}</option>
+                  <option value="rented">{language === 'ar' ? 'ملاعب مستأجرة' : 'Rented venue'}</option>
+                </select>
+              </div>
+
+              {formData.branch_type === 'rented' && (
+                <div className="space-y-4" data-testid="rented-venues-editor">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="font-bold">{language === 'ar' ? 'الملاعب المستأجرة' : 'Rented Venues'}</Label>
+                      <p className="text-xs text-muted-foreground">
+                        {language === 'ar' ? 'أضف ملعباً واحداً أو أكثر وجدول أوقات الحجز الأسبوعي.' : 'Add one or more venues and their weekly booking times.'}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFormData(current => ({ ...current, venues: [...current.venues, emptyVenue()] }))}
+                      data-testid="add-venue-btn"
+                    >
+                      <Plus className="w-4 h-4 me-1" />
+                      {language === 'ar' ? 'إضافة ملعب' : 'Add venue'}
+                    </Button>
+                  </div>
+
+                  {formData.venues.map((venue, venueIndex) => (
+                    <section
+                      key={venueIndex}
+                      className="space-y-4 rounded-lg border p-3 sm:p-4"
+                      aria-labelledby={`venue-heading-${venueIndex}`}
+                      data-testid={`venue-editor-${venueIndex}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 id={`venue-heading-${venueIndex}`} className="font-semibold">
+                          {language === 'ar' ? `الملعب ${venueIndex + 1}` : `Venue ${venueIndex + 1}`}
+                        </h3>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600"
+                          disabled={
+                            formData.venues.length === 1 ||
+                            venueHasActiveLevel(venue.id)
+                          }
+                          onClick={() => setFormData(current => ({
+                            ...current,
+                            venues: current.venues.filter((_, index) => index !== venueIndex)
+                          }))}
+                          aria-label={language === 'ar' ? `حذف الملعب ${venueIndex + 1}` : `Remove venue ${venueIndex + 1}`}
+                          data-testid={`remove-venue-${venueIndex}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor={`venue-name-${venueIndex}`}>{language === 'ar' ? 'اسم الملعب' : 'Venue Name'} *</Label>
+                          <Input id={`venue-name-${venueIndex}`} value={venue.name} onChange={e => updateVenue(venueIndex, { name: e.target.value })} data-testid={`venue-name-${venueIndex}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`venue-number-${venueIndex}`}>{language === 'ar' ? 'رقم الملعب' : 'Venue Number'}</Label>
+                          <Input id={`venue-number-${venueIndex}`} value={venue.number} onChange={e => updateVenue(venueIndex, { number: e.target.value })} data-testid={`venue-number-${venueIndex}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`venue-size-${venueIndex}`}>{language === 'ar' ? 'المساحة (م²)' : 'Size (m²)'}</Label>
+                          <Input id={`venue-size-${venueIndex}`} type="number" min="0" step="0.01" value={venue.size} onChange={e => updateVenue(venueIndex, { size: e.target.value })} data-testid={`venue-size-${venueIndex}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`venue-start-${venueIndex}`}>{language === 'ar' ? 'بداية العقد' : 'Contract Start'} *</Label>
+                          <Input id={`venue-start-${venueIndex}`} type="date" disabled={venueHasActiveLevel(venue.id)} value={venue.contract_start_date} onChange={e => updateVenue(venueIndex, { contract_start_date: e.target.value })} data-testid={`venue-contract-start-${venueIndex}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`venue-end-${venueIndex}`}>{language === 'ar' ? 'نهاية العقد' : 'Contract End'} *</Label>
+                          <Input id={`venue-end-${venueIndex}`} type="date" disabled={venueHasActiveLevel(venue.id)} min={venue.contract_start_date || undefined} value={venue.contract_end_date} onChange={e => updateVenue(venueIndex, { contract_end_date: e.target.value })} data-testid={`venue-contract-end-${venueIndex}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`venue-warning-${venueIndex}`}>{language === 'ar' ? 'التنبيه قبل (يوم)' : 'Warning Days'}</Label>
+                          <Input id={`venue-warning-${venueIndex}`} type="number" min="0" value={venue.warning_days} onChange={e => updateVenue(venueIndex, { warning_days: e.target.value })} data-testid={`venue-warning-days-${venueIndex}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`venue-cost-${venueIndex}`}>{language === 'ar' ? 'التكلفة' : 'Cost'} *</Label>
+                          <Input id={`venue-cost-${venueIndex}`} type="number" min="0" step="0.01" value={venue.cost} onChange={e => updateVenue(venueIndex, { cost: e.target.value })} data-testid={`venue-cost-${venueIndex}`} />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                          <Label htmlFor={`venue-cost-type-${venueIndex}`}>{language === 'ar' ? 'نوع التكلفة' : 'Cost Type'}</Label>
+                          <select
+                            id={`venue-cost-type-${venueIndex}`}
+                            value={venue.cost_type}
+                            onChange={e => updateVenue(venueIndex, { cost_type: e.target.value })}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            data-testid={`venue-cost-type-${venueIndex}`}
+                          >
+                            <option value="hourly">{language === 'ar' ? 'بالساعة' : 'Hourly'}</option>
+                            <option value="period">{language === 'ar' ? 'للفترة' : 'Period'}</option>
+                            <option value="monthly">{language === 'ar' ? 'شهري' : 'Monthly'}</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>{language === 'ar' ? 'جدول الحجز الأسبوعي' : 'Weekly Booking Schedule'}</Label>
+                        <div className="overflow-x-auto rounded-md border">
+                          <table className="w-full min-w-[560px] text-sm" data-testid={`venue-schedule-${venueIndex}`}>
+                            <thead className="bg-muted/60">
+                              <tr>
+                                <th scope="col" className="p-2 text-start">{language === 'ar' ? 'اليوم' : 'Day'}</th>
+                                <th scope="col" className="p-2 text-start">{language === 'ar' ? 'الحالة' : 'Status'}</th>
+                                <th scope="col" className="p-2 text-start">{language === 'ar' ? 'من' : 'Start'}</th>
+                                <th scope="col" className="p-2 text-start">{language === 'ar' ? 'إلى' : 'End'}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {WEEKDAYS.flatMap(day => {
+                                const daySlots = venue.booking_slots
+                                  .map((slot, slotIndex) => ({ slot, slotIndex }))
+                                  .filter(({ slot }) => slot.weekday === day.id);
+                                if (daySlots.length === 0) {
+                                  return [(
+                                    <tr key={`${day.id}-empty`} className="border-t">
+                                      <td className="p-2 font-medium">{language === 'ar' ? day.name_ar : day.name_en}</td>
+                                      <td className="p-2"><Badge variant="outline">—</Badge></td>
+                                      <td className="p-2 text-muted-foreground" colSpan={2}>
+                                        <Button type="button" variant="outline" size="sm" onClick={() => addVenueSlot(venueIndex, day.id)}>
+                                          <Plus className="me-1 h-3 w-3" />
+                                          {language === 'ar' ? 'إضافة فترة' : 'Add slot'}
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  )];
+                                }
+                                return daySlots.map(({ slot, slotIndex }, rowIndex) => {
+                                  const expired = venue.contract_end_date && new Date(`${venue.contract_end_date}T23:59:59`) < new Date();
+                                  const reserved = slotHasActiveLevel(slot.id);
+                                  return (
+                                    <tr key={slot.id || `${day.id}-${slotIndex}`} className="border-t">
+                                      <td className="p-2 font-medium">
+                                        {language === 'ar' ? day.name_ar : day.name_en}
+                                        {rowIndex === daySlots.length - 1 && (
+                                          <button type="button" className="ms-2 text-xs text-primary hover:underline" onClick={() => addVenueSlot(venueIndex, day.id)}>
+                                            + {language === 'ar' ? 'فترة' : 'slot'}
+                                          </button>
+                                        )}
+                                      </td>
+                                      <td className="p-2">
+                                        <Badge variant={expired ? 'destructive' : reserved ? 'default' : 'secondary'}>
+                                          {expired
+                                            ? (language === 'ar' ? 'منتهي' : 'Expired')
+                                            : reserved
+                                              ? (language === 'ar' ? 'محجوز' : 'Reserved')
+                                              : (language === 'ar' ? 'متاح' : 'Available')}
+                                        </Badge>
+                                      </td>
+                                      <td className="p-2">
+                                        <Input type="time" disabled={reserved} value={slot.start_time || ''} onChange={e => updateVenueSlot(venueIndex, slotIndex, { start_time: e.target.value })} aria-label={`${language === 'ar' ? day.name_ar : day.name_en} ${language === 'ar' ? 'وقت البداية' : 'start time'}`} data-testid={`venue-${venueIndex}-${day.id}-${slotIndex}-start`} />
+                                      </td>
+                                      <td className="p-2">
+                                        <div className="flex items-center gap-1">
+                                          <Input type="time" disabled={reserved} value={slot.end_time || ''} onChange={e => updateVenueSlot(venueIndex, slotIndex, { end_time: e.target.value })} aria-label={`${language === 'ar' ? day.name_ar : day.name_en} ${language === 'ar' ? 'وقت النهاية' : 'end time'}`} data-testid={`venue-${venueIndex}-${day.id}-${slotIndex}-end`} />
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-red-600"
+                                            disabled={reserved}
+                                            onClick={() => removeVenueSlot(venueIndex, slotIndex)}
+                                            aria-label={language === 'ar' ? 'حذف الفترة' : 'Remove slot'}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                });
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {language === 'ar' ? 'يمكن إضافة أكثر من فترة في اليوم نفسه، وتظهر «محجوز» عند ربط الفترة بمستوى نشط.' : 'You can add multiple slots per day. Reserved appears when a slot is linked to an active level.'}
+                        </p>
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>{language === 'ar' ? 'أيام عمل الفرع' : 'Branch Working Days'}</Label>

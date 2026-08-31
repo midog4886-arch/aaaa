@@ -71,3 +71,4 @@
 - [Backup file tenant namespace](backup-file-tenant-namespace.md) — manual/upload/pre-restore backups must use backup_<slug>--<suffix>.json; plain "_" is ambiguous across slugs and leaked cross-tenant.
 - [Frontend jest setup](frontend-jest-setup.md) — craco test needs resetMocks:false + exports-subpath moduleNameMapper; mock radix Dialog (no portal in jsdom); query tabs by role+name.
 - [Multi-branch non-admin active branch](multi-branch-active-branch.md) — user.branch_ids[]; client sends active branch via X-Branch-Id header; apply_active_branch pins current_user.branch_id to it (multi-branch only) so all legacy branch_id readers follow the switch; spoof falls back to allowed[0]. ALL 3 get_current_user + 2 from_token copies must wire it.
+- [Rented venue booking invariants](rented-venue-booking-invariants.md) — every level schedule/activation mutation must revalidate its rented booking; active references lock booking identity and timing.
