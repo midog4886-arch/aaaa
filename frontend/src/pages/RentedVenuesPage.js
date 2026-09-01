@@ -276,7 +276,6 @@ const RentedVenuesPage = () => {
               <SelectTrigger className="w-full sm:w-64" data-testid="venue-branch-select"><SelectValue placeholder={ar ? 'اختر الفرع' : 'Select branch'} /></SelectTrigger>
               <SelectContent>{branches.map(item => <SelectItem key={item.id} value={item.id}>{item.name_ar || item.name}</SelectItem>)}</SelectContent>
             </Select>
-            <Button onClick={openAdd} disabled={!branch || saving}><Plus className="me-2 h-4 w-4" />{ar ? 'إضافة ملعب' : 'Add venue'}</Button>
           </div>
         </div>
 
@@ -299,8 +298,18 @@ const RentedVenuesPage = () => {
                onEditBooking={openCalendarSlot}
              />
            )}
+          <section className="space-y-4" data-testid="venue-management-section">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold">{ar ? 'إضافة وإدارة الملاعب' : 'Add and manage venues'}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {ar ? 'أضف بيانات الملعب والعقد هنا، واستخدم الجدول بالأعلى لإدارة الحجوزات.' : 'Add venue and contract details here, and use the calendar above for bookings.'}
+                </p>
+              </div>
+              <Button onClick={openAdd} disabled={!branch || saving}><Plus className="me-2 h-4 w-4" />{ar ? 'إضافة ملعب جديد' : 'Add new venue'}</Button>
+            </div>
           {venues.length === 0 ? (
-            <Card><CardContent className="flex flex-col items-center py-12 text-center"><MapPin className="mb-3 h-10 w-10 text-muted-foreground" /><p className="font-medium">{ar ? 'لا توجد ملاعب مستأجرة لهذا الفرع' : 'No rented venues for this branch'}</p></CardContent></Card>
+            <Card><CardContent className="flex flex-col items-center py-12 text-center"><MapPin className="mb-3 h-10 w-10 text-muted-foreground" /><p className="font-medium">{ar ? 'لا توجد ملاعب مستأجرة لهذا الفرع' : 'No rented venues for this branch'}</p><Button className="mt-4" onClick={openAdd}><Plus className="me-2 h-4 w-4" />{ar ? 'إضافة أول ملعب' : 'Add first venue'}</Button></CardContent></Card>
           ) : <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {venues.map((venue, index) => {
               const status = venueState(venue, branchLevels);
@@ -313,17 +322,17 @@ const RentedVenuesPage = () => {
                     <div><span className="block text-muted-foreground">{ar ? 'العقد' : 'Contract'}</span>{venue.contract_start_date} → {venue.contract_end_date}</div>
                     <div><span className="block text-muted-foreground">{ar ? 'التكلفة' : 'Cost'}</span>{venue.cost} {ar ? 'ر.س' : 'SAR'} · {venue.cost_type}</div>
                   </div>
-                  <div className="space-y-2">{venue.booking_slots.map((slot, slotIndex) => {
-                    const day = WEEKDAYS.find(item => item.id === slot.weekday);
-                    const reserved = activeSlotReferenced(slot.id);
-                    return <div key={slot.id || slotIndex} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" />{day ? (ar ? day.ar : day.en) : slot.weekday}</span><span dir="ltr">{slot.start_time} – {slot.end_time}</span>{reserved && <Badge>{ar ? 'محجوز' : 'Reserved'}</Badge>}</div>;
-                  })}</div>
+                  <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3 text-sm">
+                    <span className="flex items-center gap-2 text-muted-foreground"><CalendarDays className="h-4 w-4" />{ar ? 'الحجوزات تظهر في الجدول الشهري بالأعلى' : 'Bookings appear in the monthly calendar above'}</span>
+                    <Badge variant="secondary">{venue.booking_slots.length}</Badge>
+                  </div>
                   {locked && <p className="flex items-center gap-2 text-xs text-amber-700"><TriangleAlert className="h-4 w-4" />{ar ? 'مرتبط بمستوى نشط؛ بيانات الحجز والحذف مقفلة.' : 'Linked to an active level; booking details and deletion are locked.'}</p>}
                   <div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => openEdit(index)}><Edit className="me-1 h-4 w-4" />{ar ? 'تعديل' : 'Edit'}</Button><Button variant="outline" size="sm" className="text-red-600" disabled={locked || saving} onClick={() => removeVenue(index)}><Trash2 className="me-1 h-4 w-4" />{ar ? 'حذف' : 'Delete'}</Button></div>
                 </CardContent>
               </Card>;
             })}
           </div>}
+          </section>
         </>}
 
         <Dialog open={Boolean(bookingDialog)} onOpenChange={open => !open && setBookingDialog(null)}>
