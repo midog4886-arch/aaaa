@@ -67,26 +67,20 @@ const VenueMonthCalendar = ({
               {dates.map(date => {
                 const key = toLocalDateKey(date);
                 const slots = venueSlotsForDate(venue, date);
-                const outsideContract = (venue.contract_start_date && key < venue.contract_start_date) ||
-                  (venue.contract_end_date && key > venue.contract_end_date);
                 return (
                   <div
                     key={key}
-                    role={outsideContract ? undefined : 'button'}
-                    tabIndex={outsideContract ? undefined : 0}
-                    aria-label={outsideContract ? undefined : `${ar ? 'حجز يوم' : 'Book'} ${key} - ${venue.name}`}
-                    onClick={outsideContract ? undefined : () => onAddBooking(venue, key)}
-                    onKeyDown={outsideContract ? undefined : event => {
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${ar ? 'حجز يوم' : 'Book'} ${key} - ${venue.name}`}
+                    onClick={() => onAddBooking(venue, key)}
+                    onKeyDown={event => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         onAddBooking(venue, key);
                       }
                     }}
-                    className={`group min-h-24 border-e p-1.5 transition-colors ${
-                      outsideContract
-                        ? 'bg-muted/35'
-                        : 'cursor-pointer hover:bg-emerald-50/80 focus:bg-emerald-50/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500'
-                    }`}
+                    className="group min-h-24 cursor-pointer border-e p-1.5 transition-colors hover:bg-emerald-50/80 focus:bg-emerald-50/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500"
                   >
                     <div className="space-y-1">
                       {slots.map(slot => {
@@ -113,18 +107,16 @@ const VenueMonthCalendar = ({
                         );
                       })}
                     </div>
-                    {!outsideContract && (
-                      <button
-                        type="button"
-                        onClick={event => {
-                          event.stopPropagation();
-                          onAddBooking(venue, key);
-                        }}
-                        className="mt-1 flex w-full items-center justify-center rounded-md border border-dashed border-emerald-300 bg-emerald-50/60 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
-                      >
-                        <Plus className="me-1 h-3 w-3" />{ar ? 'حجز' : 'Book'}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={event => {
+                        event.stopPropagation();
+                        onAddBooking(venue, key);
+                      }}
+                      className="mt-1 flex w-full items-center justify-center rounded-md border border-dashed border-emerald-300 bg-emerald-50/60 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
+                    >
+                      <Plus className="me-1 h-3 w-3" />{ar ? 'حجز' : 'Book'}
+                    </button>
                   </div>
                 );
               })}
@@ -135,7 +127,6 @@ const VenueMonthCalendar = ({
       <div className="flex flex-wrap items-center gap-3 border-t bg-muted/20 px-4 py-3 text-xs">
         <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{ar ? 'فترة متاحة' : 'Available slot'}</Badge>
         <Badge className="border-rose-300 bg-rose-100 text-rose-800 hover:bg-rose-100">{ar ? 'موعد محجوز' : 'Reserved appointment'}</Badge>
-        <span className="text-muted-foreground">{ar ? 'الخلفية الرمادية خارج مدة العقد' : 'Gray dates are outside the contract'}</span>
       </div>
     </section>
   );

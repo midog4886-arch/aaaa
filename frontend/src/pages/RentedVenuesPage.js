@@ -155,11 +155,6 @@ const RentedVenuesPage = () => {
       toast.error(ar ? 'تحقق من تاريخ ووقت الحجز' : 'Check the booking date and time');
       return;
     }
-    if ((venue.contract_start_date && bookingForm.date < venue.contract_start_date) ||
-        (venue.contract_end_date && bookingForm.date > venue.contract_end_date)) {
-      toast.error(ar ? 'تاريخ الحجز خارج مدة عقد الملعب' : 'Booking date is outside the venue contract');
-      return;
-    }
     const dateObject = new Date(`${bookingForm.date}T12:00:00`);
     const candidate = {
       id: bookingDialog.slotId || '',
