@@ -151,16 +151,19 @@ const RentedVenuesPage = () => {
     event.preventDefault();
     const venue = venues.find(item => item.id === bookingDialog?.venueId);
     if (!venue || !bookingForm.date || !bookingForm.start_time || !bookingForm.end_time ||
-        bookingForm.end_time <= bookingForm.start_time) {
+        bookingForm.end_time === bookingForm.start_time) {
       toast.error(ar ? 'تحقق من تاريخ ووقت الحجز' : 'Check the booking date and time');
       return;
     }
+    const [startTime, endTime] = bookingForm.start_time < bookingForm.end_time
+      ? [bookingForm.start_time, bookingForm.end_time]
+      : [bookingForm.end_time, bookingForm.start_time];
     const dateObject = new Date(`${bookingForm.date}T12:00:00`);
     const candidate = {
       id: bookingDialog.slotId || '',
       weekday: weekdayIdForDate(dateObject),
-      start_time: bookingForm.start_time,
-      end_time: bookingForm.end_time,
+      start_time: startTime,
+      end_time: endTime,
       start_date: bookingForm.date,
       end_date: bookingForm.date,
       cost: venue.cost,
