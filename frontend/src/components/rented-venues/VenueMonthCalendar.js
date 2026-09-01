@@ -70,7 +70,24 @@ const VenueMonthCalendar = ({
                 const outsideContract = (venue.contract_start_date && key < venue.contract_start_date) ||
                   (venue.contract_end_date && key > venue.contract_end_date);
                 return (
-                  <div key={key} className={`group min-h-24 border-e p-1.5 ${outsideContract ? 'bg-muted/35' : 'hover:bg-emerald-50/60'}`}>
+                  <div
+                    key={key}
+                    role={outsideContract ? undefined : 'button'}
+                    tabIndex={outsideContract ? undefined : 0}
+                    aria-label={outsideContract ? undefined : `${ar ? 'حجز يوم' : 'Book'} ${key} - ${venue.name}`}
+                    onClick={outsideContract ? undefined : () => onAddBooking(venue, key)}
+                    onKeyDown={outsideContract ? undefined : event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onAddBooking(venue, key);
+                      }
+                    }}
+                    className={`group min-h-24 border-e p-1.5 transition-colors ${
+                      outsideContract
+                        ? 'bg-muted/35'
+                        : 'cursor-pointer hover:bg-emerald-50/80 focus:bg-emerald-50/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500'
+                    }`}
+                  >
                     <div className="space-y-1">
                       {slots.map(slot => {
                         const reserved = isSlotReserved(slot.id) ||
@@ -79,7 +96,10 @@ const VenueMonthCalendar = ({
                           <button
                             type="button"
                             key={slot.id}
-                            onClick={() => onEditBooking(venue, slot)}
+                            onClick={event => {
+                              event.stopPropagation();
+                              onEditBooking(venue, slot);
+                            }}
                             className={`block w-full rounded-md border px-1.5 py-1 text-start text-[11px] font-medium transition-colors ${
                               reserved
                                 ? 'border-rose-300 bg-rose-100 text-rose-800'
@@ -96,8 +116,11 @@ const VenueMonthCalendar = ({
                     {!outsideContract && (
                       <button
                         type="button"
-                        onClick={() => onAddBooking(venue, key)}
-                        className="mt-1 flex w-full items-center justify-center rounded-md border border-dashed border-transparent py-1 text-[11px] text-muted-foreground opacity-0 transition-all hover:border-emerald-300 hover:text-emerald-700 group-hover:opacity-100 focus:opacity-100"
+                        onClick={event => {
+                          event.stopPropagation();
+                          onAddBooking(venue, key);
+                        }}
+                        className="mt-1 flex w-full items-center justify-center rounded-md border border-dashed border-emerald-300 bg-emerald-50/60 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-100"
                       >
                         <Plus className="me-1 h-3 w-3" />{ar ? 'حجز' : 'Book'}
                       </button>
