@@ -13,6 +13,8 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { WEEKDAYS, branchVenues, emptyVenue, normalizeVenue, serializeVenues, venueState } from '../utils/rentedVenues';
+import { slotsOverlap, weekdayIdForDate } from '../utils/rentedVenues';
+import VenueMonthCalendar from '../components/rented-venues/VenueMonthCalendar';
 
 const errorText = (error, fallback) => {
   const detail = error?.response?.data?.detail;
@@ -39,6 +41,9 @@ const RentedVenuesPage = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
   const [form, setForm] = useState(emptyVenue);
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [bookingDialog, setBookingDialog] = useState(null);
+  const [bookingForm, setBookingForm] = useState({ date: '', start_time: '18:00', end_time: '19:00' });
 
   const loadData = async () => {
     setLoading(true);
@@ -124,6 +129,88 @@ const RentedVenuesPage = () => {
     ));
   };
 
+  const openCalendarBooking = (venue, date) => {
+    setBookingForm({ date, start_time: '18:00', end_time: '19:00' });
+    setBookingDialog({ venueId: venue.id, slotId: null });
+  };
+
+  const openCalendarSlot = (venue, slot) => {
+    if (activeSlotReferenced(slot.id)) {
+      toast.info(ar ? 'هذا الموعد مرتبط بمستوى نشط ولا يمكن تعديله' : 'This appointment is linked to an active level and cannot be edited');
+      return;
+    }
+    if (slot.start_date !== slot.end_date) {
+      toast.info(ar ? 'هذه فترة أسبوعية متكررة؛ عدّلها من بيانات الملعب' : 'This is a recurring weekly slot; edit it from the venue details');
+      return;
+    }
+    setBookingForm({ date: slot.start_date, start_time: slot.start_time, end_time: slot.end_time });
+    setBookingDialog({ venueId: venue.id, slotId: slot.id });
+  };
+
+  const saveCalendarBooking = async event => {
+    event.preventDefault();
+    const venue = venues.find(item => item.id === bookingDialog?.venueId);
+    if (!venue || !bookingForm.date || !bookingForm.start_time || !bookingForm.end_time ||
+        bookingForm.end_time <= bookingForm.start_time) {
+      toast.error(ar ? 'تحقق من تاريخ ووقت الحجز' : 'Check the booking date and time');
+      return;
+    }
+    if ((venue.contract_start_date && bookingForm.date < venue.contract_start_date) ||
+        (venue.contract_end_date && bookingForm.date > venue.contract_end_date)) {
+      toast.error(ar ? 'تاريخ الحجز خارج مدة عقد الملعب' : 'Booking date is outside the venue contract');
+      return;
+    }
+    const dateObject = new Date(`${bookingForm.date}T12:00:00`);
+    const candidate = {
+      id: bookingDialog.slotId || '',
+      weekday: weekdayIdForDate(dateObject),
+      start_time: bookingForm.start_time,
+      end_time: bookingForm.end_time,
+      start_date: bookingForm.date,
+      end_date: bookingForm.date,
+      cost: venue.cost,
+      cost_type: venue.cost_type,
+    };
+    if (venue.booking_slots.some(slot => slot.id !== bookingDialog.slotId && slotsOverlap(slot, candidate))) {
+      toast.error(ar ? 'هذه الساعة محجوزة أو تتداخل مع موعد آخر في نفس الملعب' : 'This time overlaps another booking in the same venue');
+      return;
+    }
+    setSaving(true);
+    try {
+      const next = venues.map(item => item.id !== venue.id ? item : {
+        ...item,
+        booking_slots: bookingDialog.slotId
+          ? item.booking_slots.map(slot => slot.id === bookingDialog.slotId ? candidate : slot)
+          : [...item.booking_slots, candidate],
+      });
+      await putVenues(next);
+      toast.success(ar ? 'تم حجز الموعد' : 'Appointment booked');
+      setBookingDialog(null);
+    } catch (error) {
+      toast.error(errorText(error, ar ? 'تعذر حفظ الحجز' : 'Could not save booking'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeCalendarBooking = async () => {
+    const venue = venues.find(item => item.id === bookingDialog?.venueId);
+    if (!venue || !bookingDialog?.slotId || activeSlotReferenced(bookingDialog.slotId)) return;
+    setSaving(true);
+    try {
+      await putVenues(venues.map(item => item.id !== venue.id ? item : {
+        ...item,
+        booking_slots: item.booking_slots.filter(slot => slot.id !== bookingDialog.slotId),
+      }));
+      toast.success(ar ? 'تم إلغاء الحجز' : 'Booking cancelled');
+      setBookingDialog(null);
+    } catch (error) {
+      toast.error(errorText(error, ar ? 'تعذر إلغاء الحجز' : 'Could not cancel booking'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const validate = () => {
     if (!form.name.trim() || !form.contract_start_date || !form.contract_end_date ||
         form.cost === '' || Number(form.cost) < 0 || Number(form.warning_days) < 0 ||
@@ -195,12 +282,23 @@ const RentedVenuesPage = () => {
 
         {loading ? <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div> : !branch ? (
           <Card><CardContent className="py-12 text-center text-muted-foreground">{ar ? 'لا توجد فروع متاحة' : 'No branches available'}</CardContent></Card>
-        ) : <>
+         ) : <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {Object.entries(stateStyle).map(([key, style]) => (
               <Card key={key}><CardContent className="flex items-center justify-between p-4"><span className="text-sm text-muted-foreground">{ar ? style.ar : style.en}</span><span className="text-2xl font-bold">{summaries[key]}</span></CardContent></Card>
             ))}
           </div>
+           {venues.length > 0 && (
+             <VenueMonthCalendar
+               ar={ar}
+               month={calendarMonth}
+               venues={venues}
+               isSlotReserved={activeSlotReferenced}
+               onMonthChange={offset => setCalendarMonth(current => new Date(current.getFullYear(), current.getMonth() + offset, 1))}
+               onAddBooking={openCalendarBooking}
+               onEditBooking={openCalendarSlot}
+             />
+           )}
           {venues.length === 0 ? (
             <Card><CardContent className="flex flex-col items-center py-12 text-center"><MapPin className="mb-3 h-10 w-10 text-muted-foreground" /><p className="font-medium">{ar ? 'لا توجد ملاعب مستأجرة لهذا الفرع' : 'No rented venues for this branch'}</p></CardContent></Card>
           ) : <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -227,6 +325,24 @@ const RentedVenuesPage = () => {
             })}
           </div>}
         </>}
+
+        <Dialog open={Boolean(bookingDialog)} onOpenChange={open => !open && setBookingDialog(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader><DialogTitle>{bookingDialog?.slotId ? (ar ? 'تعديل الحجز' : 'Edit booking') : (ar ? 'حجز ساعة' : 'Book a time')}</DialogTitle></DialogHeader>
+            <form onSubmit={saveCalendarBooking} className="space-y-4">
+              <div className="space-y-1"><Label>{ar ? 'التاريخ' : 'Date'}</Label><Input type="date" value={bookingForm.date} onChange={event => setBookingForm(current => ({ ...current, date: event.target.value }))} /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1"><Label>{ar ? 'من الساعة' : 'From'}</Label><Input type="time" value={bookingForm.start_time} onChange={event => setBookingForm(current => ({ ...current, start_time: event.target.value }))} /></div>
+                <div className="space-y-1"><Label>{ar ? 'إلى الساعة' : 'To'}</Label><Input type="time" value={bookingForm.end_time} onChange={event => setBookingForm(current => ({ ...current, end_time: event.target.value }))} /></div>
+              </div>
+              <DialogFooter className="gap-2">
+                {bookingDialog?.slotId && <Button type="button" variant="destructive" onClick={removeCalendarBooking} disabled={saving}>{ar ? 'إلغاء الحجز' : 'Cancel booking'}</Button>}
+                <Button type="button" variant="outline" onClick={() => setBookingDialog(null)}>{ar ? 'رجوع' : 'Back'}</Button>
+                <Button type="submit" disabled={saving}>{saving && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{ar ? 'حفظ الحجز' : 'Save booking'}</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-3xl flex-col p-0">

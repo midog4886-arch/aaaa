@@ -81,3 +81,41 @@ export const venueState = (venue, levels, now = new Date()) => {
   if ((levels || []).some(level => level.is_active !== false && level.venue_id === venue.id)) return 'reserved';
   return 'available';
 };
+
+const pad = value => String(value).padStart(2, '0');
+
+export const toLocalDateKey = date =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+export const monthDates = monthDate => {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const count = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: count }, (_, index) => new Date(year, month, index + 1));
+};
+
+export const weekdayIdForDate = date => [
+  'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+][date.getDay()];
+
+export const slotOccursOnDate = (slot, date) => {
+  const key = toLocalDateKey(date);
+  return (slot.weekday || slot.day) === weekdayIdForDate(date) &&
+    (!slot.start_date || slot.start_date <= key) &&
+    (!slot.end_date || slot.end_date >= key);
+};
+
+export const venueSlotsForDate = (venue, date) =>
+  (venue.booking_slots || [])
+    .filter(slot => slotOccursOnDate(slot, date))
+    .sort((left, right) => left.start_time.localeCompare(right.start_time));
+
+export const slotsOverlap = (left, right) => {
+  const leftStart = left.start_date || '';
+  const leftEnd = left.end_date || leftStart;
+  const rightStart = right.start_date || '';
+  const rightEnd = right.end_date || rightStart;
+  return (left.weekday || left.day) === (right.weekday || right.day) &&
+    leftStart <= rightEnd && rightStart <= leftEnd &&
+    left.start_time < right.end_time && right.start_time < left.end_time;
+};
