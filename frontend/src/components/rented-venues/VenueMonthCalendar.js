@@ -38,6 +38,26 @@ const VenueMonthCalendar = ({
     month: 'long',
     year: 'numeric',
   });
+  const monthSummary = useMemo(() => {
+    let bookings = 0;
+    let amount = 0;
+    venues.forEach(venue => {
+      dates.forEach(date => {
+        venueSlotsForDate(venue, date).forEach(slot => {
+          bookings += 1;
+          if (slot.total_cost !== undefined && slot.total_cost !== null && slot.total_cost !== '') {
+            amount += Number(slot.total_cost) || 0;
+            return;
+          }
+          const [startHour, startMinute] = String(slot.start_time || '00:00').split(':').map(Number);
+          const [endHour, endMinute] = String(slot.end_time || '00:00').split(':').map(Number);
+          const duration = Math.max(0, ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60);
+          amount += duration * Number(slot.hourly_rate ?? (slot.cost_type === 'hourly' ? slot.cost : 0) ?? 0);
+        });
+      });
+    });
+    return { bookings, amount };
+  }, [dates, venues]);
 
   return (
     <section className="overflow-hidden rounded-xl border bg-card shadow-sm" data-testid="venue-month-calendar">
@@ -78,6 +98,25 @@ const VenueMonthCalendar = ({
       </div>
 
       <div className="p-3 sm:p-4">
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <div className="rounded-xl border bg-muted/30 p-3 sm:p-4">
+            <span className="block text-xs text-muted-foreground sm:text-sm">
+              {ar ? 'عدد حجوزات الشهر' : 'Monthly bookings'}
+            </span>
+            <strong className="mt-1 block text-2xl font-bold text-primary">{monthSummary.bookings}</strong>
+          </div>
+          <div className="rounded-xl border bg-muted/30 p-3 sm:p-4">
+            <span className="block text-xs text-muted-foreground sm:text-sm">
+              {ar ? 'إجمالي مبالغ الشهر' : 'Monthly total'}
+            </span>
+            <strong className="mt-1 block text-2xl font-bold text-emerald-700">
+              {monthSummary.amount.toLocaleString(ar ? 'ar-SA' : 'en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })} {ar ? 'ر.س' : 'SAR'}
+            </strong>
+          </div>
+        </div>
         <div className="mb-1 grid grid-cols-7 gap-1">
           {WEEK_HEADERS[ar ? 'ar' : 'en'].map(day => (
             <div key={day} className="py-2 text-center text-xs font-semibold text-muted-foreground sm:text-sm">{day}</div>
