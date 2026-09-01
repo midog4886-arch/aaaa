@@ -46,6 +46,11 @@ export const normalizeVenue = (venue = {}) => ({
     end_date: slot.end_date || venue.contract_end_date || '',
     cost: slot.cost ?? venue.cost ?? '',
     cost_type: slot.cost_type || venue.cost_type || 'monthly',
+    hourly_rate: slot.hourly_rate ?? (slot.cost_type === 'hourly' ? slot.cost : venue.cost) ?? '',
+    duration_hours: slot.duration_hours ?? '',
+    total_cost: slot.total_cost ?? '',
+    payment_status: slot.payment_status || 'unpaid',
+    payment_method: slot.payment_method || '',
   })).filter(slot => slot.weekday),
 });
 
@@ -71,6 +76,17 @@ export const serializeVenues = venues => venues.map(venue => ({
         end_date: slot.end_date || venue.contract_end_date,
         cost: Number(slot.cost ?? venue.cost),
         cost_type: slot.cost_type || venue.cost_type,
+        hourly_rate: slot.hourly_rate === '' || slot.hourly_rate === undefined
+          ? null
+          : Number(slot.hourly_rate),
+        duration_hours: slot.duration_hours === '' || slot.duration_hours === undefined
+          ? null
+          : Number(slot.duration_hours),
+        total_cost: slot.total_cost === '' || slot.total_cost === undefined
+          ? null
+          : Number(slot.total_cost),
+        payment_status: slot.payment_status || 'unpaid',
+        payment_method: slot.payment_status === 'paid' ? (slot.payment_method || 'cash') : null,
       }))
   ),
 }));

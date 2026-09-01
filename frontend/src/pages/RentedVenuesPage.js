@@ -43,7 +43,10 @@ const RentedVenuesPage = () => {
   const [form, setForm] = useState(emptyVenue);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [bookingDialog, setBookingDialog] = useState(null);
-  const [bookingForm, setBookingForm] = useState({ date: '', start_time: '18:00', end_time: '19:00' });
+  const [bookingForm, setBookingForm] = useState({
+    date: '', start_time: '18:00', end_time: '19:00',
+    hourly_rate: '', payment_status: 'unpaid', payment_method: 'cash',
+  });
 
   const loadData = async () => {
     setLoading(true);
@@ -130,7 +133,14 @@ const RentedVenuesPage = () => {
   };
 
   const openCalendarBooking = (venue, date) => {
-    setBookingForm({ date, start_time: '18:00', end_time: '19:00' });
+    setBookingForm({
+      date,
+      start_time: '18:00',
+      end_time: '19:00',
+      hourly_rate: venue.cost ?? '',
+      payment_status: 'unpaid',
+      payment_method: 'cash',
+    });
     setBookingDialog({ venueId: venue.id, slotId: null });
   };
 
@@ -143,7 +153,14 @@ const RentedVenuesPage = () => {
       toast.info(ar ? 'هذه فترة أسبوعية متكررة؛ عدّلها من بيانات الملعب' : 'This is a recurring weekly slot; edit it from the venue details');
       return;
     }
-    setBookingForm({ date: slot.start_date, start_time: slot.start_time, end_time: slot.end_time });
+    setBookingForm({
+      date: slot.start_date,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      hourly_rate: slot.hourly_rate ?? slot.cost ?? venue.cost ?? '',
+      payment_status: slot.payment_status || 'unpaid',
+      payment_method: slot.payment_method || 'cash',
+    });
     setBookingDialog({ venueId: venue.id, slotId: slot.id });
   };
 
@@ -151,6 +168,7 @@ const RentedVenuesPage = () => {
     event.preventDefault();
     const venue = venues.find(item => item.id === bookingDialog?.venueId);
     if (!venue || !bookingForm.date || !bookingForm.start_time || !bookingForm.end_time ||
+        bookingForm.hourly_rate === '' || Number(bookingForm.hourly_rate) < 0 ||
         bookingForm.end_time === bookingForm.start_time) {
       toast.error(ar ? 'تحقق من تاريخ ووقت الحجز' : 'Check the booking date and time');
       return;
@@ -159,6 +177,10 @@ const RentedVenuesPage = () => {
       ? [bookingForm.start_time, bookingForm.end_time]
       : [bookingForm.end_time, bookingForm.start_time];
     const dateObject = new Date(`${bookingForm.date}T12:00:00`);
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+    const durationHours = ((endHour * 60 + endMinute) - (startHour * 60 + startMinute)) / 60;
+    const hourlyRate = Number(bookingForm.hourly_rate);
     const candidate = {
       id: bookingDialog.slotId || '',
       weekday: weekdayIdForDate(dateObject),
@@ -166,8 +188,13 @@ const RentedVenuesPage = () => {
       end_time: endTime,
       start_date: bookingForm.date,
       end_date: bookingForm.date,
-      cost: venue.cost,
-      cost_type: venue.cost_type,
+      cost: hourlyRate,
+      cost_type: 'hourly',
+      hourly_rate: hourlyRate,
+      duration_hours: Number(durationHours.toFixed(2)),
+      total_cost: Number((durationHours * hourlyRate).toFixed(2)),
+      payment_status: bookingForm.payment_status,
+      payment_method: bookingForm.payment_status === 'paid' ? bookingForm.payment_method : '',
     };
     if (venue.booking_slots.some(slot => slot.id !== bookingDialog.slotId && slotsOverlap(slot, candidate))) {
       toast.error(ar ? 'هذه الساعة محجوزة أو تتداخل مع موعد آخر في نفس الملعب' : 'This time overlaps another booking in the same venue');
@@ -208,6 +235,19 @@ const RentedVenuesPage = () => {
       setSaving(false);
     }
   };
+
+  const bookingPrice = useMemo(() => {
+    if (!bookingForm.start_time || !bookingForm.end_time || bookingForm.start_time === bookingForm.end_time) {
+      return { hours: 0, total: 0 };
+    }
+    const [from, to] = bookingForm.start_time < bookingForm.end_time
+      ? [bookingForm.start_time, bookingForm.end_time]
+      : [bookingForm.end_time, bookingForm.start_time];
+    const [fromHour, fromMinute] = from.split(':').map(Number);
+    const [toHour, toMinute] = to.split(':').map(Number);
+    const hours = ((toHour * 60 + toMinute) - (fromHour * 60 + fromMinute)) / 60;
+    return { hours, total: hours * Number(bookingForm.hourly_rate || 0) };
+  }, [bookingForm.start_time, bookingForm.end_time, bookingForm.hourly_rate]);
 
   const validate = () => {
     if (!form.name.trim() || !form.contract_start_date || !form.contract_end_date ||
@@ -341,6 +381,42 @@ const RentedVenuesPage = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1"><Label>{ar ? 'من الساعة' : 'From'}</Label><Input type="time" value={bookingForm.start_time} onChange={event => setBookingForm(current => ({ ...current, start_time: event.target.value }))} /></div>
                 <div className="space-y-1"><Label>{ar ? 'إلى الساعة' : 'To'}</Label><Input type="time" value={bookingForm.end_time} onChange={event => setBookingForm(current => ({ ...current, end_time: event.target.value }))} /></div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>{ar ? 'سعر الساعة' : 'Hourly rate'}</Label>
+                  <div className="relative">
+                    <Input type="number" min="0" step="0.01" value={bookingForm.hourly_rate} onChange={event => setBookingForm(current => ({ ...current, hourly_rate: event.target.value }))} />
+                    <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-xs text-muted-foreground">{ar ? 'ر.س' : 'SAR'}</span>
+                  </div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <span className="block text-xs text-muted-foreground">{ar ? 'المدة والإجمالي' : 'Duration and total'}</span>
+                  <strong className="mt-1 block text-lg">{bookingPrice.hours.toFixed(2)} {ar ? 'ساعة' : 'hours'} · {bookingPrice.total.toFixed(2)} {ar ? 'ر.س' : 'SAR'}</strong>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label>{ar ? 'حالة الدفع' : 'Payment status'}</Label>
+                  <Select value={bookingForm.payment_status} onValueChange={value => setBookingForm(current => ({ ...current, payment_status: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unpaid">{ar ? 'غير مدفوع' : 'Unpaid'}</SelectItem>
+                      <SelectItem value="paid">{ar ? 'تم الدفع' : 'Paid'}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {bookingForm.payment_status === 'paid' && <div className="space-y-1">
+                  <Label>{ar ? 'طريقة الدفع' : 'Payment method'}</Label>
+                  <Select value={bookingForm.payment_method} onValueChange={value => setBookingForm(current => ({ ...current, payment_method: value }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">{ar ? 'نقداً' : 'Cash'}</SelectItem>
+                      <SelectItem value="card">{ar ? 'بطاقة / شبكة' : 'Card'}</SelectItem>
+                      <SelectItem value="transfer">{ar ? 'تحويل بنكي' : 'Bank transfer'}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>}
               </div>
               <DialogFooter className="gap-2">
                 {bookingDialog?.slotId && <Button type="button" variant="destructive" onClick={removeCalendarBooking} disabled={saving}>{ar ? 'إلغاء الحجز' : 'Cancel booking'}</Button>}

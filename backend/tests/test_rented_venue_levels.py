@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from models.branch import BranchCreate
+from models.branch import BookingSlot, BranchCreate
 import routes.branches as branches_mod
 import routes.levels as levels_mod
 
@@ -465,6 +465,44 @@ def test_branch_venues_payload_runs_nested_and_unique_validation():
 
     with pytest.raises(ValidationError, match="venue ids must be unique"):
         branches_mod.BranchVenuesUpdate(venues=[venue, copy.deepcopy(venue)])
+
+
+def test_hourly_booking_calculates_duration_and_total_on_server():
+    start_date, _ = _dates()
+    booking = BookingSlot(
+        day="tuesday",
+        start_time="21:30",
+        end_time="23:00",
+        start_date=start_date,
+        end_date=start_date,
+        cost=175,
+        cost_type="hourly",
+        hourly_rate=175,
+        total_cost=1,
+        payment_status="paid",
+        payment_method="card",
+    )
+
+    assert booking.duration_hours == 1.5
+    assert booking.total_cost == 262.5
+    assert booking.payment_status == "paid"
+    assert booking.payment_method == "card"
+
+
+def test_paid_hourly_booking_requires_payment_method():
+    start_date, _ = _dates()
+    with pytest.raises(ValidationError, match="payment_method is required"):
+        BookingSlot(
+            day="tuesday",
+            start_time="21:30",
+            end_time="23:00",
+            start_date=start_date,
+            end_date=start_date,
+            cost=100,
+            cost_type="hourly",
+            hourly_rate=100,
+            payment_status="paid",
+        )
 
 
 def test_update_branch_venues_rejects_active_referenced_booking_change(monkeypatch):

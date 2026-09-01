@@ -4,6 +4,7 @@ import {
   slotsOverlap,
   venueSlotsForDate,
   weekdayIdForDate,
+  serializeVenues,
 } from '../rentedVenues';
 
 describe('rented venue monthly bookings', () => {
@@ -60,5 +61,35 @@ describe('rented venue monthly bookings', () => {
     };
     expect(venueSlotsForDate(venue, new Date('2026-09-01T12:00:00')).map(slot => slot.id))
       .toEqual(['booking-1', 'late']);
+  });
+
+  test('keeps hourly price, total, and payment data when saving', () => {
+    const [venue] = serializeVenues([{
+      id: 'venue-1',
+      name: 'Court',
+      number: '1',
+      size: '20x40',
+      contract_start_date: '2026-09-01',
+      contract_end_date: '2026-09-30',
+      cost: 100,
+      cost_type: 'hourly',
+      warning_days: 30,
+      booking_slots: [{
+        ...tuesdayBooking,
+        hourly_rate: 175,
+        duration_hours: 1,
+        total_cost: 175,
+        payment_status: 'paid',
+        payment_method: 'card',
+      }],
+    }]);
+
+    expect(venue.booking_slots[0]).toEqual(expect.objectContaining({
+      hourly_rate: 175,
+      duration_hours: 1,
+      total_cost: 175,
+      payment_status: 'paid',
+      payment_method: 'card',
+    }));
   });
 });

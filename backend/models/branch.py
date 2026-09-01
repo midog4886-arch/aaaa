@@ -20,6 +20,11 @@ class BookingSlot(BaseModel):
     end_date: str
     cost: float = Field(ge=0)
     cost_type: str = Field(min_length=1, max_length=50)
+    hourly_rate: Optional[float] = Field(default=None, ge=0)
+    duration_hours: Optional[float] = Field(default=None, ge=0)
+    total_cost: Optional[float] = Field(default=None, ge=0)
+    payment_status: Literal["unpaid", "paid"] = "unpaid"
+    payment_method: Optional[Literal["cash", "card", "transfer"]] = None
 
     @field_validator("id", "day", "start_time", "end_time", "start_date", "end_date", "cost_type")
     @classmethod
@@ -62,6 +67,20 @@ class BookingSlot(BaseModel):
             raise ValueError("end_time must be later than start_time")
         if self.end_date < self.start_date:
             raise ValueError("end_date must be on or after start_date")
+        start = time.fromisoformat(self.start_time)
+        end = time.fromisoformat(self.end_time)
+        minutes = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute)
+        self.duration_hours = round(minutes / 60, 2)
+        rate = self.hourly_rate
+        if rate is None and self.cost_type == "hourly":
+            rate = self.cost
+        if rate is not None:
+            self.hourly_rate = rate
+            self.total_cost = round(self.duration_hours * rate, 2)
+        if self.payment_status == "paid" and not self.payment_method:
+            raise ValueError("payment_method is required for a paid booking")
+        if self.payment_status == "unpaid":
+            self.payment_method = None
         return self
 
 
