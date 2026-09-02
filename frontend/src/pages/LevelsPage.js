@@ -2779,28 +2779,6 @@ ${slotTables}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-xs sm:text-sm"
-                    onClick={openAutoAssignDialog}
-                    data-testid="open-auto-assign-btn"
-                  >
-                    <Wand2 className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">{t('إسناد تلقائي للمستويات', 'Auto-assign members')}</span>
-                    <span className="sm:hidden">{t('إسناد تلقائي', 'Auto-assign')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50 text-xs sm:text-sm"
-                    onClick={() => setScheduleBuilderOpen(true)}
-                    data-testid="open-levels-schedule-builder-btn"
-                  >
-                    <SlidersHorizontal className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">{t('جدولة المستويات حسب اليوم والساعة', 'Schedule levels by day and hour')}</span>
-                    <span className="sm:hidden">{t('جدولة', 'Schedule')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
                     className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs sm:text-sm"
                     onClick={async () => {
                       if (!window.confirm(t('سيتم حذف الأعضاء المكررين من جميع المستويات نهائياً. هل تريد المتابعة؟', 'Duplicate member entries will be permanently removed from all levels. Continue?'))) return;
@@ -2847,19 +2825,6 @@ ${slotTables}
                     <Trash2 className="w-4 h-4 shrink-0" />
                     <span className="hidden sm:inline">{cleanupExpiredLoading ? t('جارٍ التنظيف...', 'Cleaning...') : t('تنظيف المنتهية اشتراكاتهم', 'Clean expired members')}</span>
                     <span className="sm:hidden">{t('تنظيف المنتهين', 'Expired')}</span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 text-[11px] sm:text-xs underline-offset-2 hover:underline"
-                    onClick={() => setCleanupOpen(true)}
-                    data-testid="open-levels-cleanup-btn"
-                    title={t(
-                      'احتياطي: الأداة القديمة لتعديل النشاط لكل مستوى يدوياً. استخدم "جدولة المستويات" أعلاه.',
-                      'Fallback only: legacy per-level activity editor. Prefer "Schedule builder" above.'
-                    )}
-                  >
-                    {t('احتياطي قديم', 'Legacy fallback')}
                   </Button>
                 </>
               )}
