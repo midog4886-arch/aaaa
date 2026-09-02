@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 // eslint-disable-next-line react-hooks/exhaustive-deps
-import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI, discountsAPI, activityNotesAPI, tournamentsAPI, attendanceAPI } from '../services/api';
+import { dashboardAPI, reportsAPI, membersAPI, activitiesAPI, invoicesAPI, discountsAPI, tournamentsAPI, attendanceAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Users, 
@@ -24,7 +24,6 @@ import {
   RefreshCcw,
   Tag,
   ClipboardList,
-  StickyNote,
   ExternalLink,
   Lock,
   Unlock,
@@ -46,7 +45,6 @@ const DEFAULT_WIDGETS = [
   { id: 'stats', visible: true },
   { id: 'details', visible: true },
   { id: 'expiring', visible: true },
-  { id: 'notes', visible: true },
   { id: 'champions', visible: false },
   { id: 'today_attendance', visible: true },
 ];
@@ -55,7 +53,6 @@ const WIDGET_LABELS = {
   stats: { ar: 'بطاقات الإحصائيات', en: 'Statistics Cards' },
   details: { ar: 'عرض التفاصيل', en: 'Detail View' },
   expiring: { ar: 'الاشتراكات المنتهية', en: 'Expiring Subscriptions' },
-  notes: { ar: 'آخر الملاحظات', en: 'Recent Notes' },
   champions: { ar: 'أبطال البطولات الأخيرة', en: 'Recent Champions' },
   today_attendance: { ar: 'حضور اليوم', en: "Today's Attendance" },
 };
@@ -72,7 +69,6 @@ export const DashboardPage = () => {
   const [stats, setStats] = useState(null);
   const [expiring, setExpiring] = useState([]);
   const [discounts, setDiscounts] = useState([]);
-  const [recentNotes, setRecentNotes] = useState([]);
   const [recentChampions, setRecentChampions] = useState([]);
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -105,7 +101,8 @@ export const DashboardPage = () => {
         // Merge saved widgets with defaults so newly-added widgets appear for
         // users who already have a saved layout (preserves order/visibility
         // for known widgets, appends new ones at the end as hidden by default).
-        const saved = res.data.widgets;
+        const allowedIds = new Set(DEFAULT_WIDGETS.map(widget => widget.id));
+        const saved = res.data.widgets.filter(widget => allowedIds.has(widget.id));
         const savedIds = new Set(saved.map(w => w.id));
         const merged = [
           ...saved,
@@ -148,18 +145,16 @@ export const DashboardPage = () => {
   const loadData = async () => {
     try {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [statsRes, expiringRes, discountsRes, notesRes, championsRes, todayRes] = await Promise.all([
+      const [statsRes, expiringRes, discountsRes, championsRes, todayRes] = await Promise.all([
         dashboardAPI.getStats(branchParams),
         reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
         discountsAPI.getAll(branchParams),
-        activityNotesAPI.getRecent(5),
         tournamentsAPI.getRecentMedalists({ limit: 5, ...branchParams }).catch(() => ({ data: [] })),
         attendanceAPI.getTodaySummary(branchParams).catch(() => ({ data: null })),
       ]);
       setStats(statsRes.data);
       setExpiring(expiringRes.data);
       setDiscounts(discountsRes.data);
-      setRecentNotes(notesRes.data || []);
       setRecentChampions(championsRes.data || []);
       setTodayAttendance(todayRes.data);
     } catch (error) {
@@ -841,50 +836,6 @@ export const DashboardPage = () => {
                 <div className="empty-state">
                   <Trophy className="empty-state-icon" />
                   <p>{language === 'ar' ? 'لا يوجد أبطال مسجلون بعد' : 'No champions recorded yet'}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          );
-
-          if (widget.id === 'notes') return (
-          <Card key="notes" data-testid="recent-notes">
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <StickyNote className="w-5 h-5 text-orange-500" />
-                  {language === 'ar' ? 'آخر الملاحظات' : 'Recent Notes'}
-                </span>
-                <Button size="sm" variant="outline" onClick={() => window.location.href = '/schedule'} className="text-orange-600 border-orange-500/30 hover:bg-orange-500/10">
-                  <ExternalLink className="w-4 h-4 me-1" />
-                  {language === 'ar' ? 'عرض الجدول' : 'View Schedule'}
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {recentNotes.length > 0 ? (
-                <div className="space-y-3 max-h-[300px] overflow-y-auto">
-                  {recentNotes.map((note, index) => (
-                    <div key={note.id} className="p-3 bg-orange-50 border border-orange-200 rounded-lg animate-slide-in" style={{ animationDelay: `${index * 0.05}s` }}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-gray-800 whitespace-pre-wrap text-sm">{note.note_text}</p>
-                          <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                            <Badge variant="outline" className="bg-orange-100 border-orange-300">{note.activity_name}</Badge>
-                            <span>-</span>
-                            <Calendar className="w-3 h-3" />
-                            <span>{note.date}</span>
-                            {note.created_by_name && (<><span>-</span><span>{note.created_by_name}</span></>)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <StickyNote className="empty-state-icon" />
-                  <p>{language === 'ar' ? 'لا توجد ملاحظات' : 'No notes yet'}</p>
                 </div>
               )}
             </CardContent>
