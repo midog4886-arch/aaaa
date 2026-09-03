@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import uuid
 
 from database import db
-from utils.auth import get_current_user, resolve_branch_filter, get_allowed_branch_ids
+from utils.auth import get_current_user, resolve_branch_filter, get_allowed_branch_ids, require_permission
 from utils.sequences import assign_seq_starts_for_new_branch
 from utils.cache import cache_get, cache_set, cache_invalidate
 from models.branch import VenueCourt
@@ -311,9 +311,11 @@ async def get_branch_venues(
     branch_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    """Read one branch's canonical venue configuration - admin only."""
+    """Read one branch's canonical venue configuration."""
+    await require_permission(current_user, "rented-venues")
     if not current_user.get("is_admin", False):
-        raise HTTPException(status_code=403, detail="Admin access required")
+        if branch_id not in get_allowed_branch_ids(current_user):
+            raise HTTPException(status_code=403, detail="Forbidden: branch is outside your assigned branches")
 
     branch = await db.branches.find_one(
         {"id": branch_id},
@@ -331,8 +333,10 @@ async def update_branch_venues(
     current_user: dict = Depends(get_current_user),
 ):
     """Replace one branch's venues without resubmitting unrelated fields."""
+    await require_permission(current_user, "rented-venues")
     if not current_user.get("is_admin", False):
-        raise HTTPException(status_code=403, detail="Admin access required")
+        if branch_id not in get_allowed_branch_ids(current_user):
+            raise HTTPException(status_code=403, detail="Forbidden: branch is outside your assigned branches")
 
     before = await db.branches.find_one({"id": branch_id}, {"_id": 0})
     if not before:

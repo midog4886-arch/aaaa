@@ -11,6 +11,8 @@ The monthly calendar stores one-off hourly reservations as ordinary booking slot
 
 Hourly calendar bookings carry their own rate and payment state. The server recalculates duration and total from the saved times and rate; never trust a client-supplied total. Payment edits must not redefine a level-locked booking window.
 
+Venue management uses its own `rented-venues` permission rather than general branch administration. Non-admin users with this permission may read and update venues only for branches assigned to them; enforce this on the API, not only the menu.
+
 Every mutation that can change a linked level's day, time, active status, venue, or booking slot must revalidate the complete candidate level against the selected booking. This applies to bulk cleanup and schedule-builder routes, not only the main level create/update endpoints.
 
 An active level's venue and slot reference locks the slot's identity, weekday, time window, and validity dates. Do not delete, move, or redefine that booking—or convert the branch to permanent—until the level is closed or remapped.

@@ -463,7 +463,7 @@ function AppRoutes() {
       <Route
         path="/admin/rented-venues"
         element={
-          <ProtectedRoute permission="branches">
+          <ProtectedRoute permission="rented-venues">
             <RentedVenuesPage />
           </ProtectedRoute>
         }

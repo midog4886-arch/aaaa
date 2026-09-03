@@ -55,6 +55,7 @@ const ALL_PERMISSIONS = [
   { key: 'reports', label_ar: 'التقارير', label_en: 'Reports' },
   { key: 'messages', label_ar: 'الرسائل', label_en: 'Messages' },
   { key: 'branches', label_ar: 'الفروع', label_en: 'Branches' },
+  { key: 'rented-venues', label_ar: 'الملاعب المستأجرة', label_en: 'Rented Venues' },
   { key: 'users', label_ar: 'المستخدمين', label_en: 'Users' },
   { key: 'settings', label_ar: 'الإعدادات', label_en: 'Settings' },
   { key: 'renewals', label_ar: 'التجديدات', label_en: 'Renewals' },

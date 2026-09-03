@@ -380,8 +380,14 @@ def test_branch_detail_rejects_other_branch_staff(monkeypatch):
 
 
 @pytest.mark.parametrize("method", ["get", "put"])
-def test_branch_venues_endpoints_require_admin(monkeypatch, method):
+def test_branch_venues_endpoints_require_permission(monkeypatch, method):
     monkeypatch.setattr(branches_mod, "db", _DB(_branch()))
+
+    async def deny_permission(_current_user, permission):
+        assert permission == "rented-venues"
+        raise HTTPException(status_code=403, detail="permission required")
+
+    monkeypatch.setattr(branches_mod, "require_permission", deny_permission)
     user = {"is_admin": False, "branch_id": "branch-rented"}
     with pytest.raises(HTTPException) as exc:
         if method == "get":
@@ -465,6 +471,38 @@ def test_branch_venues_payload_runs_nested_and_unique_validation():
 
     with pytest.raises(ValidationError, match="venue ids must be unique"):
         branches_mod.BranchVenuesUpdate(venues=[venue, copy.deepcopy(venue)])
+
+
+def test_rented_venues_permission_allows_assigned_branch_staff(monkeypatch):
+    branch = _branch()
+    monkeypatch.setattr(branches_mod, "db", _DB(branch))
+
+    async def allow_permission(current_user, permission):
+        assert permission == "rented-venues"
+
+    monkeypatch.setattr(branches_mod, "require_permission", allow_permission)
+    venues = run(branches_mod.get_branch_venues(
+        "branch-rented",
+        current_user={"is_admin": False, "branch_id": "branch-rented"},
+    ))
+
+    assert venues[0].id == "venue-1"
+
+
+def test_rented_venues_permission_cannot_cross_branch(monkeypatch):
+    monkeypatch.setattr(branches_mod, "db", _DB(_branch()))
+
+    async def allow_permission(_current_user, _permission):
+        return None
+
+    monkeypatch.setattr(branches_mod, "require_permission", allow_permission)
+    with pytest.raises(HTTPException) as exc:
+        run(branches_mod.get_branch_venues(
+            "branch-rented",
+            current_user={"is_admin": False, "branch_id": "branch-other"},
+        ))
+
+    assert exc.value.status_code == 403
 
 
 def test_hourly_booking_calculates_duration_and_total_on_server():
