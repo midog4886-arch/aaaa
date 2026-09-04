@@ -20,6 +20,7 @@ os.environ.setdefault("SESSION_SECRET", "test-secret")
 
 from routes import invoices as inv_mod  # noqa: E402
 from routes import push_notifications as push_mod  # noqa: E402
+from routes import whatsapp as whatsapp_mod  # noqa: E402
 
 
 def run(coro, drain=True):
@@ -138,6 +139,20 @@ def push_calls(monkeypatch):
     return calls
 
 
+@pytest.fixture()
+def whatsapp_calls(monkeypatch):
+    calls = []
+
+    async def _fake_whatsapp(invoice):
+        calls.append(dict(invoice))
+        return True
+
+    monkeypatch.setattr(
+        whatsapp_mod, "queue_invoice_payment_whatsapp_notice", _fake_whatsapp
+    )
+    return calls
+
+
 def admin():
     return {"id": "u1", "user_id": "u1", "username": "admin", "name": "Admin",
             "is_admin": True, "branch_id": None, "permissions": []}
@@ -153,7 +168,7 @@ def _invoice(**over):
 
 # ── tests ────────────────────────────────────────────────────────────────────
 
-def test_pay_inserts_admin_only_bell_and_background_push(db, push_calls):
+def test_pay_inserts_admin_only_bell_and_background_push(db, push_calls, whatsapp_calls):
     db.invoices.docs.append(_invoice())
     db.branches.docs.append({"id": "b1", "name_ar": "الرياض", "name": "Riyadh"})
     out = run(inv_mod.pay_invoice("inv1", admin()))
@@ -166,6 +181,8 @@ def test_pay_inserts_admin_only_bell_and_background_push(db, push_calls):
     assert "الرياض" in bells[0]["message_ar"]
     # push ran (in background, drained by run()) and was branch-scoped
     assert push_calls and push_calls[0]["branch_id"] == "b1"
+    assert len(whatsapp_calls) == 1
+    assert whatsapp_calls[0]["id"] == "inv1"
 
 
 def test_pay_returns_even_if_push_hangs(db, monkeypatch):
@@ -204,7 +221,7 @@ def test_pay_branchless_invoice_bell_only_no_push(db, push_calls):
     assert push_calls == []  # fail closed: no cross-branch blast
 
 
-def test_pay_already_paid_400_no_second_notification(db, push_calls):
+def test_pay_already_paid_400_no_second_notification(db, push_calls, whatsapp_calls):
     db.invoices.docs.append(_invoice())
     run(inv_mod.pay_invoice("inv1", admin()))
     with pytest.raises(HTTPException) as e:
@@ -212,6 +229,7 @@ def test_pay_already_paid_400_no_second_notification(db, push_calls):
     assert e.value.status_code == 400
     assert len(db.notifications.docs) == 1
     assert len(push_calls) == 1
+    assert len(whatsapp_calls) == 1
 
 
 def test_pay_unknown_invoice_404(db):

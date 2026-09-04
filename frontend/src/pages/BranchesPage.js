@@ -71,6 +71,8 @@ const initialFormData = () => ({
   whatsapp_media_templates_confirmed: false,
   whatsapp_attendance_template_name: '',
   whatsapp_attendance_template_confirmed: false,
+  whatsapp_payment_template_name: '',
+  whatsapp_payment_template_confirmed: false,
   whatsapp_token_configured: false,
   whatsapp_app_secret_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
@@ -221,7 +223,9 @@ const BranchesPage = () => {
           media_templates_confirmed: !!formData.whatsapp_media_templates_confirmed
           ,
           attendance_template_name: formData.whatsapp_attendance_template_name || '',
-          attendance_template_confirmed: !!formData.whatsapp_attendance_template_confirmed
+          attendance_template_confirmed: !!formData.whatsapp_attendance_template_confirmed,
+          payment_template_name: formData.whatsapp_payment_template_name || '',
+          payment_template_confirmed: !!formData.whatsapp_payment_template_confirmed
         });
       }
       loadBranches();
@@ -284,6 +288,8 @@ const BranchesPage = () => {
       whatsapp_media_templates_confirmed: !!cloud.media_templates_confirmed,
       whatsapp_attendance_template_name: cloud.attendance_template_name || '',
       whatsapp_attendance_template_confirmed: !!cloud.attendance_template_confirmed,
+      whatsapp_payment_template_name: cloud.payment_template_name || '',
+      whatsapp_payment_template_confirmed: !!cloud.payment_template_confirmed,
       whatsapp_token_configured: !!cloud.token_configured,
       whatsapp_app_secret_configured: !!cloud.app_secret_configured,
       // Missing/empty working_days means the branch was created before this
@@ -1138,6 +1144,45 @@ const BranchesPage = () => {
                       {language === 'ar'
                         ? 'تفعيل إرسال تنبيه واتساب تلقائياً عند تسجيل الحضور لهذا الفرع.'
                         : 'Enable automatic WhatsApp notifications when attendance is recorded for this branch.'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-3">
+                  <p className="text-sm font-bold text-amber-900">
+                    {language === 'ar' ? 'قالب تأكيد دفع الفاتورة' : 'Invoice payment confirmation template'}
+                  </p>
+                  <p className="text-xs text-amber-800">
+                    {language === 'ar'
+                      ? 'أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}} داخل Body. سيضع النظام داخله اسم العميل ورقم الفاتورة والبنود والخصم والضريبة والإجمالي المدفوع.'
+                      : 'Create an approved Meta template with one body variable {{1}}. The system inserts the customer, invoice number, items, discount, VAT, and paid total.'}
+                  </p>
+                  <div className="space-y-1">
+                    <Label>{language === 'ar' ? 'اسم قالب الدفع' : 'Payment template name'}</Label>
+                    <Input
+                      value={formData.whatsapp_payment_template_name}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_payment_template_name: e.target.value
+                      })}
+                      placeholder="invoice_payment_received"
+                      dir="ltr"
+                    />
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-amber-900">
+                    <input
+                      type="checkbox"
+                      checked={formData.whatsapp_payment_template_confirmed}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_payment_template_confirmed: e.target.checked
+                      })}
+                      className="w-4 h-4 mt-0.5 accent-amber-600"
+                    />
+                    <span>
+                      {language === 'ar'
+                        ? 'تفعيل إرسال تأكيد واتساب تلقائياً عند دفع فاتورة هذا الفرع.'
+                        : 'Enable automatic WhatsApp confirmation when an invoice for this branch is paid.'}
                     </span>
                   </label>
                 </div>

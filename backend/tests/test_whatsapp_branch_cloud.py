@@ -539,3 +539,114 @@ def test_attendance_notice_uses_branch_specific_template(monkeypatch):
     assert "محمد" in sent[0][1]
     assert "الكاراتيه" in sent[0][1]
     assert sent[0][2] == "attendance_recorded"
+
+
+def test_invoice_payment_notice_uses_customer_phone_and_branch_template(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "payment_template_name": "invoice_payment_received",
+        "payment_template_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(phone, message, config):
+        sent.append((phone, message, config.get("message_template_name")))
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_send)
+    result = run(whatsapp_mod.send_invoice_payment_whatsapp_notice({
+        "id": "invoice-1",
+        "invoice_number": "230955",
+        "customer_name_ar": "عبدالعزيز",
+        "customer_phone": "0501234567",
+        "items": [{"activity_name": "الكاراتيه", "fee": 500}],
+        "subtotal": 500,
+        "vat_amount": 74.7,
+        "discount": 25,
+        "total": 549.7,
+        "branch_id": "branch-a",
+    }))
+
+    assert result is True
+    assert sent[0][0] == "966501234567@s.whatsapp.net"
+    assert "230955" in sent[0][1]
+    assert "الكاراتيه" in sent[0][1]
+    assert "ضريبة القيمة المضافة" in sent[0][1]
+    assert "549.7" in sent[0][1]
+    assert sent[0][2] == "invoice_payment_received"
+
+
+def test_stale_processing_payment_notice_is_reclaimed_after_restart(monkeypatch):
+    class Result:
+        def __init__(self, modified_count):
+            self.modified_count = modified_count
+
+    class Cursor:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def sort(self, *_args):
+            return self
+
+        async def to_list(self, _limit):
+            return [dict(row) for row in self.rows]
+
+    class Outbox:
+        def __init__(self):
+            self.rows = [{
+                "invoice_id": "invoice-stale",
+                "invoice": {"id": "invoice-stale", "branch_id": "branch-a"},
+                "status": "processing",
+                "attempts": 1,
+                "claim_token": "dead-worker",
+                "claimed_at": "2000-01-01T00:00:00+00:00",
+                "created_at": "2000-01-01T00:00:00+00:00",
+            }]
+
+        async def create_index(self, *_args, **_kwargs):
+            return "invoice_id_1"
+
+        def find(self, _query, _projection=None):
+            return Cursor(self.rows)
+
+        async def update_one(self, query, update):
+            row = self.rows[0]
+            for key, expected in query.items():
+                actual = row.get(key)
+                if isinstance(expected, dict):
+                    if "$in" in expected and actual not in expected["$in"]:
+                        return Result(0)
+                    if "$lt" in expected and not actual < expected["$lt"]:
+                        return Result(0)
+                elif actual != expected:
+                    return Result(0)
+            row.update(update.get("$set", {}))
+            for key, value in update.get("$inc", {}).items():
+                row[key] = row.get(key, 0) + value
+            return Result(1)
+
+    outbox = Outbox()
+
+    class OutboxDB:
+        def __getitem__(self, _name):
+            return outbox
+
+    monkeypatch.setattr(whatsapp_mod, "_db", OutboxDB())
+
+    async def fake_send(_invoice):
+        return True
+
+    monkeypatch.setattr(
+        whatsapp_mod, "send_invoice_payment_whatsapp_notice", fake_send
+    )
+    delivered = run(whatsapp_mod.process_invoice_payment_whatsapp_outbox())
+
+    assert delivered == 1
+    assert outbox.rows[0]["status"] == "delivered"
+    assert outbox.rows[0]["attempts"] == 2
+    assert outbox.rows[0]["claim_token"] != "dead-worker"

@@ -2155,6 +2155,30 @@ async def migrate_registration_forms_member_codes(current_user: dict = Depends(g
 
 # ============ STRIPE PAYMENT ROUTES ============
 
+async def _mark_online_invoice_paid(invoice_id: str) -> bool:
+    """Atomically mark one online invoice paid and queue its WhatsApp receipt."""
+    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not invoice:
+        return False
+    paid_at = datetime.now(timezone.utc).isoformat()
+    result = await db.invoices.update_one(
+        {"id": invoice_id, "status": {"$ne": "paid"}},
+        {"$set": {"status": "paid", "paid_at": paid_at, "payment_method": "stripe"}},
+    )
+    if getattr(result, "modified_count", 0) == 0:
+        return False
+    try:
+        from routes.whatsapp import queue_invoice_payment_whatsapp_notice
+        await queue_invoice_payment_whatsapp_notice({
+            **invoice,
+            "status": "paid",
+            "paid_at": paid_at,
+            "payment_method": "stripe",
+        })
+    except Exception as exc:
+        logger.warning("Could not queue online payment WhatsApp: %s", type(exc).__name__)
+    return True
+
 @api_router.post("/payments/checkout")
 async def create_checkout_session(
     request: Request,
@@ -2228,10 +2252,7 @@ async def get_payment_status(session_id: str, current_user: dict = Depends(get_c
     
     # If payment is successful, update invoice
     if checkout_status.payment_status == "paid":
-        await db.invoices.update_one(
-            {"id": transaction["invoice_id"]},
-            {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat(), "payment_method": "stripe"}}
-        )
+        await _mark_online_invoice_paid(transaction["invoice_id"])
     
     return {
         "status": checkout_status.status,
@@ -2254,10 +2275,7 @@ async def stripe_webhook(request: Request):
         if webhook_response.payment_status == "paid":
             invoice_id = webhook_response.metadata.get("invoice_id")
             if invoice_id:
-                await db.invoices.update_one(
-                    {"id": invoice_id},
-                    {"$set": {"status": "paid", "paid_at": datetime.now(timezone.utc).isoformat(), "payment_method": "stripe"}}
-                )
+                await _mark_online_invoice_paid(invoice_id)
                 await db.payment_transactions.update_one(
                     {"session_id": webhook_response.session_id},
                     {"$set": {"status": "complete", "payment_status": "paid"}}

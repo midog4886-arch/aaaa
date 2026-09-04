@@ -547,6 +547,15 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     )
     if getattr(pay_result, "modified_count", 1) == 0:
         raise HTTPException(status_code=400, detail="Invoice already paid")
+    # Customer WhatsApp receipt runs outside the payment critical path. It is
+    # fail-closed unless this invoice's branch has an enabled, approved template.
+    try:
+        from .whatsapp import queue_invoice_payment_whatsapp_notice
+        await queue_invoice_payment_whatsapp_notice({
+            **invoice, "status": "paid", "paid_at": paid_at
+        })
+    except Exception as exc:
+        logger.warning("Could not schedule invoice payment WhatsApp: %s", type(exc).__name__)
     try:
         from utils.audit import log_audit
         await log_audit(

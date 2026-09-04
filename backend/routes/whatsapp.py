@@ -148,6 +148,7 @@ def _normalize_offsets(settings: dict) -> List[dict]:
 _db = None
 _scheduler_started = False
 _reminders_running = False
+_invoice_payment_outbox_started = False
 
 
 def set_database(db):
@@ -361,6 +362,181 @@ async def send_attendance_whatsapp_notice(
     except Exception as exc:
         logger.warning("Attendance WhatsApp notice failed: %s", type(exc).__name__)
         return False
+
+
+async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
+    """Send a paid-invoice receipt notice through the invoice branch's Meta template."""
+    try:
+        branch_id = invoice.get("branch_id")
+        if not branch_id:
+            return False
+        phone = invoice.get("customer_phone") or ""
+        if not phone and invoice.get("member_id"):
+            member = await _db["members"].find_one(
+                {"id": invoice["member_id"], "branch_id": branch_id},
+                {"_id": 0, "phone": 1},
+            )
+            phone = (member or {}).get("phone") or ""
+        phone = _format_cloud_phone(phone)
+        config = await _get_branch_cloud_config(branch_id)
+        if not (
+            phone
+            and config
+            and config.get("enabled")
+            and config.get("phone_number_id")
+            and config.get("access_token_encrypted")
+            and config.get("payment_template_name")
+            and config.get("payment_template_confirmed")
+        ):
+            return False
+        customer = invoice.get("customer_name_ar") or invoice.get("customer_name") or ""
+        invoice_number = invoice.get("invoice_number") or invoice.get("id") or ""
+        item_lines = []
+        for item in (invoice.get("items") or [])[:12]:
+            name = item.get("activity_name") or item.get("name") or "بند"
+            quantity = item.get("quantity", 1) or 1
+            fee = item.get("fee", 0) or 0
+            quantity_text = f" × {quantity}" if quantity != 1 else ""
+            item_lines.append(f"• {name}{quantity_text}: {fee} ر.س")
+        items_text = "\n".join(item_lines) or "• تفاصيل الفاتورة محفوظة في حسابك"
+        if len(invoice.get("items") or []) > 12:
+            items_text += "\n• بنود إضافية موجودة في الفاتورة"
+        discount_line = (
+            f"\nالخصم: {invoice.get('discount', 0)} ر.س"
+            if (invoice.get("discount", 0) or 0) > 0 else ""
+        )
+        message = (
+            f"تم استلام دفعتك بنجاح ✅\n"
+            f"العميل: {customer}\n"
+            f"رقم الفاتورة: {invoice_number}\n\n"
+            f"البنود:\n{items_text}\n\n"
+            f"المجموع الفرعي: {invoice.get('subtotal', 0)} ر.س"
+            f"{discount_line}\n"
+            f"ضريبة القيمة المضافة: {invoice.get('vat_amount', 0)} ر.س\n"
+            f"الإجمالي المدفوع: {invoice.get('total', 0)} ر.س"
+        )
+        payment_config = dict(config)
+        payment_config["message_template_name"] = config["payment_template_name"]
+        success = await _send_meta_cloud_message(phone, message, payment_config)
+        try:
+            await _db["whatsapp_send_log"].insert_one({
+                "phone": phone.split("@")[0],
+                "message": message,
+                "success": success,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "type": "invoice_payment_cloud",
+                "branch_id": branch_id,
+                "member_id": invoice.get("member_id"),
+                "invoice_id": invoice.get("id"),
+                "transport": "meta_cloud",
+            })
+        except Exception as exc:
+            logger.warning("Could not save payment WhatsApp log: %s", type(exc).__name__)
+        return success
+    except Exception as exc:
+        logger.warning("Invoice payment WhatsApp notice failed: %s", type(exc).__name__)
+        return False
+
+
+async def _deliver_invoice_payment_outbox_item(item: dict) -> bool:
+    coll = _db["whatsapp_invoice_payment_outbox"]
+    claim_token = str(uuid.uuid4())
+    if item.get("status") == "processing":
+        claim_filter = {
+            "invoice_id": item["invoice_id"],
+            "status": "processing",
+            "claim_token": item.get("claim_token"),
+            "claimed_at": item.get("claimed_at"),
+            "attempts": {"$lt": 5},
+        }
+    else:
+        claim_filter = {
+            "invoice_id": item["invoice_id"],
+            "status": {"$in": ["pending", "failed"]},
+            "attempts": {"$lt": 5},
+        }
+    claim = await coll.update_one(
+        claim_filter,
+        {"$set": {
+            "status": "processing",
+            "claim_token": claim_token,
+            "claimed_at": datetime.now(timezone.utc).isoformat(),
+            "last_attempt_at": datetime.now(timezone.utc).isoformat(),
+        }, "$inc": {"attempts": 1}},
+    )
+    if getattr(claim, "modified_count", 0) == 0:
+        return False
+    success = await send_invoice_payment_whatsapp_notice(item.get("invoice") or {})
+    await coll.update_one(
+        {
+            "invoice_id": item["invoice_id"],
+            "status": "processing",
+            "claim_token": claim_token,
+        },
+        {"$set": {
+            "status": "delivered" if success else "failed",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    return success
+
+
+async def process_invoice_payment_whatsapp_outbox() -> int:
+    """Deliver/retry durable paid-invoice notices for the current tenant."""
+    if _db is None:
+        return 0
+    coll = _db["whatsapp_invoice_payment_outbox"]
+    await coll.create_index("invoice_id", unique=True)
+    lease_cutoff = (
+        datetime.now(timezone.utc) - timedelta(minutes=2)
+    ).isoformat()
+    items = await coll.find(
+        {
+            "attempts": {"$lt": 5},
+            "$or": [
+                {"status": {"$in": ["pending", "failed"]}},
+                {"status": "processing", "claimed_at": {"$lt": lease_cutoff}},
+            ],
+        },
+        {"_id": 0},
+    ).sort("created_at", 1).to_list(20)
+    delivered = 0
+    for item in items:
+        if await _deliver_invoice_payment_outbox_item(item):
+            delivered += 1
+    return delivered
+
+
+async def queue_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
+    """Durably claim one receipt notice per invoice, then dispatch in background."""
+    if _db is None or not invoice.get("id") or not invoice.get("branch_id"):
+        return False
+    config = await _get_branch_cloud_config(invoice["branch_id"])
+    if not (
+        config
+        and config.get("enabled")
+        and config.get("phone_number_id")
+        and config.get("access_token_encrypted")
+        and config.get("payment_template_name")
+        and config.get("payment_template_confirmed")
+    ):
+        return False
+    coll = _db["whatsapp_invoice_payment_outbox"]
+    await coll.create_index("invoice_id", unique=True)
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        await coll.insert_one({
+            "invoice_id": invoice["id"],
+            "invoice": dict(invoice),
+            "status": "pending",
+            "attempts": 0,
+            "created_at": now,
+            "updated_at": now,
+        })
+    except DuplicateKeyError:
+        return False
+    asyncio.create_task(process_invoice_payment_whatsapp_outbox())
+    return True
 
 
 async def _send_wa_message_for_branch(
@@ -895,12 +1071,41 @@ async def _admin_alert_loop():
             await asyncio.sleep(300)
 
 
+async def _invoice_payment_outbox_loop():
+    global _invoice_payment_outbox_started
+    _invoice_payment_outbox_started = True
+    logger.info("WhatsApp invoice-payment outbox started (every 60s)")
+    from utils.tenant import list_active_tenants, set_current_tenant, reset_current_tenant
+    while True:
+        try:
+            await asyncio.sleep(60)
+            tenants = await list_active_tenants()
+            for tenant in tenants:
+                token = set_current_tenant(tenant)
+                try:
+                    await process_invoice_payment_whatsapp_outbox()
+                except Exception as exc:
+                    logger.error(
+                        "Payment WhatsApp outbox tenant=%s error: %s",
+                        tenant.get("slug"), type(exc).__name__,
+                    )
+                finally:
+                    reset_current_tenant(token)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.error("Payment WhatsApp outbox loop error: %s", type(exc).__name__)
+            await asyncio.sleep(60)
+
+
 def start_scheduler():
     global _scheduler_started
     if not _scheduler_started:
         asyncio.ensure_future(_scheduler_loop())
     if not _admin_alert_started:
         asyncio.ensure_future(_admin_alert_loop())
+    if not _invoice_payment_outbox_started:
+        asyncio.ensure_future(_invoice_payment_outbox_loop())
 
 
 @router.get("/status")
@@ -1045,6 +1250,8 @@ class BranchCloudConfigUpdate(BaseModel):
     media_templates_confirmed: bool = False
     attendance_template_name: Optional[str] = ""
     attendance_template_confirmed: bool = False
+    payment_template_name: Optional[str] = ""
+    payment_template_confirmed: bool = False
 
 
 def _require_admin(current_user: dict):
@@ -1080,6 +1287,8 @@ async def get_branch_cloud_config(
             "media_templates_confirmed": False,
             "attendance_template_name": "",
             "attendance_template_confirmed": False,
+            "payment_template_name": "",
+            "payment_template_confirmed": False,
             "token_configured": False,
         }
     return {
@@ -1100,6 +1309,8 @@ async def get_branch_cloud_config(
         "media_templates_confirmed": bool(config.get("media_templates_confirmed")),
         "attendance_template_name": config.get("attendance_template_name") or "",
         "attendance_template_confirmed": bool(config.get("attendance_template_confirmed")),
+        "payment_template_name": config.get("payment_template_name") or "",
+        "payment_template_confirmed": bool(config.get("payment_template_confirmed")),
         "token_configured": bool(config.get("access_token_encrypted")),
         "updated_at": config.get("updated_at"),
     }
@@ -1142,6 +1353,8 @@ async def update_branch_cloud_config(
         "media_templates_confirmed": bool(data.media_templates_confirmed),
         "attendance_template_name": (data.attendance_template_name or "").strip(),
         "attendance_template_confirmed": bool(data.attendance_template_confirmed),
+        "payment_template_name": (data.payment_template_name or "").strip(),
+        "payment_template_confirmed": bool(data.payment_template_confirmed),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": current_user.get("user_id") or current_user.get("id"),
     }

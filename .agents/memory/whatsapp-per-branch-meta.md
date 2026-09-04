@@ -16,3 +16,5 @@ Inbound Cloud chat webhooks are tenant-bound by a slug in the callback URL, then
 Proactive bulk image/PDF sends require separate approved Meta templates: IMAGE or DOCUMENT header plus exactly one Body variable {{1}}. Upload media once per batch, then reuse its Meta media ID. Bound reads before buffering, validate magic bytes, normalize filenames, serialize per branch, and idempotency-key every batch.
 
 Attendance WhatsApp alerts use a dedicated per-branch approved template with one Body variable {{1}}. Normalize local phones before Meta send, never block check-in on send failure, notify only present/new transitions, and use the scanning branch for VIP attendance.
+
+Paid-invoice WhatsApp receipts use a dedicated one-variable template and a per-tenant durable outbox keyed uniquely by invoice. Queue only after the first paid transition; lease/fence claims so interrupted sends recover safely.
