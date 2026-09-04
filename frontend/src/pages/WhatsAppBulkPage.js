@@ -1,13 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User } from 'lucide-react';
+import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud } from 'lucide-react';
+import { branchesAPI, whatsappAPI } from '../services/api';
 
 const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
 const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[d] || d);
@@ -109,6 +112,7 @@ const rowsToItems = (rows) => {
 
 export default function WhatsAppBulkPage() {
   const { language } = useLanguage();
+  const { selectedBranchId } = useAuth();
   const ar = language === 'ar';
   const t = (a, e) => ar ? a : e;
 
@@ -121,11 +125,52 @@ export default function WhatsAppBulkPage() {
   const [defaultName, setDefaultName] = useState('');
   const [waQueue, setWaQueue] = useState([]);
   const [waIdx, setWaIdx] = useState(0);
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState(selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '');
+  const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, template_configured: false });
+  const [cloudSending, setCloudSending] = useState(false);
 
   const validItems = useMemo(() => items.filter(i => i.valid), [items]);
   const invalidCount = items.length - validItems.length;
   const namedCount = useMemo(() => items.filter(i => i.name).length, [items]);
   const usesName = nameTokenRe().test(message);
+
+  useEffect(() => {
+    let cancelled = false;
+    branchesAPI.getAll()
+      .then(response => {
+        if (cancelled) return;
+        const list = Array.isArray(response.data) ? response.data : [];
+        setBranches(list);
+        setBranchId(current => {
+          if (current && list.some(branch => branch.id === current)) return current;
+          const preferred = selectedBranchId && selectedBranchId !== 'all'
+            ? list.find(branch => branch.id === selectedBranchId)?.id
+            : '';
+          return preferred || list[0]?.id || '';
+        });
+      })
+      .catch(() => toast.error(t('تعذر تحميل الفروع', 'Could not load branches')));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!branchId) {
+      setCloudStatus({ loading: false, enabled: false, template_configured: false });
+      return undefined;
+    }
+    setCloudStatus(current => ({ ...current, loading: true }));
+    whatsappAPI.getBranchCloudAvailability(branchId)
+      .then(response => {
+        if (!cancelled) setCloudStatus({ loading: false, ...response.data });
+      })
+      .catch(() => {
+        if (!cancelled) setCloudStatus({ loading: false, enabled: false, template_configured: false });
+      });
+    return () => { cancelled = true; };
+  }, [branchId]);
 
   // Replace the {الاسم} token with this recipient's name (or the default name).
   // When no name is available, drop the token and tidy up stray spaces/commas.
@@ -244,6 +289,52 @@ export default function WhatsAppBulkPage() {
     toast.success(t(`تم فتح 1 من ${queue.length}. اضغط "فتح التالي" للمتابعة`, `Opened 1 of ${queue.length}. Click "Open Next" to continue`));
   };
 
+  const sendViaCloudApi = async () => {
+    if (!branchId) {
+      toast.error(t('اختر الفرع الذي سيتم الإرسال من رقمه', 'Select the sending branch'));
+      return;
+    }
+    if (!cloudStatus.enabled || !cloudStatus.template_configured) {
+      toast.error(t('API أو قالب Meta غير مهيأ لهذا الفرع', 'Meta API or template is not configured for this branch'));
+      return;
+    }
+    if (!validItems.length || !message.trim()) {
+      toast.error(t('أضف أرقاماً واكتب الرسالة أولاً', 'Add recipients and enter a message first'));
+      return;
+    }
+    if (validItems.length > 200) {
+      toast.error(t('الحد الأقصى للإرسال التلقائي هو 200 رقم في الدفعة', 'Automatic sending is limited to 200 recipients per batch'));
+      return;
+    }
+    const branchName = branches.find(branch => branch.id === branchId)?.name || '';
+    if (!window.confirm(t(
+      `سيتم إرسال ${validItems.length} رسالة تلقائياً من API فرع «${branchName}». هل تريد المتابعة؟`,
+      `Send ${validItems.length} messages automatically using the “${branchName}” branch API?`
+    ))) return;
+
+    setCloudSending(true);
+    try {
+      const recipients = validItems.map(item => ({
+        phone: item.phone,
+        message: personalize(message.trim(), item.name)
+      }));
+      const response = await whatsappAPI.sendBranchCloudBulk(branchId, recipients);
+      const { sent = 0, failed = 0 } = response.data || {};
+      if (failed > 0) {
+        toast.warning(t(
+          `تم إرسال ${sent} رسالة، وفشل إرسال ${failed}`,
+          `${sent} sent; ${failed} failed`
+        ));
+      } else {
+        toast.success(t(`تم إرسال ${sent} رسالة بنجاح`, `${sent} messages sent successfully`));
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('فشل الإرسال عبر API الفرع', 'Branch API sending failed'));
+    } finally {
+      setCloudSending(false);
+    }
+  };
+
   const sendNext = () => {
     const next = waQueue[waIdx];
     if (!next) { setWaQueue([]); setWaIdx(0); return; }
@@ -310,6 +401,52 @@ export default function WhatsAppBulkPage() {
                 {t('مسح المربع', 'Clear box')}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-emerald-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Cloud className="w-5 h-5 text-emerald-600" />
+              {t('الإرسال من API الفرع', 'Send using branch API')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  {t('الفرع المرسل', 'Sending branch')}
+                </label>
+                <Select value={branchId} onValueChange={setBranchId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('اختر الفرع', 'Select branch')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map(branch => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="pb-1">
+                {cloudStatus.loading ? (
+                  <Badge variant="outline"><Loader2 className="w-3 h-3 me-1 animate-spin" />{t('جاري التحقق', 'Checking')}</Badge>
+                ) : cloudStatus.enabled && cloudStatus.template_configured ? (
+                  <Badge className="bg-emerald-100 text-emerald-800">{t('API والقالب جاهزان', 'API and template ready')}</Badge>
+                ) : (
+                  <Badge className="bg-amber-100 text-amber-800">{t('API أو القالب غير مهيأ', 'API or template not configured')}</Badge>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t(
+                'الأرقام الملصقة غير مرتبطة بأعضاء، لذلك يجب تحديد الفرع. ستُرسل الرسائل تلقائياً من رقم Meta الخاص بالفرع المحدد.',
+                'Pasted numbers are not linked to members, so select a branch. Messages will be sent automatically from that branch’s Meta number.'
+              )}
+            </p>
           </CardContent>
         </Card>
 
@@ -469,10 +606,21 @@ export default function WhatsAppBulkPage() {
               </div>
             )}
 
-            <Button onClick={startSend} disabled={!validItems.length || waQueue.length > 0} className="bg-green-600 hover:bg-green-700">
+            <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={sendViaCloudApi}
+              disabled={!validItems.length || !message.trim() || cloudSending || cloudStatus.loading || !cloudStatus.enabled || !cloudStatus.template_configured}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
               <Send className="w-4 h-4 ml-1" />
-              {t(`إرسال إلى ${validItems.length} رقم عبر واتساب`, `Send to ${validItems.length} number(s) via WhatsApp`)}
+              {cloudSending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}
+              {t(`إرسال تلقائي إلى ${validItems.length} رقم`, `Automatically send to ${validItems.length}`)}
             </Button>
+            <Button onClick={startSend} variant="outline" disabled={!validItems.length || waQueue.length > 0 || cloudSending}>
+              <MessageCircle className="w-4 h-4 ml-1" />
+              {t('فتح واتساب يدوياً', 'Open WhatsApp manually')}
+            </Button>
+            </div>
           </CardContent>
         </Card>
 

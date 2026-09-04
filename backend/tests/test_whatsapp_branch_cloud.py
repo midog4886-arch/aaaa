@@ -33,6 +33,9 @@ class _Collection:
         stored = next(item for item in self.rows if all(item.get(k) == v for k, v in query.items()))
         stored.update(update.get("$set", {}))
 
+    async def insert_one(self, row):
+        self.rows.append(dict(row))
+
 
 class _DB:
     def __init__(self):
@@ -162,3 +165,104 @@ def test_cloud_connection_test_normalizes_local_saudi_phone(monkeypatch):
 
     assert result == {"success": True}
     assert seen[0][0] == "966501234567@s.whatsapp.net"
+
+
+def test_bulk_cloud_send_uses_selected_branch_and_messages(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-b",
+        "enabled": True,
+        "phone_number_id": "222",
+        "access_token_encrypted": "encrypted",
+        "message_template_name": "academy_notification",
+        "single_variable_template_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    seen = []
+
+    async def fake_meta(phone, message, config):
+        seen.append((phone, message, config["branch_id"]))
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_meta)
+    result = run(whatsapp_mod.send_branch_cloud_bulk(
+        whatsapp_mod.BulkCloudSendRequest(
+            branch_id="branch-b",
+            recipients=[
+                {"phone": "0501234567", "message": "أهلاً محمد"},
+                {"phone": "0509876543", "message": "أهلاً سارة"},
+            ],
+        ),
+        current_user={"is_admin": True},
+    ))
+
+    assert result == {
+        "success": True,
+        "total": 2,
+        "sent": 2,
+        "failed": 0,
+        "failed_indices": [],
+    }
+    assert seen == [
+        ("966501234567@s.whatsapp.net", "أهلاً محمد", "branch-b"),
+        ("966509876543@s.whatsapp.net", "أهلاً سارة", "branch-b"),
+    ]
+
+
+def test_bulk_cloud_accepts_messages_permission_and_preserves_international_numbers(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "message_template_name": "academy_notification",
+        "single_variable_template_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    seen = []
+
+    async def fake_meta(phone, message, config):
+        seen.append(phone)
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_meta)
+    result = run(whatsapp_mod.send_branch_cloud_bulk(
+        whatsapp_mod.BulkCloudSendRequest(
+            branch_id="branch-a",
+            recipients=[
+                {"phone": "201001234567", "message": "Egypt"},
+                {"phone": "+14155552671", "message": "International"},
+            ],
+        ),
+        current_user={
+            "is_admin": False,
+            "permissions": ["messages"],
+            "branch_id": "branch-a",
+        },
+    ))
+
+    assert result["sent"] == 2
+    assert seen == [
+        "201001234567@s.whatsapp.net",
+        "14155552671@s.whatsapp.net",
+    ]
+
+
+def test_bulk_cloud_send_rejects_branch_outside_user_scope(monkeypatch):
+    monkeypatch.setattr(whatsapp_mod, "_db", _DB())
+    try:
+        run(whatsapp_mod.send_branch_cloud_bulk(
+            whatsapp_mod.BulkCloudSendRequest(
+                branch_id="branch-b",
+                recipients=[{"phone": "0501234567", "message": "hello"}],
+            ),
+            current_user={
+                "is_admin": False,
+                "permissions": ["messages"],
+                "branch_id": "branch-a",
+            },
+        ))
+        assert False, "Expected branch access denial"
+    except Exception as exc:
+        assert getattr(exc, "status_code", None) == 403

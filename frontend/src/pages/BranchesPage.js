@@ -63,6 +63,7 @@ const initialFormData = () => ({
   whatsapp_graph_api_version: 'v23.0',
   whatsapp_meta_template_name: '',
   whatsapp_meta_template_language: 'ar',
+  whatsapp_single_variable_template_confirmed: false,
   whatsapp_token_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
   branch_type: 'permanent',
@@ -201,7 +202,8 @@ const BranchesPage = () => {
           graph_api_version: formData.whatsapp_graph_api_version || 'v23.0'
           ,
           message_template_name: formData.whatsapp_meta_template_name || '',
-          template_language: formData.whatsapp_meta_template_language || 'ar'
+          template_language: formData.whatsapp_meta_template_language || 'ar',
+          single_variable_template_confirmed: !!formData.whatsapp_single_variable_template_confirmed
         });
       }
       loadBranches();
@@ -251,6 +253,7 @@ const BranchesPage = () => {
       whatsapp_graph_api_version: cloud.graph_api_version || 'v23.0',
       whatsapp_meta_template_name: cloud.message_template_name || '',
       whatsapp_meta_template_language: cloud.template_language || 'ar',
+      whatsapp_single_variable_template_confirmed: !!cloud.single_variable_template_confirmed,
       whatsapp_token_configured: !!cloud.token_configured,
       // Missing/empty working_days means the branch was created before this
       // feature -> treat it as open all week.
@@ -956,6 +959,22 @@ const BranchesPage = () => {
                     ? 'لرسائل التجديد التلقائية: أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}}، ثم اكتب اسمه هنا. سيُرسل نص الرسالة الكامل داخل هذا المتغير.'
                     : 'For proactive reminders, create an approved Meta template with one body text variable {{1}}, then enter its name here.'}
                 </p>
+                <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                  <input
+                    type="checkbox"
+                    checked={formData.whatsapp_single_variable_template_confirmed}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      whatsapp_single_variable_template_confirmed: e.target.checked
+                    })}
+                    className="w-4 h-4 mt-0.5 accent-emerald-600"
+                  />
+                  <span>
+                    {language === 'ar'
+                      ? 'أؤكد أن القالب معتمد في Meta ويحتوي متغيراً واحداً فقط داخل نص الرسالة {{1}}، ولا يتطلب متغيرات في العنوان أو الأزرار.'
+                      : 'I confirm this Meta-approved template has exactly one body variable {{1}} and requires no header or button variables.'}
+                  </span>
+                </label>
 
                 {editingBranch && formData.whatsapp_token_configured && (
                   <Button

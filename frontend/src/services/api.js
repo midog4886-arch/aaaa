@@ -767,6 +767,13 @@ export const whatsappAPI = {
     const params = options.logOnly ? '?log_only=true' : '';
     return axios.post(`${API}/whatsapp/renewal-reminders/send${params}`, { items });
   },
+  getBranchCloudAvailability: (branchId) =>
+    axios.get(`${API}/whatsapp/branch-cloud/${branchId}/availability`),
+  sendBranchCloudBulk: (branchId, recipients) =>
+    axios.post(`${API}/whatsapp/branch-cloud/send-bulk`, {
+      branch_id: branchId,
+      recipients
+    }),
   getReminderHistory: (filters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {

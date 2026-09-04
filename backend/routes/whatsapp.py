@@ -24,6 +24,14 @@ def _require_whatsapp_access(current_user: dict):
         raise HTTPException(status_code=403, detail="WhatsApp access required")
 
 
+def _require_bulk_whatsapp_access(current_user: dict):
+    if current_user.get("is_admin", False):
+        return
+    permissions = current_user.get("permissions") or []
+    if "messages" not in permissions and "whatsapp" not in permissions:
+        raise HTTPException(status_code=403, detail="Messages access required")
+
+
 def _require_renewals_or_whatsapp_access(current_user: dict):
     """Renewals page needs read/send without full WhatsApp settings access."""
     if current_user.get("is_admin", False):
@@ -147,6 +155,25 @@ def _format_phone(phone: str) -> str:
         digits = "966" + digits[1:]
     elif not digits.startswith("966"):
         digits = "966" + digits
+    return digits + "@s.whatsapp.net"
+
+
+def _format_cloud_phone(phone: str) -> str:
+    """Normalize local Saudi/Egyptian input without corrupting E.164 numbers."""
+    if not phone:
+        return ""
+    normalized = str(phone).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789"))
+    digits = "".join(filter(str.isdigit, normalized))
+    if digits.startswith("00"):
+        digits = digits[2:]
+    if digits.startswith("05") and len(digits) == 10:
+        digits = "966" + digits[1:]
+    elif digits.startswith("5") and len(digits) == 9:
+        digits = "966" + digits
+    elif digits.startswith("01") and len(digits) == 11:
+        digits = "20" + digits[1:]
+    if not (9 <= len(digits) <= 15) or digits.startswith("0"):
+        return ""
     return digits + "@s.whatsapp.net"
 
 
@@ -929,6 +956,7 @@ class BranchCloudConfigUpdate(BaseModel):
     graph_api_version: str = "v23.0"
     message_template_name: Optional[str] = ""
     template_language: str = "ar"
+    single_variable_template_confirmed: bool = False
 
 
 def _require_admin(current_user: dict):
@@ -956,6 +984,7 @@ async def get_branch_cloud_config(
             "graph_api_version": "v23.0",
             "message_template_name": "",
             "template_language": "ar",
+            "single_variable_template_confirmed": False,
             "token_configured": False,
         }
     return {
@@ -966,6 +995,9 @@ async def get_branch_cloud_config(
         "graph_api_version": config.get("graph_api_version") or "v23.0",
         "message_template_name": config.get("message_template_name") or "",
         "template_language": config.get("template_language") or "ar",
+        "single_variable_template_confirmed": bool(
+            config.get("single_variable_template_confirmed")
+        ),
         "token_configured": bool(config.get("access_token_encrypted")),
         "updated_at": config.get("updated_at"),
     }
@@ -999,6 +1031,9 @@ async def update_branch_cloud_config(
         "graph_api_version": version,
         "message_template_name": (data.message_template_name or "").strip(),
         "template_language": (data.template_language or "ar").strip(),
+        "single_variable_template_confirmed": bool(
+            data.single_variable_template_confirmed
+        ),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": current_user.get("user_id") or current_user.get("id"),
     }
@@ -1019,6 +1054,118 @@ class BranchCloudTestRequest(BaseModel):
     message: Optional[str] = None
 
 
+class BulkCloudRecipient(BaseModel):
+    phone: str
+    message: str
+
+
+class BulkCloudSendRequest(BaseModel):
+    branch_id: str
+    recipients: List[BulkCloudRecipient]
+
+
+def _assert_branch_access(current_user: dict, branch_id: str):
+    if current_user.get("is_admin", False):
+        return
+    effective_branch = require_branch_scope(current_user, branch_id)
+    if effective_branch != branch_id:
+        raise HTTPException(status_code=403, detail="Branch access denied")
+
+
+@router.get("/branch-cloud/{branch_id}/availability")
+async def get_branch_cloud_availability(
+    branch_id: str, current_user: dict = Depends(get_current_user)
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    branch = await _db["branches"].find_one({"id": branch_id}, {"_id": 1})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    config = await _get_branch_cloud_config(branch_id)
+    return {
+        "enabled": bool(
+            config
+            and config.get("enabled")
+            and config.get("phone_number_id")
+            and config.get("access_token_encrypted")
+        ),
+        "template_configured": bool(
+            config
+            and config.get("message_template_name")
+            and config.get("single_variable_template_confirmed")
+        ),
+    }
+
+
+@router.post("/branch-cloud/send-bulk")
+async def send_branch_cloud_bulk(
+    data: BulkCloudSendRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, data.branch_id)
+    if not data.recipients:
+        raise HTTPException(status_code=400, detail="No recipients supplied")
+    if len(data.recipients) > 200:
+        raise HTTPException(status_code=400, detail="Maximum 200 recipients per batch")
+    config = await _get_branch_cloud_config(data.branch_id)
+    if not (
+        config
+        and config.get("enabled")
+        and config.get("phone_number_id")
+        and config.get("access_token_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Meta WhatsApp is not configured for this branch")
+    if not (
+        config.get("message_template_name")
+        and config.get("single_variable_template_confirmed")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Confirm an approved Meta template with exactly one body variable",
+        )
+
+    semaphore = asyncio.Semaphore(5)
+
+    async def send_one(index: int, recipient: BulkCloudRecipient):
+        wa_phone = _format_cloud_phone(recipient.phone)
+        message = (recipient.message or "").strip()
+        if not wa_phone or not message or len(message) > 4096:
+            return index, False
+        async with semaphore:
+            success = await _send_meta_cloud_message(wa_phone, message, config)
+        try:
+            await _db["whatsapp_send_log"].insert_one({
+                "phone": wa_phone.split("@")[0],
+                "message": message,
+                "success": success,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "manual": True,
+                "type": "bulk_cloud",
+                "branch_id": data.branch_id,
+                "transport": "meta_cloud",
+            })
+        except Exception as exc:
+            logger.warning("Could not save bulk WhatsApp log: %s", type(exc).__name__)
+        return index, success
+
+    results = await asyncio.gather(*[
+        send_one(index, recipient)
+        for index, recipient in enumerate(data.recipients)
+    ])
+    failed_indices = [index for index, success in results if not success]
+    sent = len(results) - len(failed_indices)
+    return {
+        "success": sent > 0,
+        "total": len(results),
+        "sent": sent,
+        "failed": len(failed_indices),
+        "failed_indices": failed_indices,
+    }
+
+
 @router.post("/branch-cloud/{branch_id}/test")
 async def test_branch_cloud_config(
     branch_id: str,
@@ -1030,7 +1177,7 @@ async def test_branch_cloud_config(
     if not config or not config.get("enabled") or not config.get("access_token_encrypted"):
         raise HTTPException(status_code=400, detail="Meta WhatsApp is not configured for this branch")
     message = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"
-    wa_phone = _format_phone(data.phone)
+    wa_phone = _format_cloud_phone(data.phone)
     if not wa_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
     if await _send_meta_cloud_message(wa_phone, message, config):
