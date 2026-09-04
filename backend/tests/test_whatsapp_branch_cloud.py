@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import hmac
+import json
 
 from routes import whatsapp as whatsapp_mod
 
@@ -32,9 +35,16 @@ class _Collection:
             self.rows.append(row)
         stored = next(item for item in self.rows if all(item.get(k) == v for k, v in query.items()))
         stored.update(update.get("$set", {}))
+        for key, value in update.get("$inc", {}).items():
+            stored[key] = stored.get(key, 0) + value
+        if row is None:
+            stored.update(update.get("$setOnInsert", {}))
 
     async def insert_one(self, row):
         self.rows.append(dict(row))
+
+    async def create_index(self, *_args, **_kwargs):
+        return "test_index"
 
 
 class _DB:
@@ -146,6 +156,7 @@ def test_cloud_connection_test_normalizes_local_saudi_phone(monkeypatch):
     db["whatsapp_branch_configs"].rows.append({
         "branch_id": "branch-a",
         "enabled": True,
+        "inbox_enabled": True,
         "phone_number_id": "111",
         "access_token_encrypted": "encrypted",
     })
@@ -266,3 +277,180 @@ def test_bulk_cloud_send_rejects_branch_outside_user_scope(monkeypatch):
         assert False, "Expected branch access denial"
     except Exception as exc:
         assert getattr(exc, "status_code", None) == 403
+
+
+def test_meta_webhook_accepts_valid_signature_and_saves_branch_chat(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
+    db = _DB()
+    app_secret = "meta-app-secret"
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "inbox_enabled": True,
+        "phone_number_id": "111",
+        "app_secret_encrypted": whatsapp_mod._encrypt_access_token(app_secret),
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+
+    async def fake_tenant(_slug):
+        return whatsapp_mod.set_current_tenant({
+            "slug": "academy",
+            "db_name": "champions_academy",
+        })
+
+    monkeypatch.setattr(whatsapp_mod, "_with_webhook_tenant", fake_tenant)
+    payload = {
+        "entry": [{
+            "changes": [{
+                "field": "messages",
+                "value": {
+                    "metadata": {"phone_number_id": "111"},
+                    "contacts": [{"wa_id": "966501234567", "profile": {"name": "محمد"}}],
+                    "messages": [{
+                        "id": "wamid.inbound-1",
+                        "from": "966501234567",
+                        "timestamp": "1700000000",
+                        "type": "text",
+                        "text": {"body": "السلام عليكم"},
+                    }],
+                },
+            }],
+        }],
+    }
+    raw = json.dumps(payload).encode()
+    signature = "sha256=" + hmac.new(app_secret.encode(), raw, hashlib.sha256).hexdigest()
+
+    class _Request:
+        headers = {"x-hub-signature-256": signature}
+
+        async def body(self):
+            return raw
+
+    assert run(whatsapp_mod.receive_meta_webhook("academy", _Request())) == {"received": True}
+    saved = db["whatsapp_cloud_messages"].rows[0]
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    assert saved["meta_message_id"] == "wamid.inbound-1"
+    assert saved["branch_id"] == "branch-a"
+    assert conversation["contact_name"] == "محمد"
+    assert conversation["unread_count"] == 1
+
+
+def test_cloud_inbox_reply_inside_24_hours_uses_free_text(monkeypatch):
+    now = whatsapp_mod.datetime.now(whatsapp_mod.timezone.utc).isoformat()
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "message_template_name": "academy_notification",
+        "single_variable_template_confirmed": True,
+    })
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-a:966501234567",
+        "branch_id": "branch-a",
+        "phone": "966501234567",
+        "last_inbound_at": now,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    seen = []
+
+    async def fake_send(phone, message, config):
+        seen.append((phone, message, config.get("message_template_name")))
+        return True, "wamid.outbound-1", None
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message_result", fake_send)
+    result = run(whatsapp_mod.reply_to_cloud_inbox_thread(
+        "branch-a:966501234567",
+        whatsapp_mod.CloudInboxReplyRequest(body="وعليكم السلام"),
+        current_user={
+            "is_admin": False,
+            "permissions": ["messages"],
+            "branch_id": "branch-a",
+            "id": "staff-1",
+        },
+    ))
+
+    assert result["success"] is True
+    assert result["used_template"] is False
+    assert seen == [("966501234567", "وعليكم السلام", "")]
+    assert db["whatsapp_cloud_messages"].rows[0]["meta_message_id"] == "wamid.outbound-1"
+
+
+def test_meta_webhook_routes_multi_phone_batch_to_each_branch(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
+    db = _DB()
+    app_secret = "shared-meta-app-secret"
+    encrypted = whatsapp_mod._encrypt_access_token(app_secret)
+    db["whatsapp_branch_configs"].rows.extend([
+        {
+            "branch_id": "branch-a",
+            "enabled": True,
+            "inbox_enabled": True,
+            "phone_number_id": "111",
+            "app_secret_encrypted": encrypted,
+        },
+        {
+            "branch_id": "branch-b",
+            "enabled": True,
+            "inbox_enabled": True,
+            "phone_number_id": "222",
+            "app_secret_encrypted": encrypted,
+        },
+    ])
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+
+    async def fake_tenant(_slug):
+        return whatsapp_mod.set_current_tenant({
+            "slug": "academy",
+            "db_name": "champions_academy",
+        })
+
+    monkeypatch.setattr(whatsapp_mod, "_with_webhook_tenant", fake_tenant)
+    timestamp = str(int(whatsapp_mod.datetime.now(whatsapp_mod.timezone.utc).timestamp()))
+    payload = {
+        "entry": [{
+            "changes": [
+                {
+                    "field": "messages",
+                    "value": {
+                        "metadata": {"phone_number_id": "111"},
+                        "messages": [{
+                            "id": "wamid.multi-a",
+                            "from": "966500000001",
+                            "timestamp": timestamp,
+                            "type": "text",
+                            "text": {"body": "A"},
+                        }],
+                    },
+                },
+                {
+                    "field": "messages",
+                    "value": {
+                        "metadata": {"phone_number_id": "222"},
+                        "messages": [{
+                            "id": "wamid.multi-b",
+                            "from": "966500000002",
+                            "timestamp": timestamp,
+                            "type": "text",
+                            "text": {"body": "B"},
+                        }],
+                    },
+                },
+            ],
+        }],
+    }
+    raw = json.dumps(payload).encode()
+    signature = "sha256=" + hmac.new(app_secret.encode(), raw, hashlib.sha256).hexdigest()
+
+    class _Request:
+        headers = {"x-hub-signature-256": signature}
+
+        async def body(self):
+            return raw
+
+    assert run(whatsapp_mod.receive_meta_webhook("academy", _Request())) == {"received": True}
+    assert {
+        (row["branch_id"], row["body"])
+        for row in db["whatsapp_cloud_messages"].rows
+    } == {("branch-a", "A"), ("branch-b", "B")}

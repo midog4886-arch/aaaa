@@ -1,18 +1,24 @@
 import asyncio
 import base64
 import hashlib
+import hmac
+import json
 import logging
 import os
 import uuid
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, List
+from urllib.parse import urlparse
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from pymongo.errors import DuplicateKeyError
 from .common import get_current_user
 from utils.auth import require_branch_scope, resolve_branch_filter
+from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_current_tenant
 
 logger = logging.getLogger("whatsapp")
 
@@ -209,6 +215,17 @@ def _decrypt_access_token(encrypted: str) -> str:
         raise RuntimeError("Stored WhatsApp access token cannot be decrypted") from exc
 
 
+def _webhook_verify_token(tenant_slug: str) -> str:
+    secret = os.environ.get("SESSION_SECRET", "")
+    if not secret:
+        raise RuntimeError("SESSION_SECRET is required")
+    return hmac.new(
+        secret.encode("utf-8"),
+        f"meta-webhook:{tenant_slug}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:40]
+
+
 async def _get_branch_cloud_config(branch_id: Optional[str]) -> Optional[dict]:
     if _db is None or not branch_id:
         return None
@@ -226,10 +243,12 @@ async def _has_enabled_cloud_config() -> bool:
     ))
 
 
-async def _send_meta_cloud_message(phone: str, message: str, config: dict) -> bool:
+async def _send_meta_cloud_message_result(
+    phone: str, message: str, config: dict
+) -> tuple[bool, Optional[str], Optional[str]]:
     digits = "".join(filter(str.isdigit, phone or ""))
     if not digits:
-        return False
+        return False, None, "invalid_phone"
     try:
         token = _decrypt_access_token(config["access_token_encrypted"])
         version = (config.get("graph_api_version") or "v23.0").strip()
@@ -267,19 +286,30 @@ async def _send_meta_cloud_message(phone: str, message: str, config: dict) -> bo
                 json=payload,
             )
         if 200 <= response.status_code < 300:
-            return True
+            try:
+                response_data = response.json()
+                message_id = ((response_data.get("messages") or [{}])[0]).get("id")
+            except Exception:
+                message_id = None
+            return True, message_id, None
         logger.error(
             "Meta WhatsApp send failed for branch %s: HTTP %s",
             config.get("branch_id"),
             response.status_code,
         )
+        return False, None, f"http_{response.status_code}"
     except Exception as exc:
         logger.error(
             "Meta WhatsApp send failed for branch %s: %s",
             config.get("branch_id"),
             type(exc).__name__,
         )
-    return False
+        return False, None, type(exc).__name__
+
+
+async def _send_meta_cloud_message(phone: str, message: str, config: dict) -> bool:
+    success, _, _ = await _send_meta_cloud_message_result(phone, message, config)
+    return success
 
 
 async def _send_wa_message_for_branch(
@@ -957,6 +987,8 @@ class BranchCloudConfigUpdate(BaseModel):
     message_template_name: Optional[str] = ""
     template_language: str = "ar"
     single_variable_template_confirmed: bool = False
+    app_secret: Optional[str] = None
+    inbox_enabled: bool = False
 
 
 def _require_admin(current_user: dict):
@@ -985,6 +1017,8 @@ async def get_branch_cloud_config(
             "message_template_name": "",
             "template_language": "ar",
             "single_variable_template_confirmed": False,
+            "app_secret_configured": False,
+            "inbox_enabled": False,
             "token_configured": False,
         }
     return {
@@ -998,6 +1032,8 @@ async def get_branch_cloud_config(
         "single_variable_template_confirmed": bool(
             config.get("single_variable_template_confirmed")
         ),
+        "app_secret_configured": bool(config.get("app_secret_encrypted")),
+        "inbox_enabled": bool(config.get("inbox_enabled")),
         "token_configured": bool(config.get("access_token_encrypted")),
         "updated_at": config.get("updated_at"),
     }
@@ -1034,6 +1070,7 @@ async def update_branch_cloud_config(
         "single_variable_template_confirmed": bool(
             data.single_variable_template_confirmed
         ),
+        "inbox_enabled": bool(data.inbox_enabled),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": current_user.get("user_id") or current_user.get("id"),
     }
@@ -1043,10 +1080,411 @@ async def update_branch_cloud_config(
         update["access_token_encrypted"] = existing["access_token_encrypted"]
     elif data.enabled:
         raise HTTPException(status_code=400, detail="Access Token is required")
+    if data.app_secret and data.app_secret.strip():
+        update["app_secret_encrypted"] = _encrypt_access_token(data.app_secret.strip())
+    elif existing.get("app_secret_encrypted"):
+        update["app_secret_encrypted"] = existing["app_secret_encrypted"]
+    elif data.inbox_enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Meta App Secret is required to enable the inbox",
+        )
     await _db["whatsapp_branch_configs"].update_one(
         {"branch_id": branch_id}, {"$set": update}, upsert=True
     )
     return await get_branch_cloud_config(branch_id, current_user)
+
+
+@router.get("/meta-webhook-info")
+async def get_meta_webhook_info(
+    request: Request, current_user: dict = Depends(get_current_user)
+):
+    _require_admin(current_user)
+    slug = get_current_tenant_slug()
+    return {
+        "callback_url": str(request.base_url).rstrip("/") + f"/api/whatsapp/meta-webhook/{slug}",
+        "verify_token": _webhook_verify_token(slug),
+    }
+
+
+async def _with_webhook_tenant(tenant_slug: str):
+    from control_db import get_tenant_by_slug
+    tenant = await get_tenant_by_slug(tenant_slug)
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return set_current_tenant(tenant)
+
+
+@router.get("/meta-webhook/{tenant_slug}")
+async def verify_meta_webhook(
+    tenant_slug: str,
+    hub_mode: Optional[str] = Query(None, alias="hub.mode"),
+    hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
+    hub_challenge: Optional[str] = Query(None, alias="hub.challenge"),
+):
+    if (
+        hub_mode != "subscribe"
+        or not hmac.compare_digest(
+            hub_verify_token or "", _webhook_verify_token(tenant_slug)
+        )
+    ):
+        raise HTTPException(status_code=403, detail="Webhook verification failed")
+    return Response(content=hub_challenge or "", media_type="text/plain")
+
+
+@router.post("/meta-webhook/{tenant_slug}")
+async def receive_meta_webhook(tenant_slug: str, request: Request):
+    raw = await request.body()
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    token = await _with_webhook_tenant(tenant_slug)
+    try:
+        await _db["whatsapp_cloud_messages"].create_index(
+            "meta_message_id", unique=True, sparse=True
+        )
+        await _db["whatsapp_cloud_conversations"].create_index("id", unique=True)
+        values = [
+            change.get("value") or {}
+            for entry in payload.get("entry") or []
+            for change in entry.get("changes") or []
+            if change.get("field") == "messages"
+        ]
+        if len(values) > 100:
+            raise HTTPException(status_code=413, detail="Webhook batch is too large")
+        phone_ids = {
+            str(value.get("metadata", {}).get("phone_number_id") or "")
+            for value in values
+        } - {""}
+        if not phone_ids:
+            raise HTTPException(status_code=400, detail="Missing Phone Number ID")
+        configs_by_phone_id = {}
+        app_secrets = set()
+        for phone_number_id in phone_ids:
+            config = await _db["whatsapp_branch_configs"].find_one(
+                {
+                    "phone_number_id": phone_number_id,
+                    "enabled": True,
+                    "inbox_enabled": True,
+                    "app_secret_encrypted": {"$exists": True, "$ne": ""},
+                },
+                {"_id": 0},
+            )
+            if not config:
+                raise HTTPException(status_code=403, detail="Webhook branch not configured")
+            configs_by_phone_id[phone_number_id] = config
+            app_secrets.add(_decrypt_access_token(config["app_secret_encrypted"]))
+        if len(app_secrets) != 1:
+            raise HTTPException(
+                status_code=403,
+                detail="Webhook batch contains phone numbers from different Meta apps",
+            )
+        app_secret = next(iter(app_secrets))
+        expected = "sha256=" + hmac.new(
+            app_secret.encode("utf-8"), raw, hashlib.sha256
+        ).hexdigest()
+        supplied = request.headers.get("x-hub-signature-256") or ""
+        if not hmac.compare_digest(supplied, expected):
+            raise HTTPException(status_code=403, detail="Invalid webhook signature")
+
+        received_at = datetime.now(timezone.utc)
+        now = received_at.isoformat()
+        for value in values:
+            phone_number_id = str(
+                value.get("metadata", {}).get("phone_number_id") or ""
+            )
+            config = configs_by_phone_id[phone_number_id]
+            contacts = {
+                str(contact.get("wa_id")): (contact.get("profile") or {}).get("name")
+                for contact in value.get("contacts") or []
+            }
+            for message in value.get("messages") or []:
+                meta_id = str(message.get("id") or "")
+                if not meta_id or await _db["whatsapp_cloud_messages"].find_one(
+                    {"meta_message_id": meta_id}, {"_id": 1}
+                ):
+                    continue
+                phone = str(message.get("from") or "")
+                conversation_id = f"{config['branch_id']}:{phone}"
+                try:
+                    event_dt = datetime.fromtimestamp(
+                        int(message.get("timestamp")), tz=timezone.utc
+                    )
+                    if event_dt > received_at + timedelta(minutes=5):
+                        raise ValueError("future timestamp")
+                except Exception:
+                    event_dt = None
+                event_at = event_dt.isoformat() if event_dt else now
+                message_type = message.get("type") or "unknown"
+                body = ""
+                if message_type == "text":
+                    body = (message.get("text") or {}).get("body") or ""
+                elif message_type == "button":
+                    body = (message.get("button") or {}).get("text") or ""
+                elif message_type == "interactive":
+                    interactive = message.get("interactive") or {}
+                    body = (
+                        (interactive.get("button_reply") or {}).get("title")
+                        or (interactive.get("list_reply") or {}).get("title")
+                        or ""
+                    )
+                media = message.get(message_type) or {}
+                try:
+                    await _db["whatsapp_cloud_messages"].insert_one({
+                        "id": str(uuid.uuid4()),
+                        "conversation_id": conversation_id,
+                        "branch_id": config["branch_id"],
+                        "meta_message_id": meta_id,
+                        "direction": "inbound",
+                        "phone": phone,
+                        "type": message_type,
+                        "body": body,
+                        "media_id": media.get("id") if isinstance(media, dict) else None,
+                        "mime_type": media.get("mime_type") if isinstance(media, dict) else None,
+                        "status": "received",
+                        "created_at": event_at,
+                        "received_at": now,
+                        "meta_timestamp": message.get("timestamp"),
+                    })
+                except DuplicateKeyError:
+                    continue
+                await _db["whatsapp_cloud_conversations"].update_one(
+                    {"id": conversation_id},
+                    {
+                        "$set": {
+                            "id": conversation_id,
+                            "branch_id": config["branch_id"],
+                            "phone": phone,
+                            "contact_name": contacts.get(phone) or phone,
+                            "last_message": body or f"[{message_type}]",
+                            "last_message_at": event_at,
+                            "last_inbound_at": event_dt.isoformat() if event_dt else None,
+                            "last_direction": "inbound",
+                        },
+                        "$inc": {"unread_count": 1},
+                        "$setOnInsert": {"created_at": now},
+                    },
+                    upsert=True,
+                )
+            for status in value.get("statuses") or []:
+                meta_id = str(status.get("id") or "")
+                if not meta_id:
+                    continue
+                status_name = status.get("status") or "unknown"
+                errors = status.get("errors") or []
+                await _db["whatsapp_cloud_messages"].update_one(
+                    {"meta_message_id": meta_id},
+                    {"$set": {
+                        "status": status_name,
+                        "status_updated_at": now,
+                        "error": errors[0].get("title") if errors else None,
+                    }},
+                )
+        return {"received": True}
+    finally:
+        reset_current_tenant(token)
+
+
+class CloudInboxReplyRequest(BaseModel):
+    body: str
+
+
+@router.get("/cloud-inbox/conversations")
+async def list_cloud_inbox_conversations(
+    branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    query = {"branch_id": effective_branch} if effective_branch else {}
+    rows = await (
+        _db["whatsapp_cloud_conversations"]
+        .find(query, {"_id": 0})
+        .sort("last_message_at", -1)
+        .limit(200)
+        .to_list(length=200)
+    )
+    branch_cache = {}
+    for row in rows:
+        branch_id = row.get("branch_id")
+        if branch_id not in branch_cache:
+            branch = await _db["branches"].find_one(
+                {"id": branch_id}, {"_id": 0, "name": 1}
+            )
+            branch_cache[branch_id] = (branch or {}).get("name") or branch_id
+        row["branch_name"] = branch_cache[branch_id]
+    return {
+        "conversations": rows,
+        "unread_count": sum(int(row.get("unread_count") or 0) for row in rows),
+    }
+
+
+@router.get("/cloud-inbox/conversations/{conversation_id}")
+async def get_cloud_inbox_thread(
+    conversation_id: str, current_user: dict = Depends(get_current_user)
+):
+    _require_bulk_whatsapp_access(current_user)
+    conversation = await _db["whatsapp_cloud_conversations"].find_one(
+        {"id": conversation_id}, {"_id": 0}
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _assert_branch_access(current_user, conversation.get("branch_id"))
+    messages = await (
+        _db["whatsapp_cloud_messages"]
+        .find({"conversation_id": conversation_id}, {"_id": 0})
+        .sort("created_at", 1)
+        .limit(500)
+        .to_list(length=500)
+    )
+    await _db["whatsapp_cloud_conversations"].update_one(
+        {"id": conversation_id}, {"$set": {"unread_count": 0}}
+    )
+    branch = await _db["branches"].find_one(
+        {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
+    )
+    conversation["branch_name"] = (branch or {}).get("name")
+    return {"conversation": conversation, "messages": messages}
+
+
+@router.get("/cloud-inbox/media/{message_id}")
+async def get_cloud_inbox_media(
+    message_id: str, current_user: dict = Depends(get_current_user)
+):
+    _require_bulk_whatsapp_access(current_user)
+    message = await _db["whatsapp_cloud_messages"].find_one(
+        {"id": message_id}, {"_id": 0}
+    )
+    if not message or not message.get("media_id"):
+        raise HTTPException(status_code=404, detail="Media not found")
+    _assert_branch_access(current_user, message.get("branch_id"))
+    config = await _get_branch_cloud_config(message.get("branch_id"))
+    if not config or not config.get("access_token_encrypted"):
+        raise HTTPException(status_code=400, detail="Branch Meta API is not configured")
+    token = _decrypt_access_token(config["access_token_encrypted"])
+    version = (config.get("graph_api_version") or "v23.0").strip()
+    headers = {"Authorization": f"Bearer {token}"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+            metadata_response = await client.get(
+                f"https://graph.facebook.com/{version}/{message['media_id']}",
+                headers=headers,
+            )
+            if metadata_response.status_code >= 300:
+                raise HTTPException(status_code=502, detail="Could not retrieve Meta media")
+            media_url = metadata_response.json().get("url")
+            if not media_url:
+                raise HTTPException(status_code=502, detail="Meta media URL is missing")
+            parsed = urlparse(media_url)
+            hostname = (parsed.hostname or "").lower()
+            allowed_host = (
+                hostname == "lookaside.fbsbx.com"
+                or hostname.endswith(".fbcdn.net")
+                or hostname.endswith(".fbsbx.com")
+            )
+            if parsed.scheme != "https" or not allowed_host:
+                raise HTTPException(status_code=502, detail="Unexpected Meta media host")
+            media_response = await client.get(media_url, headers=headers)
+            if media_response.status_code >= 300:
+                raise HTTPException(status_code=502, detail="Could not download Meta media")
+            content = media_response.content
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not download Meta media")
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Media exceeds 20 MB")
+    content_type = (
+        message.get("mime_type")
+        or media_response.headers.get("content-type")
+        or "application/octet-stream"
+    )
+    return StreamingResponse(
+        iter([content]),
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@router.post("/cloud-inbox/conversations/{conversation_id}/reply")
+async def reply_to_cloud_inbox_thread(
+    conversation_id: str,
+    data: CloudInboxReplyRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    body = (data.body or "").strip()
+    if not body or len(body) > 4096:
+        raise HTTPException(status_code=400, detail="Message must be 1-4096 characters")
+    conversation = await _db["whatsapp_cloud_conversations"].find_one(
+        {"id": conversation_id}, {"_id": 0}
+    )
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    branch_id = conversation.get("branch_id")
+    _assert_branch_access(current_user, branch_id)
+    config = await _get_branch_cloud_config(branch_id)
+    if not (
+        config
+        and config.get("enabled")
+        and config.get("phone_number_id")
+        and config.get("access_token_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Branch Meta API is not configured")
+
+    now_dt = datetime.now(timezone.utc)
+    try:
+        last_inbound = datetime.fromisoformat(
+            str(conversation.get("last_inbound_at") or "").replace("Z", "+00:00")
+        )
+        if last_inbound.tzinfo is None:
+            last_inbound = last_inbound.replace(tzinfo=timezone.utc)
+        inside_service_window = now_dt - last_inbound <= timedelta(hours=24)
+    except Exception:
+        inside_service_window = False
+
+    send_config = dict(config)
+    if inside_service_window:
+        send_config["message_template_name"] = ""
+    elif not (
+        config.get("message_template_name")
+        and config.get("single_variable_template_confirmed")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="The 24-hour window ended; configure an approved Meta template",
+        )
+
+    success, meta_message_id, error = await _send_meta_cloud_message_result(
+        conversation.get("phone"), body, send_config
+    )
+    if not success:
+        raise HTTPException(status_code=502, detail=f"Meta send failed ({error or 'unknown'})")
+    now = now_dt.isoformat()
+    message = {
+        "id": str(uuid.uuid4()),
+        "conversation_id": conversation_id,
+        "branch_id": branch_id,
+        "meta_message_id": meta_message_id,
+        "direction": "outbound",
+        "phone": conversation.get("phone"),
+        "type": "template" if not inside_service_window else "text",
+        "body": body,
+        "status": "sent",
+        "created_at": now,
+        "sent_by": current_user.get("user_id") or current_user.get("id"),
+    }
+    await _db["whatsapp_cloud_messages"].insert_one(message)
+    await _db["whatsapp_cloud_conversations"].update_one(
+        {"id": conversation_id},
+        {"$set": {
+            "last_message": body,
+            "last_message_at": now,
+            "last_direction": "outbound",
+        }},
+    )
+    return {"success": True, "message": message, "used_template": not inside_service_window}
 
 
 class BranchCloudTestRequest(BaseModel):

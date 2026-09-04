@@ -20,6 +20,7 @@ import {
   AlertTriangle, Building2, ChevronDown, ChevronUp, Megaphone, Gift,
   Info, Mail, ArrowRight, ArrowLeft, RefreshCcw, User, Filter, Trash2,
   MessageCircle, CheckCircle,
+  Paperclip,
 } from 'lucide-react';
 
 const PROFILE_FIELD_LABELS = {
@@ -224,6 +225,21 @@ export default function WhatsAppPage() {
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [loadingConversations, setLoadingConversations] = useState(false);
 
+  // ── Meta WhatsApp Inbox State ──
+  const [cloudConversations, setCloudConversations] = useState([]);
+  const [cloudUnreadCount, setCloudUnreadCount] = useState(0);
+  const [cloudBranchFilter, setCloudBranchFilter] = useState(
+    selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all'
+  );
+  const [selectedCloudThread, setSelectedCloudThread] = useState(null);
+  const [cloudThread, setCloudThread] = useState(null);
+  const [cloudMessages, setCloudMessages] = useState([]);
+  const [cloudReply, setCloudReply] = useState('');
+  const [loadingCloudInbox, setLoadingCloudInbox] = useState(false);
+  const [sendingCloudReply, setSendingCloudReply] = useState(false);
+  const [cloudMediaUrls, setCloudMediaUrls] = useState({});
+  const cloudMediaUrlsRef = useRef({});
+
   // ── Push Notifications State ──
   const [pushSubscribersCount, setPushSubscribersCount] = useState(0);
   const [pushSending, setPushSending] = useState(false);
@@ -339,6 +355,69 @@ export default function WhatsAppPage() {
     finally { setLoadingConversations(false); }
   };
 
+  const loadCloudConversations = async () => {
+    setLoadingCloudInbox(true);
+    try {
+      const [inboxResponse, branchesResponse] = await Promise.all([
+        whatsappAPI.getCloudInboxConversations(cloudBranchFilter),
+        branches.length ? Promise.resolve({ data: branches }) : branchesAPI.getAll()
+      ]);
+      setCloudConversations(inboxResponse.data?.conversations || []);
+      setCloudUnreadCount(inboxResponse.data?.unread_count || 0);
+      if (!branches.length) setBranches(branchesResponse.data || []);
+    } catch {
+      toast.error(t('تعذر تحميل شات واتساب', 'Could not load WhatsApp chats'));
+    } finally {
+      setLoadingCloudInbox(false);
+    }
+  };
+
+  const openCloudThread = async (conversationId) => {
+    setLoadingCloudInbox(true);
+    try {
+      const response = await whatsappAPI.getCloudInboxThread(conversationId);
+      setSelectedCloudThread(conversationId);
+      setCloudThread(response.data?.conversation || null);
+      const messages = response.data?.messages || [];
+      setCloudMessages(messages);
+      Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
+      cloudMediaUrlsRef.current = {};
+      setCloudMediaUrls({});
+      const mediaMessages = messages.filter(message => message.media_id);
+      mediaMessages.forEach(message => {
+        whatsappAPI.getCloudInboxMedia(message.id)
+          .then(mediaResponse => {
+            const url = URL.createObjectURL(mediaResponse.data);
+            cloudMediaUrlsRef.current = { ...cloudMediaUrlsRef.current, [message.id]: url };
+            setCloudMediaUrls(previous => ({ ...previous, [message.id]: url }));
+          })
+          .catch(() => {});
+      });
+      await loadCloudConversations();
+    } catch {
+      toast.error(t('تعذر تحميل المحادثة', 'Could not load conversation'));
+    } finally {
+      setLoadingCloudInbox(false);
+    }
+  };
+
+  const handleCloudReply = async () => {
+    if (!selectedCloudThread || !cloudReply.trim()) return;
+    setSendingCloudReply(true);
+    try {
+      const response = await whatsappAPI.replyCloudInbox(selectedCloudThread, cloudReply.trim());
+      setCloudReply('');
+      await openCloudThread(selectedCloudThread);
+      toast.success(response.data?.used_template
+        ? t('تم الرد باستخدام قالب Meta لأن نافذة 24 ساعة انتهت', 'Reply sent using the Meta template because the 24-hour window ended')
+        : t('تم إرسال الرد من رقم الفرع', 'Reply sent from the branch number'));
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('فشل إرسال الرد', 'Failed to send reply'));
+    } finally {
+      setSendingCloudReply(false);
+    }
+  };
+
   const loadPushData = async () => {
     try {
       const [cRes, bRes] = await Promise.all([pushNotificationsAPI.getSubscribersCount(), branchesAPI.getAll()]);
@@ -353,6 +432,7 @@ export default function WhatsAppPage() {
     loadWaSettings();
     loadSendLogs();
     loadTargetCount();
+    loadCloudConversations();
     // Poll every 5s when not connected (waiting for QR or waiting for scan)
     intervalRef.current = setInterval(() => { if (!status.connected) loadStatus(); }, 5000);
     return () => clearInterval(intervalRef.current);
@@ -389,9 +469,25 @@ export default function WhatsAppPage() {
     if (activeTab === 'manual' && !members.length) loadMembers();
     if (activeTab === 'portal') loadPortalNotifications();
     if (activeTab === 'internal') loadConversations();
+    if (activeTab === 'cloud_inbox') loadCloudConversations();
     if (activeTab === 'push') loadPushData();
     if (activeTab === 'activity_notif') loadActivityNotifActivities(actNotifBranch);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'cloud_inbox') return undefined;
+    loadCloudConversations();
+    const interval = setInterval(() => {
+      if (selectedCloudThread) openCloudThread(selectedCloudThread);
+      else loadCloudConversations();
+    }, 10000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, cloudBranchFilter, selectedCloudThread]);
+
+  useEffect(() => () => {
+    Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
+  }, []);
 
   // Reload activities when branch changes (in activity_notif tab)
   useEffect(() => {
@@ -1048,6 +1144,7 @@ export default function WhatsAppPage() {
     { id: 'manual', label: t('إرسال يدوي', 'Manual Send'), icon: <Phone className="w-4 h-4" /> },
     { id: 'activity_notif', label: t('إشعار النشاط', 'Activity Alert'), icon: <Megaphone className="w-4 h-4" /> },
     { id: 'portal', label: t('إشعارات الأعضاء', 'Member Notifications'), icon: <Bell className="w-4 h-4" /> },
+    { id: 'cloud_inbox', label: t('شات واتساب', 'WhatsApp Chats'), icon: <MessageCircle className="w-4 h-4" />, badge: cloudUnreadCount },
     { id: 'internal', label: t('رسائل داخلية', 'Internal Messages'), icon: <Mail className="w-4 h-4" />, badge: msgUnreadCount },
     { id: 'push', label: t('إشعارات Push', 'Push Notifications'), icon: <Megaphone className="w-4 h-4" /> },
   ];
@@ -2288,7 +2385,219 @@ export default function WhatsAppPage() {
         )}
 
         {/* ══════════════════════════════════════════
-            TAB 4: INTERNAL MESSAGES
+            META WHATSAPP CLOUD INBOX
+        ══════════════════════════════════════════ */}
+        {activeTab === 'cloud_inbox' && (
+          <div className="space-y-4 max-w-5xl">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                {selectedCloudThread && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedCloudThread(null);
+                      setCloudThread(null);
+                      setCloudMessages([]);
+                    }}
+                  >
+                    {isRTL ? <ArrowRight className="w-4 h-4 me-1" /> : <ArrowLeft className="w-4 h-4 me-1" />}
+                    {t('رجوع', 'Back')}
+                  </Button>
+                )}
+                {!selectedCloudThread && (
+                  <Select value={cloudBranchFilter} onValueChange={setCloudBranchFilter}>
+                    <SelectTrigger className="w-56">
+                      <SelectValue placeholder={t('كل الفروع', 'All branches')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isAdmin && <SelectItem value="all">{t('كل الفروع', 'All branches')}</SelectItem>}
+                      {branches.map(branch => (
+                        <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => selectedCloudThread ? openCloudThread(selectedCloudThread) : loadCloudConversations()}
+                disabled={loadingCloudInbox}
+              >
+                <RefreshCcw className={`w-4 h-4 ${loadingCloudInbox ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+
+            {!selectedCloudThread ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-green-600" />
+                    {t('محادثات واتساب الفروع', 'Branch WhatsApp conversations')}
+                    {cloudUnreadCount > 0 && <Badge variant="destructive">{cloudUnreadCount}</Badge>}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loadingCloudInbox && !cloudConversations.length ? (
+                    <div className="py-12 text-center"><Loader2 className="w-7 h-7 animate-spin mx-auto" /></div>
+                  ) : cloudConversations.length === 0 ? (
+                    <div className="py-12 text-center text-muted-foreground">
+                      <MessageCircle className="w-16 h-16 mx-auto mb-3 opacity-20" />
+                      <p>{t('لا توجد محادثات واتساب واردة بعد', 'No inbound WhatsApp conversations yet')}</p>
+                      <p className="text-xs mt-2">
+                        {t('تأكد من ربط Webhook والاشتراك في حدث messages داخل Meta.', 'Connect the webhook and subscribe to the messages event in Meta.')}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {cloudConversations.map(conversation => (
+                        <button
+                          type="button"
+                          key={conversation.id}
+                          onClick={() => openCloudThread(conversation.id)}
+                          className={`w-full p-4 rounded-lg border text-start transition-colors hover:bg-accent/50 ${
+                            conversation.unread_count > 0 ? 'border-green-400 bg-green-50/60' : 'border-border'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                                <Phone className="w-5 h-5 text-green-700" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-semibold truncate">{conversation.contact_name || conversation.phone}</p>
+                                  <Badge variant="secondary" className="text-xs gap-1">
+                                    <Building2 className="w-3 h-3" />{conversation.branch_name}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground" dir="ltr">{conversation.phone}</p>
+                                <p className="text-sm text-muted-foreground truncate mt-1">
+                                  {conversation.last_direction === 'outbound' ? t('أنت: ', 'You: ') : ''}
+                                  {conversation.last_message}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className="text-xs text-muted-foreground">
+                                {conversation.last_message_at ? new Date(conversation.last_message_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : ''}
+                              </span>
+                              {conversation.unread_count > 0 && <Badge className="bg-green-600">{conversation.unread_count}</Badge>}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader className="border-b">
+                  <CardTitle className="flex flex-wrap items-center gap-2">
+                    <Phone className="w-5 h-5 text-green-600" />
+                    <span>{cloudThread?.contact_name || cloudThread?.phone}</span>
+                    <span className="font-normal text-sm text-muted-foreground" dir="ltr">{cloudThread?.phone}</span>
+                    <Badge variant="secondary" className="gap-1">
+                      <Building2 className="w-3 h-3" />{cloudThread?.branch_name}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4">
+                  <div className="space-y-3 max-h-[520px] overflow-y-auto mb-4 p-2 bg-muted/20 rounded-lg">
+                    {cloudMessages.map(message => {
+                      const outbound = message.direction === 'outbound';
+                      const statusText = {
+                        sent: t('أُرسلت', 'Sent'),
+                        delivered: t('وصلت', 'Delivered'),
+                        read: t('قُرئت', 'Read'),
+                        failed: t('فشلت', 'Failed'),
+                        received: t('واردة', 'Received')
+                      }[message.status] || message.status;
+                      return (
+                        <div
+                          key={message.id}
+                          className={`p-3 rounded-xl max-w-[82%] ${
+                            outbound
+                              ? 'bg-green-100 border border-green-200 me-auto'
+                              : 'bg-white border border-border ms-auto'
+                          }`}
+                        >
+                          {message.body ? (
+                            <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">[{message.type}]</p>
+                          )}
+                          {message.media_id && (
+                            <div className="mt-2">
+                              {!cloudMediaUrls[message.id] ? (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  {t('جاري تحميل المرفق…', 'Loading attachment…')}
+                                </span>
+                              ) : message.type === 'image' ? (
+                                <a href={cloudMediaUrls[message.id]} target="_blank" rel="noreferrer">
+                                  <img
+                                    src={cloudMediaUrls[message.id]}
+                                    alt={t('صورة واردة', 'Inbound image')}
+                                    className="max-w-full max-h-72 rounded-lg border object-contain"
+                                  />
+                                </a>
+                              ) : message.type === 'audio' ? (
+                                <audio src={cloudMediaUrls[message.id]} controls className="max-w-full" />
+                              ) : message.type === 'video' ? (
+                                <video src={cloudMediaUrls[message.id]} controls className="max-w-full max-h-72 rounded-lg" />
+                              ) : (
+                                <a
+                                  href={cloudMediaUrls[message.id]}
+                                  download
+                                  className="inline-flex items-center gap-2 text-sm text-primary underline"
+                                >
+                                  <Paperclip className="w-4 h-4" />
+                                  {t('تحميل الملف', 'Download file')}
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground">
+                            <span>{new Date(message.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                            <span>· {statusText}</span>
+                            {message.type === 'template' && <span>· {t('قالب Meta', 'Meta template')}</span>}
+                            {message.error && <span className="text-red-600">· {message.error}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2 border-t pt-3">
+                    <Textarea
+                      value={cloudReply}
+                      onChange={e => setCloudReply(e.target.value)}
+                      rows={2}
+                      maxLength={4096}
+                      placeholder={t('اكتب الرد… سيُرسل من رقم هذا الفرع', 'Write a reply… it will be sent from this branch number')}
+                      className="resize-none flex-1"
+                    />
+                    <Button
+                      onClick={handleCloudReply}
+                      disabled={sendingCloudReply || !cloudReply.trim()}
+                      className="self-end bg-green-600 hover:bg-green-700"
+                    >
+                      {sendingCloudReply ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t('داخل 24 ساعة يُرسل الرد كنص عادي، وبعدها يستخدم النظام قالب Meta المعتمد للفرع.', 'Within 24 hours replies are free-form; afterward the approved branch template is used.')}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════
+            INTERNAL MESSAGES
         ══════════════════════════════════════════ */}
         {activeTab === 'internal' && (
           <div className="space-y-4 max-w-4xl">

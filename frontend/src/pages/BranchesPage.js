@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import api, { branchesAPI } from '../services/api';
+import api, { branchesAPI, whatsappAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -60,11 +60,14 @@ const initialFormData = () => ({
   whatsapp_phone_number_id: '',
   whatsapp_business_account_id: '',
   whatsapp_access_token: '',
+  whatsapp_app_secret: '',
+  whatsapp_inbox_enabled: false,
   whatsapp_graph_api_version: 'v23.0',
   whatsapp_meta_template_name: '',
   whatsapp_meta_template_language: 'ar',
   whatsapp_single_variable_template_confirmed: false,
   whatsapp_token_configured: false,
+  whatsapp_app_secret_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
   branch_type: 'permanent',
   venues: []
@@ -110,6 +113,7 @@ const BranchesPage = () => {
   const [editingBranch, setEditingBranch] = useState(null);
   const [saving, setSaving] = useState(false);
   const [testingWhatsApp, setTestingWhatsApp] = useState(false);
+  const [webhookInfo, setWebhookInfo] = useState(null);
   
   const [formData, setFormData] = useState(initialFormData);
 
@@ -199,6 +203,8 @@ const BranchesPage = () => {
           phone_number_id: formData.whatsapp_phone_number_id,
           whatsapp_business_account_id: formData.whatsapp_business_account_id,
           access_token: formData.whatsapp_access_token || null,
+          app_secret: formData.whatsapp_app_secret || null,
+          inbox_enabled: !!formData.whatsapp_inbox_enabled,
           graph_api_version: formData.whatsapp_graph_api_version || 'v23.0'
           ,
           message_template_name: formData.whatsapp_meta_template_name || '',
@@ -232,7 +238,12 @@ const BranchesPage = () => {
     setEditingBranch(branch);
     let cloud = {};
     try {
-      cloud = (await branchesAPI.getWhatsAppCloud(branch.id)).data || {};
+      const [cloudResponse, webhookResponse] = await Promise.all([
+        branchesAPI.getWhatsAppCloud(branch.id),
+        whatsappAPI.getMetaWebhookInfo()
+      ]);
+      cloud = cloudResponse.data || {};
+      setWebhookInfo(webhookResponse.data || null);
     } catch (_e) {}
     setFormData({
       name_ar: branch.name_ar || branch.name || '',
@@ -250,11 +261,14 @@ const BranchesPage = () => {
       whatsapp_phone_number_id: cloud.phone_number_id || '',
       whatsapp_business_account_id: cloud.whatsapp_business_account_id || '',
       whatsapp_access_token: '',
+      whatsapp_app_secret: '',
+      whatsapp_inbox_enabled: !!cloud.inbox_enabled,
       whatsapp_graph_api_version: cloud.graph_api_version || 'v23.0',
       whatsapp_meta_template_name: cloud.message_template_name || '',
       whatsapp_meta_template_language: cloud.template_language || 'ar',
       whatsapp_single_variable_template_confirmed: !!cloud.single_variable_template_confirmed,
       whatsapp_token_configured: !!cloud.token_configured,
+      whatsapp_app_secret_configured: !!cloud.app_secret_configured,
       // Missing/empty working_days means the branch was created before this
       // feature -> treat it as open all week.
       working_days: Array.isArray(branch.working_days) && branch.working_days.length > 0
@@ -270,6 +284,7 @@ const BranchesPage = () => {
     setIsDialogOpen(false);
     setEditingBranch(null);
     setFormData(initialFormData());
+    setWebhookInfo(null);
   };
 
   const handleTestWhatsAppCloud = async () => {
@@ -934,6 +949,54 @@ const BranchesPage = () => {
                   </div>
                 </div>
 
+                <div className="space-y-1">
+                  <Label>
+                    Meta App Secret
+                    {formData.whatsapp_app_secret_configured && (
+                      <span className="text-emerald-700 text-xs ms-2">
+                        {language === 'ar' ? '✓ محفوظ' : '✓ Saved'}
+                      </span>
+                    )}
+                  </Label>
+                  <Input
+                    type="password"
+                    value={formData.whatsapp_app_secret}
+                    onChange={(e) => setFormData({ ...formData, whatsapp_app_secret: e.target.value })}
+                    placeholder={formData.whatsapp_app_secret_configured
+                      ? (language === 'ar' ? 'اتركه فارغاً للإبقاء على السر المحفوظ' : 'Leave blank to keep saved secret')
+                      : (language === 'ar' ? 'من إعدادات تطبيق Meta' : 'From Meta App settings')}
+                    dir="ltr"
+                    autoComplete="new-password"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'ar'
+                      ? 'يُستخدم للتحقق من توقيع الرسائل الواردة، ويُحفظ مشفراً ولا يظهر بعد الحفظ.'
+                      : 'Used to verify inbound webhook signatures. It is encrypted and never returned after saving.'}
+                  </p>
+                </div>
+
+                <label className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={formData.whatsapp_inbox_enabled}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      whatsapp_inbox_enabled: e.target.checked
+                    })}
+                    className="w-4 h-4 mt-0.5 accent-emerald-600"
+                  />
+                  <span>
+                    <span className="font-semibold block">
+                      {language === 'ar' ? 'تفعيل استقبال شات واتساب لهذا الفرع' : 'Enable WhatsApp inbox for this branch'}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {language === 'ar'
+                        ? 'يتطلب App Secret صحيحاً وربط Callback URL وVerify Token داخل Meta.'
+                        : 'Requires a valid App Secret and the Callback URL/Verify Token configured in Meta.'}
+                    </span>
+                  </span>
+                </label>
+
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_130px] gap-3">
                   <div className="space-y-1">
                     <Label>{language === 'ar' ? 'اسم قالب Meta المعتمد' : 'Approved Meta template name'}</Label>
@@ -975,6 +1038,45 @@ const BranchesPage = () => {
                       : 'I confirm this Meta-approved template has exactly one body variable {{1}} and requires no header or button variables.'}
                   </span>
                 </label>
+
+                {webhookInfo && (
+                  <div className="space-y-2 rounded-md border bg-white p-3">
+                    <p className="text-sm font-bold">
+                      {language === 'ar' ? 'إعداد Webhook في Meta' : 'Meta Webhook setup'}
+                    </p>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Callback URL</Label>
+                      <div className="flex gap-2">
+                        <Input value={webhookInfo.callback_url || ''} readOnly dir="ltr" />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => navigator.clipboard.writeText(webhookInfo.callback_url || '')}
+                        >
+                          {language === 'ar' ? 'نسخ' : 'Copy'}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Verify Token</Label>
+                      <div className="flex gap-2">
+                        <Input value={webhookInfo.verify_token || ''} readOnly dir="ltr" />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => navigator.clipboard.writeText(webhookInfo.verify_token || '')}
+                        >
+                          {language === 'ar' ? 'نسخ' : 'Copy'}
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'ar'
+                        ? 'ضع القيمتين في إعداد Webhooks لتطبيق Meta، ثم اشترك في حدث messages.'
+                        : 'Use these values in the Meta App Webhooks settings, then subscribe to messages.'}
+                    </p>
+                  </div>
+                )}
 
                 {editingBranch && formData.whatsapp_token_configured && (
                   <Button

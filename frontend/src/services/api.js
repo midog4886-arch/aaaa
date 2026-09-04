@@ -774,6 +774,19 @@ export const whatsappAPI = {
       branch_id: branchId,
       recipients
     }),
+  getMetaWebhookInfo: () => axios.get(`${API}/whatsapp/meta-webhook-info`),
+  getCloudInboxConversations: (branchFilter) => {
+    const params = branchFilter && branchFilter !== 'all'
+      ? `?branch_filter=${encodeURIComponent(branchFilter)}`
+      : '';
+    return axios.get(`${API}/whatsapp/cloud-inbox/conversations${params}`);
+  },
+  getCloudInboxThread: (conversationId) =>
+    axios.get(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}`),
+  getCloudInboxMedia: (messageId) =>
+    axios.get(`${API}/whatsapp/cloud-inbox/media/${encodeURIComponent(messageId)}`, { responseType: 'blob' }),
+  replyCloudInbox: (conversationId, body) =>
+    axios.post(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/reply`, { body }),
   getReminderHistory: (filters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
