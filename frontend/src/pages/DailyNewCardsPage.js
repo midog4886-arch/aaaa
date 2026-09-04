@@ -102,6 +102,13 @@ const DailyNewCardsPage = () => {
     } catch (_e) { return iso; }
   };
 
+  const wasPrintedAfterRenewal = (member) => {
+    if (!member?.card_printed_at || !member?.renewed_at) return false;
+    const printedAt = Date.parse(member.card_printed_at);
+    const renewedAt = Date.parse(member.renewed_at);
+    return Number.isFinite(printedAt) && Number.isFinite(renewedAt) && printedAt >= renewedAt;
+  };
+
   const load = useCallback(async (d, q) => {
     setLoading(true);
     setError('');
@@ -833,11 +840,12 @@ const DailyNewCardsPage = () => {
                         <tbody>
                           {branch.members.map((m, idx) => {
                             const isSelected = renewalSelectedIds.has(m.id);
+                            const isPrinted = wasPrintedAfterRenewal(m);
                             const time = (m.renewed_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
                             return (
                               <tr
                                 key={m.id}
-                                className={`border-t hover:bg-blue-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''}`}
+                                className={`border-t hover:bg-blue-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${isPrinted ? 'opacity-70' : ''}`}
                                 onClick={() => toggleRenewalMember(m.id)}
                               >
                                 <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -850,7 +858,19 @@ const DailyNewCardsPage = () => {
                                 </td>
                                 <td className="p-2 text-gray-500">{idx + 1}</td>
                                 <td className="p-2 font-bold text-blue-700">#{m.member_code}</td>
-                                <td className="p-2 font-medium">{m.name_ar || m.name}</td>
+                                <td className="p-2 font-medium">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span>{m.name_ar || m.name}</span>
+                                    {isPrinted && (
+                                      <span
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300"
+                                        title={`تم الطباعة بعد التجديد: ${formatPrintedDate(m.card_printed_at)}`}
+                                      >
+                                        ✓ تم الطبع
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="p-2" dir="ltr">{m.phone || '-'}</td>
                                 <td className="p-2 text-gray-700">
                                   {(m.renewal_items || []).map((it) => it.activity_name).filter(Boolean).join('، ') || '-'}
