@@ -314,6 +314,55 @@ async def _send_meta_cloud_message(phone: str, message: str, config: dict) -> bo
     return success
 
 
+async def send_attendance_whatsapp_notice(
+    member: dict,
+    activity_name: str,
+    date_str: str,
+    check_in_time: str,
+    branch_id: Optional[str] = None,
+) -> bool:
+    """Best-effort attendance notice using the receiving branch's Meta template."""
+    try:
+        target_branch = branch_id or member.get("branch_id")
+        phone = _format_cloud_phone(member.get("phone") or "")
+        config = await _get_branch_cloud_config(target_branch)
+        if not (
+            phone
+            and config
+            and config.get("enabled")
+            and config.get("phone_number_id")
+            and config.get("access_token_encrypted")
+            and config.get("attendance_template_name")
+            and config.get("attendance_template_confirmed")
+        ):
+            return False
+        member_name = member.get("name_ar") or member.get("name") or ""
+        message = (
+            f"تم تسجيل حضور {member_name} في {activity_name} "
+            f"بتاريخ {date_str} الساعة {check_in_time} ✅"
+        )
+        attendance_config = dict(config)
+        attendance_config["message_template_name"] = config["attendance_template_name"]
+        success = await _send_meta_cloud_message(phone, message, attendance_config)
+        try:
+            await _db["whatsapp_send_log"].insert_one({
+                "phone": phone.split("@")[0],
+                "message": message,
+                "success": success,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "type": "attendance_cloud",
+                "branch_id": target_branch,
+                "member_id": member.get("id"),
+                "transport": "meta_cloud",
+            })
+        except Exception as exc:
+            logger.warning("Could not save attendance WhatsApp log: %s", type(exc).__name__)
+        return success
+    except Exception as exc:
+        logger.warning("Attendance WhatsApp notice failed: %s", type(exc).__name__)
+        return False
+
+
 async def _send_wa_message_for_branch(
     phone: str, message: str, branch_id: Optional[str]
 ) -> bool:
@@ -994,6 +1043,8 @@ class BranchCloudConfigUpdate(BaseModel):
     image_template_name: Optional[str] = ""
     document_template_name: Optional[str] = ""
     media_templates_confirmed: bool = False
+    attendance_template_name: Optional[str] = ""
+    attendance_template_confirmed: bool = False
 
 
 def _require_admin(current_user: dict):
@@ -1027,6 +1078,8 @@ async def get_branch_cloud_config(
             "image_template_name": "",
             "document_template_name": "",
             "media_templates_confirmed": False,
+            "attendance_template_name": "",
+            "attendance_template_confirmed": False,
             "token_configured": False,
         }
     return {
@@ -1045,6 +1098,8 @@ async def get_branch_cloud_config(
         "image_template_name": config.get("image_template_name") or "",
         "document_template_name": config.get("document_template_name") or "",
         "media_templates_confirmed": bool(config.get("media_templates_confirmed")),
+        "attendance_template_name": config.get("attendance_template_name") or "",
+        "attendance_template_confirmed": bool(config.get("attendance_template_confirmed")),
         "token_configured": bool(config.get("access_token_encrypted")),
         "updated_at": config.get("updated_at"),
     }
@@ -1085,6 +1140,8 @@ async def update_branch_cloud_config(
         "image_template_name": (data.image_template_name or "").strip(),
         "document_template_name": (data.document_template_name or "").strip(),
         "media_templates_confirmed": bool(data.media_templates_confirmed),
+        "attendance_template_name": (data.attendance_template_name or "").strip(),
+        "attendance_template_confirmed": bool(data.attendance_template_confirmed),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": current_user.get("user_id") or current_user.get("id"),
     }

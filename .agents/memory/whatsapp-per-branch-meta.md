@@ -14,3 +14,5 @@ Bulk sends to pasted numbers have no member-derived branch context, so the opera
 Inbound Cloud chat webhooks are tenant-bound by a slug in the callback URL, then branch-bound by each event's Phone Number ID. Verify the raw-body HMAC before processing; a Meta batch may contain several branch phone IDs but they must share one App Secret. Compute the 24-hour reply window from Meta's customer-message timestamp, never webhook receipt time. Media proxying must stay authenticated, branch-scoped, HTTPS-only, redirect-disabled, and restricted to Meta CDN hosts.
 
 Proactive bulk image/PDF sends require separate approved Meta templates: IMAGE or DOCUMENT header plus exactly one Body variable {{1}}. Upload media once per batch, then reuse its Meta media ID. Bound reads before buffering, validate magic bytes, normalize filenames, serialize per branch, and idempotency-key every batch.
+
+Attendance WhatsApp alerts use a dedicated per-branch approved template with one Body variable {{1}}. Normalize local phones before Meta send, never block check-in on send failure, notify only present/new transitions, and use the scanning branch for VIP attendance.

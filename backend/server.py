@@ -8163,6 +8163,13 @@ async def _push_attendance_notice(member_id: str, member_name: str, activity_nam
         logging.getLogger(__name__).exception("attendance push notification failed")
 
 
+def _schedule_attendance_whatsapp(member: dict, activity_name: str, date_str: str, check_in_time: str, branch_id: str):
+    from routes.whatsapp import send_attendance_whatsapp_notice
+    asyncio.create_task(send_attendance_whatsapp_notice(
+        member, activity_name, date_str, check_in_time, branch_id
+    ))
+
+
 @api_router.post("/attendance/quick")
 async def quick_attendance(
     member_code: str,
@@ -8348,6 +8355,9 @@ async def quick_attendance(
     asyncio.create_task(_push_attendance_notice(
         member["id"], record_doc["member_name"], record_doc["activity_name"], today
     ))
+    _schedule_attendance_whatsapp(
+        member, record_doc["activity_name"], today, now_time, record_doc["branch_id"]
+    )
 
     return {
         "message": "تم تسجيل الحضور بنجاح ✓",
@@ -8449,11 +8459,21 @@ async def record_bulk_attendance(
             "date": request.date
         })
         
+        requested_status = rec.get("status", "present")
+        should_notify_present = requested_status == "present" and (
+            not existing or existing.get("status") != "present"
+        )
+        attendance_branch_id = (
+            (current_user.get("branch_id") or member.get("branch_id") or "")
+            if member.get("is_vip")
+            else (member.get("branch_id") or current_user.get("branch_id") or "")
+        )
         if existing:
             await db.attendance.update_one(
                 {"id": existing["id"]},
                 {"$set": {
-                    "status": rec.get("status", "present"),
+                    "status": requested_status,
+                    "branch_id": attendance_branch_id,
                     "check_in_time": rec.get("check_in_time", current_time),
                     "notes": rec.get("notes", ""),
                     "recorded_by": current_user.get("username", "")
@@ -8466,9 +8486,9 @@ async def record_bulk_attendance(
                 "member_name": member["name"],
                 "activity_id": request.activity_id,
                 "activity_name": activity["name"],
-                "branch_id": member.get("branch_id", ""),
+                "branch_id": attendance_branch_id,
                 "date": request.date,
-                "status": rec.get("status", "present"),
+                "status": requested_status,
                 "check_in_time": rec.get("check_in_time", current_time),
                 "notes": rec.get("notes", ""),
                 "recorded_by": current_user.get("username", ""),
@@ -8478,7 +8498,7 @@ async def record_bulk_attendance(
         
         # Notify guardian ONLY for a present check-in — marking a child
         # absent must never send "attendance recorded" to the family.
-        if rec.get("status", "present") == "present":
+        if should_notify_present:
             try:
                 attendance_notif = {
                     "id": str(uuid.uuid4()),
@@ -8501,6 +8521,13 @@ async def record_bulk_attendance(
                 activity.get("name_ar") or activity.get("name", ""),
                 request.date,
             ))
+            _schedule_attendance_whatsapp(
+                member,
+                activity.get("name_ar") or activity.get("name", ""),
+                request.date,
+                rec.get("check_in_time", current_time),
+                attendance_branch_id,
+            )
 
         recorded_count += 1
     

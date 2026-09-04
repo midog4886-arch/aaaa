@@ -507,3 +507,35 @@ def test_bulk_pdf_upload_uses_document_template(monkeypatch):
     assert result["media_type"] == "document"
     assert uploaded[0][1:3] == ("offer.pdf", "application/pdf")
     assert sent[0][2:5] == ("media-1", "document", "offer.pdf")
+
+
+def test_attendance_notice_uses_branch_specific_template(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "attendance_template_name": "attendance_recorded",
+        "attendance_template_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(phone, message, config):
+        sent.append((phone, message, config.get("message_template_name")))
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_send)
+    result = run(whatsapp_mod.send_attendance_whatsapp_notice(
+        {"id": "member-1", "name_ar": "محمد", "phone": "0501234567", "branch_id": "branch-a"},
+        "الكاراتيه",
+        "2026-09-04",
+        "18:30",
+    ))
+
+    assert result is True
+    assert sent[0][0] == "966501234567@s.whatsapp.net"
+    assert "محمد" in sent[0][1]
+    assert "الكاراتيه" in sent[0][1]
+    assert sent[0][2] == "attendance_recorded"

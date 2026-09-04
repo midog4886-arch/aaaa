@@ -163,9 +163,11 @@ async def test_all_four_checkin_paths_notify_guardian(monkeypatch):
 
     import routes.attendance as att_routes
     import routes.push_notifications as push_mod
+    import routes.whatsapp as whatsapp_mod
     import server as server_mod
 
     pushed = []
+    whatsapp_notices = []
 
     async def _fake_send_push_notification(subscription, payload, *a, **kw):
         pushed.append({
@@ -178,6 +180,22 @@ async def test_all_four_checkin_paths_notify_guardian(monkeypatch):
         return {"success": True}
 
     monkeypatch.setattr(push_mod, "send_push_notification", _fake_send_push_notification)
+
+    async def _fake_attendance_whatsapp(member, activity_name, date_str, check_in_time, branch_id=None):
+        whatsapp_notices.append({
+            "member_id": member.get("id"),
+            "activity_name": activity_name,
+            "date": date_str,
+            "time": check_in_time,
+            "branch_id": branch_id,
+        })
+        return True
+
+    monkeypatch.setattr(
+        whatsapp_mod,
+        "send_attendance_whatsapp_notice",
+        _fake_attendance_whatsapp,
+    )
 
     failures = []
     tag = uuid.uuid4().hex[:8]
@@ -215,6 +233,24 @@ async def test_all_four_checkin_paths_notify_guardian(monkeypatch):
             ),
             current_user=admin,
         )
+        await asyncio.sleep(0)
+        bulk_notice_count = sum(
+            1 for notice in whatsapp_notices
+            if notice["member_id"] == p["child_id"]
+        )
+        await server_mod.record_bulk_attendance(
+            server_mod.BulkAttendanceRequest(
+                activity_id=fx["activity_id"], date=_today(),
+                records=[{"member_id": p["child_id"], "status": "present"}],
+            ),
+            current_user=admin,
+        )
+        await asyncio.sleep(0)
+        if sum(
+            1 for notice in whatsapp_notices
+            if notice["member_id"] == p["child_id"]
+        ) != bulk_notice_count:
+            failures.append("bulk duplicate: WhatsApp attendance notice was scheduled twice")
 
         # 4b) bulk ABSENT — must NOT notify the family ("attendance recorded"
         # for an absent child would be a false alert).
@@ -233,6 +269,8 @@ async def test_all_four_checkin_paths_notify_guardian(monkeypatch):
             failures.append("bulk-absent: attendance_recorded notification was created for an ABSENT child")
         if any(s["member_id"] == p["guardian_id"] for s in pushed):
             failures.append("bulk-absent: push was sent to the guardian for an ABSENT child")
+        if any(s["member_id"] == p["child_id"] for s in whatsapp_notices):
+            failures.append("bulk-absent: WhatsApp attendance notice was scheduled for an ABSENT child")
 
         from routes.member_portal import get_member_notifications
         for path, p in fx["pairs"].items():
@@ -270,6 +308,8 @@ async def test_all_four_checkin_paths_notify_guardian(monkeypatch):
                 )
                 if not is_attendance:
                     failures.append(f"{path}: push payload not attendance-typed: {s}")
+            if not any(s["member_id"] == p["child_id"] for s in whatsapp_notices):
+                failures.append(f"{path}: WhatsApp attendance notice was not scheduled")
     finally:
         await _cleanup(db, tag)
 

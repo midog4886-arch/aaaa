@@ -5,6 +5,7 @@ from typing import List, Optional
 import uuid
 import math
 from datetime import datetime, timezone, timedelta
+import asyncio
 
 from .common import db, get_current_user
 from utils.auth import resolve_branch_filter
@@ -50,6 +51,13 @@ async def send_attendance_push(member_id: str, member_name: str, activity_name: 
                 print(f"send_attendance_push sub error: {e}")
     except Exception as e:
         print(f"send_attendance_push error: {e}")
+
+
+def schedule_attendance_whatsapp(member: dict, activity_name: str, date_str: str, check_in_time: str, branch_id: str):
+    from .whatsapp import send_attendance_whatsapp_notice
+    asyncio.create_task(send_attendance_whatsapp_notice(
+        member, activity_name, date_str, check_in_time, branch_id
+    ))
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -330,6 +338,7 @@ async def create_attendance(
         await _insert_attendance_inapp_notif(attendance.member_id, activity_name, record.get("date", ""))
     except Exception:
         pass
+    schedule_attendance_whatsapp(member, activity_name, record.get("date", ""), check_in_time, branch_id)
 
     return {"message": "Attendance recorded", "record": {k: v for k, v in record.items() if k != "_id"}}
 
@@ -1696,6 +1705,9 @@ async def qr_checkin(
         await _insert_attendance_inapp_notif(member["id"], activity_name, record.get("date", ""))
     except Exception:
         pass
+    schedule_attendance_whatsapp(
+        member, activity_name, record.get("date", ""), check_in_time, record.get("branch_id")
+    )
     
     session_quota_warning = None
     try:

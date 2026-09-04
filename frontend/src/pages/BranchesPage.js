@@ -69,6 +69,8 @@ const initialFormData = () => ({
   whatsapp_image_template_name: '',
   whatsapp_document_template_name: '',
   whatsapp_media_templates_confirmed: false,
+  whatsapp_attendance_template_name: '',
+  whatsapp_attendance_template_confirmed: false,
   whatsapp_token_configured: false,
   whatsapp_app_secret_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
@@ -217,6 +219,9 @@ const BranchesPage = () => {
           image_template_name: formData.whatsapp_image_template_name || '',
           document_template_name: formData.whatsapp_document_template_name || '',
           media_templates_confirmed: !!formData.whatsapp_media_templates_confirmed
+          ,
+          attendance_template_name: formData.whatsapp_attendance_template_name || '',
+          attendance_template_confirmed: !!formData.whatsapp_attendance_template_confirmed
         });
       }
       loadBranches();
@@ -277,6 +282,8 @@ const BranchesPage = () => {
       whatsapp_image_template_name: cloud.image_template_name || '',
       whatsapp_document_template_name: cloud.document_template_name || '',
       whatsapp_media_templates_confirmed: !!cloud.media_templates_confirmed,
+      whatsapp_attendance_template_name: cloud.attendance_template_name || '',
+      whatsapp_attendance_template_confirmed: !!cloud.attendance_template_confirmed,
       whatsapp_token_configured: !!cloud.token_configured,
       whatsapp_app_secret_configured: !!cloud.app_secret_configured,
       // Missing/empty working_days means the branch was created before this
@@ -1092,6 +1099,45 @@ const BranchesPage = () => {
                       {language === 'ar'
                         ? 'أؤكد أن القالبين معتمدان، وأن نوع Header مطابق، وأن Body يحتوي المتغير {{1}} فقط.'
                         : 'I confirm both templates are approved, their header types match, and the body contains only {{1}}.'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 space-y-3">
+                  <p className="text-sm font-bold text-emerald-900">
+                    {language === 'ar' ? 'قالب تنبيه تسجيل الحضور' : 'Attendance check-in template'}
+                  </p>
+                  <p className="text-xs text-emerald-800">
+                    {language === 'ar'
+                      ? 'أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}} داخل Body، بدون Header أو متغيرات أزرار. سيضع النظام داخله اسم العضو والنشاط والتاريخ والوقت.'
+                      : 'Create an approved Meta template with one body variable {{1}}, without header or button variables. The system inserts the member, activity, date, and time.'}
+                  </p>
+                  <div className="space-y-1">
+                    <Label>{language === 'ar' ? 'اسم قالب الحضور' : 'Attendance template name'}</Label>
+                    <Input
+                      value={formData.whatsapp_attendance_template_name}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_attendance_template_name: e.target.value
+                      })}
+                      placeholder="attendance_recorded"
+                      dir="ltr"
+                    />
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-emerald-900">
+                    <input
+                      type="checkbox"
+                      checked={formData.whatsapp_attendance_template_confirmed}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_attendance_template_confirmed: e.target.checked
+                      })}
+                      className="w-4 h-4 mt-0.5 accent-emerald-600"
+                    />
+                    <span>
+                      {language === 'ar'
+                        ? 'تفعيل إرسال تنبيه واتساب تلقائياً عند تسجيل الحضور لهذا الفرع.'
+                        : 'Enable automatic WhatsApp notifications when attendance is recorded for this branch.'}
                     </span>
                   </label>
                 </div>
