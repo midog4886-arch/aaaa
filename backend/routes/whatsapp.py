@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import hashlib
 import logging
 import os
 import uuid
@@ -6,6 +8,7 @@ from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, List
 import httpx
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from .common import get_current_user
@@ -157,6 +160,107 @@ async def _get_wa_status() -> dict:
 
 
 async def _send_wa_message(phone: str, message: str) -> bool:
+    return await _send_wa_message_for_branch(phone, message, None)
+
+
+def _token_cipher():
+    secret = os.environ.get("SESSION_SECRET", "")
+    if not secret:
+        raise RuntimeError("SESSION_SECRET is required for WhatsApp token encryption")
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+    return Fernet(key)
+
+
+def _encrypt_access_token(token: str) -> str:
+    return _token_cipher().encrypt(token.encode("utf-8")).decode("ascii")
+
+
+def _decrypt_access_token(encrypted: str) -> str:
+    try:
+        return _token_cipher().decrypt(encrypted.encode("ascii")).decode("utf-8")
+    except InvalidToken as exc:
+        raise RuntimeError("Stored WhatsApp access token cannot be decrypted") from exc
+
+
+async def _get_branch_cloud_config(branch_id: Optional[str]) -> Optional[dict]:
+    if _db is None or not branch_id:
+        return None
+    return await _db["whatsapp_branch_configs"].find_one(
+        {"branch_id": branch_id}, {"_id": 0}
+    )
+
+
+async def _has_enabled_cloud_config() -> bool:
+    if _db is None:
+        return False
+    return bool(await _db["whatsapp_branch_configs"].find_one(
+        {"enabled": True, "access_token_encrypted": {"$exists": True, "$ne": ""}},
+        {"_id": 1},
+    ))
+
+
+async def _send_meta_cloud_message(phone: str, message: str, config: dict) -> bool:
+    digits = "".join(filter(str.isdigit, phone or ""))
+    if not digits:
+        return False
+    try:
+        token = _decrypt_access_token(config["access_token_encrypted"])
+        version = (config.get("graph_api_version") or "v23.0").strip()
+        url = f"https://graph.facebook.com/{version}/{config['phone_number_id']}/messages"
+        template_name = (config.get("message_template_name") or "").strip()
+        if template_name:
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": digits,
+                "type": "template",
+                "template": {
+                    "name": template_name,
+                    "language": {
+                        "code": (config.get("template_language") or "ar").strip()
+                    },
+                    "components": [{
+                        "type": "body",
+                        "parameters": [{"type": "text", "text": message}],
+                    }],
+                },
+            }
+        else:
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": digits,
+                "type": "text",
+                "text": {"preview_url": False, "body": message},
+            }
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return True
+        logger.error(
+            "Meta WhatsApp send failed for branch %s: HTTP %s",
+            config.get("branch_id"),
+            response.status_code,
+        )
+    except Exception as exc:
+        logger.error(
+            "Meta WhatsApp send failed for branch %s: %s",
+            config.get("branch_id"),
+            type(exc).__name__,
+        )
+    return False
+
+
+async def _send_wa_message_for_branch(
+    phone: str, message: str, branch_id: Optional[str]
+) -> bool:
+    cloud_config = await _get_branch_cloud_config(branch_id)
+    if cloud_config and cloud_config.get("enabled"):
+        return await _send_meta_cloud_message(phone, message, cloud_config)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(f"{WA_SERVICE_URL}/send", json={"phone": phone, "message": message})
@@ -364,7 +468,8 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
         )
         wa_phone = _format_phone(phone)
         if wa_phone:
-            success = await _send_wa_message(wa_phone, message)
+            branch_id = member.get("branch_id")
+            success = await _send_wa_message_for_branch(wa_phone, message, branch_id)
             log_entry = {
                 "timestamp": datetime.now(RIYADH_TZ).isoformat(),
                 "member_id": member.get("id", ""),
@@ -375,6 +480,8 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
                 "days_before": days_before,
                 "manual": manual,
                 "type": "renewal_reminder",
+                "branch_id": branch_id,
+                "transport": "meta_cloud" if await _get_branch_cloud_config(branch_id) else "legacy",
             }
             await _db["whatsapp_send_log"].insert_one(log_entry)
             # Log per-individual-activity so the Renewals page can match
@@ -526,7 +633,7 @@ async def _do_daily_reminders():
     branch_templates = await _get_branch_templates()
 
     wa_status = await _get_wa_status()
-    wa_connected = wa_status.get("connected", False)
+    wa_connected = wa_status.get("connected", False) or await _has_enabled_cloud_config()
     push_enabled = settings.get("push_enabled", True)
     portal_enabled = settings.get("portal_enabled", True)
 
@@ -811,6 +918,124 @@ async def update_settings(data: WhatsAppSettings, current_user: dict = Depends(g
 class SendTestRequest(BaseModel):
     phone: str
     message: Optional[str] = None
+    branch_id: Optional[str] = None
+
+
+class BranchCloudConfigUpdate(BaseModel):
+    enabled: bool = True
+    phone_number_id: str
+    whatsapp_business_account_id: Optional[str] = ""
+    access_token: Optional[str] = None
+    graph_api_version: str = "v23.0"
+    message_template_name: Optional[str] = ""
+    template_language: str = "ar"
+
+
+def _require_admin(current_user: dict):
+    if not current_user.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+@router.get("/branch-cloud/{branch_id}")
+async def get_branch_cloud_config(
+    branch_id: str, current_user: dict = Depends(get_current_user)
+):
+    _require_admin(current_user)
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    branch = await _db["branches"].find_one({"id": branch_id}, {"_id": 1})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    config = await _get_branch_cloud_config(branch_id)
+    if not config:
+        return {
+            "branch_id": branch_id,
+            "enabled": False,
+            "phone_number_id": "",
+            "whatsapp_business_account_id": "",
+            "graph_api_version": "v23.0",
+            "message_template_name": "",
+            "template_language": "ar",
+            "token_configured": False,
+        }
+    return {
+        "branch_id": branch_id,
+        "enabled": bool(config.get("enabled")),
+        "phone_number_id": config.get("phone_number_id") or "",
+        "whatsapp_business_account_id": config.get("whatsapp_business_account_id") or "",
+        "graph_api_version": config.get("graph_api_version") or "v23.0",
+        "message_template_name": config.get("message_template_name") or "",
+        "template_language": config.get("template_language") or "ar",
+        "token_configured": bool(config.get("access_token_encrypted")),
+        "updated_at": config.get("updated_at"),
+    }
+
+
+@router.put("/branch-cloud/{branch_id}")
+async def update_branch_cloud_config(
+    branch_id: str,
+    data: BranchCloudConfigUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_admin(current_user)
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    branch = await _db["branches"].find_one({"id": branch_id}, {"_id": 1})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    phone_number_id = "".join(filter(str.isdigit, data.phone_number_id or ""))
+    waba_id = "".join(filter(str.isdigit, data.whatsapp_business_account_id or ""))
+    version = (data.graph_api_version or "v23.0").strip()
+    if not phone_number_id:
+        raise HTTPException(status_code=400, detail="Phone Number ID is required")
+    if not version.startswith("v") or not version[1:].replace(".", "").isdigit():
+        raise HTTPException(status_code=400, detail="Invalid Graph API version")
+    existing = await _get_branch_cloud_config(branch_id) or {}
+    update = {
+        "branch_id": branch_id,
+        "enabled": bool(data.enabled),
+        "phone_number_id": phone_number_id,
+        "whatsapp_business_account_id": waba_id,
+        "graph_api_version": version,
+        "message_template_name": (data.message_template_name or "").strip(),
+        "template_language": (data.template_language or "ar").strip(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user.get("user_id") or current_user.get("id"),
+    }
+    if data.access_token and data.access_token.strip():
+        update["access_token_encrypted"] = _encrypt_access_token(data.access_token.strip())
+    elif existing.get("access_token_encrypted"):
+        update["access_token_encrypted"] = existing["access_token_encrypted"]
+    elif data.enabled:
+        raise HTTPException(status_code=400, detail="Access Token is required")
+    await _db["whatsapp_branch_configs"].update_one(
+        {"branch_id": branch_id}, {"$set": update}, upsert=True
+    )
+    return await get_branch_cloud_config(branch_id, current_user)
+
+
+class BranchCloudTestRequest(BaseModel):
+    phone: str
+    message: Optional[str] = None
+
+
+@router.post("/branch-cloud/{branch_id}/test")
+async def test_branch_cloud_config(
+    branch_id: str,
+    data: BranchCloudTestRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_admin(current_user)
+    config = await _get_branch_cloud_config(branch_id)
+    if not config or not config.get("enabled") or not config.get("access_token_encrypted"):
+        raise HTTPException(status_code=400, detail="Meta WhatsApp is not configured for this branch")
+    message = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"
+    wa_phone = _format_phone(data.phone)
+    if not wa_phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    if await _send_meta_cloud_message(wa_phone, message, config):
+        return {"success": True}
+    raise HTTPException(status_code=502, detail="Meta WhatsApp test failed")
 
 
 @router.post("/test")
@@ -821,10 +1046,15 @@ async def send_test(data: SendTestRequest, current_user: dict = Depends(get_curr
     wa_phone = _format_phone(data.phone)
     if not wa_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
-    wa_status = await _get_wa_status()
-    if not wa_status.get("connected"):
-        raise HTTPException(status_code=400, detail="WhatsApp not connected. Please scan the QR code first.")
-    success = await _send_wa_message(wa_phone, message)
+    if data.branch_id:
+        if not current_user.get("is_admin"):
+            require_branch_scope(current_user, data.branch_id)
+        success = await _send_wa_message_for_branch(wa_phone, message, data.branch_id)
+    else:
+        wa_status = await _get_wa_status()
+        if not wa_status.get("connected"):
+            raise HTTPException(status_code=400, detail="WhatsApp not connected. Please scan the QR code first.")
+        success = await _send_wa_message(wa_phone, message)
     if success:
         return {"success": True, "message": "Message sent successfully"}
     raise HTTPException(status_code=500, detail="Failed to send message")
@@ -1377,7 +1607,9 @@ async def send_bulk_renewal_reminders(
     portal_enabled = settings.get("portal_enabled", True)
 
     wa_status = await _get_wa_status()
-    wa_connected = wa_status.get("connected", False) and not log_only
+    wa_connected = (
+        wa_status.get("connected", False) or await _has_enabled_cloud_config()
+    ) and not log_only
 
     # Branch scoping: non-admins can only target members in their own branch.
     # Fail-closed via require_branch_scope: a non-admin without a branch_id
@@ -1476,7 +1708,8 @@ async def send_bulk_renewal_reminders(
                     end_date=end_date_fmt,
                     fee=fee_str,
                 )
-                ok = await _send_wa_message(wa_phone, message)
+                branch_id = member.get("branch_id")
+                ok = await _send_wa_message_for_branch(wa_phone, message, branch_id)
                 await _db["whatsapp_send_log"].insert_one({
                     "timestamp": datetime.now(RIYADH_TZ).isoformat(),
                     "member_id": mid,
@@ -1487,6 +1720,7 @@ async def send_bulk_renewal_reminders(
                     "days_before": days_calc,
                     "manual": True,
                     "type": "renewal_reminder",
+                    "branch_id": branch_id,
                 })
                 for it in items:
                     await _record_renewal_reminder(

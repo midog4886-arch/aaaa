@@ -389,6 +389,12 @@ export const branchesAPI = {
   create: (data) => axios.post(`${API}/branches`, data),
   update: (id, data) => axios.put(`${API}/branches/${id}`, data),
   delete: (id) => axios.delete(`${API}/branches/${id}`),
+  getWhatsAppCloud: (id) => axios.get(`${API}/whatsapp/branch-cloud/${id}`),
+  updateWhatsAppCloud: (id, data) => axios.put(`${API}/whatsapp/branch-cloud/${id}`, data),
+  testWhatsAppCloud: (id, phone, message) => axios.post(
+    `${API}/whatsapp/branch-cloud/${id}/test`,
+    { phone, message }
+  ),
 };
 
 // Export API

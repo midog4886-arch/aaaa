@@ -8,7 +8,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
-import api from '../services/api';
+import api, { branchesAPI } from '../services/api';
 import { toast } from 'sonner';
 import { 
   Plus, 
@@ -56,6 +56,14 @@ const initialFormData = () => ({
   whatsapp_manual_template: '',
   whatsapp_manual_expired_template: '',
   whatsapp_welcome_template: '',
+  whatsapp_cloud_enabled: false,
+  whatsapp_phone_number_id: '',
+  whatsapp_business_account_id: '',
+  whatsapp_access_token: '',
+  whatsapp_graph_api_version: 'v23.0',
+  whatsapp_meta_template_name: '',
+  whatsapp_meta_template_language: 'ar',
+  whatsapp_token_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
   branch_type: 'permanent',
   venues: []
@@ -100,6 +108,7 @@ const BranchesPage = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [testingWhatsApp, setTestingWhatsApp] = useState(false);
   
   const [formData, setFormData] = useState(initialFormData);
 
@@ -169,12 +178,31 @@ const BranchesPage = () => {
         venues: editingBranch ? getBranchVenues(editingBranch) : []
       };
       
+      let savedBranch;
       if (editingBranch) {
-        await api.put(`/branches/${editingBranch.id}`, dataToSend);
+        const response = await api.put(`/branches/${editingBranch.id}`, dataToSend);
+        savedBranch = response.data;
         toast.success(language === 'ar' ? 'تم تحديث الفرع بنجاح' : 'Branch updated successfully');
       } else {
-        await api.post('/branches', dataToSend);
+        const response = await api.post('/branches', dataToSend);
+        savedBranch = response.data;
         toast.success(language === 'ar' ? 'تم إضافة الفرع بنجاح' : 'Branch added successfully');
+      }
+      const savedBranchId = editingBranch?.id || savedBranch?.id;
+      if (
+        savedBranchId &&
+        (formData.whatsapp_phone_number_id || formData.whatsapp_token_configured || formData.whatsapp_access_token)
+      ) {
+        await branchesAPI.updateWhatsAppCloud(savedBranchId, {
+          enabled: !!formData.whatsapp_cloud_enabled,
+          phone_number_id: formData.whatsapp_phone_number_id,
+          whatsapp_business_account_id: formData.whatsapp_business_account_id,
+          access_token: formData.whatsapp_access_token || null,
+          graph_api_version: formData.whatsapp_graph_api_version || 'v23.0'
+          ,
+          message_template_name: formData.whatsapp_meta_template_name || '',
+          template_language: formData.whatsapp_meta_template_language || 'ar'
+        });
       }
       loadBranches();
       handleCloseDialog();
@@ -198,8 +226,12 @@ const BranchesPage = () => {
     }
   };
 
-  const handleEdit = (branch) => {
+  const handleEdit = async (branch) => {
     setEditingBranch(branch);
+    let cloud = {};
+    try {
+      cloud = (await branchesAPI.getWhatsAppCloud(branch.id)).data || {};
+    } catch (_e) {}
     setFormData({
       name_ar: branch.name_ar || branch.name || '',
       public_name: branch.public_name || '',
@@ -212,6 +244,14 @@ const BranchesPage = () => {
       whatsapp_manual_template: branch.whatsapp_manual_template || '',
       whatsapp_manual_expired_template: branch.whatsapp_manual_expired_template || '',
       whatsapp_welcome_template: branch.whatsapp_welcome_template || '',
+      whatsapp_cloud_enabled: !!cloud.enabled,
+      whatsapp_phone_number_id: cloud.phone_number_id || '',
+      whatsapp_business_account_id: cloud.whatsapp_business_account_id || '',
+      whatsapp_access_token: '',
+      whatsapp_graph_api_version: cloud.graph_api_version || 'v23.0',
+      whatsapp_meta_template_name: cloud.message_template_name || '',
+      whatsapp_meta_template_language: cloud.template_language || 'ar',
+      whatsapp_token_configured: !!cloud.token_configured,
       // Missing/empty working_days means the branch was created before this
       // feature -> treat it as open all week.
       working_days: Array.isArray(branch.working_days) && branch.working_days.length > 0
@@ -227,6 +267,31 @@ const BranchesPage = () => {
     setIsDialogOpen(false);
     setEditingBranch(null);
     setFormData(initialFormData());
+  };
+
+  const handleTestWhatsAppCloud = async () => {
+    const phone = (formData.support_whatsapp || formData.phone || '').trim();
+    if (!editingBranch?.id) {
+      toast.error(language === 'ar' ? 'احفظ الفرع أولاً ثم اختبر الاتصال' : 'Save the branch before testing');
+      return;
+    }
+    if (!phone) {
+      toast.error(language === 'ar' ? 'أدخل رقم واتساب للفرع أولاً' : 'Enter a branch WhatsApp number first');
+      return;
+    }
+    setTestingWhatsApp(true);
+    try {
+      await branchesAPI.testWhatsAppCloud(
+        editingBranch.id,
+        phone,
+        language === 'ar' ? 'رسالة اختبار اتصال واتساب الخاص بالفرع' : 'Branch WhatsApp connection test'
+      );
+      toast.success(language === 'ar' ? 'تم إرسال رسالة الاختبار بنجاح' : 'Test message sent successfully');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'فشل اختبار اتصال واتساب' : 'WhatsApp test failed'));
+    } finally {
+      setTestingWhatsApp(false);
+    }
   };
 
   const updateVenue = (index, patch) => {
@@ -788,6 +853,123 @@ const BranchesPage = () => {
                     ? 'يستخدمه أعضاء هذا الفرع في أزرار «تجديد الاشتراك عبر واتساب» وصفحة الدعم. فارغ = رقم هاتف الفرع، ثم الرقم العام.'
                     : "Used by this branch's members in the renew-via-WhatsApp buttons and the support page. Empty = branch phone, then the global default."}
                 </p>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-emerald-200 p-3 bg-emerald-50/40">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label className="font-bold">
+                      {language === 'ar' ? 'WhatsApp Cloud API الخاص بهذا الفرع' : 'Branch WhatsApp Cloud API'}
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {language === 'ar'
+                        ? 'ترسل رسائل أعضاء هذا الفرع من رقم Meta الخاص به. رمز الوصول يُشفّر ولا يظهر بعد الحفظ.'
+                        : "This branch's member messages use its own Meta sender. The access token is encrypted and never shown after saving."}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={formData.whatsapp_cloud_enabled}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_cloud_enabled: e.target.checked })}
+                      className="w-4 h-4 accent-emerald-600"
+                    />
+                    {language === 'ar' ? 'مفعّل' : 'Enabled'}
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Phone Number ID</Label>
+                    <Input
+                      value={formData.whatsapp_phone_number_id}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_phone_number_id: e.target.value })}
+                      placeholder="123456789012345"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>WhatsApp Business Account ID</Label>
+                    <Input
+                      value={formData.whatsapp_business_account_id}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_business_account_id: e.target.value })}
+                      placeholder="123456789012345"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_130px] gap-3">
+                  <div className="space-y-1">
+                    <Label>
+                      {language === 'ar' ? 'رمز الوصول الدائم' : 'Permanent Access Token'}
+                      {formData.whatsapp_token_configured && (
+                        <span className="text-emerald-700 text-xs ms-2">
+                          {language === 'ar' ? '✓ محفوظ' : '✓ Saved'}
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      type="password"
+                      value={formData.whatsapp_access_token}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_access_token: e.target.value })}
+                      placeholder={formData.whatsapp_token_configured
+                        ? (language === 'ar' ? 'اتركه فارغاً للإبقاء على الرمز المحفوظ' : 'Leave blank to keep saved token')
+                        : 'EAAG...'}
+                      dir="ltr"
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Graph API</Label>
+                    <Input
+                      value={formData.whatsapp_graph_api_version}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_graph_api_version: e.target.value })}
+                      placeholder="v23.0"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_130px] gap-3">
+                  <div className="space-y-1">
+                    <Label>{language === 'ar' ? 'اسم قالب Meta المعتمد' : 'Approved Meta template name'}</Label>
+                    <Input
+                      value={formData.whatsapp_meta_template_name}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_meta_template_name: e.target.value })}
+                      placeholder="academy_notification"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>{language === 'ar' ? 'لغة القالب' : 'Template language'}</Label>
+                    <Input
+                      value={formData.whatsapp_meta_template_language}
+                      onChange={(e) => setFormData({ ...formData, whatsapp_meta_template_language: e.target.value })}
+                      placeholder="ar"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-amber-700">
+                  {language === 'ar'
+                    ? 'لرسائل التجديد التلقائية: أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}}، ثم اكتب اسمه هنا. سيُرسل نص الرسالة الكامل داخل هذا المتغير.'
+                    : 'For proactive reminders, create an approved Meta template with one body text variable {{1}}, then enter its name here.'}
+                </p>
+
+                {editingBranch && formData.whatsapp_token_configured && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTestWhatsAppCloud}
+                    disabled={testingWhatsApp}
+                    className="border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                  >
+                    {testingWhatsApp && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+                    {language === 'ar' ? 'اختبار الإرسال من هذا الفرع' : 'Test this branch sender'}
+                  </Button>
+                )}
               </div>
 
               <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
