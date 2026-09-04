@@ -774,6 +774,8 @@ export const whatsappAPI = {
       branch_id: branchId,
       recipients
     }),
+  sendBranchCloudBulkMedia: (formData) =>
+    axios.post(`${API}/whatsapp/branch-cloud/send-bulk-media`, formData),
   getMetaWebhookInfo: () => axios.get(`${API}/whatsapp/meta-webhook-info`),
   getCloudInboxConversations: (branchFilter) => {
     const params = branchFilter && branchFilter !== 'all'

@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
@@ -12,7 +13,7 @@ from typing import Optional, List
 from urllib.parse import urlparse
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
@@ -21,6 +22,7 @@ from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_current_tenant
 
 logger = logging.getLogger("whatsapp")
+_bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
 
 
 def _require_whatsapp_access(current_user: dict):
@@ -989,6 +991,9 @@ class BranchCloudConfigUpdate(BaseModel):
     single_variable_template_confirmed: bool = False
     app_secret: Optional[str] = None
     inbox_enabled: bool = False
+    image_template_name: Optional[str] = ""
+    document_template_name: Optional[str] = ""
+    media_templates_confirmed: bool = False
 
 
 def _require_admin(current_user: dict):
@@ -1019,6 +1024,9 @@ async def get_branch_cloud_config(
             "single_variable_template_confirmed": False,
             "app_secret_configured": False,
             "inbox_enabled": False,
+            "image_template_name": "",
+            "document_template_name": "",
+            "media_templates_confirmed": False,
             "token_configured": False,
         }
     return {
@@ -1034,6 +1042,9 @@ async def get_branch_cloud_config(
         ),
         "app_secret_configured": bool(config.get("app_secret_encrypted")),
         "inbox_enabled": bool(config.get("inbox_enabled")),
+        "image_template_name": config.get("image_template_name") or "",
+        "document_template_name": config.get("document_template_name") or "",
+        "media_templates_confirmed": bool(config.get("media_templates_confirmed")),
         "token_configured": bool(config.get("access_token_encrypted")),
         "updated_at": config.get("updated_at"),
     }
@@ -1071,6 +1082,9 @@ async def update_branch_cloud_config(
             data.single_variable_template_confirmed
         ),
         "inbox_enabled": bool(data.inbox_enabled),
+        "image_template_name": (data.image_template_name or "").strip(),
+        "document_template_name": (data.document_template_name or "").strip(),
+        "media_templates_confirmed": bool(data.media_templates_confirmed),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": current_user.get("user_id") or current_user.get("id"),
     }
@@ -1534,6 +1548,14 @@ async def get_branch_cloud_availability(
             and config.get("message_template_name")
             and config.get("single_variable_template_confirmed")
         ),
+        "image_template_configured": bool(
+            config and config.get("image_template_name")
+            and config.get("media_templates_confirmed")
+        ),
+        "document_template_configured": bool(
+            config and config.get("document_template_name")
+            and config.get("media_templates_confirmed")
+        ),
     }
 
 
@@ -1602,6 +1624,257 @@ async def send_branch_cloud_bulk(
         "failed": len(failed_indices),
         "failed_indices": failed_indices,
     }
+
+
+async def _upload_meta_bulk_media(
+    content: bytes, filename: str, mime_type: str, config: dict
+) -> str:
+    token = _decrypt_access_token(config["access_token_encrypted"])
+    version = (config.get("graph_api_version") or "v23.0").strip()
+    url = (
+        f"https://graph.facebook.com/{version}/"
+        f"{config['phone_number_id']}/media"
+    )
+    async with httpx.AsyncClient(timeout=45.0) as client:
+        response = await client.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            data={"messaging_product": "whatsapp"},
+            files={"file": (filename, content, mime_type)},
+        )
+    if response.status_code >= 300:
+        logger.error("Meta media upload failed: HTTP %s", response.status_code)
+        raise HTTPException(status_code=502, detail="Meta media upload failed")
+    media_id = response.json().get("id")
+    if not media_id:
+        raise HTTPException(status_code=502, detail="Meta did not return a media ID")
+    return media_id
+
+
+async def _send_meta_media_template(
+    phone: str,
+    message: str,
+    media_id: str,
+    media_type: str,
+    filename: str,
+    config: dict,
+) -> bool:
+    wa_phone = _format_cloud_phone(phone)
+    if not wa_phone:
+        return False
+    template_name = (
+        config.get("image_template_name")
+        if media_type == "image"
+        else config.get("document_template_name")
+    )
+    media_parameter = {"id": media_id}
+    if media_type == "document":
+        media_parameter["filename"] = filename
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": wa_phone.split("@")[0],
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": config.get("template_language") or "ar"},
+            "components": [
+                {
+                    "type": "header",
+                    "parameters": [{
+                        "type": media_type,
+                        media_type: media_parameter,
+                    }],
+                },
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": message}],
+                },
+            ],
+        },
+    }
+    token = _decrypt_access_token(config["access_token_encrypted"])
+    version = (config.get("graph_api_version") or "v23.0").strip()
+    url = (
+        f"https://graph.facebook.com/{version}/"
+        f"{config['phone_number_id']}/messages"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if 200 <= response.status_code < 300:
+            return True
+        logger.error("Meta media template send failed: HTTP %s", response.status_code)
+    except Exception as exc:
+        logger.error("Meta media template send failed: %s", type(exc).__name__)
+    return False
+
+
+@router.post("/branch-cloud/send-bulk-media")
+async def send_branch_cloud_bulk_media(
+    branch_id: str = Form(...),
+    recipients_json: str = Form(...),
+    idempotency_key: str = Form(...),
+    attachment: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    try:
+        raw_recipients = json.loads(recipients_json)
+        recipients = [BulkCloudRecipient(**item) for item in raw_recipients]
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid recipients")
+    if not recipients or len(recipients) > 200:
+        raise HTTPException(status_code=400, detail="Supply 1-200 recipients")
+    config = await _get_branch_cloud_config(branch_id)
+    if not (
+        config and config.get("enabled") and config.get("phone_number_id")
+        and config.get("access_token_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Meta WhatsApp is not configured")
+
+    mime_type = (attachment.content_type or "").lower()
+    if mime_type in {"image/jpeg", "image/png"}:
+        media_type = "image"
+        template_name = config.get("image_template_name")
+        max_size = 5 * 1024 * 1024
+        extension = ".jpg" if mime_type == "image/jpeg" else ".png"
+    elif mime_type == "application/pdf":
+        media_type = "document"
+        template_name = config.get("document_template_name")
+        max_size = 20 * 1024 * 1024
+        extension = ".pdf"
+    else:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, and PDF are supported")
+
+    content_buffer = bytearray()
+    while True:
+        chunk = await attachment.read(1024 * 1024)
+        if not chunk:
+            break
+        content_buffer.extend(chunk)
+        if len(content_buffer) > max_size:
+            raise HTTPException(status_code=400, detail="Attachment is too large")
+    content = bytes(content_buffer)
+    valid_signature = (
+        content.startswith(b"\xff\xd8\xff")
+        if mime_type == "image/jpeg"
+        else content.startswith(b"\x89PNG\r\n\x1a\n")
+        if mime_type == "image/png"
+        else content.startswith(b"%PDF-")
+    )
+    if not content or not valid_signature:
+        raise HTTPException(status_code=400, detail="Invalid or oversized attachment")
+    raw_name = os.path.basename(
+        (attachment.filename or f"attachment{extension}").replace("\\", "_")
+    )
+    safe_stem = re.sub(
+        r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]+", "", raw_name
+    )
+    safe_stem = re.sub(r"[^A-Za-z0-9._ -]+", "_", safe_stem)
+    safe_stem = os.path.splitext(safe_stem)[0].strip(" ._")[:100] or "attachment"
+    filename = safe_stem + extension
+    if not template_name or not config.get("media_templates_confirmed"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Configure the approved Meta {media_type} template for this branch",
+        )
+    if any(
+        not (recipient.message or "").strip()
+        or len(recipient.message.strip()) > 1024
+        for recipient in recipients
+    ):
+        raise HTTPException(status_code=400, detail="Message text must be 1-1024 characters")
+    idempotency_key = re.sub(r"[^A-Za-z0-9_-]", "", idempotency_key or "")[:100]
+    if len(idempotency_key) < 12:
+        raise HTTPException(status_code=400, detail="Invalid idempotency key")
+
+    lock = _bulk_media_branch_locks.setdefault(branch_id, asyncio.Lock())
+    async with lock:
+        batches = _db["whatsapp_bulk_media_batches"]
+        await batches.create_index(
+            [("branch_id", 1), ("idempotency_key", 1)], unique=True
+        )
+        existing = await batches.find_one(
+            {"branch_id": branch_id, "idempotency_key": idempotency_key},
+            {"_id": 0},
+        )
+        if existing:
+            if existing.get("result"):
+                return existing["result"]
+            raise HTTPException(status_code=409, detail="This batch is already being sent")
+        try:
+            await batches.insert_one({
+                "branch_id": branch_id,
+                "idempotency_key": idempotency_key,
+                "status": "processing",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except DuplicateKeyError:
+            raise HTTPException(status_code=409, detail="This batch is already being sent")
+
+        media_id = await _upload_meta_bulk_media(
+            content, filename, mime_type, config
+        )
+        semaphore = asyncio.Semaphore(5)
+
+        async def send_one(index: int, recipient: BulkCloudRecipient):
+            async with semaphore:
+                success = await _send_meta_media_template(
+                    recipient.phone,
+                    recipient.message.strip(),
+                    media_id,
+                    media_type,
+                    filename,
+                    config,
+                )
+            try:
+                await _db["whatsapp_send_log"].insert_one({
+                    "phone": _format_cloud_phone(recipient.phone).split("@")[0],
+                    "message": recipient.message.strip(),
+                    "success": success,
+                    "sent_at": datetime.now(timezone.utc).isoformat(),
+                    "manual": True,
+                    "type": f"bulk_cloud_{media_type}",
+                    "branch_id": branch_id,
+                    "transport": "meta_cloud",
+                    "filename": filename,
+                })
+            except Exception as exc:
+                logger.warning("Could not save bulk media WhatsApp log: %s", type(exc).__name__)
+            return index, success
+
+        results = await asyncio.gather(*[
+            send_one(index, recipient)
+            for index, recipient in enumerate(recipients)
+        ])
+        failed_indices = [index for index, success in results if not success]
+        sent = len(results) - len(failed_indices)
+        result = {
+            "success": sent > 0,
+            "media_type": media_type,
+            "total": len(results),
+            "sent": sent,
+            "failed": len(failed_indices),
+            "failed_indices": failed_indices,
+        }
+        await batches.update_one(
+            {"branch_id": branch_id, "idempotency_key": idempotency_key},
+            {"$set": {
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "result": result,
+            }},
+        )
+        return result
 
 
 @router.post("/branch-cloud/{branch_id}/test")

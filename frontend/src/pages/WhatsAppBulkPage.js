@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud } from 'lucide-react';
+import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud, Paperclip, Image as ImageIcon, FileText } from 'lucide-react';
 import { branchesAPI, whatsappAPI } from '../services/api';
 
 const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
@@ -129,11 +129,20 @@ export default function WhatsAppBulkPage() {
   const [branchId, setBranchId] = useState(selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '');
   const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, template_configured: false });
   const [cloudSending, setCloudSending] = useState(false);
+  const [attachment, setAttachment] = useState(null);
 
   const validItems = useMemo(() => items.filter(i => i.valid), [items]);
   const invalidCount = items.length - validItems.length;
   const namedCount = useMemo(() => items.filter(i => i.name).length, [items]);
   const usesName = nameTokenRe().test(message);
+  const selectedTemplateReady = attachment
+    ? (
+        attachment.type === 'application/pdf'
+          ? cloudStatus.document_template_configured
+          : cloudStatus.image_template_configured
+      )
+    : cloudStatus.template_configured;
+  const messageTooLong = message.length > (attachment ? 1024 : 4096);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,7 +167,7 @@ export default function WhatsAppBulkPage() {
   useEffect(() => {
     let cancelled = false;
     if (!branchId) {
-      setCloudStatus({ loading: false, enabled: false, template_configured: false });
+      setCloudStatus({ loading: false, enabled: false, template_configured: false, image_template_configured: false, document_template_configured: false });
       return undefined;
     }
     setCloudStatus(current => ({ ...current, loading: true }));
@@ -167,7 +176,7 @@ export default function WhatsAppBulkPage() {
         if (!cancelled) setCloudStatus({ loading: false, ...response.data });
       })
       .catch(() => {
-        if (!cancelled) setCloudStatus({ loading: false, enabled: false, template_configured: false });
+        if (!cancelled) setCloudStatus({ loading: false, enabled: false, template_configured: false, image_template_configured: false, document_template_configured: false });
       });
     return () => { cancelled = true; };
   }, [branchId]);
@@ -294,8 +303,16 @@ export default function WhatsAppBulkPage() {
       toast.error(t('اختر الفرع الذي سيتم الإرسال من رقمه', 'Select the sending branch'));
       return;
     }
-    if (!cloudStatus.enabled || !cloudStatus.template_configured) {
-      toast.error(t('API أو قالب Meta غير مهيأ لهذا الفرع', 'Meta API or template is not configured for this branch'));
+    const isImage = attachment?.type === 'image/jpeg' || attachment?.type === 'image/png';
+    const isPdf = attachment?.type === 'application/pdf';
+    const templateReady = attachment
+      ? (isImage ? cloudStatus.image_template_configured : isPdf && cloudStatus.document_template_configured)
+      : cloudStatus.template_configured;
+    if (!cloudStatus.enabled || !templateReady) {
+      toast.error(t(
+        attachment ? 'قالب هذا النوع من المرفقات غير مهيأ للفرع' : 'API أو قالب Meta غير مهيأ لهذا الفرع',
+        attachment ? 'The template for this attachment type is not configured' : 'Meta API or template is not configured for this branch'
+      ));
       return;
     }
     if (!validItems.length || !message.trim()) {
@@ -318,7 +335,17 @@ export default function WhatsAppBulkPage() {
         phone: item.phone,
         message: personalize(message.trim(), item.name)
       }));
-      const response = await whatsappAPI.sendBranchCloudBulk(branchId, recipients);
+      let response;
+      if (attachment) {
+        const formData = new FormData();
+        formData.append('branch_id', branchId);
+        formData.append('recipients_json', JSON.stringify(recipients));
+        formData.append('idempotency_key', crypto.randomUUID());
+        formData.append('attachment', attachment);
+        response = await whatsappAPI.sendBranchCloudBulkMedia(formData);
+      } else {
+        response = await whatsappAPI.sendBranchCloudBulk(branchId, recipients);
+      }
       const { sent = 0, failed = 0 } = response.data || {};
       if (failed > 0) {
         toast.warning(t(
@@ -434,7 +461,7 @@ export default function WhatsAppBulkPage() {
               <div className="pb-1">
                 {cloudStatus.loading ? (
                   <Badge variant="outline"><Loader2 className="w-3 h-3 me-1 animate-spin" />{t('جاري التحقق', 'Checking')}</Badge>
-                ) : cloudStatus.enabled && cloudStatus.template_configured ? (
+                ) : cloudStatus.enabled && selectedTemplateReady ? (
                   <Badge className="bg-emerald-100 text-emerald-800">{t('API والقالب جاهزان', 'API and template ready')}</Badge>
                 ) : (
                   <Badge className="bg-amber-100 text-amber-800">{t('API أو القالب غير مهيأ', 'API or template not configured')}</Badge>
@@ -579,10 +606,57 @@ export default function WhatsAppBulkPage() {
             <Textarea
               value={message}
               onChange={e => setMessage(e.target.value)}
+              maxLength={4096}
               placeholder={t(`مثال: أهلاً ${NAME_TOKEN}، يسعدنا انضمامك لأكاديمية أداء الأبطال 🎉`, `e.g. Hi ${NAME_TOKEN}, welcome to Champions Academy 🎉`)}
               rows={5}
             />
             <div className="text-xs text-muted-foreground">{t(`عدد الأحرف: ${message.length}`, `Characters: ${message.length}`)}</div>
+
+            <div className="rounded-lg border border-dashed p-3 space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <Paperclip className="w-4 h-4" />
+                {t('إرفاق صورة أو PDF (اختياري)', 'Attach an image or PDF (optional)')}
+              </label>
+              {!attachment ? (
+                <Input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                  onChange={event => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
+                    const limit = file.type === 'application/pdf' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
+                    if (!allowed.includes(file.type) || file.size > limit) {
+                      toast.error(t('يسمح بصور JPG/PNG حتى 5MB أو PDF حتى 20MB', 'Use JPG/PNG up to 5MB or PDF up to 20MB'));
+                      event.target.value = '';
+                      return;
+                    }
+                    setAttachment(file);
+                  }}
+                />
+              ) : (
+                <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 p-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {attachment.type === 'application/pdf'
+                      ? <FileText className="w-5 h-5 text-red-600 shrink-0" />
+                      : <ImageIcon className="w-5 h-5 text-blue-600 shrink-0" />}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{attachment.name}</p>
+                      <p className="text-xs text-muted-foreground">{(attachment.size / 1024 / 1024).toFixed(2)} MB</p>
+                    </div>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setAttachment(null)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {t(
+                  'الصورة تحتاج قالب IMAGE معتمد، وPDF يحتاج قالب DOCUMENT معتمد في إعدادات الفرع.',
+                  'Images require an approved IMAGE template; PDFs require an approved DOCUMENT template in branch settings.'
+                )}
+              </p>
+            </div>
 
             {usesName && (
               <div className="space-y-2">
@@ -609,7 +683,7 @@ export default function WhatsAppBulkPage() {
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-              disabled={!validItems.length || !message.trim() || cloudSending || cloudStatus.loading || !cloudStatus.enabled || !cloudStatus.template_configured}
+              disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || cloudStatus.loading || !cloudStatus.enabled || !selectedTemplateReady}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />

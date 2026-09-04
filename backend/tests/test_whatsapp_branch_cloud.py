@@ -454,3 +454,56 @@ def test_meta_webhook_routes_multi_phone_batch_to_each_branch(monkeypatch):
         (row["branch_id"], row["body"])
         for row in db["whatsapp_cloud_messages"].rows
     } == {("branch-a", "A"), ("branch-b", "B")}
+
+
+def test_bulk_pdf_upload_uses_document_template(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "document_template_name": "academy_document",
+        "media_templates_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    uploaded = []
+    sent = []
+
+    async def fake_upload(content, filename, mime_type, config):
+        uploaded.append((content, filename, mime_type, config["branch_id"]))
+        return "media-1"
+
+    async def fake_send(phone, message, media_id, media_type, filename, config):
+        sent.append((phone, message, media_id, media_type, filename, config["branch_id"]))
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_upload_meta_bulk_media", fake_upload)
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_media_template", fake_send)
+
+    class _Upload:
+        filename = "offer.pdf"
+        content_type = "application/pdf"
+        done = False
+
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"%PDF-1.7 test"
+
+    result = run(whatsapp_mod.send_branch_cloud_bulk_media(
+        branch_id="branch-a",
+        recipients_json=json.dumps([{
+            "phone": "0501234567",
+            "message": "عرض خاص",
+        }]),
+        idempotency_key="test-batch-key-123",
+        attachment=_Upload(),
+        current_user={"is_admin": True},
+    ))
+
+    assert result["sent"] == 1
+    assert result["media_type"] == "document"
+    assert uploaded[0][1:3] == ("offer.pdf", "application/pdf")
+    assert sent[0][2:5] == ("media-1", "document", "offer.pdf")

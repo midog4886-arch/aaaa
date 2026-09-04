@@ -66,6 +66,9 @@ const initialFormData = () => ({
   whatsapp_meta_template_name: '',
   whatsapp_meta_template_language: 'ar',
   whatsapp_single_variable_template_confirmed: false,
+  whatsapp_image_template_name: '',
+  whatsapp_document_template_name: '',
+  whatsapp_media_templates_confirmed: false,
   whatsapp_token_configured: false,
   whatsapp_app_secret_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
@@ -210,6 +213,10 @@ const BranchesPage = () => {
           message_template_name: formData.whatsapp_meta_template_name || '',
           template_language: formData.whatsapp_meta_template_language || 'ar',
           single_variable_template_confirmed: !!formData.whatsapp_single_variable_template_confirmed
+          ,
+          image_template_name: formData.whatsapp_image_template_name || '',
+          document_template_name: formData.whatsapp_document_template_name || '',
+          media_templates_confirmed: !!formData.whatsapp_media_templates_confirmed
         });
       }
       loadBranches();
@@ -267,6 +274,9 @@ const BranchesPage = () => {
       whatsapp_meta_template_name: cloud.message_template_name || '',
       whatsapp_meta_template_language: cloud.template_language || 'ar',
       whatsapp_single_variable_template_confirmed: !!cloud.single_variable_template_confirmed,
+      whatsapp_image_template_name: cloud.image_template_name || '',
+      whatsapp_document_template_name: cloud.document_template_name || '',
+      whatsapp_media_templates_confirmed: !!cloud.media_templates_confirmed,
       whatsapp_token_configured: !!cloud.token_configured,
       whatsapp_app_secret_configured: !!cloud.app_secret_configured,
       // Missing/empty working_days means the branch was created before this
@@ -1038,6 +1048,53 @@ const BranchesPage = () => {
                       : 'I confirm this Meta-approved template has exactly one body variable {{1}} and requires no header or button variables.'}
                   </span>
                 </label>
+
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-3">
+                  <p className="text-sm font-bold text-blue-900">
+                    {language === 'ar' ? 'قوالب الصور وPDF للإرسال الجماعي' : 'Image and PDF bulk templates'}
+                  </p>
+                  <p className="text-xs text-blue-800">
+                    {language === 'ar'
+                      ? 'أنشئ قالبين معتمدين في Meta: الأول Header نوع IMAGE والثاني Header نوع DOCUMENT، وفي كل قالب متغير نص واحد {{1}} داخل Body.'
+                      : 'Create two approved Meta templates: one with an IMAGE header and one with a DOCUMENT header. Each must have one body variable {{1}}.'}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label>{language === 'ar' ? 'اسم قالب الصورة' : 'Image template name'}</Label>
+                      <Input
+                        value={formData.whatsapp_image_template_name}
+                        onChange={(e) => setFormData({ ...formData, whatsapp_image_template_name: e.target.value })}
+                        placeholder="academy_image"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>{language === 'ar' ? 'اسم قالب PDF' : 'PDF template name'}</Label>
+                      <Input
+                        value={formData.whatsapp_document_template_name}
+                        onChange={(e) => setFormData({ ...formData, whatsapp_document_template_name: e.target.value })}
+                        placeholder="academy_document"
+                        dir="ltr"
+                      />
+                    </div>
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-blue-900">
+                    <input
+                      type="checkbox"
+                      checked={formData.whatsapp_media_templates_confirmed}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_media_templates_confirmed: e.target.checked
+                      })}
+                      className="w-4 h-4 mt-0.5 accent-blue-600"
+                    />
+                    <span>
+                      {language === 'ar'
+                        ? 'أؤكد أن القالبين معتمدان، وأن نوع Header مطابق، وأن Body يحتوي المتغير {{1}} فقط.'
+                        : 'I confirm both templates are approved, their header types match, and the body contains only {{1}}.'}
+                    </span>
+                  </label>
+                </div>
 
                 {webhookInfo && (
                   <div className="space-y-2 rounded-md border bg-white p-3">
