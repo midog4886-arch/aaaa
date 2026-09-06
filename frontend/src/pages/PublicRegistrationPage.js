@@ -436,8 +436,11 @@ export const PublicRegistrationPage = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-gray-700">{t.age} *</label>
+                <label className="text-sm font-medium text-gray-700">
+                  {t.age} <span className="text-red-600" aria-hidden="true">*</span>
+                </label>
                 <input value={age} onChange={(e) => setAge(e.target.value)} type="number" min="1" max="100"
+                  aria-required="true"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   placeholder={t.agePh} required />
               </div>

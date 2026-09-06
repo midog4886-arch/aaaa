@@ -265,6 +265,7 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         "id": str(uuid.uuid4()),
         "customer_name": name,
         "customer_phone": phone,
+        "age": payload.age,
         "nationality": nationality,
         "activity_id": (payload.activity_id or "").strip(),
         "activity_name": (payload.activity_name or "").strip(),
