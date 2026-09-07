@@ -73,6 +73,8 @@ const initialFormData = () => ({
   whatsapp_attendance_template_confirmed: false,
   whatsapp_payment_template_name: '',
   whatsapp_payment_template_confirmed: false,
+  whatsapp_class_reminder_template_name: '',
+  whatsapp_class_reminder_template_confirmed: false,
   whatsapp_token_configured: false,
   whatsapp_app_secret_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
@@ -225,7 +227,9 @@ const BranchesPage = () => {
           attendance_template_name: formData.whatsapp_attendance_template_name || '',
           attendance_template_confirmed: !!formData.whatsapp_attendance_template_confirmed,
           payment_template_name: formData.whatsapp_payment_template_name || '',
-          payment_template_confirmed: !!formData.whatsapp_payment_template_confirmed
+          payment_template_confirmed: !!formData.whatsapp_payment_template_confirmed,
+          class_reminder_template_name: formData.whatsapp_class_reminder_template_name || '',
+          class_reminder_template_confirmed: !!formData.whatsapp_class_reminder_template_confirmed
         });
       }
       loadBranches();
@@ -290,6 +294,8 @@ const BranchesPage = () => {
       whatsapp_attendance_template_confirmed: !!cloud.attendance_template_confirmed,
       whatsapp_payment_template_name: cloud.payment_template_name || '',
       whatsapp_payment_template_confirmed: !!cloud.payment_template_confirmed,
+      whatsapp_class_reminder_template_name: cloud.class_reminder_template_name || '',
+      whatsapp_class_reminder_template_confirmed: !!cloud.class_reminder_template_confirmed,
       whatsapp_token_configured: !!cloud.token_configured,
       whatsapp_app_secret_configured: !!cloud.app_secret_configured,
       // Missing/empty working_days means the branch was created before this
@@ -1183,6 +1189,45 @@ const BranchesPage = () => {
                       {language === 'ar'
                         ? 'تفعيل إرسال تأكيد واتساب تلقائياً عند دفع فاتورة هذا الفرع.'
                         : 'Enable automatic WhatsApp confirmation when an invoice for this branch is paid.'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="rounded-md border border-violet-200 bg-violet-50 p-3 space-y-3">
+                  <p className="text-sm font-bold text-violet-900">
+                    {language === 'ar' ? 'قالب تذكير الحصة قبل ساعتين' : 'Two-hour class reminder template'}
+                  </p>
+                  <p className="text-xs text-violet-800">
+                    {language === 'ar'
+                      ? 'أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}} داخل Body. سيضع النظام داخله اسم اللاعب والنشاط والوقت والفرع، ويرسله قبل الحصة بساعتين.'
+                      : 'Create an approved Meta template with one body variable {{1}}. The system inserts the member, activity, time, and branch, then sends it two hours before class.'}
+                  </p>
+                  <div className="space-y-1">
+                    <Label>{language === 'ar' ? 'اسم قالب تذكير الحصة' : 'Class reminder template name'}</Label>
+                    <Input
+                      value={formData.whatsapp_class_reminder_template_name}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_class_reminder_template_name: e.target.value
+                      })}
+                      placeholder="class_reminder_two_hours"
+                      dir="ltr"
+                    />
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-violet-900">
+                    <input
+                      type="checkbox"
+                      checked={formData.whatsapp_class_reminder_template_confirmed}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_class_reminder_template_confirmed: e.target.checked
+                      })}
+                      className="w-4 h-4 mt-0.5 accent-violet-600"
+                    />
+                    <span>
+                      {language === 'ar'
+                        ? 'تفعيل إرسال تذكير واتساب تلقائياً قبل الحصة بساعتين لهذا الفرع.'
+                        : 'Enable automatic WhatsApp reminders two hours before class for this branch.'}
                     </span>
                   </label>
                 </div>

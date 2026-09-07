@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+from datetime import date, datetime
 
 from routes import whatsapp as whatsapp_mod
 
@@ -539,6 +540,110 @@ def test_attendance_notice_uses_branch_specific_template(monkeypatch):
     assert "محمد" in sent[0][1]
     assert "الكاراتيه" in sent[0][1]
     assert sent[0][2] == "attendance_recorded"
+
+
+def test_class_occurrence_prefers_the_time_for_that_weekday():
+    occurrence = whatsapp_mod._class_occurrence_for_date({
+        "training_days": ["monday", "wednesday"],
+        "training_time": "4:00 م",
+        "day_times": {"monday": "5:30 م", "wednesday": "7:00 م"},
+    }, date(2026, 9, 7))
+
+    assert occurrence.hour == 17
+    assert occurrence.minute == 30
+
+
+def test_class_reminder_uses_branch_specific_template(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "class_reminder_template_name": "class_reminder_two_hours",
+        "class_reminder_template_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(phone, message, config):
+        sent.append((phone, message, config.get("message_template_name")))
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_send)
+    result = run(whatsapp_mod.send_class_reminder_whatsapp_notice(
+        {"id": "member-1", "name_ar": "محمد", "phone": "0501234567", "branch_id": "branch-a"},
+        "الكاراتيه",
+        datetime(2026, 9, 7, 17, 0, tzinfo=whatsapp_mod.RIYADH_TZ),
+        "فرع الروضة",
+    ))
+
+    assert result is True
+    assert "محمد" in sent[0][1]
+    assert "الكاراتيه" in sent[0][1]
+    assert "فرع الروضة" in sent[0][1]
+    assert sent[0][2] == "class_reminder_two_hours"
+
+
+def test_class_reminder_worker_sends_once_for_the_same_class(monkeypatch):
+    class Cursor:
+        def __init__(self, rows):
+            self.rows = rows
+
+        async def to_list(self, length=None):
+            return [dict(row) for row in self.rows]
+
+    class FindCollection(_Collection):
+        def find(self, *_args, **_kwargs):
+            return Cursor(self.rows)
+
+    class ReminderLog(_Collection):
+        async def insert_one(self, row):
+            if any(item.get("dedup_key") == row.get("dedup_key") for item in self.rows):
+                raise whatsapp_mod.DuplicateKeyError("duplicate")
+            self.rows.append(dict(row))
+
+        async def delete_one(self, query):
+            self.rows = [
+                row for row in self.rows
+                if not all(row.get(key) == value for key, value in query.items())
+            ]
+
+    db = _DB()
+    db.collections["branches"] = FindCollection([{
+        "id": "branch-a", "name_ar": "فرع الروضة",
+    }])
+    db.collections["members"] = FindCollection([{
+        "id": "member-1",
+        "name_ar": "محمد",
+        "phone": "0501234567",
+        "branch_id": "branch-a",
+        "activities": [{
+            "activity_id": "activity-1",
+            "activity_name": "الكاراتيه",
+            "status": "active",
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-30",
+            "training_days": ["monday"],
+            "training_time": "5:00 م",
+        }],
+    }])
+    db.collections["whatsapp_class_reminder_log"] = ReminderLog()
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_notice(member, activity_name, class_time, branch_name):
+        sent.append((member["id"], activity_name, class_time, branch_name))
+        return True
+
+    monkeypatch.setattr(
+        whatsapp_mod, "send_class_reminder_whatsapp_notice", fake_notice
+    )
+    now = datetime(2026, 9, 7, 15, 0, tzinfo=whatsapp_mod.RIYADH_TZ)
+
+    assert run(whatsapp_mod.process_class_reminders(now)) == 1
+    assert run(whatsapp_mod.process_class_reminders(now)) == 0
+    assert len(sent) == 1
 
 
 def test_invoice_payment_notice_uses_customer_phone_and_branch_template(monkeypatch):

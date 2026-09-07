@@ -149,6 +149,7 @@ _db = None
 _scheduler_started = False
 _reminders_running = False
 _invoice_payment_outbox_started = False
+_class_reminder_started = False
 
 
 def set_database(db):
@@ -362,6 +363,166 @@ async def send_attendance_whatsapp_notice(
     except Exception as exc:
         logger.warning("Attendance WhatsApp notice failed: %s", type(exc).__name__)
         return False
+
+
+_WEEKDAY_NAMES = {
+    0: ("monday", "الاثنين", "الإثنين"),
+    1: ("tuesday", "الثلاثاء"),
+    2: ("wednesday", "الأربعاء"),
+    3: ("thursday", "الخميس"),
+    4: ("friday", "الجمعة"),
+    5: ("saturday", "السبت"),
+    6: ("sunday", "الأحد"),
+}
+
+
+def _parse_class_time(raw: str, on_date: date) -> Optional[datetime]:
+    """Parse the Arabic/English 12-hour values saved by member schedule forms."""
+    text = str(raw or "").translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")).strip()
+    match = re.search(r"(\d{1,2})(?::(\d{1,2}))?\s*(ص|م|am|pm)?", text, re.IGNORECASE)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    suffix = (match.group(3) or "").lower()
+    if minute > 59 or hour > 23:
+        return None
+    if suffix in ("م", "pm") and hour < 12:
+        hour += 12
+    elif suffix in ("ص", "am") and hour == 12:
+        hour = 0
+    elif suffix and hour > 12:
+        return None
+    return datetime.combine(on_date, datetime.min.time(), RIYADH_TZ).replace(
+        hour=hour, minute=minute
+    )
+
+
+def _class_occurrence_for_date(activity: dict, on_date: date) -> Optional[datetime]:
+    names = _WEEKDAY_NAMES[on_date.weekday()]
+    days = [str(day or "").strip().lower() for day in (activity.get("training_days") or [])]
+    schedule = str(activity.get("schedule") or "")
+    if days:
+        if not any(name.lower() in days for name in names):
+            return None
+    elif not any(name in schedule.lower() for name in names):
+        return None
+
+    day_times = activity.get("day_times") or {}
+    raw_time = ""
+    for name in names:
+        raw_time = day_times.get(name) or day_times.get(name.lower()) or ""
+        if raw_time:
+            break
+    raw_time = raw_time or activity.get("training_time") or schedule
+    return _parse_class_time(raw_time, on_date)
+
+
+def _activity_is_current(activity: dict, on_date: date) -> bool:
+    if activity.get("status") in ("inactive", "expired", "cancelled"):
+        return False
+    start = str(activity.get("start_date") or "")[:10]
+    end = str(activity.get("end_date") or "")[:10]
+    day = on_date.isoformat()
+    return (not start or start <= day) and (not end or end >= day)
+
+
+async def send_class_reminder_whatsapp_notice(
+    member: dict, activity_name: str, class_time: datetime, branch_name: str
+) -> bool:
+    """Send one two-hour class reminder through the member branch's Meta template."""
+    branch_id = member.get("branch_id")
+    phone = _format_cloud_phone(member.get("phone") or "")
+    config = await _get_branch_cloud_config(branch_id)
+    if not (
+        phone and branch_id and config and config.get("enabled")
+        and config.get("phone_number_id") and config.get("access_token_encrypted")
+        and config.get("class_reminder_template_name")
+        and config.get("class_reminder_template_confirmed")
+    ):
+        return False
+    name = member.get("name_ar") or member.get("name") or ""
+    time_text = class_time.strftime("%I:%M %p").lstrip("0").replace("AM", "ص").replace("PM", "م")
+    message = (
+        f"تذكير بموعد حصة {name} بعد ساعتين ⏰\n"
+        f"النشاط: {activity_name}\n"
+        f"الوقت: {time_text}\n"
+        f"الفرع: {branch_name}"
+    )
+    send_config = dict(config)
+    send_config["message_template_name"] = config["class_reminder_template_name"]
+    return await _send_meta_cloud_message(phone, message, send_config)
+
+
+async def process_class_reminders(now: Optional[datetime] = None) -> int:
+    """Send reminders due now. A unique occurrence key prevents repeat sends."""
+    if _db is None:
+        return 0
+    current = now or datetime.now(RIYADH_TZ)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=RIYADH_TZ)
+    else:
+        current = current.astimezone(RIYADH_TZ)
+    target_date = (current + timedelta(hours=2)).date()
+    branch_rows = await _db["branches"].find(
+        {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
+    ).to_list(length=None)
+    branch_names = {
+        row["id"]: row.get("name_ar") or row.get("name") or ""
+        for row in branch_rows if row.get("id")
+    }
+    members = await _db["members"].find(
+        {"phone": {"$nin": [None, ""]}, "activities": {"$exists": True, "$ne": []}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1, "branch_id": 1, "activities": 1},
+    ).to_list(length=None)
+    log = _db["whatsapp_class_reminder_log"]
+    await log.create_index("dedup_key", unique=True)
+    sent = 0
+    for member in members:
+        branch_id = member.get("branch_id")
+        if not branch_id:
+            continue
+        for activity in member.get("activities") or []:
+            if not _activity_is_current(activity, target_date):
+                continue
+            class_time = _class_occurrence_for_date(activity, target_date)
+            if not class_time:
+                continue
+            reminder_time = class_time - timedelta(hours=2)
+            # The worker runs once a minute; retain a five-minute catch-up window
+            # after a restart without sending reminders noticeably early.
+            if not (reminder_time <= current < reminder_time + timedelta(minutes=5)):
+                continue
+            activity_key = activity.get("activity_id") or activity.get("activity_name") or "activity"
+            dedup_key = f"{member.get('id')}:{activity_key}:{class_time.isoformat()}"
+            try:
+                await log.insert_one({
+                    "dedup_key": dedup_key,
+                    "status": "processing",
+                    "member_id": member.get("id"),
+                    "branch_id": branch_id,
+                    "activity_name": activity.get("activity_name") or "",
+                    "class_time": class_time.isoformat(),
+                    "created_at": current.isoformat(),
+                })
+            except DuplicateKeyError:
+                continue
+            success = await send_class_reminder_whatsapp_notice(
+                member,
+                activity.get("activity_name") or "التدريب",
+                class_time,
+                branch_names.get(branch_id, ""),
+            )
+            if success:
+                sent += 1
+                await log.update_one(
+                    {"dedup_key": dedup_key},
+                    {"$set": {"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()}},
+                )
+            else:
+                # Allow the next cycle to retry temporary Meta/network failures.
+                await log.delete_one({"dedup_key": dedup_key, "status": "processing"})
+    return sent
 
 
 async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
@@ -1098,6 +1259,25 @@ async def _invoice_payment_outbox_loop():
             await asyncio.sleep(60)
 
 
+async def _class_reminder_loop():
+    global _class_reminder_started
+    _class_reminder_started = True
+    logger.info("WhatsApp class-reminder worker started (every 60s)")
+    from utils.tenant import for_each_active_tenant
+    while True:
+        try:
+            await for_each_active_tenant(
+                lambda _tenant: process_class_reminders(),
+                label="whatsapp-class-reminders",
+            )
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.error("Class reminder loop error: %s", type(exc).__name__)
+            await asyncio.sleep(60)
+
+
 def start_scheduler():
     global _scheduler_started
     if not _scheduler_started:
@@ -1106,6 +1286,8 @@ def start_scheduler():
         asyncio.ensure_future(_admin_alert_loop())
     if not _invoice_payment_outbox_started:
         asyncio.ensure_future(_invoice_payment_outbox_loop())
+    if not _class_reminder_started:
+        asyncio.ensure_future(_class_reminder_loop())
 
 
 @router.get("/status")
@@ -1252,6 +1434,8 @@ class BranchCloudConfigUpdate(BaseModel):
     attendance_template_confirmed: bool = False
     payment_template_name: Optional[str] = ""
     payment_template_confirmed: bool = False
+    class_reminder_template_name: Optional[str] = ""
+    class_reminder_template_confirmed: bool = False
 
 
 def _require_admin(current_user: dict):
@@ -1289,6 +1473,8 @@ async def get_branch_cloud_config(
             "attendance_template_confirmed": False,
             "payment_template_name": "",
             "payment_template_confirmed": False,
+            "class_reminder_template_name": "",
+            "class_reminder_template_confirmed": False,
             "token_configured": False,
         }
     return {
@@ -1311,6 +1497,8 @@ async def get_branch_cloud_config(
         "attendance_template_confirmed": bool(config.get("attendance_template_confirmed")),
         "payment_template_name": config.get("payment_template_name") or "",
         "payment_template_confirmed": bool(config.get("payment_template_confirmed")),
+        "class_reminder_template_name": config.get("class_reminder_template_name") or "",
+        "class_reminder_template_confirmed": bool(config.get("class_reminder_template_confirmed")),
         "token_configured": bool(config.get("access_token_encrypted")),
         "updated_at": config.get("updated_at"),
     }
@@ -1355,6 +1543,8 @@ async def update_branch_cloud_config(
         "attendance_template_confirmed": bool(data.attendance_template_confirmed),
         "payment_template_name": (data.payment_template_name or "").strip(),
         "payment_template_confirmed": bool(data.payment_template_confirmed),
+        "class_reminder_template_name": (data.class_reminder_template_name or "").strip(),
+        "class_reminder_template_confirmed": bool(data.class_reminder_template_confirmed),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": current_user.get("user_id") or current_user.get("id"),
     }

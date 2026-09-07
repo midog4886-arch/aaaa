@@ -18,3 +18,9 @@ Proactive bulk image/PDF sends require separate approved Meta templates: IMAGE o
 Attendance WhatsApp alerts use a dedicated per-branch approved template with one Body variable {{1}}. Normalize local phones before Meta send, never block check-in on send failure, notify only present/new transitions, and use the scanning branch for VIP attendance.
 
 Paid-invoice WhatsApp receipts use a dedicated one-variable template and a per-tenant durable outbox keyed uniquely by invoice. Queue only after the first paid transition; lease/fence claims so interrupted sends recover safely.
+
+Class reminders are proactive Meta messages sent two hours before the member's scheduled class. Resolve the weekday and time from the member activity, preferring that weekday's `day_times` value over the shared training time, and deduplicate by member, activity, and exact class occurrence.
+
+**Why:** A member can attend at a different hour on each weekday, and a minute-based worker may revisit the same five-minute catch-up window after delays or restarts.
+
+**How to apply:** Require a dedicated enabled template on the member's branch, include member/activity/time/branch in its single Body variable, respect subscription dates, and run every tenant under an explicit tenant context.
