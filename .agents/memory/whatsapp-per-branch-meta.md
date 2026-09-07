@@ -24,3 +24,9 @@ Class reminders are proactive Meta messages sent two hours before the member's s
 **Why:** A member can attend at a different hour on each weekday, and a minute-based worker may revisit the same five-minute catch-up window after delays or restarts.
 
 **How to apply:** Require a dedicated enabled template on the member's branch, include member/activity/time/branch in its single Body variable, respect subscription dates, and run every tenant under an explicit tenant context.
+
+Renewal templates may include one static Quick Reply button at index 0 labeled "تواصل معنا". Attach its payload only to automated renewal reminders and only after the branch explicitly confirms that exact approved template shape.
+
+**Why:** Adding a button component to templates without that button makes Meta reject the whole message; applying it globally would also break attendance, payment, and bulk templates.
+
+**How to apply:** Keep the Body as one variable `{{1}}`, use payload `CONTACT_US`, and let the existing inbound button-message handling open the 24-hour customer-service conversation.

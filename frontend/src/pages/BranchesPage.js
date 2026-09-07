@@ -66,6 +66,7 @@ const initialFormData = () => ({
   whatsapp_meta_template_name: '',
   whatsapp_meta_template_language: 'ar',
   whatsapp_single_variable_template_confirmed: false,
+  whatsapp_renewal_contact_button_confirmed: false,
   whatsapp_image_template_name: '',
   whatsapp_document_template_name: '',
   whatsapp_media_templates_confirmed: false,
@@ -220,6 +221,7 @@ const BranchesPage = () => {
           template_language: formData.whatsapp_meta_template_language || 'ar',
           single_variable_template_confirmed: !!formData.whatsapp_single_variable_template_confirmed
           ,
+          renewal_contact_button_confirmed: !!formData.whatsapp_renewal_contact_button_confirmed,
           image_template_name: formData.whatsapp_image_template_name || '',
           document_template_name: formData.whatsapp_document_template_name || '',
           media_templates_confirmed: !!formData.whatsapp_media_templates_confirmed
@@ -287,6 +289,7 @@ const BranchesPage = () => {
       whatsapp_meta_template_name: cloud.message_template_name || '',
       whatsapp_meta_template_language: cloud.template_language || 'ar',
       whatsapp_single_variable_template_confirmed: !!cloud.single_variable_template_confirmed,
+      whatsapp_renewal_contact_button_confirmed: !!cloud.renewal_contact_button_confirmed,
       whatsapp_image_template_name: cloud.image_template_name || '',
       whatsapp_document_template_name: cloud.document_template_name || '',
       whatsapp_media_templates_confirmed: !!cloud.media_templates_confirmed,
@@ -1048,8 +1051,8 @@ const BranchesPage = () => {
                 </div>
                 <p className="text-xs text-amber-700">
                   {language === 'ar'
-                    ? 'لرسائل التجديد التلقائية: أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}}، ثم اكتب اسمه هنا. سيُرسل نص الرسالة الكامل داخل هذا المتغير.'
-                    : 'For proactive reminders, create an approved Meta template with one body text variable {{1}}, then enter its name here.'}
+                    ? 'لرسائل التجديد التلقائية: أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}} وزر Quick Reply ثابت باسم «تواصل معنا»، ثم اكتب اسم القالب هنا.'
+                    : 'For renewal reminders, create an approved Meta template with one body variable {{1}} and one static Quick Reply button named “Contact us”, then enter its name here.'}
                 </p>
                 <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
                   <input
@@ -1063,8 +1066,24 @@ const BranchesPage = () => {
                   />
                   <span>
                     {language === 'ar'
-                      ? 'أؤكد أن القالب معتمد في Meta ويحتوي متغيراً واحداً فقط داخل نص الرسالة {{1}}، ولا يتطلب متغيرات في العنوان أو الأزرار.'
-                      : 'I confirm this Meta-approved template has exactly one body variable {{1}} and requires no header or button variables.'}
+                      ? 'أؤكد أن القالب معتمد في Meta ويحتوي متغيراً واحداً فقط داخل نص الرسالة {{1}}، ولا يتطلب متغيرات في العنوان.'
+                      : 'I confirm this Meta-approved template has exactly one body variable {{1}} and requires no header variables.'}
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 p-2 text-xs text-green-900">
+                  <input
+                    type="checkbox"
+                    checked={formData.whatsapp_renewal_contact_button_confirmed}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      whatsapp_renewal_contact_button_confirmed: e.target.checked
+                    })}
+                    className="w-4 h-4 mt-0.5 accent-green-600"
+                  />
+                  <span>
+                    {language === 'ar'
+                      ? 'تفعيل زر «تواصل معنا» في تذكيرات انتهاء الاشتراك. أؤكد أن أول زر في القالب Quick Reply ثابت بهذا الاسم.'
+                      : 'Enable the “Contact us” button on expiry reminders. I confirm the template’s first button is a static Quick Reply button with this label.'}
                   </span>
                 </label>
 

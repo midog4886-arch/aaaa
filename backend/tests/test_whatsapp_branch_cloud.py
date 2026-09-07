@@ -152,6 +152,47 @@ def test_meta_sender_uses_the_branch_approved_template(monkeypatch):
     assert captured["payload"]["template"]["components"][0]["parameters"][0]["text"] == "renewal body"
 
 
+def test_meta_renewal_template_includes_contact_quick_reply(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
+    captured = {}
+
+    class _Response:
+        status_code = 200
+
+        def json(self):
+            return {"messages": [{"id": "wamid.button"}]}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, url, headers, json):
+            captured["payload"] = json
+            return _Response()
+
+    monkeypatch.setattr(whatsapp_mod.httpx, "AsyncClient", lambda **_kwargs: _Client())
+    config = {
+        "branch_id": "branch-a",
+        "phone_number_id": "123456",
+        "access_token_encrypted": whatsapp_mod._encrypt_access_token("token-a"),
+        "message_template_name": "renewal_reminder",
+        "template_language": "ar",
+        "_quick_reply_payload": "CONTACT_US",
+    }
+
+    assert run(whatsapp_mod._send_meta_cloud_message(
+        "966500000001@s.whatsapp.net", "renewal body", config
+    ))
+    button = captured["payload"]["template"]["components"][1]
+    assert button["type"] == "button"
+    assert button["sub_type"] == "quick_reply"
+    assert button["index"] == "0"
+    assert button["parameters"][0]["payload"] == "CONTACT_US"
+
+
 def test_cloud_connection_test_normalizes_local_saudi_phone(monkeypatch):
     db = _DB()
     db["whatsapp_branch_configs"].rows.append({

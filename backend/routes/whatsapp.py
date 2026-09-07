@@ -259,6 +259,21 @@ async def _send_meta_cloud_message_result(
         url = f"https://graph.facebook.com/{version}/{config['phone_number_id']}/messages"
         template_name = (config.get("message_template_name") or "").strip()
         if template_name:
+            components = [{
+                "type": "body",
+                "parameters": [{"type": "text", "text": message}],
+            }]
+            quick_reply_payload = (config.get("_quick_reply_payload") or "").strip()
+            if quick_reply_payload:
+                components.append({
+                    "type": "button",
+                    "sub_type": "quick_reply",
+                    "index": "0",
+                    "parameters": [{
+                        "type": "payload",
+                        "payload": quick_reply_payload,
+                    }],
+                })
             payload = {
                 "messaging_product": "whatsapp",
                 "recipient_type": "individual",
@@ -269,10 +284,7 @@ async def _send_meta_cloud_message_result(
                     "language": {
                         "code": (config.get("template_language") or "ar").strip()
                     },
-                    "components": [{
-                        "type": "body",
-                        "parameters": [{"type": "text", "text": message}],
-                    }],
+                    "components": components,
                 },
             }
         else:
@@ -701,10 +713,16 @@ async def queue_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
 
 
 async def _send_wa_message_for_branch(
-    phone: str, message: str, branch_id: Optional[str]
+    phone: str,
+    message: str,
+    branch_id: Optional[str],
+    quick_reply_payload: Optional[str] = None,
 ) -> bool:
     cloud_config = await _get_branch_cloud_config(branch_id)
     if cloud_config and cloud_config.get("enabled"):
+        if quick_reply_payload and cloud_config.get("renewal_contact_button_confirmed"):
+            cloud_config = dict(cloud_config)
+            cloud_config["_quick_reply_payload"] = quick_reply_payload
         return await _send_meta_cloud_message(phone, message, cloud_config)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -914,7 +932,12 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
         wa_phone = _format_phone(phone)
         if wa_phone:
             branch_id = member.get("branch_id")
-            success = await _send_wa_message_for_branch(wa_phone, message, branch_id)
+            success = await _send_wa_message_for_branch(
+                wa_phone,
+                message,
+                branch_id,
+                quick_reply_payload="CONTACT_US",
+            )
             log_entry = {
                 "timestamp": datetime.now(RIYADH_TZ).isoformat(),
                 "member_id": member.get("id", ""),
@@ -1425,6 +1448,7 @@ class BranchCloudConfigUpdate(BaseModel):
     message_template_name: Optional[str] = ""
     template_language: str = "ar"
     single_variable_template_confirmed: bool = False
+    renewal_contact_button_confirmed: bool = False
     app_secret: Optional[str] = None
     inbox_enabled: bool = False
     image_template_name: Optional[str] = ""
@@ -1464,6 +1488,7 @@ async def get_branch_cloud_config(
             "message_template_name": "",
             "template_language": "ar",
             "single_variable_template_confirmed": False,
+            "renewal_contact_button_confirmed": False,
             "app_secret_configured": False,
             "inbox_enabled": False,
             "image_template_name": "",
@@ -1487,6 +1512,9 @@ async def get_branch_cloud_config(
         "template_language": config.get("template_language") or "ar",
         "single_variable_template_confirmed": bool(
             config.get("single_variable_template_confirmed")
+        ),
+        "renewal_contact_button_confirmed": bool(
+            config.get("renewal_contact_button_confirmed")
         ),
         "app_secret_configured": bool(config.get("app_secret_encrypted")),
         "inbox_enabled": bool(config.get("inbox_enabled")),
@@ -1534,6 +1562,9 @@ async def update_branch_cloud_config(
         "template_language": (data.template_language or "ar").strip(),
         "single_variable_template_confirmed": bool(
             data.single_variable_template_confirmed
+        ),
+        "renewal_contact_button_confirmed": bool(
+            data.renewal_contact_button_confirmed
         ),
         "inbox_enabled": bool(data.inbox_enabled),
         "image_template_name": (data.image_template_name or "").strip(),
