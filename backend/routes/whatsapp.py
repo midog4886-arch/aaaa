@@ -466,6 +466,75 @@ async def send_class_reminder_whatsapp_notice(
     return await _send_meta_cloud_message(phone, message, send_config)
 
 
+async def send_schedule_update_whatsapp_notice(
+    member: dict,
+    message: str,
+    *,
+    notice_type: str,
+    dedup_key: Optional[str] = None,
+) -> bool:
+    """Send a member schedule-change/cancellation notice using their branch template."""
+    try:
+        branch_id = member.get("branch_id")
+        phone = _format_cloud_phone(member.get("phone") or "")
+        config = await _get_branch_cloud_config(branch_id)
+        if not (
+            phone and branch_id and message and config and config.get("enabled")
+            and config.get("phone_number_id") and config.get("access_token_encrypted")
+            and config.get("schedule_update_template_name")
+            and config.get("schedule_update_template_confirmed")
+        ):
+            return False
+        branch = await _db["branches"].find_one(
+            {"id": branch_id}, {"_id": 0, "name": 1, "name_ar": 1}
+        )
+        branch_name = (branch or {}).get("name_ar") or (branch or {}).get("name") or ""
+        if branch_name and "الفرع:" not in message:
+            message = f"{message}\nالفرع: {branch_name}"
+        log = _db["whatsapp_schedule_update_log"]
+        if dedup_key:
+            await log.create_index("dedup_key", unique=True)
+            try:
+                await log.insert_one({
+                    "dedup_key": dedup_key,
+                    "status": "processing",
+                    "notice_type": notice_type,
+                    "member_id": member.get("id"),
+                    "branch_id": branch_id,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except DuplicateKeyError:
+                return False
+        send_config = dict(config)
+        send_config["message_template_name"] = config["schedule_update_template_name"]
+        success = await _send_meta_cloud_message(phone, message, send_config)
+        if dedup_key:
+            if success:
+                await log.update_one(
+                    {"dedup_key": dedup_key},
+                    {"$set": {"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()}},
+                )
+            else:
+                await log.delete_one({"dedup_key": dedup_key, "status": "processing"})
+        try:
+            await _db["whatsapp_send_log"].insert_one({
+                "phone": phone.split("@")[0],
+                "message": message,
+                "success": success,
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "type": notice_type,
+                "branch_id": branch_id,
+                "member_id": member.get("id"),
+                "transport": "meta_cloud",
+            })
+        except Exception:
+            pass
+        return success
+    except Exception as exc:
+        logger.warning("Schedule update WhatsApp notice failed: %s", type(exc).__name__)
+        return False
+
+
 async def process_class_reminders(now: Optional[datetime] = None) -> int:
     """Send reminders due now. A unique occurrence key prevents repeat sends."""
     if _db is None:
@@ -1460,6 +1529,8 @@ class BranchCloudConfigUpdate(BaseModel):
     payment_template_confirmed: bool = False
     class_reminder_template_name: Optional[str] = ""
     class_reminder_template_confirmed: bool = False
+    schedule_update_template_name: Optional[str] = ""
+    schedule_update_template_confirmed: bool = False
 
 
 def _require_admin(current_user: dict):
@@ -1500,6 +1571,8 @@ async def get_branch_cloud_config(
             "payment_template_confirmed": False,
             "class_reminder_template_name": "",
             "class_reminder_template_confirmed": False,
+            "schedule_update_template_name": "",
+            "schedule_update_template_confirmed": False,
             "token_configured": False,
         }
     return {
@@ -1527,6 +1600,8 @@ async def get_branch_cloud_config(
         "payment_template_confirmed": bool(config.get("payment_template_confirmed")),
         "class_reminder_template_name": config.get("class_reminder_template_name") or "",
         "class_reminder_template_confirmed": bool(config.get("class_reminder_template_confirmed")),
+        "schedule_update_template_name": config.get("schedule_update_template_name") or "",
+        "schedule_update_template_confirmed": bool(config.get("schedule_update_template_confirmed")),
         "token_configured": bool(config.get("access_token_encrypted")),
         "updated_at": config.get("updated_at"),
     }
@@ -1576,6 +1651,8 @@ async def update_branch_cloud_config(
         "payment_template_confirmed": bool(data.payment_template_confirmed),
         "class_reminder_template_name": (data.class_reminder_template_name or "").strip(),
         "class_reminder_template_confirmed": bool(data.class_reminder_template_confirmed),
+        "schedule_update_template_name": (data.schedule_update_template_name or "").strip(),
+        "schedule_update_template_confirmed": bool(data.schedule_update_template_confirmed),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": current_user.get("user_id") or current_user.get("id"),
     }

@@ -30,3 +30,9 @@ Renewal templates may include one static Quick Reply button at index 0 labeled "
 **Why:** Adding a button component to templates without that button makes Meta reject the whole message; applying it globally would also break attendance, payment, and bulk templates.
 
 **How to apply:** Keep the Body as one variable `{{1}}`, use payload `CONTACT_US`, and let the existing inbound button-message handling open the 24-hour customer-service conversation.
+
+Member schedule changes and applied closures share a dedicated per-branch one-variable Meta template. Individual changes include old/new personal schedules; closure notices target only members actually affected when the closure is applied.
+
+**Why:** Editing one member and cancelling a branch/activity session are distinct flows, and closure previews must never send notifications. Reapplying a closure must not message the same member twice.
+
+**How to apply:** Trigger after a successful member activity update or non-dry-run closure apply, route by each member's persisted branch, deduplicate closure/member pairs, and keep WhatsApp failure non-blocking.

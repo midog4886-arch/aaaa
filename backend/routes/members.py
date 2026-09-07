@@ -1075,7 +1075,10 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
     validate_subscription_windows([activity])
     scoped = _scoped_member_query(member_id, current_user)
     scoped["activities.activity_id"] = activity_id
-    before_member = await db.members.find_one(scoped, {"_id": 0, "activities": 1, "name_ar": 1, "name": 1})
+    before_member = await db.members.find_one(
+        scoped,
+        {"_id": 0, "id": 1, "activities": 1, "name_ar": 1, "name": 1, "phone": 1, "branch_id": 1},
+    )
     before_act = None
     if before_member:
         for a in (before_member.get("activities") or []):
@@ -1123,6 +1126,15 @@ def _activity_schedule_str(act: dict) -> str:
     ``training_days`` + ``training_time``."""
     if not act:
         return ""
+    day_times = act.get("day_times") or {}
+    if day_times:
+        values = [
+            f"{day}: {time}"
+            for day, time in day_times.items()
+            if str(day or "").strip() and str(time or "").strip()
+        ]
+        if values:
+            return "، ".join(values)
     s = (act.get("schedule") or "").strip()
     if s:
         return s
@@ -1177,6 +1189,24 @@ async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
         "created_at": now,
     }
     await db.member_notifications.insert_one(notif)
+
+    try:
+        from routes.whatsapp import send_schedule_update_whatsapp_notice
+        old_sched = _activity_schedule_str(before_act) or "غير محدد"
+        member_name = (member_doc or {}).get("name_ar") or (member_doc or {}).get("name") or ""
+        whatsapp_message = (
+            f"تم تغيير موعد تدريب {member_name} 🔄\n"
+            f"النشاط: {activity_name}\n"
+            f"الموعد السابق: {old_sched}\n"
+            f"الموعد الجديد: {new_sched or 'يرجى التواصل مع الفرع'}"
+        )
+        await send_schedule_update_whatsapp_notice(
+            member_doc or {"id": member_id},
+            whatsapp_message,
+            notice_type="schedule_changed_cloud",
+        )
+    except Exception:
+        pass
 
     try:
         from routes.push_notifications import send_push_to_members, NotificationPayload

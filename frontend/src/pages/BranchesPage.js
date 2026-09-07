@@ -76,6 +76,8 @@ const initialFormData = () => ({
   whatsapp_payment_template_confirmed: false,
   whatsapp_class_reminder_template_name: '',
   whatsapp_class_reminder_template_confirmed: false,
+  whatsapp_schedule_update_template_name: '',
+  whatsapp_schedule_update_template_confirmed: false,
   whatsapp_token_configured: false,
   whatsapp_app_secret_configured: false,
   working_days: [...ALL_WEEKDAY_IDS],
@@ -231,7 +233,9 @@ const BranchesPage = () => {
           payment_template_name: formData.whatsapp_payment_template_name || '',
           payment_template_confirmed: !!formData.whatsapp_payment_template_confirmed,
           class_reminder_template_name: formData.whatsapp_class_reminder_template_name || '',
-          class_reminder_template_confirmed: !!formData.whatsapp_class_reminder_template_confirmed
+          class_reminder_template_confirmed: !!formData.whatsapp_class_reminder_template_confirmed,
+          schedule_update_template_name: formData.whatsapp_schedule_update_template_name || '',
+          schedule_update_template_confirmed: !!formData.whatsapp_schedule_update_template_confirmed
         });
       }
       loadBranches();
@@ -299,6 +303,8 @@ const BranchesPage = () => {
       whatsapp_payment_template_confirmed: !!cloud.payment_template_confirmed,
       whatsapp_class_reminder_template_name: cloud.class_reminder_template_name || '',
       whatsapp_class_reminder_template_confirmed: !!cloud.class_reminder_template_confirmed,
+      whatsapp_schedule_update_template_name: cloud.schedule_update_template_name || '',
+      whatsapp_schedule_update_template_confirmed: !!cloud.schedule_update_template_confirmed,
       whatsapp_token_configured: !!cloud.token_configured,
       whatsapp_app_secret_configured: !!cloud.app_secret_configured,
       // Missing/empty working_days means the branch was created before this
@@ -1247,6 +1253,45 @@ const BranchesPage = () => {
                       {language === 'ar'
                         ? 'تفعيل إرسال تذكير واتساب تلقائياً قبل الحصة بساعتين لهذا الفرع.'
                         : 'Enable automatic WhatsApp reminders two hours before class for this branch.'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="rounded-md border border-rose-200 bg-rose-50 p-3 space-y-3">
+                  <p className="text-sm font-bold text-rose-900">
+                    {language === 'ar' ? 'قالب تغيير أو إلغاء الحصص' : 'Class change or cancellation template'}
+                  </p>
+                  <p className="text-xs text-rose-800">
+                    {language === 'ar'
+                      ? 'أنشئ في Meta قالباً معتمداً يحتوي متغير نص واحد {{1}} داخل Body. يُرسل عند تغيير موعد عضو أو تطبيق إغلاق على الحصص المتأثرة.'
+                      : 'Create an approved Meta template with one body variable {{1}}. It is sent when a member schedule changes or a closure is applied to affected classes.'}
+                  </p>
+                  <div className="space-y-1">
+                    <Label>{language === 'ar' ? 'اسم قالب تغيير/إلغاء الحصة' : 'Schedule update template name'}</Label>
+                    <Input
+                      value={formData.whatsapp_schedule_update_template_name}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_schedule_update_template_name: e.target.value
+                      })}
+                      placeholder="class_schedule_update"
+                      dir="ltr"
+                    />
+                  </div>
+                  <label className="flex items-start gap-2 text-xs text-rose-900">
+                    <input
+                      type="checkbox"
+                      checked={formData.whatsapp_schedule_update_template_confirmed}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        whatsapp_schedule_update_template_confirmed: e.target.checked
+                      })}
+                      className="w-4 h-4 mt-0.5 accent-rose-600"
+                    />
+                    <span>
+                      {language === 'ar'
+                        ? 'تفعيل إشعارات واتساب عند تغيير موعد عضو أو إلغاء/توقف الحصص لهذا الفرع.'
+                        : 'Enable WhatsApp notices for member schedule changes and class cancellations in this branch.'}
                     </span>
                   </label>
                 </div>

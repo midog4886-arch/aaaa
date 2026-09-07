@@ -626,6 +626,40 @@ def test_class_reminder_uses_branch_specific_template(monkeypatch):
     assert sent[0][2] == "class_reminder_two_hours"
 
 
+def test_schedule_update_notice_uses_branch_specific_template(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "schedule_update_template_name": "class_schedule_update",
+        "schedule_update_template_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(phone, message, config):
+        sent.append((phone, message, config.get("message_template_name")))
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_send)
+    result = run(whatsapp_mod.send_schedule_update_whatsapp_notice(
+        {
+            "id": "member-1",
+            "name_ar": "محمد",
+            "phone": "0501234567",
+            "branch_id": "branch-a",
+        },
+        "تم تغيير موعد تدريب محمد من 4:00 م إلى 5:00 م",
+        notice_type="schedule_changed_cloud",
+    ))
+
+    assert result is True
+    assert sent[0][0] == "966501234567@s.whatsapp.net"
+    assert sent[0][2] == "class_schedule_update"
+
+
 def test_class_reminder_worker_sends_once_for_the_same_class(monkeypatch):
     class Cursor:
         def __init__(self, rows):

@@ -1,4 +1,5 @@
 """Day Extensions (ترحيل الأيام) routes"""
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -9,6 +10,36 @@ from datetime import datetime, timezone, timedelta
 from .common import db, get_current_user
 
 router = APIRouter(prefix="/day-extensions", tags=["day-extensions"])
+
+
+async def _send_closure_whatsapp_notices(closure: dict, members: list) -> None:
+    """Best-effort post-apply notices; never delay or roll back the closure."""
+    try:
+        from routes.whatsapp import send_schedule_update_whatsapp_notice
+        title = closure.get("title_ar") or closure.get("title_en") or "إلغاء حصة"
+        start = closure.get("start_date") or ""
+        end = closure.get("end_date") or start
+        date_text = start if start == end else f"{start} إلى {end}"
+        for member in members:
+            details = member.get("details") or []
+            activities = "، ".join(
+                dict.fromkeys(d.get("activity") for d in details if d.get("activity"))
+            ) or "جميع الأنشطة المتأثرة"
+            message = (
+                f"تنبيه بإلغاء/توقف الحصة ⚠️\n"
+                f"العضو: {member.get('name') or ''}\n"
+                f"السبب: {title}\n"
+                f"التاريخ: {date_text}\n"
+                f"النشاط: {activities}"
+            )
+            await send_schedule_update_whatsapp_notice(
+                member,
+                message,
+                notice_type="class_cancelled_cloud",
+                dedup_key=f"closure:{closure.get('id')}:{member.get('member_id')}",
+            )
+    except Exception:
+        pass
 
 def require_admin(user: dict):
     if not user.get("is_admin", False):
@@ -675,6 +706,8 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
                 "name": member.get("name_ar", member.get("name", "")),
                 "phone": member.get("phone", ""),
                 "member_id": member.get("id", ""),
+                "id": member.get("id", ""),
+                "branch_id": member.get("branch_id", ""),
                 "guardian_name": member.get("guardian_name_ar") or member.get("guardian_name") or "",
             }
             details = []
@@ -717,9 +750,11 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     for em in extended_members:
         slim_affected.append({
             "member_id": em.get("member_id", ""),
+            "id": em.get("member_id", ""),
             "name": em.get("name", ""),
             "guardian_name": em.get("guardian_name", ""),
             "phone": em.get("phone", ""),
+            "branch_id": em.get("branch_id", ""),
             "details": em.get("details", []),
         })
 
@@ -742,6 +777,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             "freezes_extended_count": freeze_ext_result.get("extended", 0),
         }}
     )
+    asyncio.create_task(_send_closure_whatsapp_notices(closure, slim_affected))
 
     log_entry = {
         "id": str(uuid.uuid4()),
