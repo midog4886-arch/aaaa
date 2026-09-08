@@ -127,7 +127,7 @@ export default function WhatsAppBulkPage() {
   const [waIdx, setWaIdx] = useState(0);
   const [branches, setBranches] = useState([]);
   const [branchId, setBranchId] = useState(selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '');
-  const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, template_configured: false });
+  const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, provider: 'meta_cloud', configured: false, connected: false, template_configured: false, daily_limit: 0, daily_used: 0, daily_remaining: 0 });
   const [cloudSending, setCloudSending] = useState(false);
   const [attachment, setAttachment] = useState(null);
 
@@ -135,13 +135,14 @@ export default function WhatsAppBulkPage() {
   const invalidCount = items.length - validItems.length;
   const namedCount = useMemo(() => items.filter(i => i.name).length, [items]);
   const usesName = nameTokenRe().test(message);
-  const selectedTemplateReady = attachment
+  const isWaha = cloudStatus.provider === 'waha';
+  const selectedTemplateReady = isWaha || (attachment
     ? (
         attachment.type === 'application/pdf'
           ? cloudStatus.document_template_configured
           : cloudStatus.image_template_configured
       )
-    : cloudStatus.template_configured;
+     : cloudStatus.template_configured);
   const messageTooLong = message.length > (attachment ? 1024 : 4096);
 
   useEffect(() => {
@@ -167,7 +168,7 @@ export default function WhatsAppBulkPage() {
   useEffect(() => {
     let cancelled = false;
     if (!branchId) {
-      setCloudStatus({ loading: false, enabled: false, template_configured: false, image_template_configured: false, document_template_configured: false });
+      setCloudStatus({ loading: false, enabled: false, provider: 'meta_cloud', configured: false, connected: false, template_configured: false, image_template_configured: false, document_template_configured: false, daily_remaining: 0 });
       return undefined;
     }
     setCloudStatus(current => ({ ...current, loading: true }));
@@ -176,7 +177,7 @@ export default function WhatsAppBulkPage() {
         if (!cancelled) setCloudStatus({ loading: false, ...response.data });
       })
       .catch(() => {
-        if (!cancelled) setCloudStatus({ loading: false, enabled: false, template_configured: false, image_template_configured: false, document_template_configured: false });
+        if (!cancelled) setCloudStatus({ loading: false, enabled: false, provider: 'meta_cloud', configured: false, connected: false, template_configured: false, image_template_configured: false, document_template_configured: false, daily_remaining: 0 });
       });
     return () => { cancelled = true; };
   }, [branchId]);
@@ -307,11 +308,12 @@ export default function WhatsAppBulkPage() {
     const isPdf = attachment?.type === 'application/pdf';
     const templateReady = attachment
       ? (isImage ? cloudStatus.image_template_configured : isPdf && cloudStatus.document_template_configured)
-      : cloudStatus.template_configured;
-    if (!cloudStatus.enabled || !templateReady) {
+       : cloudStatus.template_configured;
+    const quotaExceeded = isWaha && validItems.length > Number(cloudStatus.daily_remaining || 0);
+    if (!cloudStatus.enabled || (isWaha ? (!cloudStatus.configured || !cloudStatus.connected) : !templateReady)) {
       toast.error(t(
-        attachment ? 'قالب هذا النوع من المرفقات غير مهيأ للفرع' : 'API أو قالب Meta غير مهيأ لهذا الفرع',
-        attachment ? 'The template for this attachment type is not configured' : 'Meta API or template is not configured for this branch'
+        isWaha ? 'جلسة WAHA غير مهيأة أو غير متصلة' : (attachment ? 'قالب هذا النوع من المرفقات غير مهيأ للفرع' : 'API أو قالب Meta غير مهيأ لهذا الفرع'),
+        isWaha ? 'WAHA is not configured or connected' : (attachment ? 'The template for this attachment type is not configured' : 'Meta API or template is not configured for this branch')
       ));
       return;
     }
@@ -321,6 +323,10 @@ export default function WhatsAppBulkPage() {
     }
     if (validItems.length > 200) {
       toast.error(t('الحد الأقصى للإرسال التلقائي هو 200 رقم في الدفعة', 'Automatic sending is limited to 200 recipients per batch'));
+      return;
+    }
+    if (quotaExceeded) {
+      toast.error(t(`تتجاوز القائمة الرصيد اليومي المتبقي (${cloudStatus.daily_remaining})`, `Recipient count exceeds the remaining daily quota (${cloudStatus.daily_remaining})`));
       return;
     }
     const branchName = branches.find(branch => branch.id === branchId)?.name || '';
@@ -593,6 +599,12 @@ export default function WhatsAppBulkPage() {
               <MessageCircle className="w-5 h-5 text-green-600" />
               {t('الرسالة', 'Message')}
             </CardTitle>
+            {branchId && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline">{isWaha ? 'WAHA' : 'Meta Cloud'}</Badge>
+                {isWaha && <span>{cloudStatus.connected ? t('متصل', 'Connected') : t('غير متصل', 'Not connected')} · {cloudStatus.daily_used || 0}/{cloudStatus.daily_limit || 0} {t('اليوم', 'today')} · {cloudStatus.daily_remaining || 0} {t('متبقي', 'remaining')}</span>}
+              </div>
+            )}
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -650,7 +662,8 @@ export default function WhatsAppBulkPage() {
                   </Button>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">
+             {isWaha && <p className="text-xs text-amber-700">{t('حد الإرسال اليومي مؤشر تشغيلي داخلي. يجب أن تكون جلسة WAHA متصلة قبل الإرسال.', 'The daily limit is an internal operating guard. The WAHA session must be connected before sending.')}</p>}
+             <p className="text-xs text-muted-foreground">
                 {t(
                   'الصورة تحتاج قالب IMAGE معتمد، وPDF يحتاج قالب DOCUMENT معتمد في إعدادات الفرع.',
                   'Images require an approved IMAGE template; PDFs require an approved DOCUMENT template in branch settings.'
@@ -683,7 +696,7 @@ export default function WhatsAppBulkPage() {
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-              disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || cloudStatus.loading || !cloudStatus.enabled || !selectedTemplateReady}
+               disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || cloudStatus.loading || !cloudStatus.enabled || (isWaha ? (!cloudStatus.configured || !cloudStatus.connected || quotaExceeded) : !selectedTemplateReady)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />

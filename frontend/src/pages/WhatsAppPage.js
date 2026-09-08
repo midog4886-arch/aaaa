@@ -225,7 +225,7 @@ export default function WhatsAppPage() {
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
   const [loadingConversations, setLoadingConversations] = useState(false);
 
-  // ── Meta WhatsApp Inbox State ──
+  // ── Provider-neutral WhatsApp Inbox State ──
   const [cloudConversations, setCloudConversations] = useState([]);
   const [cloudUnreadCount, setCloudUnreadCount] = useState(0);
   const [cloudBranchFilter, setCloudBranchFilter] = useState(
@@ -2385,7 +2385,7 @@ export default function WhatsAppPage() {
         )}
 
         {/* ══════════════════════════════════════════
-            META WHATSAPP CLOUD INBOX
+            WHATSAPP INBOX
         ══════════════════════════════════════════ */}
         {activeTab === 'cloud_inbox' && (
           <div className="space-y-4 max-w-5xl">
@@ -2446,7 +2446,7 @@ export default function WhatsAppPage() {
                       <MessageCircle className="w-16 h-16 mx-auto mb-3 opacity-20" />
                       <p>{t('لا توجد محادثات واتساب واردة بعد', 'No inbound WhatsApp conversations yet')}</p>
                       <p className="text-xs mt-2">
-                        {t('تأكد من ربط Webhook والاشتراك في حدث messages داخل Meta.', 'Connect the webhook and subscribe to the messages event in Meta.')}
+                         {t('تأكد من اتصال مزود واتساب وإعداد استقبال الرسائل لهذا الفرع.', 'Check the branch WhatsApp provider connection and inbound message setup.')}
                       </p>
                     </div>
                   ) : (
@@ -2471,6 +2471,7 @@ export default function WhatsAppPage() {
                                   <Badge variant="secondary" className="text-xs gap-1">
                                     <Building2 className="w-3 h-3" />{conversation.branch_name}
                                   </Badge>
+                                   <Badge variant="outline" className="text-[10px]">{conversation.provider === 'waha' ? 'WAHA' : 'Meta Cloud'}</Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground" dir="ltr">{conversation.phone}</p>
                                 <p className="text-sm text-muted-foreground truncate mt-1">
@@ -2502,6 +2503,7 @@ export default function WhatsAppPage() {
                     <Badge variant="secondary" className="gap-1">
                       <Building2 className="w-3 h-3" />{cloudThread?.branch_name}
                     </Badge>
+                     <Badge variant="outline" className="text-[10px]">{cloudThread?.provider === 'waha' ? 'WAHA' : 'Meta Cloud'}</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4">

@@ -57,6 +57,9 @@ const initialFormData = () => ({
   whatsapp_manual_expired_template: '',
   whatsapp_welcome_template: '',
   whatsapp_cloud_enabled: false,
+  whatsapp_provider: 'meta_cloud',
+  whatsapp_waha_session_name: '',
+  whatsapp_waha_daily_limit: 30,
   whatsapp_phone_number_id: '',
   whatsapp_business_account_id: '',
   whatsapp_access_token: '',
@@ -126,6 +129,10 @@ const BranchesPage = () => {
   const [saving, setSaving] = useState(false);
   const [testingWhatsApp, setTestingWhatsApp] = useState(false);
   const [webhookInfo, setWebhookInfo] = useState(null);
+  const [providerStatus, setProviderStatus] = useState(null);
+  const [providerQuality, setProviderQuality] = useState(null);
+  const [providerQr, setProviderQr] = useState(null);
+  const [providerAction, setProviderAction] = useState('');
   
   const [formData, setFormData] = useState(initialFormData);
 
@@ -208,10 +215,18 @@ const BranchesPage = () => {
       const savedBranchId = editingBranch?.id || savedBranch?.id;
       if (
         savedBranchId &&
-        (formData.whatsapp_phone_number_id || formData.whatsapp_token_configured || formData.whatsapp_access_token)
+        (
+          ['waha', 'legacy', 'disabled'].includes(formData.whatsapp_provider)
+          || formData.whatsapp_phone_number_id
+          || formData.whatsapp_token_configured
+          || formData.whatsapp_access_token
+        )
       ) {
         await branchesAPI.updateWhatsAppCloud(savedBranchId, {
           enabled: !!formData.whatsapp_cloud_enabled,
+          provider: formData.whatsapp_provider || 'meta_cloud',
+          waha_session_name: formData.whatsapp_waha_session_name || null,
+          waha_daily_limit: Number(formData.whatsapp_waha_daily_limit) || 30,
           phone_number_id: formData.whatsapp_phone_number_id,
           whatsapp_business_account_id: formData.whatsapp_business_account_id,
           access_token: formData.whatsapp_access_token || null,
@@ -284,6 +299,9 @@ const BranchesPage = () => {
       whatsapp_manual_expired_template: branch.whatsapp_manual_expired_template || '',
       whatsapp_welcome_template: branch.whatsapp_welcome_template || '',
       whatsapp_cloud_enabled: !!cloud.enabled,
+      whatsapp_provider: cloud.provider || 'meta_cloud',
+      whatsapp_waha_session_name: cloud.waha_session_name || '',
+      whatsapp_waha_daily_limit: cloud.waha_daily_limit ?? 30,
       whatsapp_phone_number_id: cloud.phone_number_id || '',
       whatsapp_business_account_id: cloud.whatsapp_business_account_id || '',
       whatsapp_access_token: '',
@@ -316,13 +334,20 @@ const BranchesPage = () => {
       venues: getBranchVenues(branch).map(normalizeVenue)
     });
     setIsDialogOpen(true);
+    setProviderStatus(null);
+    setProviderQuality(null);
+    setProviderQr(null);
   };
 
   const handleCloseDialog = () => {
+    if (providerQr) URL.revokeObjectURL(providerQr);
     setIsDialogOpen(false);
     setEditingBranch(null);
     setFormData(initialFormData());
     setWebhookInfo(null);
+    setProviderQr(null);
+    setProviderStatus(null);
+    setProviderQuality(null);
   };
 
   const handleTestWhatsAppCloud = async () => {
@@ -348,6 +373,62 @@ const BranchesPage = () => {
     } finally {
       setTestingWhatsApp(false);
     }
+  };
+
+  const loadWahaDetails = async () => {
+    if (!editingBranch?.id) return;
+    setProviderAction('refresh');
+    try {
+      const [status, quality] = await Promise.all([
+        branchesAPI.getProviderStatus(editingBranch.id),
+        branchesAPI.getProviderQuality(editingBranch.id)
+      ]);
+      setProviderStatus(status.data);
+      setProviderQuality(quality.data);
+      toast.success(language === 'ar' ? 'تم تحديث حالة الاتصال' : 'Provider status refreshed');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'تعذر تحميل حالة الاتصال' : 'Could not load provider status'));
+    } finally { setProviderAction(''); }
+  };
+
+  const runWahaAction = async (action) => {
+    if (!editingBranch?.id) return;
+    if (action === 'logout' && !window.confirm(language === 'ar' ? 'سيتم تسجيل خروج جلسة واتساب. هل تريد المتابعة؟' : 'This will log out the WhatsApp session. Continue?')) return;
+    setProviderAction(action);
+    try {
+      await branchesAPI.providerSessionAction(editingBranch.id, action);
+      toast.success(language === 'ar' ? 'تم تنفيذ الإجراء' : 'Action completed');
+      await loadWahaDetails();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'تعذر تنفيذ الإجراء' : 'Action failed'));
+    } finally { setProviderAction(''); }
+  };
+
+  const fetchWahaQr = async () => {
+    if (!editingBranch?.id) return;
+    setProviderAction('qr');
+    try {
+      const response = await branchesAPI.getProviderQr(editingBranch.id);
+      if (providerQr) URL.revokeObjectURL(providerQr);
+      setProviderQr(URL.createObjectURL(response.data));
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'تعذر تحميل رمز QR' : 'Could not load QR code'));
+    } finally { setProviderAction(''); }
+  };
+
+  const handleTestProvider = async () => {
+    const phone = (formData.support_whatsapp || formData.phone || '').trim();
+    if (!editingBranch?.id || !phone) {
+      toast.error(language === 'ar' ? 'احفظ الفرع وأدخل رقم واتساب أولاً' : 'Save the branch and provide a WhatsApp number first');
+      return;
+    }
+    setProviderAction('test');
+    try {
+      await branchesAPI.testProvider(editingBranch.id, phone, language === 'ar' ? 'رسالة اختبار اتصال واتساب للفرع' : 'Branch WhatsApp connection test');
+      toast.success(language === 'ar' ? 'تم إرسال رسالة الاختبار' : 'Test message sent');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'فشل اختبار الإرسال' : 'Test send failed'));
+    } finally { setProviderAction(''); }
   };
 
   const updateVenue = (index, patch) => {
@@ -915,12 +996,12 @@ const BranchesPage = () => {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <Label className="font-bold">
-                      {language === 'ar' ? 'WhatsApp Cloud API الخاص بهذا الفرع' : 'Branch WhatsApp Cloud API'}
+                      {language === 'ar' ? 'ربط واتساب الخاص بهذا الفرع' : 'Branch WhatsApp connection'}
                     </Label>
                     <p className="text-xs text-muted-foreground mt-1">
                       {language === 'ar'
-                        ? 'ترسل رسائل أعضاء هذا الفرع من رقم Meta الخاص به. رمز الوصول يُشفّر ولا يظهر بعد الحفظ.'
-                        : "This branch's member messages use its own Meta sender. The access token is encrypted and never shown after saving."}
+                        ? 'اختر Meta Cloud أو WAHA لكل فرع بصورة مستقلة. لن يتغير المزود حتى تحفظ الفرع.'
+                        : 'Choose Meta Cloud or WAHA independently for each branch. The provider changes only after you save.'}
                     </p>
                   </div>
                   <label className="flex items-center gap-2 text-sm font-semibold">
@@ -934,6 +1015,65 @@ const BranchesPage = () => {
                   </label>
                 </div>
 
+                 <div className="space-y-2">
+                   <Label>{language === 'ar' ? 'مزود واتساب' : 'WhatsApp provider'}</Label>
+                   <select
+                     value={formData.whatsapp_provider}
+                     onChange={e => setFormData({ ...formData, whatsapp_provider: e.target.value })}
+                     className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                     data-testid="whatsapp-provider-select"
+                   >
+                     <option value="meta_cloud">{language === 'ar' ? 'Meta Cloud API' : 'Meta Cloud API'}</option>
+                     <option value="waha">{language === 'ar' ? 'WAHA — جلسة واتساب داخلية' : 'WAHA — managed WhatsApp session'}</option>
+                     <option value="legacy">{language === 'ar' ? 'الاتصال القديم' : 'Legacy connection'}</option>
+                     <option value="disabled">{language === 'ar' ? 'معطّل' : 'Disabled'}</option>
+                   </select>
+                 </div>
+
+                 {formData.whatsapp_provider === 'waha' && (
+                   <div className="rounded-md border border-sky-200 bg-sky-50/60 p-3 space-y-3">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                       <div className="space-y-1">
+                         <Label>{language === 'ar' ? 'اسم جلسة WAHA' : 'WAHA session name'}</Label>
+                         <Input value={formData.whatsapp_waha_session_name} onChange={e => setFormData({ ...formData, whatsapp_waha_session_name: e.target.value })} placeholder="branch-main" dir="ltr" />
+                       </div>
+                       <div className="space-y-1">
+                         <Label>{language === 'ar' ? 'الحد اليومي للرسائل' : 'Daily message limit'}</Label>
+                         <Input type="number" min="1" max="1000" value={formData.whatsapp_waha_daily_limit} onChange={e => setFormData({ ...formData, whatsapp_waha_daily_limit: e.target.value })} dir="ltr" />
+                       </div>
+                     </div>
+                     <p className="text-xs text-sky-900">{language === 'ar' ? 'يتطلب WAHA جلسة متصلة قبل الإرسال. مؤشر الجودة داخلي للتشغيل وليس تصنيفاً رسمياً من واتساب.' : 'WAHA requires a connected session before sending. Quality is an internal operating signal, not an official WhatsApp quality rating.'}</p>
+                     {editingBranch && (
+                       <div className="space-y-3">
+                         <div className="flex flex-wrap gap-2">
+                           <Button type="button" size="sm" variant="outline" onClick={loadWahaDetails} disabled={!!providerAction}>{language === 'ar' ? 'تحديث الحالة والجودة' : 'Refresh status & quality'}</Button>
+                           {['start', 'stop', 'restart', 'logout'].map(action => (
+                             <Button key={action} type="button" size="sm" variant="outline" onClick={() => runWahaAction(action)} disabled={!!providerAction}>
+                               {language === 'ar' ? ({ start: 'بدء', stop: 'إيقاف', restart: 'إعادة تشغيل', logout: 'تسجيل خروج' }[action]) : action[0].toUpperCase() + action.slice(1)}
+                             </Button>
+                           ))}
+                           <Button type="button" size="sm" variant="outline" onClick={fetchWahaQr} disabled={!!providerAction}>{language === 'ar' ? 'عرض QR' : 'Show QR'}</Button>
+                           <Button type="button" size="sm" onClick={handleTestProvider} disabled={!!providerAction}>{language === 'ar' ? 'إرسال اختبار' : 'Send test'}</Button>
+                         </div>
+                         {providerStatus && <div className="text-sm"><Badge variant={providerStatus.connected ? 'default' : 'secondary'}>{providerStatus.connected ? (language === 'ar' ? 'متصل' : 'Connected') : (language === 'ar' ? 'غير متصل' : 'Not connected')}</Badge><span className="ms-2 text-muted-foreground">{providerStatus.status || providerStatus.session || ''}</span></div>}
+                         {providerQuality && (
+                           <div className="text-xs text-muted-foreground">
+                             {language === 'ar'
+                               ? `الجودة الداخلية: ${{ good: 'جيدة', watch: 'تحتاج مراقبة', risk: 'خطر', unknown: 'غير متاحة' }[providerQuality.rating] || 'غير متاحة'} — معدل الفشل ${providerQuality.failure_rate ?? '—'}% — المرسل اليوم ${providerQuality.today_sent ?? 0}`
+                               : `Internal quality: ${{ good: 'Good', watch: 'Watch', risk: 'Risk', unknown: 'Unavailable' }[providerQuality.rating] || 'Unavailable'} — failure rate ${providerQuality.failure_rate ?? '—'}% — sent today ${providerQuality.today_sent ?? 0}`}
+                             <span className="block mt-1">
+                               {language === 'ar' ? 'هذا مؤشر تشغيلي داخل النظام وليس تصنيف واتساب الرسمي.' : 'This is an internal operating signal, not an official WhatsApp rating.'}
+                             </span>
+                           </div>
+                         )}
+                         {providerQr && <img src={providerQr} alt="WAHA QR" className="w-48 h-48 rounded-md border bg-white p-2" />}
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                 {formData.whatsapp_provider === 'meta_cloud' && (
+                 <React.Fragment>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label>Phone Number ID</Label>
@@ -1348,6 +1488,7 @@ const BranchesPage = () => {
                     {language === 'ar' ? 'اختبار الإرسال من هذا الفرع' : 'Test this branch sender'}
                   </Button>
                 )}
+                 </React.Fragment>)}
               </div>
 
               <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
