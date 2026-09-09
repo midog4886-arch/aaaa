@@ -22,6 +22,7 @@ from .common import get_current_user
 from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_current_tenant
 from services.waha import WAHAClient
+from services.whatsflow import WhatsflowClient
 
 logger = logging.getLogger("whatsapp")
 _bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
@@ -245,7 +246,7 @@ def _branch_provider(config: Optional[dict]) -> str:
     if not config:
         return "legacy"
     provider = config.get("provider")
-    if provider in {"meta_cloud", "waha", "legacy", "disabled"}:
+    if provider in {"meta_cloud", "waha", "whatsflow", "legacy", "disabled"}:
         return provider
     return "meta_cloud" if config.get("enabled") else "legacy"
 
@@ -314,6 +315,43 @@ async def _send_waha_message_result(phone: str, message: str, config: dict):
     return ok, message_id, error
 
 
+def _whatsflow_client(config: dict) -> WhatsflowClient:
+    encrypted = config.get("whatsflow_api_key_encrypted") or ""
+    api_key = _decrypt_access_token(encrypted) if encrypted else ""
+    return WhatsflowClient(config.get("whatsflow_instance") or "", api_key)
+
+
+def _whatsflow_webhook_secret(tenant_slug: str, branch_id: str) -> str:
+    secret = os.environ.get("SESSION_SECRET", "")
+    if not secret:
+        raise RuntimeError("SESSION_SECRET is required")
+    return hmac.new(
+        secret.encode("utf-8"),
+        f"whatsflow-webhook:{tenant_slug}:{branch_id}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+async def _send_whatsflow_message_result(phone: str, message: str, config: dict):
+    digits = "".join(filter(str.isdigit, phone or ""))
+    if not digits:
+        return False, None, "invalid_phone"
+    ok, response, error = await _whatsflow_client(config).send_text(
+        digits, message, delay=0, link_preview=False
+    )
+    message_id = None
+    if isinstance(response, dict):
+        key = response.get("key")
+        message_id = (key.get("id") if isinstance(key, dict) else None) or response.get("id")
+    return ok, str(message_id) if message_id else None, error
+
+
+async def _send_session_provider_result(phone: str, message: str, config: dict):
+    if _branch_provider(config) == "whatsflow":
+        return await _send_whatsflow_message_result(phone, message, config)
+    return await _send_waha_message_result(phone, message, config)
+
+
 def _campaign_quota_id(branch_id: str) -> str:
     return f"{branch_id}:{datetime.now(RIYADH_TZ).date().isoformat()}"
 
@@ -362,8 +400,14 @@ async def _has_enabled_cloud_config() -> bool:
         {"_id": 1},
     ):
         return True
-    return bool(await _db["whatsapp_branch_configs"].find_one(
+    if await _db["whatsapp_branch_configs"].find_one(
         {"enabled": True, "provider": "waha", "waha_session_name": {"$exists": True, "$ne": ""}},
+        {"_id": 1},
+    ):
+        return True
+    return bool(await _db["whatsapp_branch_configs"].find_one(
+        {"enabled": True, "provider": "whatsflow",
+         "whatsflow_api_key_encrypted": {"$exists": True, "$ne": ""}},
         {"_id": 1},
     ))
 
@@ -469,8 +513,8 @@ async def send_attendance_whatsapp_notice(
             f"تم تسجيل حضور {member_name} في {activity_name} "
             f"بتاريخ {date_str} الساعة {check_in_time} ✅"
         )
-        if provider == "waha":
-            success, _, _ = await _send_waha_message_result(phone, message, config)
+        if provider in {"waha", "whatsflow"}:
+            success, _, _ = await _send_session_provider_result(phone, message, config)
         else:
             if not (provider == "meta_cloud" and config.get("phone_number_id")
                     and config.get("access_token_encrypted") and config.get("attendance_template_name")
@@ -578,8 +622,8 @@ async def send_class_reminder_whatsapp_notice(
         f"الوقت: {time_text}\n"
         f"الفرع: {branch_name}"
     )
-    if provider == "waha":
-        success, _, _ = await _send_waha_message_result(phone, message, config)
+    if provider in {"waha", "whatsflow"}:
+        success, _, _ = await _send_session_provider_result(phone, message, config)
     else:
         if not (provider == "meta_cloud" and config.get("phone_number_id") and config.get("access_token_encrypted")
                 and config.get("class_reminder_template_name") and config.get("class_reminder_template_confirmed")):
@@ -631,8 +675,8 @@ async def send_schedule_update_whatsapp_notice(
                 })
             except DuplicateKeyError:
                 return False
-        if provider == "waha":
-            success, _, _ = await _send_waha_message_result(phone, message, config)
+        if provider in {"waha", "whatsflow"}:
+            success, _, _ = await _send_session_provider_result(phone, message, config)
         else:
             if not (provider == "meta_cloud" and config.get("phone_number_id") and config.get("access_token_encrypted")
                     and config.get("schedule_update_template_name") and config.get("schedule_update_template_confirmed")):
@@ -782,8 +826,8 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
             f"ضريبة القيمة المضافة: {invoice.get('vat_amount', 0)} ر.س\n"
             f"الإجمالي المدفوع: {invoice.get('total', 0)} ر.س"
         )
-        if provider == "waha":
-            success, _, _ = await _send_waha_message_result(phone, message, config)
+        if provider in {"waha", "whatsflow"}:
+            success, _, _ = await _send_session_provider_result(phone, message, config)
         else:
             if not (provider == "meta_cloud" and config.get("phone_number_id") and config.get("access_token_encrypted")
                     and config.get("payment_template_name") and config.get("payment_template_confirmed")):
@@ -885,14 +929,16 @@ async def queue_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
     if _db is None or not invoice.get("id") or not invoice.get("branch_id"):
         return False
     config = await _get_branch_cloud_config(invoice["branch_id"])
-    if not (
-        config
-        and config.get("enabled")
-        and config.get("phone_number_id")
-        and config.get("access_token_encrypted")
-        and config.get("payment_template_name")
+    provider = _branch_provider(config)
+    session_ready = provider in {"waha", "whatsflow"} and bool(
+        config and config.get("enabled")
+    )
+    meta_ready = provider == "meta_cloud" and bool(
+        config and config.get("enabled") and config.get("phone_number_id")
+        and config.get("access_token_encrypted") and config.get("payment_template_name")
         and config.get("payment_template_confirmed")
-    ):
+    )
+    if not (session_ready or meta_ready):
         return False
     coll = _db["whatsapp_invoice_payment_outbox"]
     await coll.create_index("invoice_id", unique=True)
@@ -922,8 +968,8 @@ async def _send_wa_message_for_branch(
     provider = _branch_provider(cloud_config)
     if provider == "disabled":
         return False
-    if provider == "waha":
-        success, _, _ = await _send_waha_message_result(phone, message, cloud_config or {})
+    if provider in {"waha", "whatsflow"}:
+        success, _, _ = await _send_session_provider_result(phone, message, cloud_config or {})
         return success
     if provider == "meta_cloud" and cloud_config and cloud_config.get("enabled"):
         if quick_reply_payload and cloud_config.get("renewal_contact_button_confirmed"):
@@ -1693,6 +1739,8 @@ class BranchCloudConfigUpdate(BaseModel):
     phone_number_id: str = ""
     waha_session_name: Optional[str] = ""
     waha_daily_limit: int = 30
+    whatsflow_instance: Optional[str] = ""
+    whatsflow_api_key: Optional[str] = None
     whatsapp_business_account_id: Optional[str] = ""
     access_token: Optional[str] = None
     graph_api_version: str = "v23.0"
@@ -1743,6 +1791,9 @@ async def get_branch_cloud_config(
             "provider": "legacy",
             "waha_session_name": "",
             "waha_daily_limit": 30,
+            "whatsflow_instance": "",
+            "whatsflow_api_key_configured": False,
+            "whatsflow_webhook_secret_configured": False,
             "phone_number_id": "",
             "whatsapp_business_account_id": "",
             "graph_api_version": "v23.0",
@@ -1771,6 +1822,9 @@ async def get_branch_cloud_config(
         "provider": _branch_provider(config),
         "waha_session_name": config.get("waha_session_name") or "",
         "waha_daily_limit": int(config.get("waha_daily_limit") or 30),
+        "whatsflow_instance": config.get("whatsflow_instance") or "",
+        "whatsflow_api_key_configured": bool(config.get("whatsflow_api_key_encrypted")),
+        "whatsflow_webhook_secret_configured": _branch_provider(config) == "whatsflow",
         "phone_number_id": config.get("phone_number_id") or "",
         "whatsapp_business_account_id": config.get("whatsapp_business_account_id") or "",
         "graph_api_version": config.get("graph_api_version") or "v23.0",
@@ -1818,10 +1872,10 @@ async def update_branch_cloud_config(
     if provider_was_explicit:
         provider = data.provider
     elif existing.get("provider_explicit") and existing.get("provider") in {
-        "meta_cloud", "waha", "legacy", "disabled"
+        "meta_cloud", "waha", "whatsflow", "legacy", "disabled"
     }:
         provider = existing["provider"]
-    elif existing.get("provider") in {"meta_cloud", "waha", "disabled"}:
+    elif existing.get("provider") in {"meta_cloud", "waha", "whatsflow", "disabled"}:
         provider = existing["provider"]
     elif (
         data.phone_number_id or data.access_token
@@ -1830,7 +1884,7 @@ async def update_branch_cloud_config(
         provider = "meta_cloud"
     else:
         provider = "legacy"
-    if provider not in {"meta_cloud", "waha", "legacy", "disabled"}:
+    if provider not in {"meta_cloud", "waha", "whatsflow", "legacy", "disabled"}:
         raise HTTPException(status_code=400, detail="Invalid WhatsApp provider")
     if not 1 <= data.waha_daily_limit <= 1000:
         raise HTTPException(status_code=400, detail="waha_daily_limit must be between 1 and 1000")
@@ -1846,6 +1900,11 @@ async def update_branch_cloud_config(
         raise HTTPException(status_code=400, detail="WAHA session name is required")
     if session_name and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", session_name):
         raise HTTPException(status_code=400, detail="Invalid WAHA session name")
+    whatsflow_instance = (data.whatsflow_instance or "").strip()
+    if provider == "whatsflow" and not whatsflow_instance:
+        raise HTTPException(status_code=400, detail="Whatsflow instance is required")
+    if whatsflow_instance and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", whatsflow_instance):
+        raise HTTPException(status_code=400, detail="Invalid Whatsflow instance")
     update = {
         "branch_id": branch_id,
         "enabled": bool(data.enabled),
@@ -1857,6 +1916,7 @@ async def update_branch_cloud_config(
             existing.get("waha_physical_session_id")
         ),
         "waha_daily_limit": data.waha_daily_limit,
+        "whatsflow_instance": whatsflow_instance,
         "phone_number_id": phone_number_id,
         "whatsapp_business_account_id": waba_id,
         "graph_api_version": version,
@@ -1898,6 +1958,14 @@ async def update_branch_cloud_config(
             status_code=400,
             detail="Meta App Secret is required to enable the inbox",
         )
+    if data.whatsflow_api_key and data.whatsflow_api_key.strip():
+        update["whatsflow_api_key_encrypted"] = _encrypt_access_token(
+            data.whatsflow_api_key.strip()
+        )
+    elif existing.get("whatsflow_api_key_encrypted"):
+        update["whatsflow_api_key_encrypted"] = existing["whatsflow_api_key_encrypted"]
+    elif data.enabled and provider == "whatsflow":
+        raise HTTPException(status_code=400, detail="Whatsflow API key is required")
     await _db["whatsapp_branch_configs"].update_one(
         {"branch_id": branch_id}, {"$set": update}, upsert=True
     )
@@ -1922,10 +1990,37 @@ async def _require_waha_branch(branch_id: str) -> dict:
     return config
 
 
+async def _require_session_provider_branch(branch_id: str) -> dict:
+    config = await _get_branch_cloud_config(branch_id)
+    provider = _branch_provider(config)
+    if provider == "waha":
+        return await _require_waha_branch(branch_id)
+    if not (
+        provider == "whatsflow" and config and config.get("enabled")
+        and config.get("whatsflow_instance")
+        and config.get("whatsflow_api_key_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="WhatsApp provider is not configured for this branch")
+    return config
+
+
 @router.get("/branch-provider/{branch_id}/status")
 async def branch_provider_status(branch_id: str, current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
-    config = await _require_waha_branch(branch_id)
+    config = await _require_session_provider_branch(branch_id)
+    if _branch_provider(config) == "whatsflow":
+        ok, data, error = await _whatsflow_client(config).connection_state()
+        instance_data = data.get("instance") if isinstance(data, dict) else {}
+        state = instance_data.get("state") if isinstance(instance_data, dict) else None
+        state = state or (data.get("state") if isinstance(data, dict) else None)
+        if ok and state:
+            await _db["whatsapp_branch_configs"].update_one(
+                {"branch_id": branch_id},
+                {"$set": {"whatsflow_state": state, "whatsflow_status_updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        return {"provider": "whatsflow", "configured": True, "connected": state == "open",
+                "instance": config["whatsflow_instance"], "status": state or "unavailable",
+                "error": error if not ok else None}
     client = WAHAClient()
     if not client.configured:
         return {"provider": "waha", "configured": False, "connected": False, "session": config["waha_session_name"]}
@@ -1948,7 +2043,9 @@ async def branch_provider_status(branch_id: str, current_user: dict = Depends(ge
 async def branch_provider_lifecycle(branch_id: str, action: str, request: Request,
                                     current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
-    config = await _require_waha_branch(branch_id)
+    config = await _require_session_provider_branch(branch_id)
+    if _branch_provider(config) != "waha":
+        raise HTTPException(status_code=400, detail="Whatsflow has no lifecycle controls")
     if action not in {"start", "stop", "restart", "logout"}:
         raise HTTPException(status_code=404, detail="Unknown session action")
     client = WAHAClient()
@@ -1983,10 +2080,13 @@ async def branch_provider_lifecycle(branch_id: str, action: str, request: Reques
 @router.get("/branch-provider/{branch_id}/qr")
 async def branch_provider_qr(branch_id: str, current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
-    config = await _require_waha_branch(branch_id)
-    ok, image, error = await WAHAClient().qr(config["waha_physical_session_id"])
+    config = await _require_session_provider_branch(branch_id)
+    if _branch_provider(config) == "whatsflow":
+        ok, image, error = await _whatsflow_client(config).qr()
+    else:
+        ok, image, error = await WAHAClient().qr(config["waha_physical_session_id"])
     if not ok:
-        raise HTTPException(status_code=502, detail=f"WAHA QR failed ({error})")
+        raise HTTPException(status_code=502, detail=f"WhatsApp QR failed ({error})")
     if isinstance(image, bytes):
         return Response(content=image, media_type="image/png")
     return image
@@ -1996,43 +2096,68 @@ async def branch_provider_qr(branch_id: str, current_user: dict = Depends(get_cu
 async def branch_provider_test(branch_id: str, data: WAHABranchTestRequest,
                                current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
-    config = await _require_waha_branch(branch_id)
+    config = await _require_session_provider_branch(branch_id)
     phone = _format_cloud_phone(data.phone)
     if not phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
-    ok, _, error = await _send_waha_message_result(
+    ok, _, error = await _send_session_provider_result(
         phone, data.message or "رسالة تجريبية من نظام إدارة الأكاديمية", config
     )
     if not ok:
-        raise HTTPException(status_code=502, detail=f"WAHA test failed ({error or 'unknown'})")
-    return {"success": True, "provider": "waha"}
+        raise HTTPException(status_code=502, detail=f"WhatsApp test failed ({error or 'unknown'})")
+    return {"success": True, "provider": _branch_provider(config)}
+
+
+@router.post("/branch-provider/{branch_id}/webhook")
+async def configure_branch_provider_webhook(
+    branch_id: str, request: Request, current_user: dict = Depends(get_current_user)
+):
+    _require_admin(current_user)
+    config = await _require_session_provider_branch(branch_id)
+    if _branch_provider(config) != "whatsflow":
+        raise HTTPException(status_code=400, detail="Webhook setup is only available for Whatsflow")
+    tenant_slug = get_current_tenant_slug()
+    url = (
+        str(request.base_url).rstrip("/")
+        + f"/api/whatsapp/whatsflow-webhook/{tenant_slug}/{branch_id}"
+    )
+    ok, _, error = await _whatsflow_client(config).set_webhook(
+        url, _whatsflow_webhook_secret(tenant_slug, branch_id)
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail=f"Whatsflow webhook setup failed ({error})")
+    return {"success": True, "provider": "whatsflow", "configured": True}
 
 
 @router.get("/branch-provider/{branch_id}/quality")
 async def branch_provider_quality(branch_id: str, current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
-    config = await _require_waha_branch(branch_id)
+    config = await _require_session_provider_branch(branch_id)
+    provider = _branch_provider(config)
     since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     today = datetime.now(timezone.utc).date().isoformat()
     logs = _db["whatsapp_send_log"]
     messages = _db["whatsapp_cloud_messages"]
-    success = await logs.count_documents({"branch_id": branch_id, "transport": "waha", "success": True, "sent_at": {"$gte": since}})
-    failure = await logs.count_documents({"branch_id": branch_id, "transport": "waha", "success": False, "sent_at": {"$gte": since}})
-    today_sent = await logs.count_documents({"branch_id": branch_id, "transport": "waha", "success": True, "sent_at": {"$gte": today, "$lt": today + "T99"}})
-    replies = await messages.count_documents({"branch_id": branch_id, "provider": "waha", "direction": "inbound", "created_at": {"$gte": since}})
-    delivered = await messages.count_documents({"branch_id": branch_id, "provider": "waha", "direction": "outbound",
+    success = await logs.count_documents({"branch_id": branch_id, "transport": provider, "success": True, "sent_at": {"$gte": since}})
+    failure = await logs.count_documents({"branch_id": branch_id, "transport": provider, "success": False, "sent_at": {"$gte": since}})
+    today_sent = await logs.count_documents({"branch_id": branch_id, "transport": provider, "success": True, "sent_at": {"$gte": today, "$lt": today + "T99"}})
+    replies = await messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "inbound", "created_at": {"$gte": since}})
+    delivered = await messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "outbound",
         "status": {"$in": ["delivered", "DELIVERED"]}, "created_at": {"$gte": since}})
-    read = await messages.count_documents({"branch_id": branch_id, "provider": "waha", "direction": "outbound",
+    read = await messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "outbound",
         "status": {"$in": ["read", "READ"]}, "created_at": {"$gte": since}})
     opt_outs = 0
     stop_terms = {"إلغاء", "الغاء", "توقف", "stop", "unsubscribe"}
-    cursor = messages.find({"branch_id": branch_id, "provider": "waha", "direction": "inbound", "created_at": {"$gte": since}},
+    cursor = messages.find({"branch_id": branch_id, "provider": provider, "direction": "inbound", "created_at": {"$gte": since}},
                            {"body": 1})
     async for row in cursor:
         body = " ".join(str(row.get("body") or "").strip().lower().split())
         if body in stop_terms:
             opt_outs += 1
-    disconnected = str(config.get("waha_session_status") or "").upper() in {"STOPPED", "DISCONNECTED", "FAILED"}
+    disconnected = (
+        str(config.get("whatsflow_state") or "") == "close" if provider == "whatsflow"
+        else str(config.get("waha_session_status") or "").upper() in {"STOPPED", "DISCONNECTED", "FAILED"}
+    )
     total = success + failure
     failure_ratio = failure / total if total else None
     rating = "unknown" if not total else ("risk" if disconnected or failure_ratio > .10 or opt_outs > 0
@@ -2316,6 +2441,130 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         reset_current_tenant(token)
 
 
+@router.post("/whatsflow-webhook/{tenant_slug}/{branch_id}")
+async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: Request):
+    """Accept one branch's authenticated Whatsflow events into the unified inbox."""
+    raw = await request.body()
+    try:
+        envelope = json.loads(raw.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    instance = str(
+        envelope.get("instance")
+        or (envelope.get("data") or {}).get("instance")
+        or ""
+    )
+    if not instance:
+        raise HTTPException(status_code=403, detail="Webhook instance is missing")
+    token = await _with_webhook_tenant(tenant_slug)
+    try:
+        config = await _db["whatsapp_branch_configs"].find_one(
+            {"branch_id": branch_id, "provider": "whatsflow", "enabled": True,
+             "whatsflow_instance": instance},
+            {"_id": 0},
+        )
+        if not config:
+            raise HTTPException(status_code=403, detail="Webhook instance is not configured")
+        supplied = request.headers.get("x-webhook-secret") or ""
+        expected = _whatsflow_webhook_secret(tenant_slug, branch_id)
+        if not hmac.compare_digest(supplied, expected):
+            raise HTTPException(status_code=403, detail="Invalid webhook secret")
+        event = str(envelope.get("event") or envelope.get("type") or "").lower()
+        data = envelope.get("data") if isinstance(envelope.get("data"), dict) else {}
+        now = datetime.now(timezone.utc).isoformat()
+        if event == "connection.update":
+            state = data.get("state") or (data.get("instance") or {}).get("state") or "unknown"
+            await _db["whatsapp_branch_configs"].update_one(
+                {"branch_id": config["branch_id"]},
+                {"$set": {"whatsflow_state": state, "whatsflow_status_updated_at": now}},
+            )
+            return {"received": True}
+        key = data.get("key") if isinstance(data.get("key"), dict) else {}
+        message_id = str(key.get("id") or data.get("id") or "")
+        if event == "messages.update":
+            update_data = data.get("update") if isinstance(data.get("update"), dict) else {}
+            status = str(data.get("status") or update_data.get("status") or "unknown").lower()
+            await _db["whatsapp_cloud_messages"].update_one(
+                {"branch_id": config["branch_id"], "provider": "whatsflow",
+                 "provider_message_id": message_id},
+                {"$set": {"status": status, "status_updated_at": now}},
+            )
+            return {"received": True}
+        if event != "messages.upsert" or key.get("fromMe"):
+            return {"received": True}
+        remote_jid = str(key.get("remoteJid") or data.get("remoteJid") or "")
+        if "@g.us" in remote_jid:
+            return {"received": True}
+        phone = "".join(filter(str.isdigit, remote_jid))
+        if not phone or not message_id:
+            return {"received": True}
+        message = data.get("message") if isinstance(data.get("message"), dict) else {}
+        image_message = (
+            message.get("imageMessage")
+            if isinstance(message.get("imageMessage"), dict)
+            else {}
+        )
+        document_message = (
+            message.get("documentMessage")
+            if isinstance(message.get("documentMessage"), dict)
+            else {}
+        )
+        media_message = image_message or document_message
+        media_type = (
+            "image" if image_message
+            else "document" if document_message
+            else None
+        )
+        body = (
+            message.get("conversation")
+            or (message.get("extendedTextMessage") or {}).get("text")
+            or media_message.get("caption")
+            or data.get("text")
+            or ""
+        )
+        conversation_id = f"{config['branch_id']}:{phone}"
+        messages = _db["whatsapp_cloud_messages"]
+        await messages.create_index(
+            [("branch_id", 1), ("provider", 1), ("provider_message_id", 1)],
+            unique=True,
+            partialFilterExpression={
+                "provider": "whatsflow", "provider_message_id": {"$exists": True}
+            },
+        )
+        try:
+            await messages.insert_one({
+                "id": str(uuid.uuid4()), "conversation_id": conversation_id,
+                "branch_id": config["branch_id"], "provider": "whatsflow",
+                "provider_message_id": message_id, "direction": "inbound",
+                "phone": phone, "type": media_type or "text", "body": body,
+                "media_id": media_message.get("url"),
+                "media_url": media_message.get("url"),
+                "mime_type": media_message.get("mimetype"),
+                "filename": (
+                    media_message.get("fileName")
+                    or media_message.get("filename")
+                ),
+                "status": "received",
+                "created_at": now, "received_at": now,
+            })
+        except DuplicateKeyError:
+            return {"received": True}
+        await _db["whatsapp_cloud_conversations"].update_one(
+            {"id": conversation_id},
+            {"$set": {
+                "id": conversation_id, "branch_id": config["branch_id"],
+                "provider": "whatsflow", "phone": phone,
+                "contact_name": data.get("pushName") or phone,
+                "last_message": body or "[message]", "last_message_at": now,
+                "last_inbound_at": now, "last_direction": "inbound",
+            }, "$inc": {"unread_count": 1}, "$setOnInsert": {"created_at": now}},
+            upsert=True,
+        )
+        return {"received": True}
+    finally:
+        reset_current_tenant(token)
+
+
 class CloudInboxReplyRequest(BaseModel):
     body: str
 
@@ -2390,6 +2639,44 @@ async def get_cloud_inbox_media(
         raise HTTPException(status_code=404, detail="Media not found")
     _assert_branch_access(current_user, message.get("branch_id"))
     config = await _get_branch_cloud_config(message.get("branch_id"))
+    if message.get("provider") == "whatsflow":
+        media_url = str(message.get("media_url") or "")
+        parsed = urlparse(media_url)
+        hostname = (parsed.hostname or "").lower()
+        allowed_host = (
+            hostname == "connect.whats-flow.net"
+            or hostname.endswith(".whatsapp.net")
+            or hostname.endswith(".fbcdn.net")
+        )
+        if parsed.scheme != "https" or not allowed_host:
+            raise HTTPException(status_code=502, detail="Unexpected Whatsflow media host")
+        headers = {}
+        if hostname == "connect.whats-flow.net":
+            client = _whatsflow_client(config or {})
+            if not client.configured:
+                raise HTTPException(status_code=400, detail="Whatsflow is not configured")
+            headers["apikey"] = client.api_key
+        try:
+            async with httpx.AsyncClient(timeout=45.0, follow_redirects=False) as client:
+                media_response = await client.get(media_url, headers=headers)
+            if media_response.status_code >= 300:
+                raise HTTPException(status_code=502, detail="Could not download Whatsflow media")
+            content = media_response.content
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=502, detail="Could not download Whatsflow media")
+        if len(content) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Media exceeds 20 MB")
+        return StreamingResponse(
+            iter([content]),
+            media_type=(
+                message.get("mime_type")
+                or media_response.headers.get("content-type")
+                or "application/octet-stream"
+            ),
+            headers={"Cache-Control": "private, max-age=300"},
+        )
     if message.get("provider") == "waha":
         media_url = str(message.get("media_url") or "")
         waha = WAHAClient()
@@ -2493,16 +2780,19 @@ async def reply_to_cloud_inbox_thread(
     branch_id = conversation.get("branch_id")
     _assert_branch_access(current_user, branch_id)
     config = await _get_branch_cloud_config(branch_id)
-    if _branch_provider(config) == "waha":
-        success, waha_message_id, error = await _send_waha_message_result(
+    if _branch_provider(config) in {"waha", "whatsflow"}:
+        provider = _branch_provider(config)
+        success, provider_message_id, error = await _send_session_provider_result(
             conversation.get("phone") or "", body, config or {}
         )
         if not success:
-            raise HTTPException(status_code=502, detail=f"WAHA send failed ({error or 'unknown'})")
+            raise HTTPException(status_code=502, detail=f"{provider} send failed ({error or 'unknown'})")
         now = datetime.now(timezone.utc).isoformat()
         message = {
             "id": str(uuid.uuid4()), "conversation_id": conversation_id,
-            "branch_id": branch_id, "provider": "waha", "waha_message_id": waha_message_id,
+            "branch_id": branch_id, "provider": provider,
+            "provider_message_id": provider_message_id,
+            **({"waha_message_id": provider_message_id} if provider == "waha" else {}),
             "direction": "outbound", "phone": conversation.get("phone"), "type": "text",
             "body": body, "status": "sent", "created_at": now,
             "sent_by": current_user.get("user_id") or current_user.get("id"),
@@ -2612,21 +2902,29 @@ async def get_branch_cloud_availability(
     provider = _branch_provider(config)
     waha_used = 0
     waha_remaining = None
-    if provider == "waha" and config:
+    if provider in {"waha", "whatsflow"} and config:
         quota = await _get_waha_campaign_quota(branch_id, int(config.get("waha_daily_limit") or 30))
         waha_used, waha_remaining = quota["used"], quota["remaining"]
     return {
         "provider": provider,
         "enabled": bool(
-            _waha_config_for_branch(config) if provider == "waha" else
+            (_waha_config_for_branch(config) if provider == "waha" else bool(
+                config.get("enabled") and config.get("whatsflow_instance")
+                and config.get("whatsflow_api_key_encrypted")
+            )) if provider in {"waha", "whatsflow"} else
             config and config.get("enabled") and config.get("phone_number_id")
             and config.get("access_token_encrypted")
         ),
-        "configured": WAHAClient().configured if provider == "waha" else bool(config and config.get("access_token_encrypted")),
-        "connected": bool(config and config.get("waha_session_status") in ("WORKING", "CONNECTED")) if provider == "waha" else None,
-        "daily_limit": int(config.get("waha_daily_limit") or 30) if provider == "waha" and config else None,
-        "daily_used": waha_used if provider == "waha" else None,
-        "daily_remaining": waha_remaining if provider == "waha" else None,
+        "configured": (WAHAClient().configured if provider == "waha" else bool(
+            config and config.get("whatsflow_api_key_encrypted")
+        )) if provider in {"waha", "whatsflow"} else bool(config and config.get("access_token_encrypted")),
+        "connected": (
+            bool(config and config.get("waha_session_status") in ("WORKING", "CONNECTED"))
+            if provider == "waha" else bool(config and config.get("whatsflow_state") == "open")
+        ) if provider in {"waha", "whatsflow"} else None,
+        "daily_limit": int(config.get("waha_daily_limit") or 30) if provider in {"waha", "whatsflow"} and config else None,
+        "daily_used": waha_used if provider in {"waha", "whatsflow"} else None,
+        "daily_remaining": waha_remaining if provider in {"waha", "whatsflow"} else None,
         "template_configured": bool(
             config
             and config.get("message_template_name")
@@ -2656,10 +2954,15 @@ async def send_branch_cloud_bulk(
         raise HTTPException(status_code=400, detail="Maximum 200 recipients per batch")
     config = await _get_branch_cloud_config(data.branch_id)
     provider = _branch_provider(config)
-    if provider not in {"meta_cloud", "waha"}:
+    if provider not in {"meta_cloud", "waha", "whatsflow"}:
         raise HTTPException(status_code=400, detail="No active WhatsApp provider is configured for this branch")
     if provider == "waha" and not _waha_config_for_branch(config):
         raise HTTPException(status_code=400, detail="WAHA is not configured for this branch")
+    if provider == "whatsflow" and not (
+        config and config.get("enabled") and config.get("whatsflow_instance")
+        and config.get("whatsflow_api_key_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Whatsflow is not configured for this branch")
     if provider == "meta_cloud" and not (
         config
         and config.get("enabled")
@@ -2677,7 +2980,7 @@ async def send_branch_cloud_bulk(
         )
 
     reservation = None
-    if provider == "waha":
+    if provider in {"waha", "whatsflow"}:
         reservation = await _reserve_waha_campaign_quota(
             data.branch_id, int(config.get("waha_daily_limit") or 30), len(data.recipients)
         )
@@ -2689,8 +2992,8 @@ async def send_branch_cloud_bulk(
         if not wa_phone or not message or len(message) > 4096:
             return index, False
         async with semaphore:
-            if provider == "waha":
-                success, _, _ = await _send_waha_message_result(wa_phone, message, config)
+            if provider in {"waha", "whatsflow"}:
+                success, _, _ = await _send_session_provider_result(wa_phone, message, config)
             else:
                 success = await _send_meta_cloud_message(wa_phone, message, config)
         try:
@@ -2714,13 +3017,13 @@ async def send_branch_cloud_bulk(
             for index, recipient in enumerate(data.recipients)
         ])
     except Exception:
-        if provider == "waha":
+        if provider in {"waha", "whatsflow"}:
             await _release_waha_campaign_quota(reservation["_id"], len(data.recipients))
         raise
     failed_indices = [index for index, success in results if not success]
     sent = len(results) - len(failed_indices)
     quota = None
-    if provider == "waha":
+    if provider in {"waha", "whatsflow"}:
         await _release_waha_campaign_quota(reservation["_id"], len(failed_indices))
         quota = await _get_waha_campaign_quota(data.branch_id, int(config.get("waha_daily_limit") or 30))
     return {
@@ -2730,7 +3033,7 @@ async def send_branch_cloud_bulk(
         "failed": len(failed_indices),
         "failed_indices": failed_indices,
         **({"provider": provider, "used": quota["used"], "remaining": quota["remaining"]}
-           if provider == "waha" else {}),
+           if provider in {"waha", "whatsflow"} else {}),
     }
 
 
@@ -2844,10 +3147,14 @@ async def send_branch_cloud_bulk_media(
         raise HTTPException(status_code=400, detail="Supply 1-200 recipients")
     config = await _get_branch_cloud_config(branch_id)
     provider = _branch_provider(config)
-    if provider not in {"meta_cloud", "waha"}:
+    if provider not in {"meta_cloud", "waha", "whatsflow"}:
         raise HTTPException(status_code=400, detail="No active WhatsApp provider is configured for this branch")
     if provider == "waha" and not _waha_config_for_branch(config):
         raise HTTPException(status_code=400, detail="WAHA is not configured")
+    if provider == "whatsflow":
+        if not (config and config.get("enabled") and config.get("whatsflow_instance")
+                and config.get("whatsflow_api_key_encrypted")):
+            raise HTTPException(status_code=400, detail="Whatsflow is not configured")
     if provider == "meta_cloud" and not (
         config and config.get("enabled") and config.get("phone_number_id")
         and config.get("access_token_encrypted")
@@ -2935,7 +3242,7 @@ async def send_branch_cloud_bulk_media(
             raise HTTPException(status_code=409, detail="This batch is already being sent")
 
         reservation = None
-        if provider == "waha":
+        if provider in {"waha", "whatsflow"}:
             try:
                 reservation = await _reserve_waha_campaign_quota(
                     branch_id, int(config.get("waha_daily_limit") or 30), len(recipients)
@@ -2947,6 +3254,11 @@ async def send_branch_cloud_bulk_media(
                 )
                 raise
         media_id = await _upload_meta_bulk_media(content, filename, mime_type, config) if provider == "meta_cloud" else None
+        whatsflow_media = (
+            base64.b64encode(content).decode("ascii")
+            if provider == "whatsflow"
+            else None
+        )
         semaphore = asyncio.Semaphore(5)
 
         async def send_one(index: int, recipient: BulkCloudRecipient):
@@ -2957,6 +3269,15 @@ async def send_branch_cloud_bulk_media(
                         branch_id, config.get("waha_session_name") or "")
                     success, _, _ = await WAHAClient().send_media(physical_session, chat_id, content,
                         mime_type, filename, recipient.message.strip(), image=media_type == "image")
+                elif provider == "whatsflow":
+                    success, _, _ = await _whatsflow_client(config).send_media(
+                        _format_cloud_phone(recipient.phone),
+                        media_type,
+                        mime_type,
+                        recipient.message.strip(),
+                        whatsflow_media,
+                        filename,
+                    )
                 else:
                     success = await _send_meta_media_template(recipient.phone, recipient.message.strip(), media_id,
                         media_type, filename, config)
@@ -2982,13 +3303,13 @@ async def send_branch_cloud_bulk_media(
                 for index, recipient in enumerate(recipients)
             ])
         except Exception:
-            if provider == "waha":
+            if provider in {"waha", "whatsflow"}:
                 await _release_waha_campaign_quota(reservation["_id"], len(recipients))
             raise
         failed_indices = [index for index, success in results if not success]
         sent = len(results) - len(failed_indices)
         quota = None
-        if provider == "waha":
+        if provider in {"waha", "whatsflow"}:
             await _release_waha_campaign_quota(reservation["_id"], len(failed_indices))
             quota = await _get_waha_campaign_quota(branch_id, int(config.get("waha_daily_limit") or 30))
         result = {
@@ -2998,8 +3319,8 @@ async def send_branch_cloud_bulk_media(
             "sent": sent,
             "failed": len(failed_indices),
             "failed_indices": failed_indices,
-            **({"provider": "waha", "used": quota["used"], "remaining": quota["remaining"]}
-               if provider == "waha" else {}),
+            **({"provider": provider, "used": quota["used"], "remaining": quota["remaining"]}
+               if provider in {"waha", "whatsflow"} else {}),
         }
         await batches.update_one(
             {"branch_id": branch_id, "idempotency_key": idempotency_key},
@@ -3020,13 +3341,13 @@ async def test_branch_cloud_config(
 ):
     _require_admin(current_user)
     config = await _get_branch_cloud_config(branch_id)
-    if _branch_provider(config) == "waha":
+    if _branch_provider(config) in {"waha", "whatsflow"}:
         message = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"
         wa_phone = _format_cloud_phone(data.phone)
-        success, _, _ = await _send_waha_message_result(wa_phone, message, config or {})
+        success, _, _ = await _send_session_provider_result(wa_phone, message, config or {})
         if success:
             return {"success": True}
-        raise HTTPException(status_code=502, detail="WAHA WhatsApp test failed")
+        raise HTTPException(status_code=502, detail="WhatsApp provider test failed")
     if not config or not config.get("enabled") or not config.get("access_token_encrypted"):
         raise HTTPException(status_code=400, detail="Meta WhatsApp is not configured for this branch")
     message = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"

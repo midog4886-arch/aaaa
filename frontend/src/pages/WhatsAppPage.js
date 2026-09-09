@@ -2471,7 +2471,7 @@ export default function WhatsAppPage() {
                                   <Badge variant="secondary" className="text-xs gap-1">
                                     <Building2 className="w-3 h-3" />{conversation.branch_name}
                                   </Badge>
-                                   <Badge variant="outline" className="text-[10px]">{conversation.provider === 'waha' ? 'WAHA' : 'Meta Cloud'}</Badge>
+                                  <Badge variant="outline" className="text-[10px]">{conversation.provider === 'waha' ? 'WAHA' : conversation.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground" dir="ltr">{conversation.phone}</p>
                                 <p className="text-sm text-muted-foreground truncate mt-1">
@@ -2503,7 +2503,7 @@ export default function WhatsAppPage() {
                     <Badge variant="secondary" className="gap-1">
                       <Building2 className="w-3 h-3" />{cloudThread?.branch_name}
                     </Badge>
-                     <Badge variant="outline" className="text-[10px]">{cloudThread?.provider === 'waha' ? 'WAHA' : 'Meta Cloud'}</Badge>
+                     <Badge variant="outline" className="text-[10px]">{cloudThread?.provider === 'waha' ? 'WAHA' : cloudThread?.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4">
@@ -2590,7 +2590,9 @@ export default function WhatsAppPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {t('داخل 24 ساعة يُرسل الرد كنص عادي، وبعدها يستخدم النظام قالب Meta المعتمد للفرع.', 'Within 24 hours replies are free-form; afterward the approved branch template is used.')}
+                    {cloudThread?.provider === 'meta_cloud'
+                      ? t('داخل 24 ساعة يُرسل الرد كنص عادي، وبعدها يستخدم النظام قالب Meta المعتمد للفرع.', 'Within 24 hours replies are free-form; afterward the approved branch template is used.')
+                      : t('يُرسل الرد كنص عادي عبر مزود واتساب الخاص بالفرع.', 'Replies are sent as text using the branch WhatsApp provider.')}
                   </p>
                 </CardContent>
               </Card>

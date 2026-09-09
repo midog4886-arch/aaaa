@@ -136,7 +136,8 @@ export default function WhatsAppBulkPage() {
   const namedCount = useMemo(() => items.filter(i => i.name).length, [items]);
   const usesName = nameTokenRe().test(message);
   const isWaha = cloudStatus.provider === 'waha';
-  const selectedTemplateReady = isWaha || (attachment
+  const isSessionProvider = isWaha || cloudStatus.provider === 'whatsflow';
+  const selectedTemplateReady = isSessionProvider || (attachment
     ? (
         attachment.type === 'application/pdf'
           ? cloudStatus.document_template_configured
@@ -195,6 +196,7 @@ export default function WhatsAppBulkPage() {
 
   const previewItem = validItems[0];
   const previewText = message.trim() ? personalize(message, previewItem?.name) : '';
+  const quotaExceeded = isSessionProvider && validItems.length > Number(cloudStatus.daily_remaining || 0);
 
   const mergeNewItems = (parsedRows) => {
     const fresh = rowsToItems(parsedRows);
@@ -309,11 +311,10 @@ export default function WhatsAppBulkPage() {
     const templateReady = attachment
       ? (isImage ? cloudStatus.image_template_configured : isPdf && cloudStatus.document_template_configured)
        : cloudStatus.template_configured;
-    const quotaExceeded = isWaha && validItems.length > Number(cloudStatus.daily_remaining || 0);
-    if (!cloudStatus.enabled || (isWaha ? (!cloudStatus.configured || !cloudStatus.connected) : !templateReady)) {
+    if (!cloudStatus.enabled || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !templateReady)) {
       toast.error(t(
-        isWaha ? 'جلسة WAHA غير مهيأة أو غير متصلة' : (attachment ? 'قالب هذا النوع من المرفقات غير مهيأ للفرع' : 'API أو قالب Meta غير مهيأ لهذا الفرع'),
-        isWaha ? 'WAHA is not configured or connected' : (attachment ? 'The template for this attachment type is not configured' : 'Meta API or template is not configured for this branch')
+        isSessionProvider ? 'جلسة مزود واتساب غير مهيأة أو غير متصلة' : (attachment ? 'قالب هذا النوع من المرفقات غير مهيأ للفرع' : 'API أو قالب Meta غير مهيأ لهذا الفرع'),
+        isSessionProvider ? 'WhatsApp provider is not configured or connected' : (attachment ? 'The template for this attachment type is not configured' : 'Meta API or template is not configured for this branch')
       ));
       return;
     }
@@ -476,8 +477,8 @@ export default function WhatsAppBulkPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               {t(
-                'الأرقام الملصقة غير مرتبطة بأعضاء، لذلك يجب تحديد الفرع. ستُرسل الرسائل تلقائياً من رقم Meta الخاص بالفرع المحدد.',
-                'Pasted numbers are not linked to members, so select a branch. Messages will be sent automatically from that branch’s Meta number.'
+                'الأرقام الملصقة غير مرتبطة بأعضاء، لذلك يجب تحديد الفرع. ستُرسل الرسائل تلقائياً من مزود واتساب الخاص بالفرع المحدد.',
+                'Pasted numbers are not linked to members, so select a branch. Messages will be sent automatically using that branch’s WhatsApp provider.'
               )}
             </p>
           </CardContent>
@@ -601,8 +602,8 @@ export default function WhatsAppBulkPage() {
             </CardTitle>
             {branchId && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline">{isWaha ? 'WAHA' : 'Meta Cloud'}</Badge>
-                {isWaha && <span>{cloudStatus.connected ? t('متصل', 'Connected') : t('غير متصل', 'Not connected')} · {cloudStatus.daily_used || 0}/{cloudStatus.daily_limit || 0} {t('اليوم', 'today')} · {cloudStatus.daily_remaining || 0} {t('متبقي', 'remaining')}</span>}
+                <Badge variant="outline">{isWaha ? 'WAHA' : cloudStatus.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
+                {isSessionProvider && <span>{cloudStatus.connected ? t('متصل', 'Connected') : t('غير متصل', 'Not connected')} · {cloudStatus.daily_used || 0}/{cloudStatus.daily_limit || 0} {t('اليوم', 'today')} · {cloudStatus.daily_remaining || 0} {t('متبقي', 'remaining')}</span>}
               </div>
             )}
           </CardHeader>
@@ -662,13 +663,13 @@ export default function WhatsAppBulkPage() {
                   </Button>
                 </div>
               )}
-             {isWaha && <p className="text-xs text-amber-700">{t('حد الإرسال اليومي مؤشر تشغيلي داخلي. يجب أن تكون جلسة WAHA متصلة قبل الإرسال.', 'The daily limit is an internal operating guard. The WAHA session must be connected before sending.')}</p>}
-             <p className="text-xs text-muted-foreground">
+             {isSessionProvider && <p className="text-xs text-amber-700">{t(`حد الإرسال اليومي مؤشر تشغيلي داخلي. يجب أن يكون اتصال ${isWaha ? 'WAHA' : 'Whatsflow'} جاهزاً قبل الإرسال.`, `The daily limit is an internal operating guard. ${isWaha ? 'WAHA' : 'Whatsflow'} must be connected before sending.`)}</p>}
+             {!isSessionProvider && <p className="text-xs text-muted-foreground">
                 {t(
                   'الصورة تحتاج قالب IMAGE معتمد، وPDF يحتاج قالب DOCUMENT معتمد في إعدادات الفرع.',
                   'Images require an approved IMAGE template; PDFs require an approved DOCUMENT template in branch settings.'
                 )}
-              </p>
+               </p>}
             </div>
 
             {usesName && (
@@ -696,7 +697,7 @@ export default function WhatsAppBulkPage() {
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-               disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || cloudStatus.loading || !cloudStatus.enabled || (isWaha ? (!cloudStatus.configured || !cloudStatus.connected || quotaExceeded) : !selectedTemplateReady)}
+                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || cloudStatus.loading || !cloudStatus.enabled || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected || quotaExceeded) : !selectedTemplateReady)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />

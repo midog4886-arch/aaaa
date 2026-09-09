@@ -395,6 +395,7 @@ export const branchesAPI = {
   getProviderQuality: (id) => axios.get(`${API}/whatsapp/branch-provider/${id}/quality`),
   getProviderQr: (id) => axios.get(`${API}/whatsapp/branch-provider/${id}/qr`, { responseType: 'blob' }),
   providerSessionAction: (id, action) => axios.post(`${API}/whatsapp/branch-provider/${id}/session/${action}`),
+  configureProviderWebhook: (id) => axios.post(`${API}/whatsapp/branch-provider/${id}/webhook`),
   testProvider: (id, phone, message) => axios.post(`${API}/whatsapp/branch-provider/${id}/test`, { phone, message }),
   testWhatsAppCloud: (id, phone, message) => axios.post(
     `${API}/whatsapp/branch-cloud/${id}/test`,

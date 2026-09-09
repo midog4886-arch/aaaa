@@ -60,6 +60,9 @@ const initialFormData = () => ({
   whatsapp_provider: 'meta_cloud',
   whatsapp_waha_session_name: '',
   whatsapp_waha_daily_limit: 30,
+  whatsapp_whatsflow_instance: '',
+  whatsapp_whatsflow_api_key: '',
+  whatsapp_whatsflow_api_key_configured: false,
   whatsapp_phone_number_id: '',
   whatsapp_business_account_id: '',
   whatsapp_access_token: '',
@@ -216,7 +219,7 @@ const BranchesPage = () => {
       if (
         savedBranchId &&
         (
-          ['waha', 'legacy', 'disabled'].includes(formData.whatsapp_provider)
+          ['waha', 'whatsflow', 'legacy', 'disabled'].includes(formData.whatsapp_provider)
           || formData.whatsapp_phone_number_id
           || formData.whatsapp_token_configured
           || formData.whatsapp_access_token
@@ -227,6 +230,8 @@ const BranchesPage = () => {
           provider: formData.whatsapp_provider || 'meta_cloud',
           waha_session_name: formData.whatsapp_waha_session_name || null,
           waha_daily_limit: Number(formData.whatsapp_waha_daily_limit) || 30,
+          whatsflow_instance: formData.whatsapp_whatsflow_instance || null,
+          whatsflow_api_key: formData.whatsapp_whatsflow_api_key || null,
           phone_number_id: formData.whatsapp_phone_number_id,
           whatsapp_business_account_id: formData.whatsapp_business_account_id,
           access_token: formData.whatsapp_access_token || null,
@@ -302,6 +307,9 @@ const BranchesPage = () => {
       whatsapp_provider: cloud.provider || 'meta_cloud',
       whatsapp_waha_session_name: cloud.waha_session_name || '',
       whatsapp_waha_daily_limit: cloud.waha_daily_limit ?? 30,
+      whatsapp_whatsflow_instance: cloud.whatsflow_instance || '',
+      whatsapp_whatsflow_api_key: '',
+      whatsapp_whatsflow_api_key_configured: !!cloud.whatsflow_api_key_configured,
       whatsapp_phone_number_id: cloud.phone_number_id || '',
       whatsapp_business_account_id: cloud.whatsapp_business_account_id || '',
       whatsapp_access_token: '',
@@ -408,6 +416,16 @@ const BranchesPage = () => {
     if (!editingBranch?.id) return;
     setProviderAction('qr');
     try {
+      const status = await branchesAPI.getProviderStatus(editingBranch.id);
+      setProviderStatus(status.data);
+      if (status.data?.connected) {
+        if (providerQr) URL.revokeObjectURL(providerQr);
+        setProviderQr('');
+        toast.info(language === 'ar'
+          ? 'الجلسة متصلة بالفعل ولا تحتاج إلى رمز QR'
+          : 'The session is already connected and does not need a QR code');
+        return;
+      }
       const response = await branchesAPI.getProviderQr(editingBranch.id);
       if (providerQr) URL.revokeObjectURL(providerQr);
       setProviderQr(URL.createObjectURL(response.data));
@@ -1000,8 +1018,8 @@ const BranchesPage = () => {
                     </Label>
                     <p className="text-xs text-muted-foreground mt-1">
                       {language === 'ar'
-                        ? 'اختر Meta Cloud أو WAHA لكل فرع بصورة مستقلة. لن يتغير المزود حتى تحفظ الفرع.'
-                        : 'Choose Meta Cloud or WAHA independently for each branch. The provider changes only after you save.'}
+                        ? 'اختر Meta Cloud أو WAHA أو Whatsflow لكل فرع بصورة مستقلة. لن يتغير المزود حتى تحفظ الفرع.'
+                        : 'Choose Meta Cloud, WAHA, or Whatsflow independently for each branch. The provider changes only after you save.'}
                     </p>
                   </div>
                   <label className="flex items-center gap-2 text-sm font-semibold">
@@ -1025,6 +1043,7 @@ const BranchesPage = () => {
                    >
                      <option value="meta_cloud">{language === 'ar' ? 'Meta Cloud API' : 'Meta Cloud API'}</option>
                      <option value="waha">{language === 'ar' ? 'WAHA — جلسة واتساب داخلية' : 'WAHA — managed WhatsApp session'}</option>
+                      <option value="whatsflow">Whatsflow API</option>
                      <option value="legacy">{language === 'ar' ? 'الاتصال القديم' : 'Legacy connection'}</option>
                      <option value="disabled">{language === 'ar' ? 'معطّل' : 'Disabled'}</option>
                    </select>
@@ -1066,7 +1085,42 @@ const BranchesPage = () => {
                              </span>
                            </div>
                          )}
+
                          {providerQr && <img src={providerQr} alt="WAHA QR" className="w-48 h-48 rounded-md border bg-white p-2" />}
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                 {formData.whatsapp_provider === 'whatsflow' && (
+                   <div className="rounded-md border border-violet-200 bg-violet-50/60 p-3 space-y-3">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                       <div className="space-y-1">
+                         <Label>Whatsflow INSTANCE</Label>
+                         <Input value={formData.whatsapp_whatsflow_instance} onChange={e => setFormData({ ...formData, whatsapp_whatsflow_instance: e.target.value })} placeholder="branch-main" dir="ltr" />
+                       </div>
+                       <div className="space-y-1">
+                         <Label>{language === 'ar' ? 'مفتاح API' : 'API key'}</Label>
+                         <Input type="password" value={formData.whatsapp_whatsflow_api_key} onChange={e => setFormData({ ...formData, whatsapp_whatsflow_api_key: e.target.value })} placeholder={formData.whatsapp_whatsflow_api_key_configured ? '•••••••• (configured)' : ''} dir="ltr" autoComplete="new-password" />
+                       </div>
+                       <div className="space-y-1">
+                         <Label>{language === 'ar' ? 'الحد اليومي للرسائل' : 'Daily message limit'}</Label>
+                         <Input type="number" min="1" max="1000" value={formData.whatsapp_waha_daily_limit} onChange={e => setFormData({ ...formData, whatsapp_waha_daily_limit: e.target.value })} dir="ltr" />
+                       </div>
+                     </div>
+                     {editingBranch && (
+                       <div className="space-y-3">
+                         <div className="flex flex-wrap gap-2">
+                           <Button type="button" size="sm" variant="outline" onClick={loadWahaDetails} disabled={!!providerAction}>{language === 'ar' ? 'تحديث الحالة' : 'Refresh status'}</Button>
+                           <Button type="button" size="sm" variant="outline" onClick={fetchWahaQr} disabled={!!providerAction}>{language === 'ar' ? 'عرض QR' : 'Show QR'}</Button>
+                           <Button type="button" size="sm" onClick={handleTestProvider} disabled={!!providerAction}>{language === 'ar' ? 'إرسال اختبار' : 'Send test'}</Button>
+                           <Button type="button" size="sm" variant="outline" onClick={async () => {
+                             try { await branchesAPI.configureProviderWebhook(editingBranch.id); toast.success(language === 'ar' ? 'تم إعداد Webhook' : 'Webhook configured'); }
+                             catch (error) { toast.error(error.response?.data?.detail || 'Webhook setup failed'); }
+                           }}>{language === 'ar' ? 'إعداد Webhook' : 'Configure webhook'}</Button>
+                         </div>
+                         {providerStatus && <div className="text-sm"><Badge variant={providerStatus.connected ? 'default' : 'secondary'}>{providerStatus.connected ? (language === 'ar' ? 'متصل' : 'Connected') : (language === 'ar' ? 'غير متصل' : 'Not connected')}</Badge><span className="ms-2 text-muted-foreground">{providerStatus.status || ''}</span></div>}
+                         {providerQr && <img src={providerQr} alt="Whatsflow QR" className="w-48 h-48 rounded-md border bg-white p-2" />}
                        </div>
                      )}
                    </div>

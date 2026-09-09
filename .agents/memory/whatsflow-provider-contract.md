@@ -1,0 +1,16 @@
+---
+name: Whatsflow provider contract
+description: Durable boundaries for the hosted Whatsflow API provider alongside Meta, WAHA, and legacy WhatsApp.
+---
+
+Treat `whatsflow` as an explicit provider, never as a WAHA URL or compatibility mode. Its `INSTANCE` is provisioned by Whatsflow and is used unchanged; the app can read connection state and request QR, but must not expose WAHA start, stop, restart, or logout controls.
+
+**Why:** Whatsflow and WAHA have different session lifecycle and request contracts. Treating them as interchangeable can call destructive or nonexistent lifecycle routes and can bind the wrong branch.
+
+**How to apply:** Store the Whatsflow instance and encrypted API key per branch. Match Webhooks against the exact tenant, branch, and instance. Use the shared atomic daily campaign quota for hosted-session providers, while keeping automated notifications outside that quota.
+
+Whatsflow media sending accepts a direct URL or Base64 content, so locally uploaded campaign images and PDFs can be sent as Base64 without publishing a temporary unauthenticated file URL.
+
+**Why:** A public temporary media URL adds unnecessary exposure and deployment-host assumptions.
+
+**How to apply:** Validate type, signature, and size before encoding; permit only JPG, PNG, and PDF under the established campaign limits.
