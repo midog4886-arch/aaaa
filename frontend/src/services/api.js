@@ -782,6 +782,23 @@ export const whatsappAPI = {
     }),
   sendBranchCloudBulkMedia: (formData) =>
     axios.post(`${API}/whatsapp/branch-cloud/send-bulk-media`, formData),
+  listCampaigns: (branchId) =>
+    axios.get(`${API}/whatsapp/campaigns`, { params: { branch_id: branchId } }),
+  getCampaign: (campaignId, branchId) =>
+    axios.get(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}`, { params: { branch_id: branchId } }),
+  previewCampaignAudience: (branchId, audience) =>
+    axios.get(`${API}/whatsapp/campaigns/audience-preview`, { params: { branch_id: branchId, audience } }),
+  createCampaign: (formData) =>
+    axios.post(`${API}/whatsapp/campaigns`, formData),
+  updateCampaign: (campaignId, formData) =>
+    axios.put(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}`, formData),
+  deleteCampaign: (campaignId, branchId) =>
+    axios.delete(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}`, { params: { branch_id: branchId } }),
+  getCampaignAttachment: (campaignId, branchId) =>
+    axios.get(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}/attachment`, {
+      params: { branch_id: branchId },
+      responseType: 'blob'
+    }),
   getMetaWebhookInfo: () => axios.get(`${API}/whatsapp/meta-webhook-info`),
   getCloudInboxConversations: (branchFilter) => {
     const params = branchFilter && branchFilter !== 'all'

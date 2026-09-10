@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud, Paperclip, Image as ImageIcon, FileText } from 'lucide-react';
+import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud, Paperclip, Image as ImageIcon, FileText, Save, History, CalendarClock, RefreshCw } from 'lucide-react';
 import { branchesAPI, whatsappAPI } from '../services/api';
 
 const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
@@ -130,6 +130,21 @@ export default function WhatsAppBulkPage() {
   const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, provider: 'meta_cloud', configured: false, connected: false, template_configured: false, daily_limit: 0, daily_used: 0, daily_remaining: 0 });
   const [cloudSending, setCloudSending] = useState(false);
   const [attachment, setAttachment] = useState(null);
+  const [campaignName, setCampaignName] = useState('');
+  const [campaignId, setCampaignId] = useState(null);
+  const [campaigns, setCampaigns] = useState([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [audience, setAudience] = useState('pasted');
+  const [audienceLoading, setAudienceLoading] = useState(false);
+  const [proposedSendAt, setProposedSendAt] = useState('');
+  const [storedAttachment, setStoredAttachment] = useState(false);
+  const [removeStoredAttachment, setRemoveStoredAttachment] = useState(false);
+  const [campaignLoading, setCampaignLoading] = useState(false);
+  const [dynamicAudienceBranch, setDynamicAudienceBranch] = useState('');
+  const campaignListGeneration = useRef(0);
+  const campaignLoadGeneration = useRef(0);
+  const audienceGeneration = useRef(0);
 
   const validItems = useMemo(() => items.filter(i => i.valid), [items]);
   const invalidCount = items.length - validItems.length;
@@ -183,6 +198,189 @@ export default function WhatsAppBulkPage() {
     return () => { cancelled = true; };
   }, [branchId]);
 
+  const loadCampaigns = async () => {
+    const generation = ++campaignListGeneration.current;
+    const requestedBranch = branchId;
+    if (!branchId) {
+      setCampaigns([]);
+      return;
+    }
+    setCampaignsLoading(true);
+    try {
+      const response = await whatsappAPI.listCampaigns(branchId);
+      if (generation !== campaignListGeneration.current || requestedBranch !== branchId) return;
+      setCampaigns(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      if (generation !== campaignListGeneration.current) return;
+      toast.error(error.response?.data?.detail || t('تعذر تحميل الحملات', 'Could not load campaigns'));
+    } finally {
+      if (generation === campaignListGeneration.current) setCampaignsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    campaignListGeneration.current += 1;
+    campaignLoadGeneration.current += 1;
+    audienceGeneration.current += 1;
+    setCampaignId(null);
+    setCampaignName('');
+    setMessage('');
+    setDefaultName('');
+    setProposedSendAt('');
+    setAudience('pasted');
+    setPasteText('');
+    setItems([]);
+    setAttachment(null);
+    setStoredAttachment(false);
+    setRemoveStoredAttachment(false);
+    setCampaignLoading(false);
+    setAudienceLoading(false);
+    setDynamicAudienceBranch('');
+    setWaQueue([]);
+    setWaIdx(0);
+    setCampaigns([]);
+    loadCampaigns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchId]);
+
+  const refreshAudience = async (nextAudience = audience) => {
+    const generation = ++audienceGeneration.current;
+    const requestedBranch = branchId;
+    if (!branchId || nextAudience === 'pasted') return;
+    setAudienceLoading(true);
+    setDynamicAudienceBranch('');
+    try {
+      const response = await whatsappAPI.previewCampaignAudience(branchId, nextAudience);
+      if (generation !== audienceGeneration.current || requestedBranch !== branchId) return;
+      setItems(rowsToItems((response.data?.recipients || []).map(row => ({
+        name: row.name || '',
+        phoneRaw: row.phone
+      }))));
+      setDynamicAudienceBranch(requestedBranch);
+    } catch (error) {
+      if (generation !== audienceGeneration.current) return;
+      toast.error(error.response?.data?.detail || t('تعذر تحديث الجمهور', 'Could not refresh audience'));
+    } finally {
+      if (generation === audienceGeneration.current) setAudienceLoading(false);
+    }
+  };
+
+  const changeAudience = (value) => {
+    audienceGeneration.current += 1;
+    setAudience(value);
+    if (value === 'pasted') {
+      setDynamicAudienceBranch('');
+    } else {
+      setItems([]);
+      refreshAudience(value);
+    }
+  };
+
+  const newCampaign = () => {
+    setCampaignId(null);
+    setCampaignName('');
+    setMessage('');
+    setDefaultName('');
+    setProposedSendAt('');
+    setAudience('pasted');
+    setItems([]);
+    setAttachment(null);
+    setStoredAttachment(false);
+    setRemoveStoredAttachment(false);
+  };
+
+  const loadCampaign = async (id) => {
+    const generation = ++campaignLoadGeneration.current;
+    const requestedBranch = branchId;
+    setCampaignLoading(true);
+    try {
+      const response = await whatsappAPI.getCampaign(id, branchId);
+      if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
+      const draft = response.data || {};
+      setCampaignId(draft.id);
+      setCampaignName(draft.name || '');
+      setMessage(draft.message || '');
+      setDefaultName(draft.default_name || '');
+      setProposedSendAt(draft.proposed_send_at || '');
+      setAudience(draft.audience || 'pasted');
+      if (draft.audience === 'pasted') {
+        setDynamicAudienceBranch('');
+        setItems(rowsToItems((draft.recipients || []).map(row => ({ name: row.name, phoneRaw: row.phone }))));
+      } else {
+        await refreshAudience(draft.audience);
+        if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
+      }
+      setAttachment(null);
+      setStoredAttachment(Boolean(draft.has_attachment));
+      setRemoveStoredAttachment(false);
+      if (draft.has_attachment) {
+        try {
+          const media = await whatsappAPI.getCampaignAttachment(id, branchId);
+          if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
+          const filename = draft.attachment_name || 'attachment';
+          setAttachment(new File([media.data], filename, { type: draft.attachment_type || media.data.type }));
+        } catch (error) {
+          toast.error(t('تعذر تحميل مرفق المسودة؛ لن يتم إسقاطه عند الحفظ', 'Could not load the draft attachment; it will not be dropped when saving'));
+        }
+      }
+    } catch (error) {
+      if (generation !== campaignLoadGeneration.current) return;
+      toast.error(error.response?.data?.detail || t('تعذر تحميل الحملة', 'Could not load campaign'));
+    } finally {
+      if (generation === campaignLoadGeneration.current) setCampaignLoading(false);
+    }
+  };
+
+  const saveCampaign = async () => {
+    if (campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId)) {
+      toast.error(t('انتظر حتى يكتمل تحديث الحملة والجمهور', 'Wait for the campaign and audience refresh to finish'));
+      return;
+    }
+    if (!branchId || !campaignName.trim()) {
+      toast.error(t('اختر الفرع وأدخل اسم الحملة', 'Select a branch and enter a campaign name'));
+      return;
+    }
+    const formData = new FormData();
+    formData.append('branch_id', branchId);
+    formData.append('name', campaignName.trim());
+    formData.append('message', message);
+    formData.append('audience', audience);
+    formData.append('proposed_send_at', proposedSendAt);
+    formData.append('default_name', defaultName);
+    formData.append('recipients_json', JSON.stringify(
+      audience === 'pasted' ? items.map(item => ({ name: item.name, phone: item.phone })) : []
+    ));
+    if (attachment) formData.append('attachment', attachment);
+    if (removeStoredAttachment) formData.append('remove_attachment', 'true');
+    setDraftSaving(true);
+    try {
+      const response = campaignId
+        ? await whatsappAPI.updateCampaign(campaignId, formData)
+        : await whatsappAPI.createCampaign(formData);
+      setCampaignId(response.data.id);
+      setStoredAttachment(Boolean(response.data.has_attachment));
+      setRemoveStoredAttachment(false);
+      toast.success(t('تم حفظ المسودة', 'Draft saved'));
+      await loadCampaigns();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('تعذر حفظ المسودة', 'Could not save draft'));
+    } finally {
+      setDraftSaving(false);
+    }
+  };
+
+  const deleteCampaign = async (draft) => {
+    if (!window.confirm(t(`حذف الحملة «${draft.name}» نهائياً؟`, `Permanently delete “${draft.name}”?`))) return;
+    try {
+      await whatsappAPI.deleteCampaign(draft.id, branchId);
+      if (campaignId === draft.id) newCampaign();
+      await loadCampaigns();
+      toast.success(t('تم حذف الحملة', 'Campaign deleted'));
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('تعذر حذف الحملة', 'Could not delete campaign'));
+    }
+  };
+
   // Replace the {الاسم} token with this recipient's name (or the default name).
   // When no name is available, drop the token and tidy up stray spaces/commas.
   const personalize = (msg, name) => {
@@ -216,6 +414,7 @@ export default function WhatsAppBulkPage() {
   };
 
   const addFromPaste = () => {
+    setAudience('pasted');
     mergeNewItems(parsePastedRows(pasteText));
     setPasteText('');
   };
@@ -283,6 +482,10 @@ export default function WhatsAppBulkPage() {
   };
 
   const startSend = () => {
+    if (campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId)) {
+      toast.error(t('انتظر حتى يكتمل تحديث الجمهور', 'Wait for the audience refresh to finish'));
+      return;
+    }
     if (!validItems.length) {
       toast.error(t('لا توجد أرقام صالحة للإرسال', 'No valid numbers to send'));
       return;
@@ -304,6 +507,14 @@ export default function WhatsAppBulkPage() {
   const sendViaCloudApi = async () => {
     if (!branchId) {
       toast.error(t('اختر الفرع الذي سيتم الإرسال من رقمه', 'Select the sending branch'));
+      return;
+    }
+    if (campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId)) {
+      toast.error(t('انتظر حتى يكتمل تحديث الجمهور', 'Wait for the audience refresh to finish'));
+      return;
+    }
+    if (storedAttachment && !removeStoredAttachment && !attachment) {
+      toast.error(t('مرفق المسودة غير محمّل. أعد تحميل الحملة قبل الإرسال.', 'The draft attachment is not loaded. Reload the campaign before sending.'));
       return;
     }
     const isImage = attachment?.type === 'image/jpeg' || attachment?.type === 'image/png';
@@ -398,6 +609,7 @@ export default function WhatsAppBulkPage() {
       e.preventDefault();
       const parsed = parsePastedRows(txt);
       if (parsed.length > 0) {
+        setAudience('pasted');
         mergeNewItems(parsed);
         setPasteText('');
       }
@@ -407,6 +619,112 @@ export default function WhatsAppBulkPage() {
   return (
     <Layout title={t('واتساب جماعي', 'Bulk WhatsApp')}>
       <div className="space-y-6 animate-fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MessageCircle className="w-5 h-5 text-emerald-600" />
+                {campaignId ? t('تعديل الحملة', 'Edit campaign') : t('إنشاء حملة', 'Create campaign')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t('اسم الحملة', 'Campaign name')}</label>
+                <Input
+                  value={campaignName}
+                  onChange={event => setCampaignName(event.target.value)}
+                  maxLength={160}
+                  placeholder={t('مثال: عرض العودة للتمارين', 'e.g. Back-to-training offer')}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">{t('الجمهور المستهدف', 'Audience')}</label>
+                  <Select value={audience} onValueChange={changeAudience}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pasted">{t('الأرقام الملصقة', 'Pasted numbers')}</SelectItem>
+                      <SelectItem value="registration_requests">{t('طلبات التسجيل المعلقة', 'Pending registration requests')}</SelectItem>
+                      <SelectItem value="active_members">{t('أعضاء الفرع النشطون', 'Active branch members')}</SelectItem>
+                      <SelectItem value="all_members">{t('كل أعضاء الفرع', 'All branch members')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <CalendarClock className="w-4 h-4" />
+                    {t('موعد إرسال مقترح (اختياري)', 'Proposed send time (optional)')}
+                  </label>
+                  <Input type="datetime-local" value={proposedSendAt} onChange={event => setProposedSendAt(event.target.value)} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-emerald-50/60 p-3">
+                <div>
+                  <p className="font-semibold text-emerald-900">
+                    {audienceLoading
+                      ? t('جاري تحديث الجمهور…', 'Refreshing audience…')
+                      : t(`المعاينة: ${validItems.length} جهة اتصال`, `Preview: ${validItems.length} recipient(s)`)}
+                  </p>
+                  <p className="text-xs text-amber-800">
+                    {t('الموعد المقترح للتخطيط فقط؛ لا يتم جدولة أو إرسال أي رسالة تلقائياً.', 'The proposed time is advisory only; nothing is scheduled or sent automatically.')}
+                  </p>
+                </div>
+                {audience !== 'pasted' && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => refreshAudience()} disabled={audienceLoading || !branchId}>
+                    <RefreshCw className={`w-4 h-4 ${audienceLoading ? 'animate-spin' : ''}`} />
+                  </Button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveCampaign} disabled={draftSaving || campaignLoading || audienceLoading || !branchId || (audience !== 'pasted' && dynamicAudienceBranch !== branchId)}>
+                  {draftSaving ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}
+                  {t('حفظ كمسودة', 'Save draft')}
+                </Button>
+                <Button variant="outline" onClick={newCampaign}>
+                  <Plus className="w-4 h-4 me-1" />{t('حملة جديدة', 'New campaign')}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between text-base">
+                <span className="flex items-center gap-2"><History className="w-5 h-5" />{t('الحملات المحفوظة', 'Saved campaigns')}</span>
+                <Badge variant="outline">{campaigns.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {campaignsLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
+              ) : campaigns.length === 0 ? (
+                <p className="text-sm text-center text-muted-foreground py-8">{t('لا توجد حملات محفوظة', 'No saved campaigns')}</p>
+              ) : (
+                <div className="space-y-2 max-h-[420px] overflow-y-auto">
+                  {campaigns.map(draft => (
+                    <div key={draft.id} className={`rounded-lg border p-3 ${campaignId === draft.id ? 'border-emerald-500 bg-emerald-50/40' : ''}`}>
+                      <button type="button" className="w-full text-start" onClick={() => loadCampaign(draft.id)}>
+                        <p className="font-medium truncate">{draft.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {draft.audience === 'pasted'
+                            ? t(`${draft.recipient_count || 0} رقم`, `${draft.recipient_count || 0} numbers`)
+                            : t('جمهور ديناميكي', 'Dynamic audience')}
+                          {draft.has_attachment ? ` · ${t('مرفق', 'attachment')}` : ''}
+                        </p>
+                      </button>
+                      <div className="flex justify-end mt-2">
+                        <Button type="button" variant="ghost" size="sm" className="text-red-600 h-7" onClick={() => deleteCampaign(draft)}>
+                          <Trash2 className="w-3 h-3 me-1" />{t('حذف', 'Delete')}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -645,6 +963,7 @@ export default function WhatsAppBulkPage() {
                       return;
                     }
                     setAttachment(file);
+                    setRemoveStoredAttachment(false);
                   }}
                 />
               ) : (
@@ -658,7 +977,10 @@ export default function WhatsAppBulkPage() {
                       <p className="text-xs text-muted-foreground">{(attachment.size / 1024 / 1024).toFixed(2)} MB</p>
                     </div>
                   </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setAttachment(null)}>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => {
+                    setAttachment(null);
+                    if (storedAttachment) setRemoveStoredAttachment(true);
+                  }}>
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
@@ -697,14 +1019,14 @@ export default function WhatsAppBulkPage() {
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || cloudStatus.loading || !cloudStatus.enabled || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected || quotaExceeded) : !selectedTemplateReady)}
+                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected || quotaExceeded) : !selectedTemplateReady)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />
               {cloudSending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}
               {t(`إرسال تلقائي إلى ${validItems.length} رقم`, `Automatically send to ${validItems.length}`)}
             </Button>
-            <Button onClick={startSend} variant="outline" disabled={!validItems.length || waQueue.length > 0 || cloudSending}>
+            <Button onClick={startSend} variant="outline" disabled={!validItems.length || waQueue.length > 0 || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId)}>
               <MessageCircle className="w-4 h-4 ml-1" />
               {t('فتح واتساب يدوياً', 'Open WhatsApp manually')}
             </Button>

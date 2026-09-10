@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import uuid
+from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, List
@@ -26,6 +27,11 @@ from services.whatsflow import WhatsflowClient
 
 logger = logging.getLogger("whatsapp")
 _bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
+
+CAMPAIGN_IMAGE_LIMIT = 5 * 1024 * 1024
+CAMPAIGN_PDF_LIMIT = 20 * 1024 * 1024
+CAMPAIGN_MAX_PASTED_RECIPIENTS = 2000
+CAMPAIGN_ATTACHMENT_CHUNK_SIZE = 1024 * 1024
 
 
 def _require_whatsapp_access(current_user: dict):
@@ -2877,6 +2883,366 @@ class BulkCloudRecipient(BaseModel):
 class BulkCloudSendRequest(BaseModel):
     branch_id: str
     recipients: List[BulkCloudRecipient]
+
+
+def _campaign_scope(branch_id: str) -> dict:
+    return {"tenant_slug": get_current_tenant_slug(), "branch_id": branch_id}
+
+
+def _campaign_public(doc: dict, include_recipients: bool = True) -> dict:
+    excluded = {"_id", "tenant_slug", "attachment_id"}
+    if not include_recipients:
+        excluded.add("recipients")
+    result = {k: v for k, v in doc.items() if k not in excluded}
+    result["has_attachment"] = bool(doc.get("attachment_id"))
+    result["recipient_count"] = len(doc.get("recipients") or [])
+    return result
+
+
+async def _read_campaign_attachment(attachment: UploadFile) -> tuple[bytes, str, str]:
+    mime = (attachment.content_type or "").lower()
+    limits = {
+        "image/jpeg": CAMPAIGN_IMAGE_LIMIT,
+        "image/png": CAMPAIGN_IMAGE_LIMIT,
+        "application/pdf": CAMPAIGN_PDF_LIMIT,
+    }
+    if mime not in limits:
+        raise HTTPException(status_code=400, detail="Only JPG, PNG, and PDF are supported")
+    content = bytearray()
+    while True:
+        chunk = await attachment.read(1024 * 1024)
+        if not chunk:
+            break
+        content.extend(chunk)
+        if len(content) > limits[mime]:
+            raise HTTPException(status_code=413, detail="Attachment exceeds the allowed size")
+    if not content:
+        raise HTTPException(status_code=400, detail="Attachment is empty")
+    extension = {"image/jpeg": ".jpg", "image/png": ".png", "application/pdf": ".pdf"}[mime]
+    safe_name = Path(attachment.filename or f"attachment{extension}").name[:180]
+    return bytes(content), mime, safe_name
+
+
+async def _store_campaign_attachment(branch_id: str, attachment: UploadFile) -> dict:
+    content, mime, filename = await _read_campaign_attachment(attachment)
+    attachment_id = str(uuid.uuid4())
+    scope = {**_campaign_scope(branch_id), "attachment_id": attachment_id}
+    try:
+        for index, offset in enumerate(range(0, len(content), CAMPAIGN_ATTACHMENT_CHUNK_SIZE)):
+            await _db["whatsapp_campaign_attachment_chunks"].insert_one({
+                **scope,
+                "index": index,
+                "data": content[offset:offset + CAMPAIGN_ATTACHMENT_CHUNK_SIZE],
+            })
+        await _db["whatsapp_campaign_attachments"].insert_one({
+            **scope,
+            "name": filename,
+            "mime_type": mime,
+            "size": len(content),
+            "chunk_count": (len(content) + CAMPAIGN_ATTACHMENT_CHUNK_SIZE - 1) // CAMPAIGN_ATTACHMENT_CHUNK_SIZE,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        await _delete_campaign_attachment(branch_id, attachment_id)
+        raise
+    return {
+        "attachment_id": attachment_id,
+        "attachment_name": filename,
+        "attachment_type": mime,
+        "attachment_size": len(content),
+    }
+
+
+async def _delete_campaign_attachment(branch_id: str, attachment_id: Optional[str]):
+    if not attachment_id:
+        return
+    scope = {**_campaign_scope(branch_id), "attachment_id": attachment_id}
+    await _db["whatsapp_campaign_attachment_chunks"].delete_many(scope)
+    await _db["whatsapp_campaign_attachments"].delete_one(scope)
+
+
+def _parse_campaign_recipients(raw: str) -> list[dict]:
+    try:
+        values = json.loads(raw or "[]")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid pasted recipients")
+    if not isinstance(values, list) or len(values) > CAMPAIGN_MAX_PASTED_RECIPIENTS:
+        raise HTTPException(status_code=400, detail="A draft may contain at most 2000 pasted recipients")
+    clean = []
+    seen = set()
+    for value in values:
+        if not isinstance(value, dict):
+            raise HTTPException(status_code=400, detail="Invalid pasted recipient")
+        phone = re.sub(r"\D", "", str(value.get("phone") or ""))[:15]
+        if len(phone) < 9 or phone in seen:
+            continue
+        seen.add(phone)
+        clean.append({"phone": phone, "name": str(value.get("name") or "").strip()[:200]})
+    return clean
+
+
+def _validate_proposed_send_at(value: str) -> str:
+    proposed = (value or "").strip()
+    if not proposed:
+        return ""
+    try:
+        datetime.fromisoformat(proposed.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid proposed send datetime")
+    return proposed
+
+
+async def _campaign_audience_recipients(branch_id: str, audience: str) -> list[dict]:
+    if audience == "pasted":
+        return []
+    if audience == "registration_requests":
+        query = {"branch_id": branch_id, "status": "pending"}
+        collection = _db["registration_requests"]
+    elif audience in {"active_members", "all_members"}:
+        query = {"branch_id": branch_id}
+        if audience == "active_members":
+            # Mirror Members/global-search status consistency: any subscription
+            # ending today or later is active; an undated subscription is active
+            # only when explicitly marked active. Academy dates use Riyadh time.
+            today = datetime.now(RIYADH_TZ).strftime("%Y-%m-%d")
+            query["activities"] = {"$elemMatch": {"$or": [
+                {"end_date": {"$gte": today}},
+                {"status": "active", "$or": [
+                    {"end_date": {"$exists": False}},
+                    {"end_date": None},
+                    {"end_date": ""},
+                ]},
+            ]}}
+        collection = _db["members"]
+    else:
+        raise HTTPException(status_code=400, detail="Invalid campaign audience")
+    cursor = collection.find(
+        query,
+        {"_id": 0, "phone": 1, "name": 1, "name_ar": 1, "customer_phone": 1, "customer_name": 1},
+    ).limit(
+        CAMPAIGN_MAX_PASTED_RECIPIENTS
+    )
+    rows = await cursor.to_list(length=CAMPAIGN_MAX_PASTED_RECIPIENTS)
+    recipients, seen = [], set()
+    for row in rows:
+        phone = re.sub(r"\D", "", str(row.get("phone") or row.get("customer_phone") or ""))
+        if len(phone) < 9 or len(phone) > 15 or phone in seen:
+            continue
+        seen.add(phone)
+        recipients.append({
+            "phone": phone,
+            "name": row.get("name_ar") or row.get("name") or row.get("customer_name") or "",
+        })
+    return recipients
+
+
+async def _require_campaign_branch(current_user: dict, branch_id: str):
+    _assert_branch_access(current_user, branch_id)
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    if not await _db["branches"].find_one({"id": branch_id}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Branch not found")
+
+
+async def _require_campaign_phone_access(current_user: dict):
+    if current_user.get("is_admin", False):
+        return
+    user_doc = await _db["users"].find_one(
+        {"id": current_user.get("user_id")}, {"_id": 0, "permissions": 1}
+    )
+    if "member-phones" not in ((user_doc or {}).get("permissions") or []):
+        raise HTTPException(status_code=403, detail="Member phone access required")
+
+
+@router.get("/campaigns")
+async def list_campaigns(
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    cursor = _db["whatsapp_campaigns"].find(
+        _campaign_scope(branch_id)
+    ).sort("updated_at", -1).limit(200)
+    return [_campaign_public(row, include_recipients=False) async for row in cursor]
+
+
+@router.get("/campaigns/audience-preview")
+async def campaign_audience_preview(
+    branch_id: str,
+    audience: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    await _require_campaign_phone_access(current_user)
+    recipients = await _campaign_audience_recipients(branch_id, audience)
+    return {"count": len(recipients), "recipients": recipients}
+
+
+@router.get("/campaigns/{campaign_id}")
+async def get_campaign(
+    campaign_id: str,
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    await _require_campaign_phone_access(current_user)
+    doc = await _db["whatsapp_campaigns"].find_one(
+        {**_campaign_scope(branch_id), "id": campaign_id}
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return _campaign_public(doc)
+
+
+@router.get("/campaigns/{campaign_id}/attachment")
+async def get_campaign_attachment(
+    campaign_id: str,
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    doc = await _db["whatsapp_campaigns"].find_one(
+        {**_campaign_scope(branch_id), "id": campaign_id}
+    )
+    attachment_id = (doc or {}).get("attachment_id")
+    attachment_doc = await _db["whatsapp_campaign_attachments"].find_one({
+        **_campaign_scope(branch_id), "attachment_id": attachment_id
+    })
+    if not doc or not attachment_doc:
+        raise HTTPException(status_code=404, detail="Campaign attachment not found")
+    expected_chunks = int(attachment_doc.get("chunk_count") or 0)
+    cursor = _db["whatsapp_campaign_attachment_chunks"].find({
+        **_campaign_scope(branch_id), "attachment_id": attachment_id
+    }).sort("index", 1)
+    stored_chunks = await cursor.to_list(length=expected_chunks + 1)
+    if (
+        len(stored_chunks) != expected_chunks
+        or any(chunk.get("index") != index for index, chunk in enumerate(stored_chunks))
+        or sum(len(chunk.get("data") or b"") for chunk in stored_chunks) != int(attachment_doc.get("size") or 0)
+    ):
+        raise HTTPException(status_code=500, detail="Campaign attachment data is incomplete")
+    async def chunks():
+        for chunk in stored_chunks:
+            yield chunk.get("data") or b""
+    safe_filename = str(attachment_doc.get("name") or "attachment").replace('"', "")
+    return StreamingResponse(
+        chunks(),
+        media_type=attachment_doc.get("mime_type"),
+        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+    )
+
+
+@router.post("/campaigns")
+async def create_campaign(
+    branch_id: str = Form(...),
+    name: str = Form(...),
+    message: str = Form(""),
+    audience: str = Form("pasted"),
+    proposed_send_at: str = Form(""),
+    default_name: str = Form(""),
+    recipients_json: str = Form("[]"),
+    attachment: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    await _require_campaign_phone_access(current_user)
+    campaign_name = name.strip()
+    if not campaign_name or len(campaign_name) > 160 or len(message) > 4096:
+        raise HTTPException(status_code=400, detail="Campaign name or message is invalid")
+    if audience not in {"pasted", "registration_requests", "active_members", "all_members"}:
+        raise HTTPException(status_code=400, detail="Invalid campaign audience")
+    recipients = _parse_campaign_recipients(recipients_json) if audience == "pasted" else []
+    now = datetime.now(timezone.utc).isoformat()
+    campaign_id = str(uuid.uuid4())
+    doc = {
+        **_campaign_scope(branch_id), "id": campaign_id, "name": campaign_name,
+        "message": message, "audience": audience, "proposed_send_at": _validate_proposed_send_at(proposed_send_at),
+        "default_name": default_name[:200], "recipients": recipients,
+        "created_at": now, "updated_at": now,
+        "created_by": current_user.get("user_id") or current_user.get("id"),
+    }
+    new_attachment = await _store_campaign_attachment(branch_id, attachment) if attachment else None
+    if new_attachment:
+        doc.update(new_attachment)
+    try:
+        await _db["whatsapp_campaigns"].insert_one(doc)
+    except Exception:
+        if new_attachment:
+            await _delete_campaign_attachment(branch_id, new_attachment["attachment_id"])
+        raise
+    return _campaign_public(doc)
+
+
+@router.put("/campaigns/{campaign_id}")
+async def update_campaign(
+    campaign_id: str,
+    branch_id: str = Form(...),
+    name: str = Form(...),
+    message: str = Form(""),
+    audience: str = Form("pasted"),
+    proposed_send_at: str = Form(""),
+    default_name: str = Form(""),
+    recipients_json: str = Form("[]"),
+    remove_attachment: bool = Form(False),
+    attachment: Optional[UploadFile] = File(None),
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    await _require_campaign_phone_access(current_user)
+    scope = {**_campaign_scope(branch_id), "id": campaign_id}
+    existing = await _db["whatsapp_campaigns"].find_one(scope)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign_name = name.strip()
+    if not campaign_name or len(campaign_name) > 160 or len(message) > 4096:
+        raise HTTPException(status_code=400, detail="Campaign name or message is invalid")
+    if audience not in {"pasted", "registration_requests", "active_members", "all_members"}:
+        raise HTTPException(status_code=400, detail="Invalid campaign audience")
+    update = {
+        "name": campaign_name, "message": message, "audience": audience,
+        "proposed_send_at": _validate_proposed_send_at(proposed_send_at), "default_name": default_name[:200],
+        "recipients": _parse_campaign_recipients(recipients_json) if audience == "pasted" else [],
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    old_attachment_id = existing.get("attachment_id")
+    new_attachment = None
+    if attachment:
+        new_attachment = await _store_campaign_attachment(branch_id, attachment)
+        update.update(new_attachment)
+    elif remove_attachment:
+        update.update(attachment_id=None, attachment_name=None, attachment_type=None, attachment_size=None)
+    try:
+        await _db["whatsapp_campaigns"].update_one(scope, {"$set": update})
+    except Exception:
+        if new_attachment:
+            await _delete_campaign_attachment(branch_id, new_attachment["attachment_id"])
+        raise
+    if (new_attachment or remove_attachment) and old_attachment_id:
+        await _delete_campaign_attachment(branch_id, old_attachment_id)
+    return _campaign_public({**existing, **update})
+
+
+@router.delete("/campaigns/{campaign_id}")
+async def delete_campaign(
+    campaign_id: str,
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    scope = {**_campaign_scope(branch_id), "id": campaign_id}
+    existing = await _db["whatsapp_campaigns"].find_one(scope)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    await _db["whatsapp_campaigns"].delete_one(scope)
+    await _delete_campaign_attachment(branch_id, existing.get("attachment_id"))
+    return {"success": True}
 
 
 def _assert_branch_access(current_user: dict, branch_id: str):
