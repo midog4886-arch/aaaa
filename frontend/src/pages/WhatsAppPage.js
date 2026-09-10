@@ -2699,6 +2699,12 @@ export default function WhatsAppPage() {
                         read: t('قُرئت', 'Read'),
                         failed: t('فشلت', 'Failed'),
                         received: t('واردة', 'Received')
+                        ,pending: t('بانتظار الإرسال', 'Pending'),
+                        claimed: t('بانتظار التنفيذ', 'Queued'),
+                        quota_reserving: t('بانتظار التنفيذ', 'Queued'),
+                        dispatching: t('جارٍ الإرسال', 'Sending'),
+                        unknown: t('نتيجة الإرسال غير مؤكدة', 'Delivery outcome unknown'),
+                        cancelled: t('ملغاة', 'Cancelled')
                       }[message.status] || message.status;
                       return (
                         <div
@@ -2748,6 +2754,7 @@ export default function WhatsAppPage() {
                           <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground">
                             <span>{new Date(message.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}</span>
                             <span>· {statusText}</span>
+                            {message.source === 'campaign' && <span>· {t('رسالة حملة', 'Campaign message')}</span>}
                             {message.type === 'template' && <span>· {t('قالب Meta', 'Meta template')}</span>}
                             {message.error && <span className="text-red-600">· {message.error}</span>}
                           </div>

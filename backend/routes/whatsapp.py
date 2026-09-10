@@ -25,6 +25,7 @@ from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_curr
 from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
 from services import whatsapp_bulk_jobs
+from services import campaign_inbox
 
 logger = logging.getLogger("whatsapp")
 _bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
@@ -1388,9 +1389,9 @@ def _candidate_identity(rows: list) -> list:
 
 
 def _send_now_reminder_count(rows: list) -> int:
-    """Scheduler-compatible sends: one reminder per member and offset."""
+    """One WhatsApp destination per branch, including shared family numbers."""
     return len({
-        (row.get("member_id"), int(row.get("days_before", 0)))
+        (row.get("branch_id"), _format_phone(row.get("phone") or "") or row.get("member_id"))
         for row in rows
     })
 
@@ -1409,6 +1410,7 @@ async def _dispatch_send_now_snapshot(snapshot: dict, settings: dict):
     shared_template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
     per_offset_templates = settings.get("templates") or {}
     manual_settings = {**settings, "_manual_run": True}
+    whatsapp_items = []
 
     for days in sorted({int(row["days_before"]) for row in rows}, reverse=True):
         grouped: dict = {}
@@ -1449,13 +1451,15 @@ async def _dispatch_send_now_snapshot(snapshot: dict, settings: dict):
         channels = snapshot.get("channels") or []
         if "whatsapp" in channels:
             template = per_offset_templates.get(str(days)) or shared_template
-            await _send_wa_for_members(
-                members_data, days, template, manual=True, branch_templates=branch_templates
-            )
+            whatsapp_items.extend({**item, "_days_before": days, "_template": template} for item in members_data)
         if "push" in channels:
             await _send_push_for_members(members_data, days, manual_settings)
         if "portal" in channels:
             await _send_portal_for_members(members_data, days, manual_settings)
+    if whatsapp_items:
+        await _send_wa_for_members(
+            whatsapp_items, 0, shared_template, manual=True, branch_templates=branch_templates
+        )
 
 
 def _render_template(template: str, *, name: str, activity: str, days, end_date: str, fee: str = "") -> str:
@@ -1517,7 +1521,13 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
     override the renewal text; members without an override use `template`.
     """
     sent_count = 0
+    groups = {}
     for item in members_data:
+        phone_key = _format_phone(item["member"].get("phone", ""))
+        if phone_key:
+            groups.setdefault((item["member"].get("branch_id"), phone_key), []).append(item)
+    for (_, phone_key), source_items in groups.items():
+        item = source_items[0]
         member = item["member"]
         phone = member.get("phone", "")
         if not phone:
@@ -1528,22 +1538,33 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
         member_template = _resolve_branch_template(
             branch_templates, member.get("branch_id"), "renewal", template
         )
-        message = _render_template(
-            member_template,
-            name=name,
-            activity=activity_name,
-            days=days_before,
-            end_date=end_date_fmt,
-            fee=item.get("fee_str", ""),
-        )
+        arabic_parts, english_parts = [], []
+        seen_parts = set()
+        for source in source_items:
+            source_member = source["member"]
+            source_days = source.get("_days_before", days_before)
+            source_template = _resolve_branch_template(
+                branch_templates, source_member.get("branch_id"), "renewal",
+                source.get("_template", template),
+            )
+            source_name = source_member.get("name_ar") or source_member.get("name", "")
+            part = _render_template(
+                source_template, name=source_name, activity=source["activity_name"],
+                days=source_days, end_date=source["end_date_fmt"], fee=source.get("fee_str", ""),
+            )
+            part = _append_english_section(
+                _ensure_renewal_arabic_date(part, source["end_date_fmt"]),
+                _renewal_english_summary(name=source_name, activity=source["activity_name"],
+                    end_date=source["end_date_fmt"], days_remaining=source_days),
+            )
+            if part in seen_parts:
+                continue
+            seen_parts.add(part)
+            ar, _, en = part.partition(BILINGUAL_ENGLISH_MARKER)
+            arabic_parts.append(ar.strip())
+            english_parts.append(en.strip())
         message = _append_english_section(
-            _ensure_renewal_arabic_date(message, end_date_fmt),
-            _renewal_english_summary(
-                name=name,
-                activity=activity_name,
-                end_date=end_date_fmt,
-                days_remaining=days_before,
-            ),
+            "\n\n".join(arabic_parts), "\n\n".join(english_parts)
         )
         wa_phone = _format_phone(phone)
         if wa_phone:
@@ -1559,26 +1580,29 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
                 "member_id": member.get("id", ""),
                 "member_name": name,
                 "phone": phone,
-                "activities": activity_name,
+                "activities": "، ".join(dict.fromkeys(s["activity_name"] for s in source_items)),
                 "success": success,
                 "days_before": days_before,
                 "manual": manual,
                 "type": "renewal_reminder",
                 "branch_id": branch_id,
-                "transport": "meta_cloud" if await _get_branch_cloud_config(branch_id) else "legacy",
+                "transport": _branch_provider(await _get_branch_cloud_config(branch_id)),
             }
             await _db["whatsapp_send_log"].insert_one(log_entry)
             # Log per-individual-activity so the Renewals page can match
             # last-reminder badges by (member_id, activity_name) precisely.
-            for act_name in (item.get("expiring_activities") or [activity_name]):
-                await _record_renewal_reminder(
-                    member_id=member.get("id", ""),
-                    activity_name=act_name,
-                    channel="whatsapp",
-                    days_before=days_before,
-                    manual=manual,
-                    success=success,
-                )
+            logged = set()
+            for source in source_items:
+                for act_name in (source.get("expiring_activities") or [source["activity_name"]]):
+                    identity = (source["member"].get("id", ""), act_name)
+                    if identity in logged:
+                        continue
+                    logged.add(identity)
+                    await _record_renewal_reminder(
+                        member_id=identity[0], activity_name=act_name,
+                        channel="whatsapp", days_before=source.get("_days_before", days_before),
+                        manual=manual, success=success,
+                    )
             if success:
                 sent_count += 1
                 logger.info(f"WhatsApp reminder ({days_before}d) sent to {name} ({phone})")
@@ -1730,6 +1754,7 @@ async def _do_daily_reminders():
     total_wa = 0
     total_push = 0
     total_portal = 0
+    whatsapp_items = []
 
     for days in days_set:
         members_data = await _get_expiring_members(days)
@@ -1739,7 +1764,7 @@ async def _do_daily_reminders():
         if wa_connected:
             # Per-offset override falls back to the shared template.
             tpl_for_offset = per_offset_templates.get(str(days)) or template
-            total_wa += await _send_wa_for_members(members_data, days, tpl_for_offset, branch_templates=branch_templates)
+            whatsapp_items.extend({**item, "_days_before": days, "_template": tpl_for_offset} for item in members_data)
 
         if push_enabled:
             try:
@@ -1753,6 +1778,8 @@ async def _do_daily_reminders():
             except Exception as e:
                 logger.error(f"Portal expiry reminders error (days={days}): {e}")
 
+    if whatsapp_items:
+        total_wa = await _send_wa_for_members(whatsapp_items, 0, template, branch_templates=branch_templates)
     logger.info(f"Daily reminders done — WhatsApp={total_wa}, Push={total_push}, Portal={total_portal}")
 
 
@@ -3058,6 +3085,16 @@ async def list_cloud_inbox_conversations(
         .limit(200)
         .to_list(length=200)
     )
+    merged = {row["id"]: row for row in rows}
+    for campaign in await campaign_inbox.conversations(_db, query):
+        existing = merged.get(campaign["id"])
+        if not existing:
+            merged[campaign["id"]] = campaign
+        elif campaign["last_message_at"] > campaign_inbox.iso(existing.get("last_message_at")):
+            existing.update({key: campaign[key] for key in (
+                "last_message", "last_message_at", "last_direction",
+            )})
+    rows = sorted(merged.values(), key=lambda row: campaign_inbox.iso(row.get("last_message_at")), reverse=True)[:200]
     branch_cache = {}
     for row in rows:
         branch_id = row.get("branch_id")
@@ -3082,7 +3119,7 @@ async def get_cloud_inbox_thread(
         {"id": conversation_id}, {"_id": 0}
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        conversation = await _campaign_conversation(conversation_id, current_user)
     _assert_branch_access(current_user, conversation.get("branch_id"))
     messages = await (
         _db["whatsapp_cloud_messages"]
@@ -3090,6 +3127,9 @@ async def get_cloud_inbox_thread(
         .sort("created_at", 1)
         .limit(500)
         .to_list(length=500)
+    )
+    messages = campaign_inbox.merge_messages(
+        messages, await campaign_inbox.thread(_db, conversation["branch_id"], conversation["phone"])
     )
     await _db["whatsapp_cloud_conversations"].update_one(
         {"id": conversation_id}, {"$set": {"unread_count": 0}}
@@ -3101,11 +3141,33 @@ async def get_cloud_inbox_thread(
     return {"conversation": conversation, "messages": messages}
 
 
+async def _campaign_conversation(conversation_id, current_user):
+    branch_id, sep, phone = conversation_id.partition(":")
+    if not sep or not phone.isdigit():
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    _assert_branch_access(current_user, branch_id)
+    messages = await campaign_inbox.thread(_db, branch_id, phone)
+    if not messages:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    latest = max(messages, key=lambda m: m["created_at"])
+    return {"id": conversation_id, "branch_id": branch_id, "phone": phone,
+            "provider": latest["provider"], "contact_name": phone, "unread_count": 0}
+
+
 @router.get("/cloud-inbox/media/{message_id}")
 async def get_cloud_inbox_media(
     message_id: str, current_user: dict = Depends(get_current_user)
 ):
     _require_bulk_whatsapp_access(current_user)
+    if message_id.startswith("campaign:"):
+        item = await _db["whatsapp_campaign_job_items"].find_one(
+            {"id": message_id.partition(":")[2]}, {"_id": 0})
+        if not item or not item.get("attachment"):
+            raise HTTPException(status_code=404, detail="Media not found")
+        _assert_branch_access(current_user, item["branch_id"])
+        content = await _load_bulk_attachment(item["branch_id"], item["attachment"])
+        return Response(content=content, media_type=item["attachment"]["mime_type"],
+                        headers={"Cache-Control": "private, max-age=300"})
     message = await _db["whatsapp_cloud_messages"].find_one(
         {"id": message_id}, {"_id": 0}
     )
@@ -3250,7 +3312,7 @@ async def reply_to_cloud_inbox_thread(
         {"id": conversation_id}, {"_id": 0}
     )
     if not conversation:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        conversation = await _campaign_conversation(conversation_id, current_user)
     branch_id = conversation.get("branch_id")
     _assert_branch_access(current_user, branch_id)
     config = await _get_branch_cloud_config(branch_id)
@@ -4042,17 +4104,18 @@ async def _load_bulk_attachment(branch_id: str, ref: dict) -> bytes:
 
 async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> bool:
     provider = item["provider"]
+    provider_message_id = None
     wa_phone = _format_cloud_phone(item["phone"])
     attachment = item.get("attachment")
     caption = item["message"] if item.get("media_index", 0) == 0 or provider == "meta_cloud" else ""
     if not attachment:
         await assert_fence()
         if provider in {"waha", "whatsflow"}:
-            success, _, error = await _send_session_provider_result(wa_phone, item["message"], config)
+            success, provider_message_id, error = await _send_session_provider_result(wa_phone, item["message"], config)
             if not success and error and not error.startswith("http_") and error != "invalid_phone":
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
         else:
-            success, _, error = await _send_meta_cloud_message_result(
+            success, provider_message_id, error = await _send_meta_cloud_message_result(
                 wa_phone, item["message"], config)
             if not success and error and not error.startswith("http_") and error != "invalid_phone":
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
@@ -4065,16 +4128,20 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
             await assert_fence()
             session = config.get("waha_physical_session_id") or _waha_physical_session_id(
                 item["branch_id"], config.get("waha_session_name") or "")
-            success, _, error = await WAHAClient().send_media(
+            success, provider_response, error = await WAHAClient().send_media(
                 session, _waha_chat_id(wa_phone), content, mime, filename, caption,
                 image=media_type == "image")
+            if isinstance(provider_response, dict):
+                provider_message_id = provider_response.get("id")
             if not success and error and not error.startswith("http_"):
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
         elif provider == "whatsflow":
             await assert_fence()
-            success, _, error = await _whatsflow_client(config).send_media(
+            success, provider_response, error = await _whatsflow_client(config).send_media(
                 wa_phone, media_type, mime, caption,
                 base64.b64encode(content).decode("ascii"), filename)
+            if isinstance(provider_response, dict):
+                provider_message_id = (provider_response.get("key") or {}).get("id") or provider_response.get("id")
             if not success and error and not error.startswith("http_"):
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
         else:
@@ -4082,6 +4149,15 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
             await assert_fence()
             success = await _send_meta_media_template(
                 item["phone"], caption, media_id, media_type, filename, config)
+    try:
+        if isinstance(provider_message_id, str) and provider_message_id:
+            await _db["whatsapp_campaign_job_items"].update_one(
+                {"id": item["id"], "branch_id": item["branch_id"]},
+                {"$set": {"provider_message_id": provider_message_id}},
+            )
+    except Exception as exc:
+        # Recording inbox metadata must never change a send result or cause retry.
+        logger.warning("Campaign inbox metadata failed: %s", type(exc).__name__)
     try:
         await _db["whatsapp_send_log"].insert_one({
             "phone": wa_phone.split("@")[0], "message": caption if attachment else item["message"],
@@ -5103,6 +5179,10 @@ async def send_bulk_renewal_reminders(
     push_sent = 0
     portal_inserted = 0
     skipped = 0
+    # WhatsApp is buffered separately from the per-member channels below.
+    # A family may share one phone number, and the same number may legitimately
+    # be configured in different branches (which can use different senders).
+    wa_buffers: dict = {}
 
     # Group by member_id for WhatsApp
     groups: dict = {}
@@ -5163,44 +5243,78 @@ async def send_bulk_renewal_reminders(
                     end_date=end_date_fmt,
                     fee=fee_str,
                 )
+
+                # Templates only expose one {end_date}, while a bulk selection
+                # can contain subscriptions ending on different dates. Keep the
+                # custom template as the introduction and add an explicit line
+                # for every selected activity. Insert this in the Arabic portion
+                # when the custom template already contains an English section.
+                activity_details = []
+                english_details = []
+                item_days = []
+                for it in items:
+                    item_end_raw = it.end_date or ""
+                    item_end_fmt = item_end_raw.replace("-", "/") if item_end_raw else ""
+                    try:
+                        item_day_count = (
+                            datetime.strptime(item_end_raw[:10], "%Y-%m-%d").date() - today
+                        ).days
+                    except Exception:
+                        item_day_count = (
+                            it.days_remaining if it.days_remaining is not None else 0
+                        )
+                    item_days.append(item_day_count)
+                    activity_label = it.activity_name or ""
+                    activity_details.append(
+                        f"- {activity_label}: {item_end_fmt}"
+                    )
+                    english_details.append(
+                        _renewal_english_summary(
+                            name=name,
+                            activity=activity_label,
+                            end_date=item_end_fmt,
+                            days_remaining=item_day_count,
+                        )
+                    )
+
+                details_ar = (
+                    f"تفاصيل اشتراكات {name}:\n" + "\n".join(activity_details)
+                )
+                arabic_part, marker, english_part = message.partition(
+                    BILINGUAL_ENGLISH_MARKER
+                )
+                arabic_part = f"{arabic_part.rstrip()}\n\n{details_ar}"
+                if marker:
+                    message = (
+                        f"{arabic_part}\n\n{marker}{english_part}"
+                    )
+                else:
+                    message = arabic_part
                 message = _append_english_section(
                     _ensure_renewal_arabic_date(message, end_date_fmt),
-                    _renewal_english_summary(
-                        name=name,
-                        activity=activities_text,
-                        end_date=end_date_fmt,
-                        days_remaining=days_calc,
-                    ),
+                    "\n\n".join(english_details),
                 )
                 branch_id = member.get("branch_id")
-                ok = await _send_wa_message_for_branch(wa_phone, message, branch_id)
-                await _db["whatsapp_send_log"].insert_one({
-                    "timestamp": datetime.now(RIYADH_TZ).isoformat(),
-                    "member_id": mid,
-                    "member_name": name,
-                    "phone": phone,
-                    "activities": activities_text,
-                    "success": ok,
-                    "days_before": days_calc,
-                    "manual": True,
-                    "type": "renewal_reminder",
-                    "branch_id": branch_id,
-                })
-                for it in items:
-                    await _record_renewal_reminder(
-                        member_id=mid,
-                        activity_name=it.activity_name or "",
-                        channel="whatsapp",
-                        days_before=days_calc,
-                        manual=True,
-                        success=ok,
-                        sent_by=current_user,
-                    )
+                buffer_key = (wa_phone, branch_id or "")
+                buffer = wa_buffers.setdefault(
+                    buffer_key,
+                    {
+                        "wa_phone": wa_phone,
+                        "phone": phone,
+                        "branch_id": branch_id,
+                        "sections": [],
+                        "entries": [],
+                    },
+                )
+                buffer["sections"].append(message)
+                for it, item_day_count in zip(items, item_days):
+                    buffer["entries"].append({
+                        "member_id": mid,
+                        "member_name": name,
+                        "activity_name": it.activity_name or "",
+                        "days_before": item_day_count,
+                    })
                 member_logged = True
-                if ok:
-                    wa_sent += 1
-                # Match scheduler's 60s pacing to avoid account flagging.
-                await asyncio.sleep(60)
         elif log_only and phone:
             # In log-only mode the browser opens wa.me directly. We still record
             # the manual reminder so the "Last reminder" badge updates.
@@ -5317,6 +5431,50 @@ async def send_bulk_renewal_reminders(
                     success=False,
                     sent_by=current_user,
                 )
+
+    # One physical WhatsApp dispatch per normalized phone and branch. Renewal
+    # history remains one row per selected member/activity even when several
+    # members share the recipient number.
+    wa_groups = list(wa_buffers.values())
+    for group_index, buffer in enumerate(wa_groups):
+        message = "\n\n──────────\n\n".join(buffer["sections"])
+        ok = await _send_wa_message_for_branch(
+            buffer["wa_phone"], message, buffer["branch_id"]
+        )
+        entries = buffer["entries"]
+        await _db["whatsapp_send_log"].insert_one({
+            "timestamp": datetime.now(RIYADH_TZ).isoformat(),
+            "member_id": entries[0]["member_id"] if entries else "",
+            "member_ids": list(dict.fromkeys(e["member_id"] for e in entries)),
+            "member_name": entries[0]["member_name"] if entries else "",
+            "member_names": list(dict.fromkeys(e["member_name"] for e in entries)),
+            "phone": buffer["phone"],
+            "activities": "، ".join(
+                e["activity_name"] for e in entries if e["activity_name"]
+            ),
+            "success": ok,
+            "days_before": min(
+                (e["days_before"] for e in entries), default=0
+            ),
+            "manual": True,
+            "type": "renewal_reminder",
+            "branch_id": buffer["branch_id"],
+        })
+        for entry in entries:
+            await _record_renewal_reminder(
+                member_id=entry["member_id"],
+                activity_name=entry["activity_name"],
+                channel="whatsapp",
+                days_before=entry["days_before"],
+                manual=True,
+                success=ok,
+                sent_by=current_user,
+            )
+        if ok:
+            wa_sent += 1
+        # Match scheduler pacing, without delaying after the final recipient.
+        if group_index < len(wa_groups) - 1:
+            await asyncio.sleep(60)
 
     return {
         "success": True,

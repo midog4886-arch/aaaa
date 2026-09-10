@@ -38,3 +38,9 @@ Phone-originated outgoing messages must be reflected in the inbox; receiving an 
 **Why:** Staff answer on the linked phone and expect the web inbox to reflect that response. Delayed reply events must not hide newer customer messages, and outgoing pushName identifies the branch, not the customer.
 
 **How to apply:** Preserve the customer's name, use message timestamps for reply ordering, and deduplicate by branch/provider/message ID, including the race where an echo arrives before the API send returns. Do not claim historical phone replies were imported when only new webhook events are supported.
+
+Renewal WhatsApp reminders are grouped by normalized phone and branch across each send batch, including different selected expiry dates and shared family numbers.
+
+**Why:** The user explicitly wants multiple expired activities for one number in a single message rather than separate activity/member messages.
+
+**How to apply:** Include each activity's own expiry date and identify members sharing a number. Keep push/portal notifications and reminder-history entries member/activity-scoped. Never combine different branches or imply that this per-batch grouping deduplicates separate scheduled/manual runs.

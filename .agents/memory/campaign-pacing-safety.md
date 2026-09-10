@@ -20,3 +20,9 @@ Day-extension notices should have one explicit send action, separate from applyi
 **Why:** An automatic post-apply notice alongside preview sending would duplicate notifications and bypass the shared paced queue.
 
 **How to apply:** Do not restore automatic post-apply sending without a shared event-level deduplication design. Preserve the ability to send notices before or after applying an extension.
+
+Campaign history in the inbox is a read-only view of queue records, not a backfill that dispatches messages.
+
+**Why:** Existing campaigns must become visible without resending or marking unread. Queue success means accepted for sending, not verified delivery.
+
+**How to apply:** Keep queue state authoritative for pending/failed/unknown; use provider receipts only when available. Deduplicate known provider IDs, never guess that two historical sends are identical just because their text matches.

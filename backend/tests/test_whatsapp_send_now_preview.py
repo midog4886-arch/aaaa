@@ -270,7 +270,7 @@ def test_dispatch_groups_multiple_activities_into_one_member_offset(monkeypatch)
     assert len(items) == 1
     assert items[0]["expiring_activities"] == ["سباحة", "لياقة"]
     assert items[0]["fee_str"] == "150"
-    assert days == 3
+    assert items[0]["_days_before"] == 3
     assert manual is True
 
 
