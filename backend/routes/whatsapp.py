@@ -3977,7 +3977,7 @@ async def create_campaign(
     default_name: str = Form(""),
     recipients_json: str = Form("[]"),
     attachment: Optional[UploadFile] = File(None),
-    attachments: Optional[List[UploadFile]] = File(None),
+    attachments: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
 ):
     _require_bulk_whatsapp_access(current_user)
@@ -4027,7 +4027,7 @@ async def update_campaign(
     recipients_json: str = Form("[]"),
     remove_attachment: bool = Form(False),
     attachment: Optional[UploadFile] = File(None),
-    attachments: Optional[List[UploadFile]] = File(None),
+    attachments: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
 ):
     _require_bulk_whatsapp_access(current_user)
@@ -4406,7 +4406,7 @@ async def send_branch_cloud_bulk_media(
     recipients_json: str = Form(...),
     idempotency_key: str = Form(...),
     attachment: Optional[UploadFile] = File(None),
-    attachments: Optional[List[UploadFile]] = File(None),
+    attachments: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
     response: Response = None,
 ):

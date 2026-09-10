@@ -78,3 +78,4 @@
 - [Multi-branch non-admin active branch](multi-branch-active-branch.md) — user.branch_ids[]; client sends active branch via X-Branch-Id header; apply_active_branch pins current_user.branch_id to it (multi-branch only) so all legacy branch_id readers follow the switch; spoof falls back to allowed[0]. ALL 3 get_current_user + 2 from_token copies must wire it.
 - [Rented venue booking invariants](rented-venue-booking-invariants.md) — every level schedule/activation mutation must revalidate its rented booking; active references lock booking identity and timing.
 - [Registration follow-up safety](registration-followup-safety.md) — new requests only; phone-wide contact limits with branch-isolated content; resolve early outbound echoes before resuming automation.
+- [Multipart list compatibility](multipart-list-compat.md) — production FastAPI rejects Optional file lists; use a plain list with an empty default and test multipart parsing.
