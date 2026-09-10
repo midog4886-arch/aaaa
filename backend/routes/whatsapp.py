@@ -24,6 +24,7 @@ from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_current_tenant
 from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
+from services import whatsapp_bulk_jobs
 
 logger = logging.getLogger("whatsapp")
 _bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
@@ -32,6 +33,7 @@ CAMPAIGN_IMAGE_LIMIT = 5 * 1024 * 1024
 CAMPAIGN_PDF_LIMIT = 20 * 1024 * 1024
 CAMPAIGN_MAX_PASTED_RECIPIENTS = 2000
 CAMPAIGN_ATTACHMENT_CHUNK_SIZE = 1024 * 1024
+CAMPAIGN_MAX_IMAGES = 10
 
 
 def _require_whatsapp_access(current_user: dict):
@@ -164,6 +166,13 @@ _class_reminder_started = False
 def set_database(db):
     global _db
     _db = db
+    whatsapp_bulk_jobs.configure(
+        db, get_config=_get_branch_cloud_config,
+        validate_config=_validate_bulk_job_config,
+        reserve_quota=_reserve_waha_campaign_quota,
+        release_quota=_release_waha_campaign_quota,
+        send=_dispatch_bulk_job_item,
+    )
 
 
 def _format_phone(phone: str) -> str:
@@ -381,13 +390,17 @@ async def _reserve_waha_campaign_quota(branch_id: str, limit: int, amount: int) 
     return doc
 
 
-async def _release_waha_campaign_quota(reservation_id: str, amount: int) -> None:
+async def _release_waha_campaign_quota(
+    reservation_id: str, amount: int, refund_key: Optional[str] = None
+) -> None:
     if amount <= 0:
         return
-    await _db["whatsapp_waha_campaign_quota"].update_one(
-        {"_id": reservation_id},
-        {"$inc": {"used": -amount}},
-    )
+    query = {"_id": reservation_id}
+    update = {"$inc": {"used": -amount}}
+    if refund_key:
+        query["refund_keys"] = {"$ne": refund_key}
+        update["$addToSet"] = {"refund_keys": refund_key}
+    await _db["whatsapp_waha_campaign_quota"].update_one(query, update)
 
 
 async def _get_waha_campaign_quota(branch_id: str, limit: int) -> dict:
@@ -1605,6 +1618,9 @@ def start_scheduler():
     global _scheduler_started
     if not _scheduler_started:
         asyncio.ensure_future(_scheduler_loop())
+    # This queue covers automatic campaign text and media only. Transactional
+    # reminders/notices retain their existing delivery paths and are not gated.
+    whatsapp_bulk_jobs.start_worker()
     if not _admin_alert_started:
         asyncio.ensure_future(_admin_alert_loop())
     if not _invoice_payment_outbox_started:
@@ -2883,6 +2899,7 @@ class BulkCloudRecipient(BaseModel):
 class BulkCloudSendRequest(BaseModel):
     branch_id: str
     recipients: List[BulkCloudRecipient]
+    idempotency_key: str
 
 
 def _campaign_scope(branch_id: str) -> dict:
@@ -2890,11 +2907,24 @@ def _campaign_scope(branch_id: str) -> dict:
 
 
 def _campaign_public(doc: dict, include_recipients: bool = True) -> dict:
-    excluded = {"_id", "tenant_slug", "attachment_id"}
+    excluded = {"_id", "tenant_slug", "attachment_id", "attachment_ids"}
     if not include_recipients:
         excluded.add("recipients")
     result = {k: v for k, v in doc.items() if k not in excluded}
-    result["has_attachment"] = bool(doc.get("attachment_id"))
+    stored = doc.get("attachments") or []
+    if not stored and doc.get("attachment_id"):
+        stored = [{
+            "attachment_id": doc.get("attachment_id"),
+            "attachment_name": doc.get("attachment_name"),
+            "attachment_type": doc.get("attachment_type"),
+            "attachment_size": doc.get("attachment_size"),
+        }]
+    result["attachments"] = [
+        {k: item.get(k) for k in ("attachment_name", "attachment_type", "attachment_size")}
+        for item in stored
+    ]
+    result["attachment_count"] = len(stored)
+    result["has_attachment"] = bool(stored)
     result["recipient_count"] = len(doc.get("recipients") or [])
     return result
 
@@ -2918,6 +2948,15 @@ async def _read_campaign_attachment(attachment: UploadFile) -> tuple[bytes, str,
             raise HTTPException(status_code=413, detail="Attachment exceeds the allowed size")
     if not content:
         raise HTTPException(status_code=400, detail="Attachment is empty")
+    valid_signature = (
+        bytes(content).startswith(b"\xff\xd8\xff")
+        if mime == "image/jpeg"
+        else bytes(content).startswith(b"\x89PNG\r\n\x1a\n")
+        if mime == "image/png"
+        else bytes(content).startswith(b"%PDF-")
+    )
+    if not valid_signature:
+        raise HTTPException(status_code=400, detail="Attachment content does not match its type")
     extension = {"image/jpeg": ".jpg", "image/png": ".png", "application/pdf": ".pdf"}[mime]
     safe_name = Path(attachment.filename or f"attachment{extension}").name[:180]
     return bytes(content), mime, safe_name
@@ -2951,6 +2990,38 @@ async def _store_campaign_attachment(branch_id: str, attachment: UploadFile) -> 
         "attachment_type": mime,
         "attachment_size": len(content),
     }
+
+
+async def _store_campaign_attachments(branch_id: str, uploads: list[UploadFile]) -> list[dict]:
+    if len(uploads) > CAMPAIGN_MAX_IMAGES:
+        raise HTTPException(status_code=400, detail="A campaign may contain at most 10 images")
+    stored = []
+    try:
+        for upload in uploads:
+            item = await _store_campaign_attachment(branch_id, upload)
+            stored.append(item)
+    except Exception:
+        for item in stored:
+            await _delete_campaign_attachment(branch_id, item.get("attachment_id"))
+        raise
+    if len(stored) > 1 and any(item["attachment_type"] == "application/pdf" for item in stored):
+        for item in stored:
+            await _delete_campaign_attachment(branch_id, item.get("attachment_id"))
+        raise HTTPException(status_code=400, detail="PDF cannot be mixed with images; attach one PDF only")
+    return stored
+
+
+def _campaign_attachment_items(doc: dict) -> list[dict]:
+    if doc.get("attachments"):
+        return doc["attachments"]
+    if doc.get("attachment_id"):
+        return [{
+            "attachment_id": doc.get("attachment_id"),
+            "attachment_name": doc.get("attachment_name"),
+            "attachment_type": doc.get("attachment_type"),
+            "attachment_size": doc.get("attachment_size"),
+        }]
+    return []
 
 
 async def _delete_campaign_attachment(branch_id: str, attachment_id: Optional[str]):
@@ -3102,13 +3173,17 @@ async def get_campaign_attachment(
     campaign_id: str,
     branch_id: str,
     current_user: dict = Depends(get_current_user),
+    index: int = 0,
 ):
     _require_bulk_whatsapp_access(current_user)
     await _require_campaign_branch(current_user, branch_id)
     doc = await _db["whatsapp_campaigns"].find_one(
         {**_campaign_scope(branch_id), "id": campaign_id}
     )
-    attachment_id = (doc or {}).get("attachment_id")
+    items = _campaign_attachment_items(doc or {})
+    if index < 0 or index >= len(items):
+        raise HTTPException(status_code=404, detail="Campaign attachment not found")
+    attachment_id = items[index].get("attachment_id")
     attachment_doc = await _db["whatsapp_campaign_attachments"].find_one({
         **_campaign_scope(branch_id), "attachment_id": attachment_id
     })
@@ -3146,6 +3221,7 @@ async def create_campaign(
     default_name: str = Form(""),
     recipients_json: str = Form("[]"),
     attachment: Optional[UploadFile] = File(None),
+    attachments: Optional[List[UploadFile]] = File(None),
     current_user: dict = Depends(get_current_user),
 ):
     _require_bulk_whatsapp_access(current_user)
@@ -3166,14 +3242,19 @@ async def create_campaign(
         "created_at": now, "updated_at": now,
         "created_by": current_user.get("user_id") or current_user.get("id"),
     }
-    new_attachment = await _store_campaign_attachment(branch_id, attachment) if attachment else None
-    if new_attachment:
-        doc.update(new_attachment)
+    uploads = list(attachments) if isinstance(attachments, (list, tuple)) else []
+    if attachment:
+        uploads.insert(0, attachment)
+    new_attachments = await _store_campaign_attachments(branch_id, uploads) if uploads else []
+    if new_attachments:
+        doc["attachments"] = new_attachments
+        doc["attachment_ids"] = [item["attachment_id"] for item in new_attachments]
+        doc.update(new_attachments[0])
     try:
         await _db["whatsapp_campaigns"].insert_one(doc)
     except Exception:
-        if new_attachment:
-            await _delete_campaign_attachment(branch_id, new_attachment["attachment_id"])
+        for item in new_attachments:
+            await _delete_campaign_attachment(branch_id, item["attachment_id"])
         raise
     return _campaign_public(doc)
 
@@ -3190,6 +3271,7 @@ async def update_campaign(
     recipients_json: str = Form("[]"),
     remove_attachment: bool = Form(False),
     attachment: Optional[UploadFile] = File(None),
+    attachments: Optional[List[UploadFile]] = File(None),
     current_user: dict = Depends(get_current_user),
 ):
     _require_bulk_whatsapp_access(current_user)
@@ -3210,21 +3292,30 @@ async def update_campaign(
         "recipients": _parse_campaign_recipients(recipients_json) if audience == "pasted" else [],
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    old_attachment_id = existing.get("attachment_id")
-    new_attachment = None
+    old_attachments = _campaign_attachment_items(existing)
+    uploads = list(attachments) if isinstance(attachments, (list, tuple)) else []
     if attachment:
-        new_attachment = await _store_campaign_attachment(branch_id, attachment)
-        update.update(new_attachment)
+        uploads.insert(0, attachment)
+    new_attachments = []
+    if uploads:
+        new_attachments = await _store_campaign_attachments(branch_id, uploads)
+        update["attachments"] = new_attachments
+        update["attachment_ids"] = [item["attachment_id"] for item in new_attachments]
+        update.update(new_attachments[0])
     elif remove_attachment:
-        update.update(attachment_id=None, attachment_name=None, attachment_type=None, attachment_size=None)
+        update.update(
+            attachments=[], attachment_ids=[], attachment_id=None,
+            attachment_name=None, attachment_type=None, attachment_size=None,
+        )
     try:
         await _db["whatsapp_campaigns"].update_one(scope, {"$set": update})
     except Exception:
-        if new_attachment:
-            await _delete_campaign_attachment(branch_id, new_attachment["attachment_id"])
+        for item in new_attachments:
+            await _delete_campaign_attachment(branch_id, item["attachment_id"])
         raise
-    if (new_attachment or remove_attachment) and old_attachment_id:
-        await _delete_campaign_attachment(branch_id, old_attachment_id)
+    if new_attachments or remove_attachment:
+        for item in old_attachments:
+            await _delete_campaign_attachment(branch_id, item.get("attachment_id"))
     return _campaign_public({**existing, **update})
 
 
@@ -3241,7 +3332,8 @@ async def delete_campaign(
     if not existing:
         raise HTTPException(status_code=404, detail="Campaign not found")
     await _db["whatsapp_campaigns"].delete_one(scope)
-    await _delete_campaign_attachment(branch_id, existing.get("attachment_id"))
+    for item in _campaign_attachment_items(existing):
+        await _delete_campaign_attachment(branch_id, item.get("attachment_id"))
     return {"success": True}
 
 
@@ -3311,6 +3403,7 @@ async def get_branch_cloud_availability(
 async def send_branch_cloud_bulk(
     data: BulkCloudSendRequest,
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     _require_bulk_whatsapp_access(current_user)
     _assert_branch_access(current_user, data.branch_id)
@@ -3345,62 +3438,18 @@ async def send_branch_cloud_bulk(
             detail="Confirm an approved Meta template with exactly one body variable",
         )
 
-    reservation = None
-    if provider in {"waha", "whatsflow"}:
-        reservation = await _reserve_waha_campaign_quota(
-            data.branch_id, int(config.get("waha_daily_limit") or 30), len(data.recipients)
-        )
-    semaphore = asyncio.Semaphore(5)
-
-    async def send_one(index: int, recipient: BulkCloudRecipient):
-        wa_phone = _format_cloud_phone(recipient.phone)
-        message = (recipient.message or "").strip()
-        if not wa_phone or not message or len(message) > 4096:
-            return index, False
-        async with semaphore:
-            if provider in {"waha", "whatsflow"}:
-                success, _, _ = await _send_session_provider_result(wa_phone, message, config)
-            else:
-                success = await _send_meta_cloud_message(wa_phone, message, config)
-        try:
-            await _db["whatsapp_send_log"].insert_one({
-                "phone": wa_phone.split("@")[0],
-                "message": message,
-                "success": success,
-                "sent_at": datetime.now(timezone.utc).isoformat(),
-                "manual": True,
-                "type": "bulk_cloud",
-                "branch_id": data.branch_id,
-                "transport": provider,
-            })
-        except Exception as exc:
-            logger.warning("Could not save bulk WhatsApp log: %s", type(exc).__name__)
-        return index, success
-
-    try:
-        results = await asyncio.gather(*[
-            send_one(index, recipient)
-            for index, recipient in enumerate(data.recipients)
-        ])
-    except Exception:
-        if provider in {"waha", "whatsflow"}:
-            await _release_waha_campaign_quota(reservation["_id"], len(data.recipients))
-        raise
-    failed_indices = [index for index, success in results if not success]
-    sent = len(results) - len(failed_indices)
-    quota = None
-    if provider in {"waha", "whatsflow"}:
-        await _release_waha_campaign_quota(reservation["_id"], len(failed_indices))
-        quota = await _get_waha_campaign_quota(data.branch_id, int(config.get("waha_daily_limit") or 30))
-    return {
-        "success": sent > 0,
-        "total": len(results),
-        "sent": sent,
-        "failed": len(failed_indices),
-        "failed_indices": failed_indices,
-        **({"provider": provider, "used": quota["used"], "remaining": quota["remaining"]}
-           if provider in {"waha", "whatsflow"} else {}),
-    }
+    key = re.sub(r"[^A-Za-z0-9_-]", "", data.idempotency_key or "")[:100]
+    if len(key) < 12:
+        raise HTTPException(status_code=400, detail="Invalid idempotency key")
+    recipients = [{"phone": r.phone, "message": r.message.strip()} for r in data.recipients]
+    if any(not _format_cloud_phone(r["phone"]) or not r["message"] or len(r["message"]) > 4096
+           for r in recipients):
+        raise HTTPException(status_code=400, detail="Invalid phone or message")
+    job, _created = await whatsapp_bulk_jobs.enqueue(
+        data.branch_id, provider, recipients, key)
+    if response is not None:
+        response.status_code = 202
+    return job
 
 
 async def _upload_meta_bulk_media(
@@ -3491,7 +3540,94 @@ async def _send_meta_media_template(
         logger.error("Meta media template send failed: HTTP %s", response.status_code)
     except Exception as exc:
         logger.error("Meta media template send failed: %s", type(exc).__name__)
+        raise
     return False
+
+
+def _validate_bulk_job_config(provider: str, config: dict) -> Optional[str]:
+    if provider != _branch_provider(config):
+        return "The branch WhatsApp provider changed; job paused"
+    if provider == "waha":
+        if not _waha_config_for_branch(config):
+            return "WAHA is not configured"
+        if config.get("waha_session_status") not in ("WORKING", "CONNECTED"):
+            return "WAHA session is not connected"
+    elif provider == "whatsflow":
+        if not (config and config.get("enabled") and config.get("whatsflow_instance")
+                and config.get("whatsflow_api_key_encrypted")):
+            return "Whatsflow is not configured"
+        if config.get("whatsflow_state") != "open":
+            return "Whatsflow is not connected"
+    elif not (config and config.get("enabled") and config.get("phone_number_id")
+              and config.get("access_token_encrypted")):
+        return "Meta WhatsApp is not configured"
+    return None
+
+
+async def _load_bulk_attachment(branch_id: str, ref: dict) -> bytes:
+    scope = {**_campaign_scope(branch_id), "attachment_id": ref["attachment_id"]}
+    meta = await _db["whatsapp_campaign_attachments"].find_one(scope)
+    if not meta:
+        raise RuntimeError("Stored campaign attachment is missing")
+    chunks = await _db["whatsapp_campaign_attachment_chunks"].find(scope).sort(
+        "index", 1).to_list(length=int(meta.get("chunk_count") or 0) + 1)
+    if len(chunks) != int(meta.get("chunk_count") or 0):
+        raise RuntimeError("Stored campaign attachment is incomplete")
+    return b"".join(chunk.get("data") or b"" for chunk in chunks)
+
+
+async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> bool:
+    provider = item["provider"]
+    wa_phone = _format_cloud_phone(item["phone"])
+    attachment = item.get("attachment")
+    caption = item["message"] if item.get("media_index", 0) == 0 or provider == "meta_cloud" else ""
+    if not attachment:
+        await assert_fence()
+        if provider in {"waha", "whatsflow"}:
+            success, _, error = await _send_session_provider_result(wa_phone, item["message"], config)
+            if not success and error and not error.startswith("http_") and error != "invalid_phone":
+                raise RuntimeError(f"uncertain_provider_outcome:{error}")
+        else:
+            success, _, error = await _send_meta_cloud_message_result(
+                wa_phone, item["message"], config)
+            if not success and error and not error.startswith("http_") and error != "invalid_phone":
+                raise RuntimeError(f"uncertain_provider_outcome:{error}")
+    else:
+        content = await _load_bulk_attachment(item["branch_id"], attachment)
+        mime = attachment["mime_type"]
+        media_type = attachment["media_type"]
+        filename = attachment["filename"]
+        if provider == "waha":
+            await assert_fence()
+            session = config.get("waha_physical_session_id") or _waha_physical_session_id(
+                item["branch_id"], config.get("waha_session_name") or "")
+            success, _, error = await WAHAClient().send_media(
+                session, _waha_chat_id(wa_phone), content, mime, filename, caption,
+                image=media_type == "image")
+            if not success and error and not error.startswith("http_"):
+                raise RuntimeError(f"uncertain_provider_outcome:{error}")
+        elif provider == "whatsflow":
+            await assert_fence()
+            success, _, error = await _whatsflow_client(config).send_media(
+                wa_phone, media_type, mime, caption,
+                base64.b64encode(content).decode("ascii"), filename)
+            if not success and error and not error.startswith("http_"):
+                raise RuntimeError(f"uncertain_provider_outcome:{error}")
+        else:
+            media_id = await _upload_meta_bulk_media(content, filename, mime, config)
+            await assert_fence()
+            success = await _send_meta_media_template(
+                item["phone"], caption, media_id, media_type, filename, config)
+    try:
+        await _db["whatsapp_send_log"].insert_one({
+            "phone": wa_phone.split("@")[0], "message": caption if attachment else item["message"],
+            "success": success, "sent_at": datetime.now(timezone.utc).isoformat(),
+            "manual": True, "type": f"bulk_cloud_{attachment['media_type']}" if attachment else "bulk_cloud",
+            "branch_id": item["branch_id"], "transport": provider,
+        })
+    except Exception as exc:
+        logger.warning("Provider result recorded but bulk send log failed: %s", type(exc).__name__)
+    return success
 
 
 @router.post("/branch-cloud/send-bulk-media")
@@ -3499,8 +3635,10 @@ async def send_branch_cloud_bulk_media(
     branch_id: str = Form(...),
     recipients_json: str = Form(...),
     idempotency_key: str = Form(...),
-    attachment: UploadFile = File(...),
+    attachment: Optional[UploadFile] = File(None),
+    attachments: Optional[List[UploadFile]] = File(None),
     current_user: dict = Depends(get_current_user),
+    response: Response = None,
 ):
     _require_bulk_whatsapp_access(current_user)
     _assert_branch_access(current_user, branch_id)
@@ -3527,52 +3665,66 @@ async def send_branch_cloud_bulk_media(
     ):
         raise HTTPException(status_code=400, detail="Meta WhatsApp is not configured")
 
-    mime_type = (attachment.content_type or "").lower()
-    if mime_type in {"image/jpeg", "image/png"}:
-        media_type = "image"
-        template_name = config.get("image_template_name")
-        max_size = 5 * 1024 * 1024
-        extension = ".jpg" if mime_type == "image/jpeg" else ".png"
-    elif mime_type == "application/pdf":
-        media_type = "document"
-        template_name = config.get("document_template_name")
-        max_size = 20 * 1024 * 1024
-        extension = ".pdf"
-    else:
-        raise HTTPException(status_code=400, detail="Only JPG, PNG, and PDF are supported")
-
-    content_buffer = bytearray()
-    while True:
-        chunk = await attachment.read(1024 * 1024)
-        if not chunk:
-            break
-        content_buffer.extend(chunk)
-        if len(content_buffer) > max_size:
-            raise HTTPException(status_code=400, detail="Attachment is too large")
-    content = bytes(content_buffer)
-    valid_signature = (
-        content.startswith(b"\xff\xd8\xff")
-        if mime_type == "image/jpeg"
-        else content.startswith(b"\x89PNG\r\n\x1a\n")
-        if mime_type == "image/png"
-        else content.startswith(b"%PDF-")
-    )
-    if not content or not valid_signature:
-        raise HTTPException(status_code=400, detail="Invalid or oversized attachment")
-    raw_name = os.path.basename(
-        (attachment.filename or f"attachment{extension}").replace("\\", "_")
-    )
-    safe_stem = re.sub(
-        r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]+", "", raw_name
-    )
-    safe_stem = re.sub(r"[^A-Za-z0-9._ -]+", "_", safe_stem)
-    safe_stem = os.path.splitext(safe_stem)[0].strip(" ._")[:100] or "attachment"
-    filename = safe_stem + extension
-    if provider == "meta_cloud" and (not template_name or not config.get("media_templates_confirmed")):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Configure the approved Meta {media_type} template for this branch",
+    uploads = list(attachments) if isinstance(attachments, (list, tuple)) else []
+    if attachment:
+        uploads.insert(0, attachment)
+    if not uploads:
+        raise HTTPException(status_code=400, detail="No attachment supplied")
+    if len(uploads) > CAMPAIGN_MAX_IMAGES:
+        raise HTTPException(status_code=400, detail="At most 10 images may be sent")
+    media_items = []
+    for upload in uploads:
+        mime_type = (upload.content_type or "").lower()
+        if mime_type in {"image/jpeg", "image/png"}:
+            media_type = "image"
+            template_name = config.get("image_template_name")
+            max_size = CAMPAIGN_IMAGE_LIMIT
+            extension = ".jpg" if mime_type == "image/jpeg" else ".png"
+        elif mime_type == "application/pdf":
+            media_type = "document"
+            template_name = config.get("document_template_name")
+            max_size = CAMPAIGN_PDF_LIMIT
+            extension = ".pdf"
+        else:
+            raise HTTPException(status_code=400, detail="Only JPG, PNG, and PDF are supported")
+        if len(uploads) > 1 and media_type != "image":
+            raise HTTPException(status_code=400, detail="PDF cannot be mixed with images; send one PDF only")
+        content_buffer = bytearray()
+        while True:
+            chunk = await upload.read(1024 * 1024)
+            if not chunk:
+                break
+            content_buffer.extend(chunk)
+            if len(content_buffer) > max_size:
+                raise HTTPException(status_code=400, detail="Attachment is too large")
+        content = bytes(content_buffer)
+        valid_signature = (
+            content.startswith(b"\xff\xd8\xff")
+            if mime_type == "image/jpeg"
+            else content.startswith(b"\x89PNG\r\n\x1a\n")
+            if mime_type == "image/png"
+            else content.startswith(b"%PDF-")
         )
+        if not content or not valid_signature:
+            raise HTTPException(status_code=400, detail="Invalid or oversized attachment")
+        raw_name = os.path.basename(
+            (upload.filename or f"attachment{extension}").replace("\\", "_")
+        )
+        safe_stem = re.sub(
+            r"[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]+", "", raw_name
+        )
+        safe_stem = re.sub(r"[^A-Za-z0-9._ -]+", "_", safe_stem)
+        safe_stem = os.path.splitext(safe_stem)[0].strip(" ._")[:100] or "attachment"
+        filename = safe_stem + extension
+        if provider == "meta_cloud" and (not template_name or not config.get("media_templates_confirmed")):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Configure the approved Meta {media_type} template for this branch",
+            )
+        media_items.append({
+            "content": content, "mime_type": mime_type, "media_type": media_type,
+            "filename": filename,
+        })
     if any(
         not (recipient.message or "").strip()
         or len(recipient.message.strip()) > 1024
@@ -3582,121 +3734,104 @@ async def send_branch_cloud_bulk_media(
     idempotency_key = re.sub(r"[^A-Za-z0-9_-]", "", idempotency_key or "")[:100]
     if len(idempotency_key) < 12:
         raise HTTPException(status_code=400, detail="Invalid idempotency key")
-
-    lock = _bulk_media_branch_locks.setdefault(branch_id, asyncio.Lock())
-    async with lock:
-        batches = _db["whatsapp_bulk_media_batches"]
-        await batches.create_index(
-            [("branch_id", 1), ("idempotency_key", 1)], unique=True
+    # Completed records from the synchronous implementation remain authoritative:
+    # retries return their old result and can never enqueue duplicate sends.
+    legacy = await _db["whatsapp_bulk_media_batches"].find_one({
+        "branch_id": branch_id, "idempotency_key": idempotency_key,
+        "result": {"$exists": True}}, {"_id": 0})
+    if legacy and legacy.get("result"):
+        return legacy["result"]
+    legacy_inflight = await _db["whatsapp_bulk_media_batches"].find_one({
+        "branch_id": branch_id, "idempotency_key": idempotency_key,
+        "status": {"$in": ["processing", "unknown"]}})
+    if legacy_inflight:
+        raise HTTPException(
+            status_code=409,
+            detail="A legacy send with this key has an uncertain outcome; reconcile it before retrying",
         )
-        existing = await batches.find_one(
-            {"branch_id": branch_id, "idempotency_key": idempotency_key},
-            {"_id": 0},
-        )
-        if existing:
-            if existing.get("result"):
-                return existing["result"]
-            raise HTTPException(status_code=409, detail="This batch is already being sent")
-        try:
-            await batches.insert_one({
-                "branch_id": branch_id,
-                "idempotency_key": idempotency_key,
-                "status": "processing",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-        except DuplicateKeyError:
-            raise HTTPException(status_code=409, detail="This batch is already being sent")
+    existing = await whatsapp_bulk_jobs.get_job_by_key(branch_id, idempotency_key)
+    if existing:
+        if response is not None:
+            response.status_code = 202
+        return existing
 
-        reservation = None
-        if provider in {"waha", "whatsflow"}:
-            try:
-                reservation = await _reserve_waha_campaign_quota(
-                    branch_id, int(config.get("waha_daily_limit") or 30), len(recipients)
-                )
-            except HTTPException:
-                await batches.update_one(
-                    {"branch_id": branch_id, "idempotency_key": idempotency_key},
-                    {"$set": {"status": "quota_rejected"}},
-                )
-                raise
-        media_id = await _upload_meta_bulk_media(content, filename, mime_type, config) if provider == "meta_cloud" else None
-        whatsflow_media = (
-            base64.b64encode(content).decode("ascii")
-            if provider == "whatsflow"
-            else None
-        )
-        semaphore = asyncio.Semaphore(5)
+    # Reuse the campaign attachment chunk collections; job documents only keep
+    # tenant/branch-scoped references and no media touches the filesystem.
+    stored = []
+    try:
+        for upload, item in zip(uploads, media_items):
+            await upload.seek(0)
+            ref = await _store_campaign_attachment(branch_id, upload)
+            ref.update({"media_type": item["media_type"], "filename": item["filename"],
+                        "mime_type": item["mime_type"]})
+            stored.append(ref)
+        job, created = await whatsapp_bulk_jobs.enqueue(
+            branch_id, provider,
+            [{"phone": r.phone, "message": r.message.strip()} for r in recipients],
+            idempotency_key, stored)
+        if not created:
+            for ref in stored:
+                await _delete_campaign_attachment(branch_id, ref.get("attachment_id"))
+            stored = []
+    except Exception:
+        # Once enqueue persisted the authoritative idempotency/job record, its
+        # media remains owned by that retained failed/initializing job. Only
+        # clean up when no job was committed at all.
+        owner = await whatsapp_bulk_jobs.get_job_by_key(branch_id, idempotency_key)
+        if not owner:
+            for ref in stored:
+                await _delete_campaign_attachment(branch_id, ref.get("attachment_id"))
+        raise
+    if response is not None:
+        response.status_code = 202
+    return job
 
-        async def send_one(index: int, recipient: BulkCloudRecipient):
-            async with semaphore:
-                if provider == "waha":
-                    chat_id = _waha_chat_id(_format_cloud_phone(recipient.phone))
-                    physical_session = config.get("waha_physical_session_id") or _waha_physical_session_id(
-                        branch_id, config.get("waha_session_name") or "")
-                    success, _, _ = await WAHAClient().send_media(physical_session, chat_id, content,
-                        mime_type, filename, recipient.message.strip(), image=media_type == "image")
-                elif provider == "whatsflow":
-                    success, _, _ = await _whatsflow_client(config).send_media(
-                        _format_cloud_phone(recipient.phone),
-                        media_type,
-                        mime_type,
-                        recipient.message.strip(),
-                        whatsflow_media,
-                        filename,
-                    )
-                else:
-                    success = await _send_meta_media_template(recipient.phone, recipient.message.strip(), media_id,
-                        media_type, filename, config)
-            try:
-                await _db["whatsapp_send_log"].insert_one({
-                    "phone": _format_cloud_phone(recipient.phone).split("@")[0],
-                    "message": recipient.message.strip(),
-                    "success": success,
-                    "sent_at": datetime.now(timezone.utc).isoformat(),
-                    "manual": True,
-                    "type": f"bulk_cloud_{media_type}",
-                    "branch_id": branch_id,
-                    "transport": provider,
-                    "filename": filename,
-                })
-            except Exception as exc:
-                logger.warning("Could not save bulk media WhatsApp log: %s", type(exc).__name__)
-            return index, success
 
-        try:
-            results = await asyncio.gather(*[
-                send_one(index, recipient)
-                for index, recipient in enumerate(recipients)
-            ])
-        except Exception:
-            if provider in {"waha", "whatsflow"}:
-                await _release_waha_campaign_quota(reservation["_id"], len(recipients))
-            raise
-        failed_indices = [index for index, success in results if not success]
-        sent = len(results) - len(failed_indices)
-        quota = None
-        if provider in {"waha", "whatsflow"}:
-            await _release_waha_campaign_quota(reservation["_id"], len(failed_indices))
-            quota = await _get_waha_campaign_quota(branch_id, int(config.get("waha_daily_limit") or 30))
-        result = {
-            "success": sent > 0,
-            "media_type": media_type,
-            "total": len(results),
-            "sent": sent,
-            "failed": len(failed_indices),
-            "failed_indices": failed_indices,
-            **({"provider": provider, "used": quota["used"], "remaining": quota["remaining"]}
-               if provider in {"waha", "whatsflow"} else {}),
-        }
-        await batches.update_one(
-            {"branch_id": branch_id, "idempotency_key": idempotency_key},
-            {"$set": {
-                "status": "completed",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "result": result,
-            }},
-        )
-        return result
+@router.get("/branch-cloud/jobs")
+async def list_branch_cloud_jobs(
+    branch_id: str, current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    return await whatsapp_bulk_jobs.list_jobs(branch_id)
+
+
+@router.get("/branch-cloud/jobs/{job_id}")
+async def get_branch_cloud_job(
+    job_id: str, branch_id: str, current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    job = await whatsapp_bulk_jobs.get_job(job_id, branch_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Campaign job not found")
+    return job
+
+
+@router.post("/branch-cloud/jobs/{job_id}/cancel")
+async def cancel_branch_cloud_job(
+    job_id: str, branch_id: str, current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    job = await whatsapp_bulk_jobs.cancel(job_id, branch_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Campaign job not found")
+    return job
+
+
+@router.post("/branch-cloud/jobs/reconcile-lane")
+async def reconcile_branch_cloud_lane(
+    branch_id: str, confirmed_no_dispatch_risk: bool = False,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    reconciled = await whatsapp_bulk_jobs.reconcile_lane(
+        branch_id, confirmed_no_dispatch_risk=confirmed_no_dispatch_risk)
+    if not reconciled:
+        raise HTTPException(status_code=409, detail="This branch lane is not frozen")
+    return {"success": True, "cooldown_seconds": whatsapp_bulk_jobs.MIN_INTERVAL_SECONDS}
 
 
 @router.post("/branch-cloud/{branch_id}/test")

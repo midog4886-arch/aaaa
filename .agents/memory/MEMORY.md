@@ -1,3 +1,4 @@
+- [Campaign pacing safety](campaign-pacing-safety.md) — daily quota is not pacing; prevent branch-wide bursts and never automatically retry uncertain delivery.
 - [Campaign draft boundaries](campaign-draft-boundaries.md) — proposed times are advisory; draft creation never authorizes unattended sending.
 - [التواصل page is WhatsAppPage](communication-page-whatsapppage.md) — internal-messages UI lives in WhatsAppPage 'internal' tab at /admin/whatsapp; pages/MessagesPage.js is unrouted dead code.
 - [Invoices page duplicate tables](invoices-page-duplicate-tables.md) — /invoices renders pages/InvoicesPage.js, NOT pages/invoices/* table; check App.js routing before editing lookalike components.

@@ -2,7 +2,9 @@ import asyncio
 import hashlib
 import hmac
 import json
+import pytest
 from datetime import date, datetime
+from starlette.responses import Response
 
 from routes import whatsapp as whatsapp_mod
 
@@ -232,34 +234,29 @@ def test_bulk_cloud_send_uses_selected_branch_and_messages(monkeypatch):
     })
     monkeypatch.setattr(whatsapp_mod, "_db", db)
     seen = []
-
-    async def fake_meta(phone, message, config):
-        seen.append((phone, message, config["branch_id"]))
-        return True
-
-    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_meta)
+    async def enqueue(branch, provider, recipients, key):
+        seen.append((branch, provider, recipients, key))
+        return {"id": "job-1", "status": "pending", "total": 2, "pending": 2}, True
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", enqueue)
+    http_response = Response()
     result = run(whatsapp_mod.send_branch_cloud_bulk(
         whatsapp_mod.BulkCloudSendRequest(
             branch_id="branch-b",
+            idempotency_key="bulk-text-key-123",
             recipients=[
                 {"phone": "0501234567", "message": "أهلاً محمد"},
                 {"phone": "0509876543", "message": "أهلاً سارة"},
             ],
         ),
-        current_user={"is_admin": True},
+        current_user={"is_admin": True}, response=http_response,
     ))
 
-    assert result == {
-        "success": True,
-        "total": 2,
-        "sent": 2,
-        "failed": 0,
-        "failed_indices": [],
-    }
-    assert seen == [
-        ("966501234567@s.whatsapp.net", "أهلاً محمد", "branch-b"),
-        ("966509876543@s.whatsapp.net", "أهلاً سارة", "branch-b"),
-    ]
+    assert result == {"id": "job-1", "status": "pending", "total": 2, "pending": 2}
+    assert http_response.status_code == 202
+    assert seen[0][0:2] == ("branch-b", "meta_cloud")
+    assert seen[0][2] == [
+        {"phone": "0501234567", "message": "أهلاً محمد"},
+        {"phone": "0509876543", "message": "أهلاً سارة"}]
 
 
 def test_bulk_cloud_accepts_messages_permission_and_preserves_international_numbers(monkeypatch):
@@ -274,15 +271,14 @@ def test_bulk_cloud_accepts_messages_permission_and_preserves_international_numb
     })
     monkeypatch.setattr(whatsapp_mod, "_db", db)
     seen = []
-
-    async def fake_meta(phone, message, config):
-        seen.append(phone)
-        return True
-
-    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_meta)
+    async def enqueue(_branch, _provider, recipients, _key):
+        seen.extend(item["phone"] for item in recipients)
+        return {"id": "job-2", "sent": 0, "pending": 2}, True
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", enqueue)
     result = run(whatsapp_mod.send_branch_cloud_bulk(
         whatsapp_mod.BulkCloudSendRequest(
             branch_id="branch-a",
+            idempotency_key="international-key-123",
             recipients=[
                 {"phone": "201001234567", "message": "Egypt"},
                 {"phone": "+14155552671", "message": "International"},
@@ -295,10 +291,10 @@ def test_bulk_cloud_accepts_messages_permission_and_preserves_international_numb
         },
     ))
 
-    assert result["sent"] == 2
+    assert result["pending"] == 2
     assert seen == [
-        "201001234567@s.whatsapp.net",
-        "14155552671@s.whatsapp.net",
+        "201001234567",
+        "+14155552671",
     ]
 
 
@@ -308,6 +304,7 @@ def test_bulk_cloud_send_rejects_branch_outside_user_scope(monkeypatch):
         run(whatsapp_mod.send_branch_cloud_bulk(
             whatsapp_mod.BulkCloudSendRequest(
                 branch_id="branch-b",
+                idempotency_key="denied-branch-key-123",
                 recipients=[{"phone": "0501234567", "message": "hello"}],
             ),
             current_user={
@@ -509,19 +506,18 @@ def test_bulk_pdf_upload_uses_document_template(monkeypatch):
         "media_templates_confirmed": True,
     })
     monkeypatch.setattr(whatsapp_mod, "_db", db)
-    uploaded = []
-    sent = []
-
-    async def fake_upload(content, filename, mime_type, config):
-        uploaded.append((content, filename, mime_type, config["branch_id"]))
-        return "media-1"
-
-    async def fake_send(phone, message, media_id, media_type, filename, config):
-        sent.append((phone, message, media_id, media_type, filename, config["branch_id"]))
-        return True
-
-    monkeypatch.setattr(whatsapp_mod, "_upload_meta_bulk_media", fake_upload)
-    monkeypatch.setattr(whatsapp_mod, "_send_meta_media_template", fake_send)
+    queued = []
+    async def no_existing(*_args):
+        return None
+    async def store(_branch, _upload):
+        return {"attachment_id": "stored-pdf", "attachment_name": "offer.pdf",
+                "attachment_type": "application/pdf", "attachment_size": 13}
+    async def enqueue(branch, provider, recipients, key, attachments):
+        queued.append((branch, provider, recipients, key, attachments))
+        return {"id": "media-job", "status": "pending", "total": 1, "pending": 1}, True
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "get_job_by_key", no_existing)
+    monkeypatch.setattr(whatsapp_mod, "_store_campaign_attachment", store)
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", enqueue)
 
     class _Upload:
         filename = "offer.pdf"
@@ -533,6 +529,8 @@ def test_bulk_pdf_upload_uses_document_template(monkeypatch):
                 return b""
             self.done = True
             return b"%PDF-1.7 test"
+        async def seek(self, _offset):
+            self.done = False
 
     result = run(whatsapp_mod.send_branch_cloud_bulk_media(
         branch_id="branch-a",
@@ -545,10 +543,240 @@ def test_bulk_pdf_upload_uses_document_template(monkeypatch):
         current_user={"is_admin": True},
     ))
 
-    assert result["sent"] == 1
-    assert result["media_type"] == "document"
-    assert uploaded[0][1:3] == ("offer.pdf", "application/pdf")
-    assert sent[0][2:5] == ("media-1", "document", "offer.pdf")
+    assert result["status"] == "pending"
+    assert queued[0][0:2] == ("branch-a", "meta_cloud")
+    assert queued[0][4][0]["media_type"] == "document"
+    assert queued[0][4][0]["attachment_id"] == "stored-pdf"
+
+
+def test_multi_image_waha_reserves_actual_messages_and_refunds_only_failures(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_daily_limit": 50, "waha_session_name": "main",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    monkeypatch.setattr(whatsapp_mod, "_waha_config_for_branch", lambda _config: True)
+    queued = []
+    async def no_existing(*_args):
+        return None
+    async def store(_branch, upload):
+        return {"attachment_id": upload.filename, "attachment_name": upload.filename,
+                "attachment_type": "image/png", "attachment_size": 13}
+    async def enqueue(branch, provider, recipients, key, attachments):
+        queued.append((branch, provider, recipients, key, attachments))
+        return {"id": "images-job", "status": "pending", "total": 4, "pending": 4}, True
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "get_job_by_key", no_existing)
+    monkeypatch.setattr(whatsapp_mod, "_store_campaign_attachment", store)
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", enqueue)
+
+    class Upload:
+        content_type = "image/png"
+        def __init__(self, filename):
+            self.filename = filename
+            self.done = False
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\nimage"
+        async def seek(self, _offset):
+            self.done = False
+
+    result = run(whatsapp_mod.send_branch_cloud_bulk_media(
+        branch_id="branch-a",
+        recipients_json=json.dumps([
+            {"phone": "966500000001", "message": "First"},
+            {"phone": "966500000002", "message": "Second"},
+        ]),
+        idempotency_key="multi-image-batch-123",
+        attachment=None,
+        attachments=[Upload("first.png"), Upload("second.png")],
+        current_user={"is_admin": True},
+    ))
+
+    assert result["total"] == 4
+    assert result["pending"] == 4
+    assert [item["attachment_id"] for item in queued[0][4]] == ["first.png", "second.png"]
+
+
+def test_bulk_media_completed_legacy_idempotency_row_returns_without_resend(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_daily_limit": 50, "waha_session_name": "main",
+    })
+    legacy_result = {
+        "success": True, "total": 1, "sent": 1, "failed": 0,
+        "failed_indices": [],
+    }
+    # This is the pre-change shape: no tenant_slug field.
+    db["whatsapp_bulk_media_batches"].rows.append({
+        "branch_id": "branch-a", "idempotency_key": "legacy-completed-123",
+        "status": "completed", "result": legacy_result,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    monkeypatch.setattr(whatsapp_mod, "_waha_config_for_branch", lambda _config: True)
+
+    async def must_not_reserve(*_args):
+        raise AssertionError("completed retry must not reserve quota")
+
+    class Client:
+        async def send_media(self, *_args, **_kwargs):
+            raise AssertionError("completed retry must not send")
+
+    monkeypatch.setattr(whatsapp_mod, "_reserve_waha_campaign_quota", must_not_reserve)
+    monkeypatch.setattr(whatsapp_mod, "WAHAClient", lambda: Client())
+
+    class Upload:
+        filename = "image.png"
+        content_type = "image/png"
+        done = False
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\nimage"
+
+    result = run(whatsapp_mod.send_branch_cloud_bulk_media(
+        branch_id="branch-a",
+        recipients_json=json.dumps([{"phone": "966500000001", "message": "Hello"}]),
+        idempotency_key="legacy-completed-123",
+        attachment=Upload(), attachments=None,
+        current_user={"is_admin": True},
+    ))
+    assert result == legacy_result
+
+
+def test_bulk_media_legacy_processing_key_fails_closed_without_enqueue(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_daily_limit": 50, "waha_session_name": "main",
+    })
+    db["whatsapp_bulk_media_batches"].rows.append({
+        "branch_id": "branch-a", "idempotency_key": "legacy-processing-123",
+        "status": "processing",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    monkeypatch.setattr(whatsapp_mod, "_waha_config_for_branch", lambda _config: True)
+    async def must_not_enqueue(*_args):
+        raise AssertionError("uncertain legacy batch must not enqueue")
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", must_not_enqueue)
+    class Upload:
+        filename = "image.png"
+        content_type = "image/png"
+        done = False
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\nimage"
+    with pytest.raises(Exception) as exc:
+        run(whatsapp_mod.send_branch_cloud_bulk_media(
+            branch_id="branch-a",
+            recipients_json=json.dumps([{"phone": "966500000001", "message": "Hello"}]),
+            idempotency_key="legacy-processing-123",
+            attachment=Upload(), attachments=None, current_user={"is_admin": True}))
+    assert getattr(exc.value, "status_code", None) == 409
+
+
+def test_media_owned_by_retained_failed_job_is_not_deleted(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "enabled": True, "phone_number_id": "111",
+        "access_token_encrypted": "encrypted", "image_template_name": "image",
+        "media_templates_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    lookups = {"count": 0}
+    async def owner_lookup(*_args):
+        lookups["count"] += 1
+        return None if lookups["count"] == 1 else {
+            "id": "retained-job", "status": "initialization_failed"}
+    async def store(*_args):
+        return {"attachment_id": "owned-media", "attachment_name": "image.png",
+                "attachment_type": "image/png", "attachment_size": 9}
+    async def fail_enqueue(*_args):
+        raise RuntimeError("final parent activation failed")
+    deleted = []
+    async def delete(*args):
+        deleted.append(args)
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "get_job_by_key", owner_lookup)
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", fail_enqueue)
+    monkeypatch.setattr(whatsapp_mod, "_store_campaign_attachment", store)
+    monkeypatch.setattr(whatsapp_mod, "_delete_campaign_attachment", delete)
+    class Upload:
+        filename = "image.png"
+        content_type = "image/png"
+        done = False
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\nimage"
+        async def seek(self, _offset):
+            self.done = False
+    with pytest.raises(RuntimeError):
+        run(whatsapp_mod.send_branch_cloud_bulk_media(
+            branch_id="branch-a",
+            recipients_json=json.dumps([{"phone": "966500000001", "message": "Hello"}]),
+            idempotency_key="retained-media-key-123", attachment=Upload(),
+            attachments=None, current_user={"is_admin": True}))
+    assert deleted == []
+
+
+def test_bulk_media_same_branch_and_key_are_isolated_by_tenant_database(monkeypatch):
+    monkeypatch.setattr(whatsapp_mod, "_waha_config_for_branch", lambda _config: True)
+    current = {"db": None}
+    jobs_by_db = {}
+    async def get_existing(branch, key):
+        return jobs_by_db.get((id(current["db"]), branch, key))
+    async def store(_branch, upload):
+        return {"attachment_id": upload.marker.decode(), "attachment_name": "image.png",
+                "attachment_type": "image/png", "attachment_size": 9}
+    async def enqueue(branch, _provider, _recipients, key, _attachments):
+        job = {"id": f"job-{len(jobs_by_db)}", "status": "pending", "total": 1, "pending": 1}
+        jobs_by_db[(id(current["db"]), branch, key)] = job
+        return job, True
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "get_job_by_key", get_existing)
+    monkeypatch.setattr(whatsapp_mod, "_store_campaign_attachment", store)
+    monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", enqueue)
+
+    class Upload:
+        filename = "image.png"
+        content_type = "image/png"
+        def __init__(self, marker):
+            self.marker = marker
+            self.done = False
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\n" + self.marker
+        async def seek(self, _offset):
+            self.done = False
+
+    tenant_dbs = [_DB(), _DB()]
+    for db in tenant_dbs:
+        db["whatsapp_branch_configs"].rows.append({
+            "branch_id": "branch-a", "provider": "waha", "enabled": True,
+            "waha_daily_limit": 50, "waha_session_name": "main",
+        })
+    for index, db in enumerate(tenant_dbs):
+        # TenantDBProxy performs this database selection in production.
+        monkeypatch.setattr(whatsapp_mod, "_db", db)
+        current["db"] = db
+        result = run(whatsapp_mod.send_branch_cloud_bulk_media(
+            branch_id="branch-a",
+            recipients_json=json.dumps([{"phone": "966500000001", "message": "Hello"}]),
+            idempotency_key="same-key-each-tenant",
+            attachment=Upload(str(index).encode()), attachments=None,
+            current_user={"is_admin": True},
+        ))
+        assert result["pending"] == 1
+    assert len(jobs_by_db) == 2
+    assert len({job["id"] for job in jobs_by_db.values()}) == 2
 
 
 def test_attendance_notice_uses_branch_specific_template(monkeypatch):

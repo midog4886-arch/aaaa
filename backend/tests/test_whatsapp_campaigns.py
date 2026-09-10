@@ -183,7 +183,7 @@ def test_campaign_permission_and_phone_privacy_use_current_db_user(campaign_env)
 
 def test_campaign_attachment_is_durable_bounded_and_deleted(campaign_env):
     db, _tenant = campaign_env
-    payload = b"\x89PNG\r\n" + (b"x" * (whatsapp.CAMPAIGN_ATTACHMENT_CHUNK_SIZE * 2 + 17))
+    payload = b"\x89PNG\r\n\x1a\n" + (b"x" * (whatsapp.CAMPAIGN_ATTACHMENT_CHUNK_SIZE * 2 + 17))
     upload = UploadFile(
         io.BytesIO(payload),
         filename="offer.png",
@@ -216,7 +216,7 @@ def test_campaign_attachment_is_durable_bounded_and_deleted(campaign_env):
 def test_attachment_replacement_keeps_old_when_campaign_switch_fails(campaign_env):
     db, _tenant = campaign_env
     old_upload = UploadFile(
-        io.BytesIO(b"old"),
+        io.BytesIO(b"%PDF-old"),
         filename="old.pdf",
         headers=Headers({"content-type": "application/pdf"}),
     )
@@ -224,7 +224,7 @@ def test_attachment_replacement_keeps_old_when_campaign_switch_fails(campaign_en
     old_id = db["whatsapp_campaigns"].rows[0]["attachment_id"]
     db["whatsapp_campaigns"].fail_update = True
     new_upload = UploadFile(
-        io.BytesIO(b"new"),
+        io.BytesIO(b"%PDF-new"),
         filename="new.pdf",
         headers=Headers({"content-type": "application/pdf"}),
     )
@@ -238,3 +238,64 @@ def test_attachment_replacement_keeps_old_when_campaign_switch_fails(campaign_en
     assert db["whatsapp_campaigns"].rows[0]["attachment_id"] == old_id
     assert {row["attachment_id"] for row in db["whatsapp_campaign_attachments"].rows} == {old_id}
     assert {row["attachment_id"] for row in db["whatsapp_campaign_attachment_chunks"].rows} == {old_id}
+
+
+def image_upload(name, marker=b"x"):
+    return UploadFile(
+        io.BytesIO(b"\x89PNG\r\n\x1a\n" + marker),
+        filename=name,
+        headers=Headers({"content-type": "image/png"}),
+    )
+
+
+def test_multiple_images_round_trip_in_order_and_legacy_attachment_still_loads(campaign_env):
+    db, _tenant = campaign_env
+    created = run(whatsapp.create_campaign(
+        branch_id="branch-a", name="Gallery", message="Hello",
+        audience="pasted", proposed_send_at="", default_name="",
+        recipients_json="[]", attachment=None,
+        attachments=[image_upload("first.png", b"1"), image_upload("second.png", b"2")],
+        current_user=ADMIN,
+    ))
+    assert created["attachment_count"] == 2
+    assert [item["attachment_name"] for item in created["attachments"]] == [
+        "first.png", "second.png",
+    ]
+
+    second = run(whatsapp.get_campaign_attachment(
+        created["id"], "branch-a", ADMIN, index=1
+    ))
+    async def read_response(response):
+        return b"".join([part async for part in response.body_iterator])
+    assert run(read_response(second)).endswith(b"2")
+
+    # Old campaign rows with only attachment_id remain readable.
+    stored = db["whatsapp_campaigns"].rows[0]
+    stored.pop("attachments")
+    stored.pop("attachment_ids")
+    loaded = run(whatsapp.get_campaign(created["id"], "branch-a", ADMIN))
+    assert loaded["attachment_count"] == 1
+    assert loaded["attachments"][0]["attachment_name"] == "first.png"
+
+
+def test_campaign_rejects_mixed_pdf_images_and_more_than_ten(campaign_env):
+    pdf = UploadFile(
+        io.BytesIO(b"%PDF-1.7"),
+        filename="offer.pdf",
+        headers=Headers({"content-type": "application/pdf"}),
+    )
+    with pytest.raises(HTTPException, match="PDF cannot be mixed"):
+        run(whatsapp.create_campaign(
+            branch_id="branch-a", name="Mixed", message="Hello",
+            audience="pasted", proposed_send_at="", default_name="",
+            recipients_json="[]", attachment=None,
+            attachments=[image_upload("image.png"), pdf], current_user=ADMIN,
+        ))
+    with pytest.raises(HTTPException, match="at most 10"):
+        run(whatsapp.create_campaign(
+            branch_id="branch-a", name="Too many", message="Hello",
+            audience="pasted", proposed_send_at="", default_name="",
+            recipients_json="[]", attachment=None,
+            attachments=[image_upload(f"{index}.png") for index in range(11)],
+            current_user=ADMIN,
+        ))

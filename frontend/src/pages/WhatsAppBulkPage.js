@@ -129,7 +129,10 @@ export default function WhatsAppBulkPage() {
   const [branchId, setBranchId] = useState(selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '');
   const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, provider: 'meta_cloud', configured: false, connected: false, template_configured: false, daily_limit: 0, daily_used: 0, daily_remaining: 0 });
   const [cloudSending, setCloudSending] = useState(false);
-  const [attachment, setAttachment] = useState(null);
+  const [cloudJobs, setCloudJobs] = useState([]);
+  const [cloudJobsPollVersion, setCloudJobsPollVersion] = useState(0);
+  const enqueueKey = useRef(null);
+  const [attachments, setAttachments] = useState([]);
   const [campaignName, setCampaignName] = useState('');
   const [campaignId, setCampaignId] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
@@ -152,6 +155,12 @@ export default function WhatsAppBulkPage() {
   const usesName = nameTokenRe().test(message);
   const isWaha = cloudStatus.provider === 'waha';
   const isSessionProvider = isWaha || cloudStatus.provider === 'whatsflow';
+  const attachment = attachments[0] || null;
+  const attachmentPreviews = useMemo(
+    () => attachments.map(file => file.type === 'application/pdf' ? null : URL.createObjectURL(file)),
+    [attachments]
+  );
+  useEffect(() => () => attachmentPreviews.forEach(url => url && URL.revokeObjectURL(url)), [attachmentPreviews]);
   const selectedTemplateReady = isSessionProvider || (attachment
     ? (
         attachment.type === 'application/pdf'
@@ -198,6 +207,33 @@ export default function WhatsAppBulkPage() {
     return () => { cancelled = true; };
   }, [branchId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    let timer;
+    if (!branchId) {
+      setCloudJobs([]);
+      return undefined;
+    }
+    const poll = async () => {
+      try {
+        const response = await whatsappAPI.listBranchCloudJobs(branchId);
+        if (cancelled) return;
+        const jobs = Array.isArray(response.data) ? response.data : [];
+        setCloudJobs(jobs);
+        if (jobs.some(job => ['pending', 'processing', 'paused'].includes(job.status))) {
+          timer = window.setTimeout(poll, 5000);
+        }
+      } catch (_) {
+        if (!cancelled) timer = window.setTimeout(poll, 15000);
+      }
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [branchId, cloudJobsPollVersion]);
+
   const loadCampaigns = async () => {
     const generation = ++campaignListGeneration.current;
     const requestedBranch = branchId;
@@ -230,7 +266,7 @@ export default function WhatsAppBulkPage() {
     setAudience('pasted');
     setPasteText('');
     setItems([]);
-    setAttachment(null);
+    setAttachments([]);
     setStoredAttachment(false);
     setRemoveStoredAttachment(false);
     setCampaignLoading(false);
@@ -284,7 +320,7 @@ export default function WhatsAppBulkPage() {
     setProposedSendAt('');
     setAudience('pasted');
     setItems([]);
-    setAttachment(null);
+    setAttachments([]);
     setStoredAttachment(false);
     setRemoveStoredAttachment(false);
   };
@@ -310,15 +346,24 @@ export default function WhatsAppBulkPage() {
         await refreshAudience(draft.audience);
         if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
       }
-      setAttachment(null);
+      setAttachments([]);
       setStoredAttachment(Boolean(draft.has_attachment));
       setRemoveStoredAttachment(false);
       if (draft.has_attachment) {
         try {
-          const media = await whatsappAPI.getCampaignAttachment(id, branchId);
+          const metadata = draft.attachments?.length ? draft.attachments : [{
+            attachment_name: draft.attachment_name,
+            attachment_type: draft.attachment_type
+          }];
+          const mediaResponses = await Promise.all(
+            metadata.map((_, index) => whatsappAPI.getCampaignAttachment(id, branchId, index))
+          );
           if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
-          const filename = draft.attachment_name || 'attachment';
-          setAttachment(new File([media.data], filename, { type: draft.attachment_type || media.data.type }));
+          setAttachments(mediaResponses.map((media, index) => new File(
+            [media.data],
+            metadata[index].attachment_name || `attachment-${index + 1}`,
+            { type: metadata[index].attachment_type || media.data.type }
+          )));
         } catch (error) {
           toast.error(t('تعذر تحميل مرفق المسودة؛ لن يتم إسقاطه عند الحفظ', 'Could not load the draft attachment; it will not be dropped when saving'));
         }
@@ -350,7 +395,7 @@ export default function WhatsAppBulkPage() {
     formData.append('recipients_json', JSON.stringify(
       audience === 'pasted' ? items.map(item => ({ name: item.name, phone: item.phone })) : []
     ));
-    if (attachment) formData.append('attachment', attachment);
+    attachments.forEach(file => formData.append('attachments', file));
     if (removeStoredAttachment) formData.append('remove_attachment', 'true');
     setDraftSaving(true);
     try {
@@ -394,7 +439,7 @@ export default function WhatsAppBulkPage() {
 
   const previewItem = validItems[0];
   const previewText = message.trim() ? personalize(message, previewItem?.name) : '';
-  const quotaExceeded = isSessionProvider && validItems.length > Number(cloudStatus.daily_remaining || 0);
+  const automaticMessageCount = validItems.length * Math.max(attachments.length, 1);
 
   const mergeNewItems = (parsedRows) => {
     const fresh = rowsToItems(parsedRows);
@@ -490,6 +535,10 @@ export default function WhatsAppBulkPage() {
       toast.error(t('لا توجد أرقام صالحة للإرسال', 'No valid numbers to send'));
       return;
     }
+    if (attachments.length && !window.confirm(t(
+      'فتح واتساب يدوياً لا يرفق الملفات تلقائياً. سيتم فتح النص فقط، وعليك إرفاق الصور أو PDF بنفسك. المتابعة؟',
+      'Manual WhatsApp cannot attach these files automatically. Only the text will open; attach the images or PDF yourself. Continue?'
+    ))) return;
     if (!message.trim()) {
       if (!window.confirm(t('الرسالة فارغة. المتابعة بدون رسالة؟', 'Message is empty. Continue anyway?'))) return;
     }
@@ -513,7 +562,7 @@ export default function WhatsAppBulkPage() {
       toast.error(t('انتظر حتى يكتمل تحديث الجمهور', 'Wait for the audience refresh to finish'));
       return;
     }
-    if (storedAttachment && !removeStoredAttachment && !attachment) {
+    if (storedAttachment && !removeStoredAttachment && !attachments.length) {
       toast.error(t('مرفق المسودة غير محمّل. أعد تحميل الحملة قبل الإرسال.', 'The draft attachment is not loaded. Reload the campaign before sending.'));
       return;
     }
@@ -537,14 +586,10 @@ export default function WhatsAppBulkPage() {
       toast.error(t('الحد الأقصى للإرسال التلقائي هو 200 رقم في الدفعة', 'Automatic sending is limited to 200 recipients per batch'));
       return;
     }
-    if (quotaExceeded) {
-      toast.error(t(`تتجاوز القائمة الرصيد اليومي المتبقي (${cloudStatus.daily_remaining})`, `Recipient count exceeds the remaining daily quota (${cloudStatus.daily_remaining})`));
-      return;
-    }
     const branchName = branches.find(branch => branch.id === branchId)?.name || '';
     if (!window.confirm(t(
-      `سيتم إرسال ${validItems.length} رسالة تلقائياً من API فرع «${branchName}». هل تريد المتابعة؟`,
-      `Send ${validItems.length} messages automatically using the “${branchName}” branch API?`
+       `ستتم إضافة ${automaticMessageCount} رسالة إلى قائمة الانتظار (لم تُرسل بعد). الفاصل دقيقة واحدة على الأقل والمدة التقديرية ${Math.max(0, automaticMessageCount - 1)} دقيقة. لا يشمل هذا الحد إشعارات المعاملات. هل تريد المتابعة؟`,
+       `Queue ${automaticMessageCount} message(s) (queued is not sent). At least one minute apart; estimated minimum ${Math.max(0, automaticMessageCount - 1)} minute(s). Transactional notices are not affected. Continue?`
     ))) return;
 
     setCloudSending(true);
@@ -554,25 +599,23 @@ export default function WhatsAppBulkPage() {
         message: personalize(message.trim(), item.name)
       }));
       let response;
-      if (attachment) {
+      const idempotencyKey = enqueueKey.current || crypto.randomUUID();
+      enqueueKey.current = idempotencyKey;
+      if (attachments.length) {
         const formData = new FormData();
         formData.append('branch_id', branchId);
         formData.append('recipients_json', JSON.stringify(recipients));
-        formData.append('idempotency_key', crypto.randomUUID());
-        formData.append('attachment', attachment);
+        formData.append('idempotency_key', idempotencyKey);
+        attachments.forEach(file => formData.append('attachments', file));
         response = await whatsappAPI.sendBranchCloudBulkMedia(formData);
       } else {
-        response = await whatsappAPI.sendBranchCloudBulk(branchId, recipients);
+        response = await whatsappAPI.sendBranchCloudBulk(branchId, recipients, idempotencyKey);
       }
-      const { sent = 0, failed = 0 } = response.data || {};
-      if (failed > 0) {
-        toast.warning(t(
-          `تم إرسال ${sent} رسالة، وفشل إرسال ${failed}`,
-          `${sent} sent; ${failed} failed`
-        ));
-      } else {
-        toast.success(t(`تم إرسال ${sent} رسالة بنجاح`, `${sent} messages sent successfully`));
-      }
+      const job = response.data || {};
+      setCloudJobs(current => [job, ...current.filter(item => item.id !== job.id)]);
+      setCloudJobsPollVersion(value => value + 1);
+      enqueueKey.current = null;
+      toast.success(t('تمت الإضافة إلى قائمة الانتظار؛ لم يتم الإرسال بعد', 'Queued successfully; no message has been sent yet'));
     } catch (error) {
       toast.error(error.response?.data?.detail || t('فشل الإرسال عبر API الفرع', 'Branch API sending failed'));
     } finally {
@@ -587,7 +630,7 @@ export default function WhatsAppBulkPage() {
     const ni = waIdx + 1;
     if (ni >= waQueue.length) {
       setWaQueue([]); setWaIdx(0);
-      toast.success(t('تم إرسال جميع الرسائل', 'All messages sent'));
+      toast.success(t('تم فتح جميع المحادثات؛ تحقق من الإرسال والمرفقات يدوياً', 'All chats were opened; verify sending and attachments manually'));
     } else {
       setWaIdx(ni);
     }
@@ -946,44 +989,64 @@ export default function WhatsAppBulkPage() {
             <div className="rounded-lg border border-dashed p-3 space-y-2">
               <label className="text-sm font-medium flex items-center gap-2">
                 <Paperclip className="w-4 h-4" />
-                {t('إرفاق صورة أو PDF (اختياري)', 'Attach an image or PDF (optional)')}
+                {t('إرفاق حتى 10 صور أو ملف PDF واحد (اختياري)', 'Attach up to 10 images or one PDF (optional)')}
               </label>
-              {!attachment ? (
+              {(!attachment || attachment.type !== 'application/pdf') && attachments.length < 10 && (
                 <Input
                   type="file"
+                  multiple
                   accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
                   onChange={event => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
+                    const files = Array.from(event.target.files || []);
+                    event.target.value = '';
+                    if (!files.length) return;
                     const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
-                    const limit = file.type === 'application/pdf' ? 20 * 1024 * 1024 : 5 * 1024 * 1024;
-                    if (!allowed.includes(file.type) || file.size > limit) {
+                    if (files.some(file => !allowed.includes(file.type)
+                      || file.size > (file.type === 'application/pdf' ? 20 * 1024 * 1024 : 5 * 1024 * 1024))) {
                       toast.error(t('يسمح بصور JPG/PNG حتى 5MB أو PDF حتى 20MB', 'Use JPG/PNG up to 5MB or PDF up to 20MB'));
-                      event.target.value = '';
                       return;
                     }
-                    setAttachment(file);
+                    const hasPdf = files.some(file => file.type === 'application/pdf');
+                    if ((hasPdf && (files.length > 1 || attachments.length))
+                      || (attachment?.type === 'application/pdf' && files.length)) {
+                      toast.error(t('لا يمكن خلط PDF مع الصور؛ اختر PDF واحداً فقط', 'PDF cannot be mixed with images; select one PDF only'));
+                      return;
+                    }
+                    if (attachments.length + files.length > 10) {
+                      toast.error(t('الحد الأقصى 10 صور', 'Maximum 10 images'));
+                      return;
+                    }
+                    setAttachments(current => [...current, ...files]);
                     setRemoveStoredAttachment(false);
                   }}
                 />
-              ) : (
-                <div className="flex items-center justify-between gap-3 rounded-md bg-muted/40 p-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {attachment.type === 'application/pdf'
-                      ? <FileText className="w-5 h-5 text-red-600 shrink-0" />
-                      : <ImageIcon className="w-5 h-5 text-blue-600 shrink-0" />}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{attachment.name}</p>
-                      <p className="text-xs text-muted-foreground">{(attachment.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
+              )}
+              {attachments.length > 0 && (
+                <>
+                  <p className="text-xs font-medium">
+                    {t(`${attachments.length} مرفق — ترسل الصور بالترتيب كرسائل منفصلة`, `${attachments.length} attachment(s) — images send in order as separate messages`)}
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                    {attachments.map((file, index) => (
+                      <div key={`${file.name}-${file.size}-${index}`} className="relative rounded-md border bg-muted/40 p-2 min-w-0">
+                        {file.type === 'application/pdf'
+                          ? <FileText className="w-10 h-10 mx-auto text-red-600" />
+                          : <img src={attachmentPreviews[index]} alt="" className="w-full h-20 object-cover rounded" />}
+                        <p className="text-xs font-medium truncate mt-1">{file.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        <Button type="button" variant="secondary" size="sm" className="absolute top-1 end-1 h-6 w-6 p-0" onClick={() => {
+                          setAttachments(current => {
+                            const next = current.filter((_, itemIndex) => itemIndex !== index);
+                            if (storedAttachment && !next.length) setRemoveStoredAttachment(true);
+                            return next;
+                          });
+                        }}>
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => {
-                    setAttachment(null);
-                    if (storedAttachment) setRemoveStoredAttachment(true);
-                  }}>
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
+                </>
               )}
              {isSessionProvider && <p className="text-xs text-amber-700">{t(`حد الإرسال اليومي مؤشر تشغيلي داخلي. يجب أن يكون اتصال ${isWaha ? 'WAHA' : 'Whatsflow'} جاهزاً قبل الإرسال.`, `The daily limit is an internal operating guard. ${isWaha ? 'WAHA' : 'Whatsflow'} must be connected before sending.`)}</p>}
              {!isSessionProvider && <p className="text-xs text-muted-foreground">
@@ -992,6 +1055,11 @@ export default function WhatsAppBulkPage() {
                   'Images require an approved IMAGE template; PDFs require an approved DOCUMENT template in branch settings.'
                 )}
                </p>}
+              {attachments.length > 1 && <p className="text-xs text-amber-700">
+                {isSessionProvider
+                  ? t('يضاف نص الرسالة إلى الصورة الأولى فقط؛ بقية الصور ترسل بلا تعليق.', 'The message captions only the first image; later images have no caption.')
+                  : t('يتطلب قالب Meta متغير النص، لذلك يتكرر نص القالب مع كل صورة.', 'Meta’s approved template requires its body variable, so the template text repeats with every image.')}
+              </p>}
             </div>
 
             {usesName && (
@@ -1019,18 +1087,71 @@ export default function WhatsAppBulkPage() {
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected || quotaExceeded) : !selectedTemplateReady)}
+                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !selectedTemplateReady)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />
               {cloudSending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}
-              {t(`إرسال تلقائي إلى ${validItems.length} رقم`, `Automatically send to ${validItems.length}`)}
+              {t(`إرسال ${automaticMessageCount} رسالة إلى ${validItems.length} رقم`, `Send ${automaticMessageCount} message(s) to ${validItems.length}`)}
             </Button>
             <Button onClick={startSend} variant="outline" disabled={!validItems.length || waQueue.length > 0 || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId)}>
               <MessageCircle className="w-4 h-4 ml-1" />
               {t('فتح واتساب يدوياً', 'Open WhatsApp manually')}
             </Button>
             </div>
+            {cloudJobs.length > 0 && (
+              <div className="mt-4 space-y-2" data-testid="cloud-job-progress">
+                {cloudJobs.slice(0, 5).map(job => (
+                  <div key={job.id} className="rounded-md border p-3 text-xs">
+                    <div className="font-medium">{t('حملة تلقائية', 'Automatic campaign')} · {job.status}</div>
+                    <div className="mt-1 text-muted-foreground">
+                      {t('معلّق', 'Pending')}: {job.pending || 0} · {t('تم', 'Sent')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
+                    </div>
+                    {job.lane_frozen && (
+                      <div className="mt-2 rounded bg-amber-50 p-2 text-amber-900">
+                        {t(
+                          'تم تجميد الإرسال لأن نتيجة عملية سابقة غير مؤكدة. تحقق لدى المزود أولاً؛ قد تكون الرسالة وصلت.',
+                          'Sending is frozen because an earlier outcome is uncertain. Check the provider first; the message may have been delivered.'
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 block"
+                          onClick={async () => {
+                            if (!window.confirm(t(
+                              'أكد فقط بعد التحقق من عدم وجود إرسال جارٍ. إعادة التفعيل لا تعيد الرسالة غير المعروفة.',
+                              'Confirm only after verifying no send is still in flight. Recovery will not retry unknown messages.'
+                            ))) return;
+                            try {
+                              await whatsappAPI.reconcileBranchCloudLane(branchId);
+                              setCloudJobsPollVersion(value => value + 1);
+                            } catch (error) {
+                              toast.error(error.response?.data?.detail || t('تعذرت إعادة التفعيل', 'Could not recover the lane'));
+                            }
+                          }}
+                        >{t('تحققت — إعادة تفعيل قائمة الفرع', 'Verified — recover branch queue')}</Button>
+                      </div>
+                    )}
+                    {(job.pending > 0) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={async () => {
+                          try {
+                            const response = await whatsappAPI.cancelBranchCloudJob(branchId, job.id);
+                            setCloudJobs(current => current.map(value => value.id === job.id ? response.data : value));
+                            toast.success(t('أُلغي المتبقي المعلّق فقط؛ لا يمكن سحب الرسالة قيد الإرسال', 'Only remaining pending messages were cancelled; an in-flight send cannot be undone'));
+                          } catch (error) {
+                            toast.error(error.response?.data?.detail || t('تعذر الإلغاء', 'Could not cancel'));
+                          }
+                        }}
+                      >{t('إلغاء المتبقي', 'Cancel remaining')}</Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

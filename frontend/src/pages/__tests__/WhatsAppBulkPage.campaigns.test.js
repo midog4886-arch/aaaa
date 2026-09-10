@@ -17,6 +17,9 @@ jest.mock('../../services/api', () => ({
     previewCampaignAudience: jest.fn(),
     sendBranchCloudBulk: jest.fn(),
     sendBranchCloudBulkMedia: jest.fn(),
+    listBranchCloudJobs: jest.fn(),
+    cancelBranchCloudJob: jest.fn(),
+    reconcileBranchCloudLane: jest.fn(),
   },
 }));
 
@@ -68,6 +71,7 @@ beforeEach(() => {
       has_attachment: false,
     }],
   });
+  whatsappAPI.listBranchCloudJobs.mockResolvedValue({ data: [] });
   whatsappAPI.getCampaign.mockResolvedValue({
     data: {
       id: 'campaign-1',
@@ -80,6 +84,11 @@ beforeEach(() => {
       has_attachment: false,
     },
   });
+  whatsappAPI.updateCampaign.mockResolvedValue({
+    data: { id: 'campaign-1', has_attachment: true },
+  });
+  URL.createObjectURL = jest.fn(() => 'blob:test-preview');
+  URL.revokeObjectURL = jest.fn();
 });
 
 const deferred = () => {
@@ -88,7 +97,7 @@ const deferred = () => {
   return { promise, resolve };
 };
 
-test('renders with exhausted session quota and loads a saved draft without sending', async () => {
+test('daily quota is advisory because a durable queue may continue next day', async () => {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
   const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
   render(<WhatsAppBulkPage />);
@@ -101,9 +110,120 @@ test('renders with exhausted session quota and loads a saved draft without sendi
   expect(screen.getByDisplayValue('Hello {name}')).toBeInTheDocument();
   expect(screen.getByText(/Preview: 1 recipient/)).toBeInTheDocument();
   expect(screen.getByText(/advisory only/i)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Automatically send to 1/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Send 1 message.* to 1/i })).toBeEnabled();
   expect(whatsappAPI.sendBranchCloudBulk).not.toHaveBeenCalled();
   expect(whatsappAPI.sendBranchCloudBulkMedia).not.toHaveBeenCalled();
+});
+
+test('enqueues without claiming sent and renders returned progress', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  window.confirm = jest.fn(() => true);
+  Object.defineProperty(global, 'crypto', {
+    configurable: true, value: { randomUUID: jest.fn(() => 'stable-ui-key-123') },
+  });
+  whatsappAPI.sendBranchCloudBulk.mockResolvedValue({
+    data: {
+      id: 'job-new', status: 'pending', total: 1, pending: 1,
+      sent: 0, failed: 0, unknown: 0,
+    },
+  });
+  whatsappAPI.listBranchCloudJobs
+    .mockResolvedValueOnce({ data: [] })
+    .mockResolvedValue({
+      data: [{
+        id: 'job-new', status: 'pending', total: 1, pending: 1,
+        sent: 0, failed: 0, unknown: 0,
+      }],
+    });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+  await user.click(await screen.findByRole('button', { name: /Welcome draft/i }));
+  await user.click(screen.getByRole('button', { name: /Send 1 message.* to 1/i }));
+
+  await waitFor(() => expect(whatsappAPI.sendBranchCloudBulk).toHaveBeenCalledWith(
+    'branch-a',
+    [{ phone: '966500000001', message: 'Hello Aisha' }],
+    'stable-ui-key-123',
+  ));
+  expect(await screen.findByTestId('cloud-job-progress')).toHaveTextContent('Pending: 1');
+  expect(screen.getByTestId('cloud-job-progress')).toHaveTextContent('Sent: 0');
+});
+
+test('a newly enqueued job starts polling even when the initial server list was empty', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  window.confirm = jest.fn(() => true);
+  Object.defineProperty(global, 'crypto', {
+    configurable: true, value: { randomUUID: jest.fn(() => 'poll-new-key-123') },
+  });
+  whatsappAPI.listBranchCloudJobs
+    .mockResolvedValueOnce({ data: [] })
+    .mockResolvedValue({
+      data: [{
+        id: 'poll-job', status: 'completed', total: 1, pending: 0,
+        sent: 1, failed: 0, unknown: 0,
+      }],
+    });
+  whatsappAPI.sendBranchCloudBulk.mockResolvedValue({
+    data: {
+      id: 'poll-job', status: 'pending', total: 1, pending: 1,
+      sent: 0, failed: 0, unknown: 0,
+    },
+  });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+  await user.click(await screen.findByRole('button', { name: /Welcome draft/i }));
+  await user.click(screen.getByRole('button', { name: /Send 1 message.* to 1/i }));
+  await waitFor(() => expect(whatsappAPI.listBranchCloudJobs.mock.calls.length).toBeGreaterThan(1));
+  await waitFor(() => expect(screen.getByTestId('cloud-job-progress')).toHaveTextContent('Sent: 1'));
+});
+
+test('resumes server progress on reload and cancels only remaining work', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  whatsappAPI.listBranchCloudJobs.mockResolvedValue({
+    data: [{
+      id: 'existing-job', status: 'processing', total: 4, pending: 2,
+      sent: 1, failed: 0, unknown: 1,
+    }],
+  });
+  whatsappAPI.cancelBranchCloudJob.mockResolvedValue({
+    data: {
+      id: 'existing-job', status: 'completed', total: 4, pending: 0,
+      sent: 1, failed: 0, unknown: 1, cancelled: 2,
+    },
+  });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+
+  const progress = await screen.findByTestId('cloud-job-progress');
+  expect(progress).toHaveTextContent('Pending: 2');
+  expect(progress).toHaveTextContent('Sent: 1');
+  expect(progress).toHaveTextContent('Unknown: 1');
+  await user.click(screen.getByRole('button', { name: /Cancel remaining/i }));
+  await waitFor(() => expect(whatsappAPI.cancelBranchCloudJob)
+    .toHaveBeenCalledWith('branch-a', 'existing-job'));
+  expect(screen.getByTestId('cloud-job-progress')).toHaveTextContent('Pending: 0');
+  expect(whatsappAPI.sendBranchCloudBulk).not.toHaveBeenCalled();
+  expect(whatsappAPI.sendBranchCloudBulkMedia).not.toHaveBeenCalled();
+});
+
+test('explains a frozen lane and requires confirmation before recovery', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  window.confirm = jest.fn(() => true);
+  whatsappAPI.listBranchCloudJobs.mockResolvedValue({
+    data: [{
+      id: 'unknown-job', status: 'completed', total: 1, pending: 0,
+      sent: 0, failed: 0, unknown: 1, lane_frozen: true,
+      lane_freeze_reason: 'uncertain provider dispatch',
+    }],
+  });
+  whatsappAPI.reconcileBranchCloudLane.mockResolvedValue({ data: { success: true } });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+  expect(await screen.findByText(/earlier outcome is uncertain/i)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /Verified.*recover branch queue/i }));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/no send is still in flight/i));
+  await waitFor(() => expect(whatsappAPI.reconcileBranchCloudLane).toHaveBeenCalledWith('branch-a'));
+  expect(whatsappAPI.sendBranchCloudBulk).not.toHaveBeenCalled();
 });
 
 test('branch change resets campaign content and ignores a stale draft response', async () => {
@@ -161,5 +281,41 @@ test('branch change invalidates an in-flight dynamic audience response', async (
   });
   expect(screen.queryByText('966599999999')).not.toBeInTheDocument();
   expect(screen.getByText(/Preview: 0 recipient/)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Automatically send to 0/i })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /Send 0 message.* to 0/i })).toBeDisabled();
+});
+
+test('restores multiple draft images in order, removes one, and saves the remainder', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  whatsappAPI.getCampaign.mockResolvedValueOnce({
+    data: {
+      id: 'campaign-1', name: 'Welcome draft', message: 'Hello',
+      audience: 'pasted', recipients: [{ phone: '966500000001', name: 'Aisha' }],
+      has_attachment: true,
+      attachments: [
+        { attachment_name: 'first.png', attachment_type: 'image/png', attachment_size: 12 },
+        { attachment_name: 'second.png', attachment_type: 'image/png', attachment_size: 13 },
+      ],
+    },
+  });
+  whatsappAPI.getCampaignAttachment
+    .mockResolvedValueOnce({ data: new Blob(['first'], { type: 'image/png' }) })
+    .mockResolvedValueOnce({ data: new Blob(['second'], { type: 'image/png' }) });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+
+  await user.click(await screen.findByRole('button', { name: /Welcome draft/i }));
+  await screen.findByText('second.png');
+  expect(whatsappAPI.getCampaignAttachment.mock.calls).toEqual([
+    ['campaign-1', 'branch-a', 0],
+    ['campaign-1', 'branch-a', 1],
+  ]);
+  const secondCard = screen.getByText('second.png').parentElement;
+  await user.click(secondCard.querySelector('button'));
+  expect(screen.queryByText('second.png')).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: /Save draft/i }));
+  await waitFor(() => expect(whatsappAPI.updateCampaign).toHaveBeenCalled());
+  const formData = whatsappAPI.updateCampaign.mock.calls[0][1];
+  expect(formData.getAll('attachments')).toHaveLength(1);
+  expect(formData.getAll('attachments')[0].name).toBe('first.png');
 });

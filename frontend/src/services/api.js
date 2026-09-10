@@ -775,13 +775,24 @@ export const whatsappAPI = {
   },
   getBranchCloudAvailability: (branchId) =>
     axios.get(`${API}/whatsapp/branch-cloud/${branchId}/availability`),
-  sendBranchCloudBulk: (branchId, recipients) =>
+  sendBranchCloudBulk: (branchId, recipients, idempotencyKey) =>
     axios.post(`${API}/whatsapp/branch-cloud/send-bulk`, {
       branch_id: branchId,
-      recipients
+      recipients,
+      idempotency_key: idempotencyKey
     }),
   sendBranchCloudBulkMedia: (formData) =>
     axios.post(`${API}/whatsapp/branch-cloud/send-bulk-media`, formData),
+  listBranchCloudJobs: (branchId) =>
+    axios.get(`${API}/whatsapp/branch-cloud/jobs`, { params: { branch_id: branchId } }),
+  getBranchCloudJob: (branchId, jobId) =>
+    axios.get(`${API}/whatsapp/branch-cloud/jobs/${encodeURIComponent(jobId)}`, { params: { branch_id: branchId } }),
+  cancelBranchCloudJob: (branchId, jobId) =>
+    axios.post(`${API}/whatsapp/branch-cloud/jobs/${encodeURIComponent(jobId)}/cancel`, null, { params: { branch_id: branchId } }),
+  reconcileBranchCloudLane: (branchId) =>
+    axios.post(`${API}/whatsapp/branch-cloud/jobs/reconcile-lane`, null, {
+      params: { branch_id: branchId, confirmed_no_dispatch_risk: true }
+    }),
   listCampaigns: (branchId) =>
     axios.get(`${API}/whatsapp/campaigns`, { params: { branch_id: branchId } }),
   getCampaign: (campaignId, branchId) =>
@@ -794,9 +805,9 @@ export const whatsappAPI = {
     axios.put(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}`, formData),
   deleteCampaign: (campaignId, branchId) =>
     axios.delete(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}`, { params: { branch_id: branchId } }),
-  getCampaignAttachment: (campaignId, branchId) =>
+  getCampaignAttachment: (campaignId, branchId, index = 0) =>
     axios.get(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}/attachment`, {
-      params: { branch_id: branchId },
+      params: { branch_id: branchId, index },
       responseType: 'blob'
     }),
   getMetaWebhookInfo: () => axios.get(`${API}/whatsapp/meta-webhook-info`),
