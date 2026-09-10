@@ -614,6 +614,165 @@ async def send_attendance_whatsapp_notice(
         return False
 
 
+async def send_freeze_whatsapp_notice(
+    member: dict,
+    freeze: dict,
+    *,
+    event_type: str,
+) -> bool:
+    """Best-effort freeze notice through the member branch's configured provider.
+
+    Session providers can send this transactional text directly. Meta is
+    deliberately fail-closed unless a dedicated, confirmed freeze template is
+    configured; an attendance or other unrelated template must never be reused.
+    Every call records one attempt, including pre-dispatch failures.
+    """
+    branch_id = (member or {}).get("branch_id") or ""
+    member_id = (member or {}).get("id") or freeze.get("member_id") or ""
+    freeze_id = freeze.get("id") or ""
+    raw_phone = (member or {}).get("phone") or ""
+    phone = _format_cloud_phone(raw_phone)
+    provider = "unconfigured"
+    success = False
+    error = None
+    message = ""
+    provider_message_id = None
+
+    try:
+        branch_name = ""
+        if _db is None:
+            error = "whatsapp_database_unconfigured"
+        elif not phone:
+            error = "invalid_phone" if raw_phone else "no_phone"
+        elif not branch_id:
+            error = "no_branch"
+        else:
+            config = await _get_branch_cloud_config(branch_id)
+            provider = _branch_provider(config)
+            if not config or not config.get("enabled"):
+                error = "provider_unconfigured_or_disabled"
+            else:
+                branch = await _db["branches"].find_one(
+                    {"id": branch_id},
+                    {"_id": 0, "name": 1, "name_ar": 1},
+                )
+                branch_name = (
+                    (branch or {}).get("name_ar")
+                    or (branch or {}).get("name")
+                    or ""
+                )
+                name = (
+                    (member or {}).get("name_ar")
+                    or (member or {}).get("name")
+                    or ""
+                )
+                start_date = str(freeze.get("start_date") or "")
+                end_date = str(freeze.get("end_date") or "")
+                duration = int(freeze.get("duration_days") or 0)
+                branch_ar = f"\nالفرع: {branch_name}" if branch_name else ""
+                branch_en = f"\nBranch: {branch_name}" if branch_name else ""
+                if event_type == "freeze_created":
+                    message = (
+                        f"مرحباً {name}، تم تسجيل تجميد عضويتك للفترة التالية.\n"
+                        f"الفترة (شاملة): من {start_date} إلى {end_date}\n"
+                        f"المدة: {duration} يوم{branch_ar}"
+                    )
+                    english = (
+                        f"Hello {name}, your membership freeze has been recorded for the following period.\n"
+                        f"Inclusive period: {start_date} to {end_date}\n"
+                        f"Duration: {duration} day(s){branch_en}"
+                    )
+                elif event_type == "freeze_cancelled":
+                    message = (
+                        f"مرحباً {name}، تم إلغاء تجميد عضويتك.\n"
+                        f"الفترة الملغاة (شاملة): من {start_date} إلى {end_date}\n"
+                        f"المدة: {duration} يوم{branch_ar}"
+                    )
+                    english = (
+                        f"Hello {name}, your membership freeze has been cancelled.\n"
+                        f"Cancelled inclusive period: {start_date} to {end_date}\n"
+                        f"Duration: {duration} day(s){branch_en}"
+                    )
+                else:
+                    error = "unsupported_freeze_event"
+                    english = ""
+                if not error:
+                    message = _append_english_section(message, english)
+                    if provider in {"waha", "whatsflow"}:
+                        success, provider_message_id, error = (
+                            await _send_session_provider_result(phone, message, config)
+                        )
+                        if not success and not error:
+                            error = "provider_send_failed"
+                    elif provider == "meta_cloud":
+                        template_name = (
+                            config.get("freeze_template_name") or ""
+                        ).strip()
+                        if not (
+                            config.get("phone_number_id")
+                            and config.get("access_token_encrypted")
+                            and template_name
+                            and config.get("freeze_template_confirmed")
+                        ):
+                            error = "unsupported_meta_freeze_template"
+                        else:
+                            send_config = dict(config)
+                            send_config["message_template_name"] = template_name
+                            success, provider_message_id, error = (
+                                await _send_meta_cloud_message_result(
+                                    phone, message, send_config
+                                )
+                            )
+                            if not success and not error:
+                                error = "provider_send_failed"
+                    else:
+                        error = f"unsupported_provider:{provider}"
+    except Exception as exc:
+        error = f"notice_exception:{type(exc).__name__}"
+        logger.warning(
+            "Freeze WhatsApp notice failed before completion for freeze %s: %s",
+            freeze_id,
+            type(exc).__name__,
+        )
+
+    attempt = {
+        "phone": phone.split("@")[0] if phone else "",
+        "message": message,
+        "success": success,
+        "error": error,
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "type": event_type,
+        "branch_id": branch_id,
+        "member_id": member_id,
+        "freeze_id": freeze_id,
+        "transport": provider,
+    }
+    if provider_message_id:
+        attempt["provider_message_id"] = provider_message_id
+    try:
+        if _db is None:
+            raise RuntimeError("WhatsApp database is not configured")
+        await _db["whatsapp_send_log"].insert_one(attempt)
+    except Exception as exc:
+        logger.warning(
+            "Could not save %s WhatsApp attempt for freeze %s (%s): %s",
+            event_type,
+            freeze_id,
+            error or "provider_result",
+            type(exc).__name__,
+        )
+    if not success:
+        logger.warning(
+            "%s WhatsApp attempt failed for branch=%s member=%s freeze=%s: %s",
+            event_type,
+            branch_id,
+            member_id,
+            freeze_id,
+            error or "unknown_error",
+        )
+    return success
+
+
 _WEEKDAY_NAMES = {
     0: ("monday", "الاثنين", "الإثنين"),
     1: ("tuesday", "الثلاثاء"),

@@ -2,12 +2,14 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 import uuid
+import logging
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
 from .attendance import parse_schedule_days
 
 router = APIRouter(prefix="/freezes", tags=["freezes"])
+logger = logging.getLogger(__name__)
 
 
 WEEKDAY_INDEX = {
@@ -248,6 +250,22 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     }
     await db.member_notifications.insert_one(notification)
 
+    try:
+        from .whatsapp import send_freeze_whatsapp_notice
+        await send_freeze_whatsapp_notice(
+            member,
+            freeze_doc,
+            event_type="freeze_created",
+        )
+    except Exception as exc:
+        # The freeze and portal notice are already durable. Transport failures
+        # must never roll the business operation back or turn it into a 500.
+        logger.warning(
+            "Freeze created but WhatsApp notice invocation failed for %s: %s",
+            freeze_id,
+            type(exc).__name__,
+        )
+
     return {k: v for k, v in freeze_doc.items() if k != "_id"}
 
 
@@ -439,6 +457,19 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
         )
     except Exception:
         pass
+    try:
+        from .whatsapp import send_freeze_whatsapp_notice
+        await send_freeze_whatsapp_notice(
+            member or {"id": freeze_doc["member_id"]},
+            freeze_doc,
+            event_type="freeze_cancelled",
+        )
+    except Exception as exc:
+        logger.warning(
+            "Freeze cancelled but WhatsApp notice invocation failed for %s: %s",
+            freeze_id,
+            type(exc).__name__,
+        )
     return freeze_doc
 
 
