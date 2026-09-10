@@ -44,6 +44,16 @@ def _append_english_section(message: str, english_text: str) -> str:
     return f"{message.rstrip()}\n\n{BILINGUAL_ENGLISH_MARKER}\n{english_text.strip()}"
 
 
+def _ensure_renewal_arabic_date(message: str, end_date: str) -> str:
+    """Keep custom text, but ensure the Arabic section states the expiry date."""
+    arabic, marker, english = message.partition(BILINGUAL_ENGLISH_MARKER)
+    if end_date and end_date not in arabic:
+        arabic = f"{arabic.rstrip()}\nتاريخ انتهاء الاشتراك: {end_date}"
+    if marker:
+        return f"{arabic.rstrip()}\n\n{marker}{english}"
+    return arabic
+
+
 def _renewal_english_summary(
     *, name: str, activity: str, end_date: str, days_remaining: int
 ) -> str:
@@ -1527,7 +1537,7 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
             fee=item.get("fee_str", ""),
         )
         message = _append_english_section(
-            message,
+            _ensure_renewal_arabic_date(message, end_date_fmt),
             _renewal_english_summary(
                 name=name,
                 activity=activity_name,
@@ -2370,14 +2380,19 @@ async def branch_provider_status(branch_id: str, current_user: dict = Depends(ge
         instance_data = data.get("instance") if isinstance(data, dict) else {}
         state = instance_data.get("state") if isinstance(instance_data, dict) else None
         state = state or (data.get("state") if isinstance(data, dict) else None)
-        if ok and state:
+        state = state.lower() if isinstance(state, str) else None
+        verified = bool(ok and state in {"open", "close", "closed", "connecting"})
+        if verified:
             await _db["whatsapp_branch_configs"].update_one(
                 {"branch_id": branch_id},
                 {"$set": {"whatsflow_state": state, "whatsflow_status_updated_at": datetime.now(timezone.utc).isoformat()}},
             )
-        return {"provider": "whatsflow", "configured": True, "connected": state == "open",
-                "instance": config["whatsflow_instance"], "status": state or "unavailable",
-                "error": error if not ok else None}
+        return {"provider": "whatsflow", "configured": True,
+                "connected": state == "open" if verified else None,
+                "check_ok": verified,
+                "instance": config["whatsflow_instance"],
+                "status": state if verified else "unavailable",
+                "error": (error or "status_check_failed") if not ok else (None if verified else "invalid_status_response")}
     client = WAHAClient()
     if not client.configured:
         return {"provider": "waha", "configured": False, "connected": False, "session": config["waha_session_name"]}
@@ -2457,12 +2472,68 @@ async def branch_provider_test(branch_id: str, data: WAHABranchTestRequest,
     phone = _format_cloud_phone(data.phone)
     if not phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
-    ok, _, error = await _send_session_provider_result(
-        phone, data.message or "رسالة تجريبية من نظام إدارة الأكاديمية", config
+    body = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"
+    ok, message_id, error = await _send_session_provider_result(
+        phone, body, config
     )
     if not ok:
         raise HTTPException(status_code=502, detail=f"WhatsApp test failed ({error or 'unknown'})")
+    await _record_branch_test_message(branch_id, phone, body, config, message_id, current_user)
     return {"success": True, "provider": _branch_provider(config)}
+
+
+async def _record_branch_test_message(branch_id, phone, body, config, message_id, actor):
+    """Persist accepted test sends without relying on a provider webhook echo."""
+    phone = "".join(filter(str.isdigit, phone.split("@", 1)[0]))
+    provider = _branch_provider(config)
+    now = datetime.now(timezone.utc).isoformat()
+    conversation_id = f"{branch_id}:{phone}"
+    message = {
+        "id": str(uuid.uuid4()), "conversation_id": conversation_id,
+        "branch_id": branch_id, "provider": provider, "phone": phone,
+        "direction": "outbound", "type": "text", "body": body,
+        "status": "sent", "created_at": now, "source": "connection_test",
+        "sent_by": actor.get("user_id") or actor.get("id"),
+    }
+    if message_id:
+        message["provider_message_id"] = message_id
+        if provider == "waha":
+            message["waha_message_id"] = message_id
+    messages = _db["whatsapp_cloud_messages"]
+    if message_id:
+        # Atomic with the webhook's branch/provider/message-id deduplication.
+        await messages.create_index(
+            [("branch_id", 1), ("provider", 1), ("provider_message_id", 1)],
+            unique=True,
+            partialFilterExpression={
+                "provider": "whatsflow", "provider_message_id": {"$exists": True}
+            },
+        )
+        try:
+            await messages.update_one(
+                {"branch_id": branch_id, "provider": provider,
+                 "provider_message_id": message_id},
+                {"$setOnInsert": message}, upsert=True,
+            )
+        except DuplicateKeyError:
+            pass  # A concurrent authenticated webhook already saved this message.
+    else:
+        await messages.insert_one(message)
+    conversations = _db["whatsapp_cloud_conversations"]
+    await conversations.update_one(
+        {"id": conversation_id},
+        {"$setOnInsert": {
+            "id": conversation_id, "branch_id": branch_id, "provider": provider,
+            "phone": phone, "contact_name": phone, "created_at": now, "unread_count": 0,
+        }}, upsert=True,
+    )
+    await conversations.update_one(
+        {"id": conversation_id, "$or": [
+            {"last_message_at": {"$lte": now}},
+            {"last_message_at": {"$exists": False}},
+        ]},
+        {"$set": {"last_message": body, "last_message_at": now, "last_direction": "outbound"}},
+    )
 
 
 @router.post("/branch-provider/{branch_id}/webhook")
@@ -2847,11 +2918,26 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 {"$set": {"status": status, "status_updated_at": now}},
             )
             return {"received": True}
-        if event != "messages.upsert" or key.get("fromMe"):
+        if event != "messages.upsert":
             return {"received": True}
+        outbound = key.get("fromMe") is True
         remote_jid = str(key.get("remoteJid") or data.get("remoteJid") or "")
-        if "@g.us" in remote_jid:
+        if remote_jid.endswith(("@g.us", "@broadcast", "@newsletter")):
             return {"received": True}
+        # LID identifiers are not phone numbers; use the provider's phone JID.
+        if remote_jid.endswith("@lid"):
+            remote_jid = str(key.get("remoteJidAlt") or data.get("remoteJidAlt") or "")
+        if not remote_jid.endswith(("@s.whatsapp.net", "@c.us")):
+            return {"received": True}
+        event_at = now
+        try:
+            timestamp = float(data.get("messageTimestamp") or 0)
+            if timestamp > 1e12:
+                timestamp /= 1000
+            if timestamp > 0:
+                event_at = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+        except (ValueError, TypeError, OverflowError, OSError):
+            pass
         phone = "".join(filter(str.isdigit, remote_jid))
         if not phone or not message_id:
             return {"received": True}
@@ -2892,7 +2978,8 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             await messages.insert_one({
                 "id": str(uuid.uuid4()), "conversation_id": conversation_id,
                 "branch_id": config["branch_id"], "provider": "whatsflow",
-                "provider_message_id": message_id, "direction": "inbound",
+                "provider_message_id": message_id,
+                "direction": "outbound" if outbound else "inbound",
                 "phone": phone, "type": media_type or "text", "body": body,
                 "media_id": media_message.get("url"),
                 "media_url": media_message.get("url"),
@@ -2901,10 +2988,40 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                     media_message.get("fileName")
                     or media_message.get("filename")
                 ),
-                "status": "received",
-                "created_at": now, "received_at": now,
+                "status": "sent" if outbound else "received",
+                "created_at": event_at, "received_at": now,
             })
         except DuplicateKeyError:
+            return {"received": True}
+        if outbound:
+            conversations = _db["whatsapp_cloud_conversations"]
+            # Never use outgoing pushName: it is the branch's own profile name.
+            await conversations.update_one(
+                {"id": conversation_id},
+                {"$setOnInsert": {
+                    "id": conversation_id, "branch_id": config["branch_id"],
+                    "provider": "whatsflow", "phone": phone, "contact_name": phone,
+                    "created_at": now, "unread_count": 0,
+                }}, upsert=True,
+            )
+            # A delayed phone reply must not erase a newer incoming notification.
+            await conversations.update_one(
+                {"id": conversation_id, "$or": [
+                    {"last_inbound_at": {"$lte": event_at}},
+                    {"last_inbound_at": {"$exists": False}},
+                ]},
+                {"$set": {"unread_count": 0}},
+            )
+            await conversations.update_one(
+                {"id": conversation_id, "$or": [
+                    {"last_message_at": {"$lte": event_at}},
+                    {"last_message_at": {"$exists": False}},
+                ]},
+                {"$set": {
+                    "last_message": body or "[message]", "last_message_at": event_at,
+                    "last_direction": "outbound",
+                }},
+            )
             return {"received": True}
         await _db["whatsapp_cloud_conversations"].update_one(
             {"id": conversation_id},
@@ -2912,8 +3029,8 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 "id": conversation_id, "branch_id": config["branch_id"],
                 "provider": "whatsflow", "phone": phone,
                 "contact_name": data.get("pushName") or phone,
-                "last_message": body or "[message]", "last_message_at": now,
-                "last_inbound_at": now, "last_direction": "inbound",
+                "last_message": body or "[message]", "last_message_at": event_at,
+                "last_inbound_at": event_at, "last_direction": "inbound",
             }, "$inc": {"unread_count": 1}, "$setOnInsert": {"created_at": now}},
             upsert=True,
         )
@@ -3154,7 +3271,19 @@ async def reply_to_cloud_inbox_thread(
             "body": body, "status": "sent", "created_at": now,
             "sent_by": current_user.get("user_id") or current_user.get("id"),
         }
-        await _db["whatsapp_cloud_messages"].insert_one(message)
+        try:
+            await _db["whatsapp_cloud_messages"].insert_one(message)
+        except DuplicateKeyError:
+            # The authenticated outgoing webhook may arrive before send returns.
+            if not provider_message_id:
+                raise
+            existing = await _db["whatsapp_cloud_messages"].find_one({
+                "branch_id": branch_id, "provider": provider,
+                "provider_message_id": provider_message_id,
+            }, {"_id": 0})
+            if not existing:
+                raise
+            message = existing
         await _db["whatsapp_cloud_conversations"].update_one({"id": conversation_id}, {"$set": {
             "last_message": body, "last_message_at": now, "last_direction": "outbound",
         }})
@@ -4178,12 +4307,10 @@ async def test_branch_cloud_config(
     _require_admin(current_user)
     config = await _get_branch_cloud_config(branch_id)
     if _branch_provider(config) in {"waha", "whatsflow"}:
-        message = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"
-        wa_phone = _format_cloud_phone(data.phone)
-        success, _, _ = await _send_session_provider_result(wa_phone, message, config or {})
-        if success:
-            return {"success": True}
-        raise HTTPException(status_code=502, detail="WhatsApp provider test failed")
+        return await branch_provider_test(
+            branch_id, WAHABranchTestRequest(phone=data.phone, message=data.message),
+            current_user,
+        )
     if not config or not config.get("enabled") or not config.get("access_token_encrypted"):
         raise HTTPException(status_code=400, detail="Meta WhatsApp is not configured for this branch")
     message = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"
@@ -5037,7 +5164,7 @@ async def send_bulk_renewal_reminders(
                     fee=fee_str,
                 )
                 message = _append_english_section(
-                    message,
+                    _ensure_renewal_arabic_date(message, end_date_fmt),
                     _renewal_english_summary(
                         name=name,
                         activity=activities_text,

@@ -1232,7 +1232,16 @@ def test_automatic_renewal_does_not_double_marked_bilingual_template(monkeypatch
     }], 0, "تنبيه\n\n— English —\nAlready bilingual"))
 
     assert count == 1
-    assert sent == ["تنبيه\n\n— English —\nAlready bilingual"]
+    assert sent == ["تنبيه\nتاريخ انتهاء الاشتراك: 2026/09/10\n\n— English —\nAlready bilingual"]
+
+
+def test_renewal_arabic_date_is_added_once():
+    message = "مرحباً، اشتراككم سينتهي بعد يومين."
+    result = whatsapp_mod._ensure_renewal_arabic_date(message, "2026/09/12")
+    assert "تاريخ انتهاء الاشتراك: 2026/09/12" in result
+    assert whatsapp_mod._ensure_renewal_arabic_date(result, "2026/09/12") == result
+    custom = "ينتهي بتاريخ 2026/09/12، يرجى التجديد."
+    assert whatsapp_mod._ensure_renewal_arabic_date(custom, "2026/09/12") == custom
 
 
 def test_automatic_renewal_uses_expired_days_ago_not_negative_remaining(monkeypatch):

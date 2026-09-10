@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import WhatsAppProviderStatus, { statusCheckFailed, providerStatusError } from '../components/WhatsAppProviderStatus';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -387,14 +388,20 @@ const BranchesPage = () => {
     if (!editingBranch?.id) return;
     setProviderAction('refresh');
     try {
-      const [status, quality] = await Promise.all([
+      const [status, quality] = await Promise.allSettled([
         branchesAPI.getProviderStatus(editingBranch.id),
         branchesAPI.getProviderQuality(editingBranch.id)
       ]);
-      setProviderStatus(status.data);
-      setProviderQuality(quality.data);
-      toast.success(language === 'ar' ? 'تم تحديث حالة الاتصال' : 'Provider status refreshed');
+      if (status.status === 'rejected') throw status.reason;
+      setProviderStatus(status.value.data);
+      setProviderQuality(quality.status === 'fulfilled' ? quality.value.data : null);
+      if (statusCheckFailed(status.value.data)) {
+        toast.error(providerStatusError(status.value.data, language));
+      } else {
+        toast.success(language === 'ar' ? 'تم تحديث حالة الاتصال' : 'Provider status refreshed');
+      }
     } catch (error) {
+      setProviderStatus({ check_ok: false, connected: null, status: 'unavailable', error: error.response?.status ? `http_${error.response.status}` : 'status_check_failed' });
       toast.error(error.response?.data?.detail || (language === 'ar' ? 'تعذر تحميل حالة الاتصال' : 'Could not load provider status'));
     } finally { setProviderAction(''); }
   };
@@ -1074,7 +1081,7 @@ const BranchesPage = () => {
                            <Button type="button" size="sm" variant="outline" onClick={fetchWahaQr} disabled={!!providerAction}>{language === 'ar' ? 'عرض QR' : 'Show QR'}</Button>
                            <Button type="button" size="sm" onClick={handleTestProvider} disabled={!!providerAction}>{language === 'ar' ? 'إرسال اختبار' : 'Send test'}</Button>
                          </div>
-                         {providerStatus && <div className="text-sm"><Badge variant={providerStatus.connected ? 'default' : 'secondary'}>{providerStatus.connected ? (language === 'ar' ? 'متصل' : 'Connected') : (language === 'ar' ? 'غير متصل' : 'Not connected')}</Badge><span className="ms-2 text-muted-foreground">{providerStatus.status || providerStatus.session || ''}</span></div>}
+                         <WhatsAppProviderStatus status={providerStatus} language={language} />
                          {providerQuality && (
                            <div className="text-xs text-muted-foreground">
                              {language === 'ar'
@@ -1119,7 +1126,7 @@ const BranchesPage = () => {
                              catch (error) { toast.error(error.response?.data?.detail || 'Webhook setup failed'); }
                            }}>{language === 'ar' ? 'إعداد Webhook' : 'Configure webhook'}</Button>
                          </div>
-                         {providerStatus && <div className="text-sm"><Badge variant={providerStatus.connected ? 'default' : 'secondary'}>{providerStatus.connected ? (language === 'ar' ? 'متصل' : 'Connected') : (language === 'ar' ? 'غير متصل' : 'Not connected')}</Badge><span className="ms-2 text-muted-foreground">{providerStatus.status || ''}</span></div>}
+                         <WhatsAppProviderStatus status={providerStatus} language={language} />
                          {providerQr && <img src={providerQr} alt="Whatsflow QR" className="w-48 h-48 rounded-md border bg-white p-2" />}
                        </div>
                      )}

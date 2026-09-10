@@ -32,3 +32,9 @@ The manual “send reminders now” action requires a recipient preview and expl
 **Why:** The user needs to inspect subscription expiry and attended-session counts before authorizing a manual send.
 
 **How to apply:** Bind confirmation to the previewed tenant, branch, recipient and subscription facts. Count attendance using the existing subscription-quota rules, not lifetime attendance. Never dispatch a fresh unrestricted audience after confirmation.
+
+Phone-originated outgoing messages must be reflected in the inbox; receiving an outgoing echo is not an incoming unread notification.
+
+**Why:** Staff answer on the linked phone and expect the web inbox to reflect that response. Delayed reply events must not hide newer customer messages, and outgoing pushName identifies the branch, not the customer.
+
+**How to apply:** Preserve the customer's name, use message timestamps for reply ordering, and deduplicate by branch/provider/message ID, including the race where an echo arrives before the API send returns. Do not claim historical phone replies were imported when only new webhook events are supported.
