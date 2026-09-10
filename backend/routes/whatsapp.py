@@ -698,6 +698,25 @@ async def send_class_reminder_whatsapp_notice(
         f"Time: {time_text_en}\n"
         f"Branch: {branch_name}",
     )
+    daily_classes = member.get("_daily_classes") or []
+    if len(daily_classes) > 1:
+        ar_lines, en_lines = [], []
+        for entry in daily_classes:
+            at = entry["class_time"]
+            ar_time = at.strftime("%I:%M %p").lstrip("0").replace("AM", "ص").replace("PM", "م")
+            en_time = at.strftime("%I:%M %p").lstrip("0")
+            label = entry["activity_name"]
+            member_label = entry.get("member_name") or ""
+            prefix = f"{member_label} — " if member_label else ""
+            ar_lines.append(f"• {prefix}{label}: {ar_time}")
+            en_lines.append(f"• {prefix}{label}: {en_time}")
+        date_text = class_time.strftime("%Y/%m/%d")
+        message = _append_english_section(
+            f"تذكير بأنشطة يوم {date_text} ⏰\nأول نشاط بعد ساعتين.\n"
+            + "\n".join(ar_lines) + f"\nالفرع: {branch_name}",
+            f"Activities for {date_text} ⏰\nThe first class starts in two hours.\n"
+            + "\n".join(en_lines) + f"\nBranch: {branch_name}",
+        )
     if provider in {"waha", "whatsflow"}:
         success, _, _ = await _send_session_provider_result(phone, message, config)
     else:
@@ -791,7 +810,7 @@ async def send_schedule_update_whatsapp_notice(
 
 
 async def process_class_reminders(now: Optional[datetime] = None) -> int:
-    """Send reminders due now. A unique occurrence key prevents repeat sends."""
+    """One daily agenda per branch/phone, two hours before its first class."""
     if _db is None:
         return 0
     current = now or datetime.now(RIYADH_TZ)
@@ -814,9 +833,11 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
     log = _db["whatsapp_class_reminder_log"]
     await log.create_index("dedup_key", unique=True)
     sent = 0
+    groups = {}
     for member in members:
         branch_id = member.get("branch_id")
-        if not branch_id:
+        phone = _format_phone(member.get("phone") or "")
+        if not branch_id or not phone:
             continue
         for activity in member.get("activities") or []:
             if not _activity_is_current(activity, target_date):
@@ -824,40 +845,52 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
             class_time = _class_occurrence_for_date(activity, target_date)
             if not class_time:
                 continue
-            reminder_time = class_time - timedelta(hours=2)
-            # The worker runs once a minute; retain a five-minute catch-up window
-            # after a restart without sending reminders noticeably early.
-            if not (reminder_time <= current < reminder_time + timedelta(minutes=5)):
-                continue
             activity_key = activity.get("activity_id") or activity.get("activity_name") or "activity"
-            dedup_key = f"{member.get('id')}:{activity_key}:{class_time.isoformat()}"
-            try:
-                await log.insert_one({
-                    "dedup_key": dedup_key,
-                    "status": "processing",
-                    "member_id": member.get("id"),
-                    "branch_id": branch_id,
-                    "activity_name": activity.get("activity_name") or "",
-                    "class_time": class_time.isoformat(),
-                    "created_at": current.isoformat(),
-                })
-            except DuplicateKeyError:
-                continue
-            success = await send_class_reminder_whatsapp_notice(
-                member,
-                activity.get("activity_name") or "التدريب",
-                class_time,
-                branch_names.get(branch_id, ""),
+            group = groups.setdefault((branch_id, phone), {"member": member, "entries": {}})
+            legacy_key = f"{member.get('id')}:{activity_key}:{class_time.isoformat()}"
+            group["entries"][legacy_key] = {
+                "activity_name": activity.get("activity_name") or "التدريب",
+                "class_time": class_time, "member_id": member.get("id"),
+                "member_name": member.get("name_ar") or member.get("name") or "",
+            }
+    for (branch_id, phone), group in groups.items():
+        entries = sorted(group["entries"].values(), key=lambda entry: entry["class_time"])
+        first_time = entries[0]["class_time"]
+        reminder_time = first_time - timedelta(hours=2)
+        if not (reminder_time <= current < reminder_time + timedelta(minutes=5)):
+            continue
+        # Avoid repeating a reminder already handled by the old per-class worker.
+        legacy_handled = False
+        for legacy_key in group["entries"]:
+            if await log.find_one({"dedup_key": legacy_key}):
+                legacy_handled = True
+                break
+        if legacy_handled:
+            continue
+        dedup_key = f"daily:{branch_id}:{phone}:{target_date.isoformat()}"
+        try:
+            await log.insert_one({
+                "dedup_key": dedup_key, "status": "processing",
+                "member_id": group["member"].get("id"), "branch_id": branch_id,
+                "activity_name": "، ".join(entry["activity_name"] for entry in entries),
+                "class_time": first_time.isoformat(),
+                "activities": [{**entry, "class_time": entry["class_time"].isoformat()} for entry in entries],
+                "created_at": current.isoformat(),
+            })
+        except DuplicateKeyError:
+            continue
+        success = await send_class_reminder_whatsapp_notice(
+            {**group["member"], "_daily_classes": entries},
+            entries[0]["activity_name"], first_time, branch_names.get(branch_id, ""),
+        )
+        if success:
+            sent += 1
+            await log.update_one(
+                {"dedup_key": dedup_key},
+                {"$set": {"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()}},
             )
-            if success:
-                sent += 1
-                await log.update_one(
-                    {"dedup_key": dedup_key},
-                    {"$set": {"status": "sent", "sent_at": datetime.now(timezone.utc).isoformat()}},
-                )
-            else:
-                # Allow the next cycle to retry temporary Meta/network failures.
-                await log.delete_one({"dedup_key": dedup_key, "status": "processing"})
+        else:
+            await log.delete_one({"dedup_key": dedup_key, "status": "processing"})
     return sent
 
 

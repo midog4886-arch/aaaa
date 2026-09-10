@@ -9,6 +9,12 @@ Treat `whatsflow` as an explicit provider, never as a WAHA URL or compatibility 
 
 **How to apply:** Store the Whatsflow instance and encrypted API key per branch. Match Webhooks against the exact tenant, branch, and instance. Use the shared atomic daily campaign quota for hosted-session providers, while keeping automated notifications outside that quota.
 
+Configure hosted Whatsflow callbacks against the verified published app URL, never the current preview request origin.
+
+**Why:** Provider inspection found a working branch registered against a development preview hostname, while other connected instances returned no webhook configuration. A connected session does not imply inbound forwarding is configured.
+
+**How to apply:** Read the vendor's GET /webhook/find/{instance} to verify enabled state, subscribed events, destination and secret match without exposing headers. A successful null response means no saved webhook. Confirm production configuration separately before changing a callback.
+
 Whatsflow media sending accepts a direct URL or Base64 content, so locally uploaded campaign images and PDFs can be sent as Base64 without publishing a temporary unauthenticated file URL.
 
 **Why:** A public temporary media URL adds unnecessary exposure and deployment-host assumptions.
@@ -44,3 +50,9 @@ Renewal WhatsApp reminders are grouped by normalized phone and branch across eac
 **Why:** The user explicitly wants multiple expired activities for one number in a single message rather than separate activity/member messages.
 
 **How to apply:** Include each activity's own expiry date and identify members sharing a number. Keep push/portal notifications and reminder-history entries member/activity-scoped. Never combine different branches or imply that this per-batch grouping deduplicates separate scheduled/manual runs.
+
+Class reminders should be one daily agenda per normalized phone and branch, sent two hours before the earliest scheduled activity, not two hours before every activity.
+
+**Why:** The user requested a combined reminder for today's activities instead of separate notifications. Later sessions must retain their own displayed times and must not trigger another reminder.
+
+**How to apply:** Include only valid subscriptions and the personal schedule for the target date, preserve shared-family member labels, and retain daily deduplication and legacy reminder protection. The five-minute catch-up window still applies.

@@ -968,6 +968,10 @@ def test_class_reminder_worker_sends_once_for_the_same_class(monkeypatch):
             "end_date": "2026-09-30",
             "training_days": ["monday"],
             "training_time": "5:00 م",
+        }, {
+            "activity_id": "activity-2", "activity_name": "السباحة",
+            "status": "active", "start_date": "2026-09-01", "end_date": "2026-09-30",
+            "training_days": ["monday"], "training_time": "7:00 م",
         }],
     }])
     db.collections["whatsapp_class_reminder_log"] = ReminderLog()
@@ -975,6 +979,8 @@ def test_class_reminder_worker_sends_once_for_the_same_class(monkeypatch):
     sent = []
 
     async def fake_notice(member, activity_name, class_time, branch_name):
+        assert [entry["activity_name"] for entry in member["_daily_classes"]] == ["الكاراتيه", "السباحة"]
+        assert [entry["class_time"].hour for entry in member["_daily_classes"]] == [17, 19]
         sent.append((member["id"], activity_name, class_time, branch_name))
         return True
 
@@ -985,6 +991,7 @@ def test_class_reminder_worker_sends_once_for_the_same_class(monkeypatch):
 
     assert run(whatsapp_mod.process_class_reminders(now)) == 1
     assert run(whatsapp_mod.process_class_reminders(now)) == 0
+    assert run(whatsapp_mod.process_class_reminders(now.replace(hour=17))) == 0
     assert len(sent) == 1
 
 
