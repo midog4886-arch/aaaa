@@ -14,3 +14,9 @@ An uncertain provider outcome must not automatically retry. Stop the lane for ex
 **Why:** External sends are not atomic with database state. A timeout or worker crash can occur after WhatsApp accepts a message but before the app records success.
 
 **How to apply:** Test suspended-worker and cancellation races, not just normal sequential sends. Unknown outcomes must remain distinguishable from proven failures.
+
+Day-extension notices should have one explicit send action, separate from applying subscription changes.
+
+**Why:** An automatic post-apply notice alongside preview sending would duplicate notifications and bypass the shared paced queue.
+
+**How to apply:** Do not restore automatic post-apply sending without a shared event-level deduplication design. Preserve the ability to send notices before or after applying an extension.

@@ -14,3 +14,15 @@ Whatsflow media sending accepts a direct URL or Base64 content, so locally uploa
 **Why:** A public temporary media URL adds unnecessary exposure and deployment-host assumptions.
 
 **How to apply:** Validate type, signature, and size before encoding; permit only JPG, PNG, and PDF under the established campaign limits.
+
+Automatic payment receipts should be a single private media message with a short caption, not a text followed by an independent image.
+
+**Why:** A two-send sequence can deliver only the text and makes retries duplicate the payment confirmation. Server-side rendering also covers payments completed without an open browser.
+
+**How to apply:** Render from the saved invoice values, not current subscription values. Do not call a generated payment receipt a compliant tax invoice without implementing its required tax fields and QR. Preserve other providers' existing template contracts.
+
+Customer transactional WhatsApp notices should include Arabic and English together, rather than select only one language.
+
+**Why:** The user requested both languages, explicitly including attendance confirmations.
+
+**How to apply:** Include both languages when adding automatic notices and receipt labels. Preserve operator-authored campaign content and saved custom reminder text; build English transactional summaries from structured facts rather than guessing translations of names.

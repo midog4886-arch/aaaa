@@ -793,6 +793,8 @@ export const whatsappAPI = {
     axios.post(`${API}/whatsapp/branch-cloud/jobs/reconcile-lane`, null, {
       params: { branch_id: branchId, confirmed_no_dispatch_risk: true }
     }),
+  enqueueClosureNotices: (data) =>
+    axios.post(`${API}/day-extensions/closure-notices`, data),
   listCampaigns: (branchId) =>
     axios.get(`${API}/whatsapp/campaigns`, { params: { branch_id: branchId } }),
   getCampaign: (campaignId, branchId) =>

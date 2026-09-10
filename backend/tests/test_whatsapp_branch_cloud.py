@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import json
 import pytest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from starlette.responses import Response
 
 from routes import whatsapp as whatsapp_mod
@@ -808,6 +808,8 @@ def test_attendance_notice_uses_branch_specific_template(monkeypatch):
     assert sent[0][0] == "966501234567@s.whatsapp.net"
     assert "محمد" in sent[0][1]
     assert "الكاراتيه" in sent[0][1]
+    assert "Attendance recorded for محمد in الكاراتيه" in sent[0][1]
+    assert sent[0][1].count(whatsapp_mod.BILINGUAL_ENGLISH_MARKER) == 1
     assert sent[0][2] == "attendance_recorded"
 
 
@@ -851,6 +853,10 @@ def test_class_reminder_uses_branch_specific_template(monkeypatch):
     assert "محمد" in sent[0][1]
     assert "الكاراتيه" in sent[0][1]
     assert "فرع الروضة" in sent[0][1]
+    assert "Class reminder for محمد" in sent[0][1]
+    assert "Activity: الكاراتيه" in sent[0][1]
+    assert "Time: 5:00 PM" in sent[0][1]
+    assert "Branch: فرع الروضة" in sent[0][1]
     assert sent[0][2] == "class_reminder_two_hours"
 
 
@@ -885,7 +891,40 @@ def test_schedule_update_notice_uses_branch_specific_template(monkeypatch):
 
     assert result is True
     assert sent[0][0] == "966501234567@s.whatsapp.net"
+    assert "الفرع: branch-a" not in sent[0][1]
+    assert "Branch:" not in sent[0][1]
     assert sent[0][2] == "class_schedule_update"
+
+
+def test_schedule_update_adds_both_branch_labels_without_translating_name(monkeypatch):
+    db = _DB()
+    db["branches"].rows[0].update({"name_ar": "فرع الروضة"})
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "enabled": True,
+        "phone_number_id": "111",
+        "access_token_encrypted": "encrypted",
+        "schedule_update_template_name": "class_schedule_update",
+        "schedule_update_template_confirmed": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(_phone, message, _config):
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_cloud_message", fake_send)
+    result = run(whatsapp_mod.send_schedule_update_whatsapp_notice(
+        {"id": "member-1", "phone": "0501234567", "branch_id": "branch-a"},
+        "تم تغيير الموعد\n\n— English —\nThe schedule changed",
+        notice_type="schedule_changed_cloud",
+    ))
+
+    assert result is True
+    assert "الفرع: فرع الروضة" in sent[0]
+    assert "Branch: فرع الروضة" in sent[0]
+    assert "Rawdah" not in sent[0]
 
 
 def test_class_reminder_worker_sends_once_for_the_same_class(monkeypatch):
@@ -986,10 +1025,15 @@ def test_invoice_payment_notice_uses_customer_phone_and_branch_template(monkeypa
     assert "الكاراتيه" in sent[0][1]
     assert "ضريبة القيمة المضافة" in sent[0][1]
     assert "549.7" in sent[0][1]
+    assert "Your payment has been received successfully" in sent[0][1]
+    assert "Customer: عبدالعزيز" in sent[0][1]
+    assert "Items:\n• الكاراتيه: SAR 500" in sent[0][1]
+    assert "VAT: SAR 74.7" in sent[0][1]
+    assert "Total paid: SAR 549.7" in sent[0][1]
     assert sent[0][2] == "invoice_payment_received"
 
 
-def test_stale_processing_payment_notice_is_reclaimed_after_restart(monkeypatch):
+def test_stale_processing_payment_notice_is_not_resent_after_restart(monkeypatch):
     class Result:
         def __init__(self, modified_count):
             self.modified_count = modified_count
@@ -1047,14 +1091,301 @@ def test_stale_processing_payment_notice_is_reclaimed_after_restart(monkeypatch)
     monkeypatch.setattr(whatsapp_mod, "_db", OutboxDB())
 
     async def fake_send(_invoice):
-        return True
+        raise AssertionError("An uncertain receipt must not be resent")
 
     monkeypatch.setattr(
         whatsapp_mod, "send_invoice_payment_whatsapp_notice", fake_send
     )
     delivered = run(whatsapp_mod.process_invoice_payment_whatsapp_outbox())
 
-    assert delivered == 1
-    assert outbox.rows[0]["status"] == "delivered"
-    assert outbox.rows[0]["attempts"] == 2
-    assert outbox.rows[0]["claim_token"] != "dead-worker"
+    assert delivered == 0
+    assert outbox.rows[0]["status"] == "unknown"
+    assert outbox.rows[0]["attempts"] == 1
+    assert outbox.rows[0]["claim_token"] == "dead-worker"
+
+
+@pytest.mark.parametrize("result", [
+    (True, {"key": {"id": "receipt"}}, None),
+    (False, None, "http_400"),
+    (False, None, "ReadTimeout"),
+    (False, None, "http_502"),
+])
+def test_whatsflow_payment_sends_image_not_text(monkeypatch, result):
+    import base64
+    from services import invoice_receipt_image
+
+    db = _DB()
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    config = {"provider": "whatsflow", "enabled": True, "branch_id": "branch-a"}
+    async def get_config(branch_id):
+        assert branch_id == "branch-a"
+        return config
+    monkeypatch.setattr(whatsapp_mod, "_get_branch_cloud_config", get_config)
+    rendered = []
+    def render(invoice, branch):
+        rendered.append((invoice, branch))
+        return b"\x89PNG\r\n\x1a\nreceipt"
+    monkeypatch.setattr(invoice_receipt_image, "render_invoice_receipt_image", render)
+    calls = []
+    class Client:
+        async def send_media(self, *args):
+            calls.append(args)
+            return result
+        async def send_text(self, *_args, **_kwargs):
+            raise AssertionError("No extra text send")
+    def client(actual):
+        assert actual is config
+        return Client()
+    monkeypatch.setattr(whatsapp_mod, "_whatsflow_client", client)
+    invoice = {
+        "id": "paid-invoice", "branch_id": "branch-a",
+        "invoice_number": "830112", "customer_phone": "0501234567",
+        "customer_name": "عميل تجريبي", "total": 11.5,
+    }
+    if result[2] in {"ReadTimeout", "http_502"}:
+        with pytest.raises(whatsapp_mod.InvoiceReceiptDeliveryUnknown):
+            run(whatsapp_mod.send_invoice_payment_whatsapp_notice(invoice))
+    else:
+        assert run(whatsapp_mod.send_invoice_payment_whatsapp_notice(invoice)) is result[0]
+    assert len(calls) == 1
+    number, kind, mime, caption, media, filename = calls[0]
+    assert number == "966501234567"
+    assert (kind, mime, filename) == ("image", "image/png", "invoice.png")
+    assert "830112" in caption and "11.5" in caption
+    assert "Your payment has been received successfully" in caption
+    assert "Invoice number: 830112" in caption
+    assert "Total paid: SAR 11.5" in caption
+    assert base64.b64decode(media).startswith(b"\x89PNG")
+    assert rendered == [(invoice, {"id": "branch-a"})]
+
+
+def test_automatic_renewal_preserves_template_and_appends_structured_english_once(monkeypatch):
+    db = _DB()
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(phone, message, branch_id, quick_reply_payload=None):
+        sent.append((phone, message, branch_id, quick_reply_payload))
+        return True
+
+    async def fake_config(_branch_id):
+        return None
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(whatsapp_mod, "_send_wa_message_for_branch", fake_send)
+    monkeypatch.setattr(whatsapp_mod, "_get_branch_cloud_config", fake_config)
+    monkeypatch.setattr(whatsapp_mod.asyncio, "sleep", no_sleep)
+    member_data = [{
+        "member": {
+            "id": "member-1",
+            "name": "محمد Ali",
+            "phone": "0501234567",
+            "branch_id": "branch-a",
+        },
+        "activity_name": "الكاراتيه Kids",
+        "expiring_activities": ["الكاراتيه Kids"],
+        "end_date_fmt": "2026/09/10",
+        "fee_str": "500",
+    }]
+
+    count = run(whatsapp_mod._send_wa_for_members(
+        member_data,
+        3,
+        "مرحباً {name}، اشتراك {activity} ينتهي بتاريخ {end_date}.",
+    ))
+
+    assert count == 1
+    message = sent[0][1]
+    assert message.startswith("مرحباً محمد Ali، اشتراك الكاراتيه Kids")
+    assert "Hello محمد Ali" in message
+    assert "subscription for الكاراتيه Kids expires on 2026/09/10" in message
+    assert "(3 day(s) remaining)" in message
+    assert message.count(whatsapp_mod.BILINGUAL_ENGLISH_MARKER) == 1
+    assert sent[0][3] == "CONTACT_US"
+
+
+def test_automatic_renewal_does_not_double_marked_bilingual_template(monkeypatch):
+    db = _DB()
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(_phone, message, _branch_id, quick_reply_payload=None):
+        sent.append(message)
+        return True
+
+    async def no_sleep(_seconds):
+        return None
+
+    async def fake_config(_branch_id):
+        return None
+
+    monkeypatch.setattr(whatsapp_mod, "_send_wa_message_for_branch", fake_send)
+    monkeypatch.setattr(whatsapp_mod, "_get_branch_cloud_config", fake_config)
+    monkeypatch.setattr(whatsapp_mod.asyncio, "sleep", no_sleep)
+
+    count = run(whatsapp_mod._send_wa_for_members([{
+        "member": {"id": "m1", "name": "سارة", "phone": "0501234567"},
+        "activity_name": "Swimming",
+        "end_date_fmt": "2026/09/10",
+    }], 0, "تنبيه\n\n— English —\nAlready bilingual"))
+
+    assert count == 1
+    assert sent == ["تنبيه\n\n— English —\nAlready bilingual"]
+
+
+def test_automatic_renewal_uses_expired_days_ago_not_negative_remaining(monkeypatch):
+    db = _DB()
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def fake_send(_phone, message, _branch_id, quick_reply_payload=None):
+        sent.append(message)
+        return True
+
+    async def fake_config(_branch_id):
+        return None
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(whatsapp_mod, "_send_wa_message_for_branch", fake_send)
+    monkeypatch.setattr(whatsapp_mod, "_get_branch_cloud_config", fake_config)
+    monkeypatch.setattr(whatsapp_mod.asyncio, "sleep", no_sleep)
+
+    count = run(whatsapp_mod._send_wa_for_members([{
+        "member": {"id": "m1", "name": "سارة", "phone": "0501234567"},
+        "activity_name": "Swimming",
+        "end_date_fmt": "2026/09/10",
+    }], -4, "انتهى الاشتراك بتاريخ {end_date}"))
+
+    assert count == 1
+    assert "expired on 2026/09/10 (4 day(s) ago)" in sent[0]
+    assert "-4 day(s) remaining" not in sent[0]
+
+
+def test_manual_bulk_expired_renewal_appends_structured_english(monkeypatch):
+    class AsyncMembers(_Collection):
+        def find(self, query, _projection=None):
+            rows = [
+                dict(row) for row in self.rows
+                if row.get("id") in query.get("id", {}).get("$in", [])
+            ]
+
+            class Cursor:
+                def __aiter__(self):
+                    self._iter = iter(rows)
+                    return self
+
+                async def __anext__(self):
+                    try:
+                        return next(self._iter)
+                    except StopIteration:
+                        raise StopAsyncIteration
+
+            return Cursor()
+
+    db = _DB()
+    db.collections["members"] = AsyncMembers([{
+        "id": "member-1",
+        "name_ar": "عبدالعزيز",
+        "phone": "0501234567",
+        "branch_id": "branch-a",
+    }])
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    sent = []
+
+    async def settings():
+        return {
+            "manual_reminder_template": "اشتراك {activity} ينتهي بتاريخ {end_date}",
+            "manual_reminder_expired_template": "اشتراك {activity} انتهى بتاريخ {end_date}",
+            "push_enabled": False,
+            "portal_enabled": False,
+        }
+
+    async def branch_templates():
+        return {}
+
+    async def wa_status():
+        return {"connected": True}
+
+    async def fake_send(_phone, message, branch_id):
+        sent.append((message, branch_id))
+        return True
+
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(whatsapp_mod, "_get_settings", settings)
+    monkeypatch.setattr(whatsapp_mod, "_get_branch_templates", branch_templates)
+    monkeypatch.setattr(whatsapp_mod, "_get_wa_status", wa_status)
+    monkeypatch.setattr(whatsapp_mod, "_send_wa_message_for_branch", fake_send)
+    monkeypatch.setattr(whatsapp_mod.asyncio, "sleep", no_sleep)
+    expired_date = (
+        datetime.now(whatsapp_mod.RIYADH_TZ).date() - timedelta(days=3)
+    ).isoformat()
+
+    result = run(whatsapp_mod.send_bulk_renewal_reminders(
+        whatsapp_mod.BulkReminderRequest(items=[whatsapp_mod.BulkReminderItem(
+            member_id="member-1",
+            activity_name="الكاراتيه Kids",
+            end_date=expired_date,
+            fee=500,
+        )]),
+        current_user={"id": "admin", "name": "Admin", "is_admin": True},
+    ))
+
+    assert result["wa_sent"] == 1
+    assert sent[0][1] == "branch-a"
+    message = sent[0][0]
+    assert message.startswith(f"اشتراك الكاراتيه Kids انتهى بتاريخ {expired_date.replace('-', '/')}")
+    assert "Hello عبدالعزيز" in message
+    assert (
+        f"subscription for الكاراتيه Kids expired on "
+        f"{expired_date.replace('-', '/')} (3 day(s) ago)"
+    ) in message
+    assert "-3 day(s) remaining" not in message
+    assert message.count(whatsapp_mod.BILINGUAL_ENGLISH_MARKER) == 1
+
+
+def test_receipt_render_failure_does_not_send_text_fallback(monkeypatch):
+    from services import invoice_receipt_image
+    monkeypatch.setattr(whatsapp_mod, "_db", _DB())
+    async def config(_branch):
+        return {"provider": "whatsflow", "enabled": True}
+    monkeypatch.setattr(whatsapp_mod, "_get_branch_cloud_config", config)
+    def broken(*_args):
+        raise RuntimeError("render failed")
+    monkeypatch.setattr(invoice_receipt_image, "render_invoice_receipt_image", broken)
+    monkeypatch.setattr(whatsapp_mod, "_whatsflow_client",
+                        lambda *_args: pytest.fail("Must not send without image"))
+    assert run(whatsapp_mod.send_invoice_payment_whatsapp_notice({
+        "id": "invoice", "branch_id": "branch-a", "customer_phone": "0501234567",
+    })) is False
+
+
+@pytest.mark.parametrize("outcome, expected", [
+    (True, "delivered"), (False, "failed"), ("timeout", "unknown"),
+])
+def test_receipt_outbox_records_media_delivery_outcome(monkeypatch, outcome, expected):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    collection = SimpleNamespace(update_one=AsyncMock(
+        return_value=SimpleNamespace(modified_count=1)))
+    monkeypatch.setattr(whatsapp_mod, "_db", {
+        "whatsapp_invoice_payment_outbox": collection,
+    })
+    async def send(_invoice):
+        if outcome == "timeout":
+            raise whatsapp_mod.InvoiceReceiptDeliveryUnknown("ReadTimeout")
+        return outcome
+    monkeypatch.setattr(whatsapp_mod, "send_invoice_payment_whatsapp_notice", send)
+    result = run(whatsapp_mod._deliver_invoice_payment_outbox_item({
+        "invoice_id": "invoice", "status": "pending", "invoice": {"id": "invoice"},
+    }))
+    assert result is (outcome is True)
+    update = collection.update_one.call_args.args[1]["$set"]
+    assert update["status"] == expected
+    assert update["last_error"] == ("ReadTimeout" if outcome == "timeout" else None)

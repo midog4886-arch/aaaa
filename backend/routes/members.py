@@ -1199,6 +1199,11 @@ async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
             f"النشاط: {activity_name}\n"
             f"الموعد السابق: {old_sched}\n"
             f"الموعد الجديد: {new_sched or 'يرجى التواصل مع الفرع'}"
+            f"\n\n— English —\n"
+            f"Training schedule changed for {member_name}.\n"
+            f"Activity: {activity_name}\n"
+            f"Previous schedule: {_activity_schedule_str(before_act) or 'Not specified'}\n"
+            f"New schedule: {new_sched or 'Please contact the branch'}"
         )
         await send_schedule_update_whatsapp_notice(
             member_doc or {"id": member_id},

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
-import api, { membersAPI, branchesAPI, activitiesAPI } from '../services/api';
+import api, { membersAPI, branchesAPI, activitiesAPI, whatsappAPI } from '../services/api';
 import { toast } from 'sonner';
 import {
   CalendarOff, Plus, Trash2, Play, Clock, User, Users,
@@ -69,9 +69,9 @@ export default function DayExtensionsPage() {
   const [previewResult, setPreviewResult] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [waMessage, setWaMessage] = useState('');
-  const [sendingWa] = useState(false);
-  const [waQueue, setWaQueue] = useState([]);
-  const [waQueueIdx, setWaQueueIdx] = useState(0);
+  const [sendingWa, setSendingWa] = useState(false);
+  const [waJobs, setWaJobs] = useState([]);
+  const [waJobsPollVersion, setWaJobsPollVersion] = useState(0);
   const [excludedMemberIds, setExcludedMemberIds] = useState([]);
   const [showSkippedList, setShowSkippedList] = useState(false);
 
@@ -101,6 +101,21 @@ export default function DayExtensionsPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!branches.length) return;
+    let cancelled = false;
+    Promise.all(branches.map(branch => {
+      const branchId = branch.id || branch._id;
+      return whatsappAPI.listBranchCloudJobs(branchId)
+        .then(response => (response.data || [])
+          .filter(job => (job.idempotency_key || '').startsWith('closure_notice_')))
+        .catch(() => []);
+    })).then(groups => {
+      if (!cancelled) setWaJobs(groups.flat());
+    });
+    return () => { cancelled = true; };
+  }, [branches]);
 
   const handleCreateClosure = async () => {
     if (!newClosure.title_ar || !newClosure.start_date || !newClosure.end_date) {
@@ -204,8 +219,6 @@ export default function DayExtensionsPage() {
     }
   };
 
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
   const handleSendWhatsAppFromPreview = async () => {
     if (!previewResult || !previewResult.extended_members?.length) {
       toast.error(t('لا يوجد مستلمون', 'No recipients'));
@@ -215,55 +228,59 @@ export default function DayExtensionsPage() {
       toast.error(t('أدخل نص الرسالة', 'Enter message text'));
       return;
     }
-    const recipients = previewResult.extended_members.filter(m => m.phone && !excludedMemberIds.includes(m.member_id));
-    if (recipients.length === 0) {
+    const recipientCount = previewResult.extended_members.filter(m => m.phone && !excludedMemberIds.includes(m.member_id)).length;
+    if (recipientCount === 0) {
       toast.error(t('لا يوجد أرقام جوال', 'No phone numbers'));
       return;
     }
-    const queue = recipients.map(m => {
-      const det = (m.details && m.details[0]) || {};
-      const personalized = waMessage
-        .replace(/\{name\}/g, m.name || '')
-        .replace(/\{days\}/g, det.missed_sessions || previewClosure?.days || '')
-        .replace(/\{new_end\}/g, det.new_end || '')
-        .replace(/\{old_end\}/g, det.old_end || '')
-        .replace(/\{activity\}/g, det.activity || '');
-      let phone = (m.phone || '').replace(/\D/g, '');
-      if (phone.startsWith('00')) phone = phone.slice(2);
-      if (phone.startsWith('0')) phone = '966' + phone.slice(1);
-      return { name: m.name || phone, phone, link: `https://wa.me/${phone}?text=${encodeURIComponent(personalized)}` };
-    });
-    window.open(queue[0].link, '_blank');
-    if (queue.length === 1) {
-      toast.success(t('تم فتح واتساب', 'WhatsApp opened'));
-      return;
-    }
-    setShowPreviewDialog(false);
-    setWaQueue(queue);
-    setWaQueueIdx(1);
-    toast.success(t(`تم فتح 1 من ${queue.length}. اضغط "فتح التالي" بالأسفل للمتابعة`, `Opened 1 of ${queue.length}. Click "Open Next" at the bottom to continue`));
-  };
-
-  const sendNextInQueue = () => {
-    const next = waQueue[waQueueIdx];
-    if (!next) { setWaQueue([]); setWaQueueIdx(0); return; }
-    window.open(next.link, '_blank');
-    const newIdx = waQueueIdx + 1;
-    if (newIdx >= waQueue.length) {
-      setWaQueue([]); setWaQueueIdx(0);
-      toast.success(t('اكتمل الإرسال', 'Sending completed'));
-    } else {
-      setWaQueueIdx(newIdx);
+    if (!window.confirm(t(
+      `ستتم إضافة ${recipientCount} رسالة إلى قائمة الفرع بفاصل دقيقة واحدة على الأقل. الإضافة لا تعني أن الرسائل أُرسلت بعد. هل تريد المتابعة؟`,
+      `Queue ${recipientCount} message(s) in the branch campaign lane at least one minute apart? Queued does not mean sent.`
+    ))) return;
+    setSendingWa(true);
+    try {
+      const response = await whatsappAPI.enqueueClosureNotices({
+        closure_id: previewClosure.id,
+        branch_id: applyBranch,
+        message: waMessage,
+        excluded_member_ids: excludedMemberIds
+      });
+      const jobs = response.data?.jobs || [];
+      setWaJobs(current => [...jobs, ...current.filter(old => !jobs.some(job => job.id === old.id))]);
+      setWaJobsPollVersion(value => value + 1);
+      const skipped = response.data?.skipped_without_phone || 0;
+      toast.success(t(
+        `تمت الإضافة إلى قائمة الانتظار؛ لم يتم تطبيق الترحيل${skipped ? ` (تم تخطي ${skipped} بدون جوال)` : ''}`,
+        `Queued; the extension was not applied${skipped ? ` (${skipped} without a phone skipped)` : ''}`
+      ));
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('تعذر إضافة الرسائل إلى قائمة الانتظار', 'Could not queue messages'));
+    } finally {
+      setSendingWa(false);
     }
   };
 
-  const skipNextInQueue = () => {
-    const newIdx = waQueueIdx + 1;
-    if (newIdx >= waQueue.length) { setWaQueue([]); setWaQueueIdx(0); }
-    else setWaQueueIdx(newIdx);
-  };
-
-  const cancelQueue = () => { setWaQueue([]); setWaQueueIdx(0); };
+  useEffect(() => {
+    if (!waJobs.length) return undefined;
+    const active = waJobs.filter(job => ['pending', 'processing', 'paused'].includes(job.status));
+    if (!active.length) return undefined;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const refreshed = await Promise.all(active.map(job =>
+        whatsappAPI.getBranchCloudJob(job.branch_id, job.id)
+          .then(response => response.data)
+          .catch(() => job)
+      ));
+      if (!cancelled) {
+        setWaJobs(current => current.map(job => refreshed.find(next => next.id === job.id) || job));
+        setWaJobsPollVersion(value => value + 1);
+      }
+    }, 5000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [waJobs, waJobsPollVersion]);
 
   const handleConfirmApplyFromPreview = async () => {
     if (!previewClosure) return;
@@ -293,6 +310,21 @@ export default function DayExtensionsPage() {
     } finally {
       setApplying(false);
     }
+  };
+
+  const cancelWhatsAppJob = async (job) => {
+    try {
+      const response = await whatsappAPI.cancelBranchCloudJob(job.branch_id, job.id);
+      setWaJobs(current => current.map(value => value.id === job.id ? response.data : value));
+      toast.success(t('أُلغي المتبقي المعلّق', 'Remaining pending messages cancelled'));
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('تعذر الإلغاء', 'Could not cancel'));
+    }
+  };
+
+  const closureForJob = (job) => {
+    const closureId = (job.idempotency_key || '').replace(/^closure_notice_/, '');
+    return closures.find(closure => closure.id === closureId);
   };
 
   const handleManualExtension = async () => {
@@ -343,25 +375,6 @@ export default function DayExtensionsPage() {
 
   return (
     <Layout>
-      {waQueue.length > 0 && (
-        <div className="fixed bottom-4 inset-x-4 z-[100] mx-auto max-w-md bg-card border-2 border-primary shadow-2xl rounded-xl p-3" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold">{t('قائمة إرسال واتساب', 'WhatsApp send queue')}</span>
-            <span className="text-xs text-muted-foreground">{waQueueIdx} / {waQueue.length}</span>
-          </div>
-          <div className="text-xs text-muted-foreground mb-2 truncate">
-            {t('التالي:', 'Next:')} <span className="font-medium text-foreground">{waQueue[waQueueIdx]?.name}</span> — {waQueue[waQueueIdx]?.phone}
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={sendNextInQueue} className="flex-1 gap-1">
-              <Send className="w-3.5 h-3.5" />
-              {t('فتح التالي', 'Open Next')}
-            </Button>
-            <Button size="sm" variant="outline" onClick={skipNextInQueue}>{t('تخطي', 'Skip')}</Button>
-            <Button size="sm" variant="ghost" onClick={cancelQueue}>{t('إلغاء', 'Cancel')}</Button>
-          </div>
-        </div>
-      )}
       <div className="p-4 md:p-6 space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -384,6 +397,32 @@ export default function DayExtensionsPage() {
             </Button>
           </div>
         </div>
+        {waJobs.length > 0 && (
+          <Card className="p-4 space-y-2" data-testid="closure-whatsapp-job-progress">
+            <Label>{t('حالة قوائم رسائل الإغلاق', 'Closure message queue status')}</Label>
+            {waJobs.slice(0, 10).map(job => {
+              const jobClosure = closureForJob(job);
+              return (
+                <div key={job.id} className="rounded-md border p-3 text-xs">
+                  <div className="font-medium">
+                    {jobClosure?.title_ar || jobClosure?.title_en || t('إغلاق', 'Closure')}
+                    {' · '}
+                    {branches.find(branch => (branch.id || branch._id) === job.branch_id)?.name_ar || job.branch_id}
+                    {' · '}{job.status}
+                  </div>
+                  <div className="mt-1 text-muted-foreground">
+                    {t('معلّق', 'Pending')}: {job.pending || 0} · {t('تم', 'Sent')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
+                  </div>
+                  {job.pending > 0 && (
+                    <Button size="sm" variant="outline" className="mt-2" onClick={() => cancelWhatsAppJob(job)}>
+                      {t('إلغاء المتبقي', 'Cancel remaining')}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </Card>
+        )}
 
         <div className="flex gap-2 border-b pb-2">
           <Button variant={activeTab === 'closures' ? 'default' : 'ghost'} size="sm" onClick={() => setActiveTab('closures')}>
@@ -578,12 +617,12 @@ export default function DayExtensionsPage() {
                         {closure.notes && <p className="text-sm text-muted-foreground mt-1">{closure.notes}</p>}
                       </div>
                       <div className="flex gap-2">
+                        <Button onClick={() => handlePreviewExtension(closure)} disabled={applying || previewing} variant="outline" className="border-blue-500 text-blue-700 hover:bg-blue-50">
+                          <Users className="w-4 h-4 me-1" />
+                          {t('معاينة وإرسال واتساب', 'Preview & WhatsApp')}
+                        </Button>
                         {!closure.applied && (
                           <>
-                            <Button onClick={() => handlePreviewExtension(closure)} disabled={applying || previewing} variant="outline" className="border-blue-500 text-blue-700 hover:bg-blue-50">
-                              <Users className="w-4 h-4 me-1" />
-                              {t('معاينة وإرسال واتساب', 'Preview & WhatsApp')}
-                            </Button>
                             <Button onClick={() => handleApplyExtension(closure)} disabled={applying} className="bg-green-600 hover:bg-green-700">
                               {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
                               {t('ترحيل للجميع', 'Apply to All')}
@@ -823,14 +862,16 @@ export default function DayExtensionsPage() {
                   {sendingWa ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Send className="w-4 h-4 me-1" />}
                   {t('إرسال واتساب للجميع', 'Send WhatsApp to All')}
                 </Button>
-                <Button
-                  onClick={handleConfirmApplyFromPreview}
-                  disabled={previewing || applying || !previewResult || !previewResult.extended_count}
-                  className="bg-primary"
-                >
-                  {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
-                  {t('تأكيد الترحيل', 'Confirm Extension')}
-                </Button>
+                {!previewClosure?.applied && (
+                  <Button
+                    onClick={handleConfirmApplyFromPreview}
+                    disabled={previewing || applying || !previewResult || !previewResult.extended_count}
+                    className="bg-primary"
+                  >
+                    {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
+                    {t('تأكيد الترحيل', 'Confirm Extension')}
+                  </Button>
+                )}
               </DialogFooter>
             </DialogContent>
           </Dialog>

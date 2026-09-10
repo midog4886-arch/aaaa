@@ -34,6 +34,37 @@ CAMPAIGN_PDF_LIMIT = 20 * 1024 * 1024
 CAMPAIGN_MAX_PASTED_RECIPIENTS = 2000
 CAMPAIGN_ATTACHMENT_CHUNK_SIZE = 1024 * 1024
 CAMPAIGN_MAX_IMAGES = 10
+BILINGUAL_ENGLISH_MARKER = "— English —"
+
+
+def _append_english_section(message: str, english_text: str) -> str:
+    """Append the standard English section once, preserving saved Arabic text."""
+    if BILINGUAL_ENGLISH_MARKER.lower() in (message or "").lower():
+        return message
+    return f"{message.rstrip()}\n\n{BILINGUAL_ENGLISH_MARKER}\n{english_text.strip()}"
+
+
+def _renewal_english_summary(
+    *, name: str, activity: str, end_date: str, days_remaining: int
+) -> str:
+    """Build an English renewal summary solely from structured reminder data."""
+    if days_remaining < 0:
+        timing = (
+            f"expired on {end_date} "
+            f"({abs(days_remaining)} day(s) ago)"
+        )
+    elif days_remaining == 0:
+        timing = f"expires today, {end_date}"
+    else:
+        timing = (
+            f"expires on {end_date} "
+            f"({days_remaining} day(s) remaining)"
+        )
+    return (
+        f"Hello {name},\n"
+        f"Your subscription for {activity} {timing}.\n"
+        f"Please contact us to renew. 🏆"
+    )
 
 
 def _require_whatsapp_access(current_user: dict):
@@ -532,6 +563,11 @@ async def send_attendance_whatsapp_notice(
             f"تم تسجيل حضور {member_name} في {activity_name} "
             f"بتاريخ {date_str} الساعة {check_in_time} ✅"
         )
+        message = _append_english_section(
+            message,
+            f"Attendance recorded for {member_name} in {activity_name} "
+            f"on {date_str} at {check_in_time} ✅",
+        )
         if provider in {"waha", "whatsflow"}:
             success, _, _ = await _send_session_provider_result(phone, message, config)
         else:
@@ -635,11 +671,19 @@ async def send_class_reminder_whatsapp_notice(
         return False
     name = member.get("name_ar") or member.get("name") or ""
     time_text = class_time.strftime("%I:%M %p").lstrip("0").replace("AM", "ص").replace("PM", "م")
+    time_text_en = class_time.strftime("%I:%M %p").lstrip("0")
     message = (
         f"تذكير بموعد حصة {name} بعد ساعتين ⏰\n"
         f"النشاط: {activity_name}\n"
         f"الوقت: {time_text}\n"
         f"الفرع: {branch_name}"
+    )
+    message = _append_english_section(
+        message,
+        f"Class reminder for {name}: the class starts in two hours ⏰\n"
+        f"Activity: {activity_name}\n"
+        f"Time: {time_text_en}\n"
+        f"Branch: {branch_name}",
     )
     if provider in {"waha", "whatsflow"}:
         success, _, _ = await _send_session_provider_result(phone, message, config)
@@ -678,8 +722,11 @@ async def send_schedule_update_whatsapp_notice(
             {"id": branch_id}, {"_id": 0, "name": 1, "name_ar": 1}
         )
         branch_name = (branch or {}).get("name_ar") or (branch or {}).get("name") or ""
-        if branch_name and "الفرع:" not in message:
-            message = f"{message}\nالفرع: {branch_name}"
+        if branch_name:
+            if "الفرع:" not in message:
+                message = f"{message}\nالفرع: {branch_name}"
+            if not re.search(r"(?im)^\s*branch\s*:", message):
+                message = f"{message}\nBranch: {branch_name}"
         log = _db["whatsapp_schedule_update_log"]
         if dedup_key:
             await log.create_index("dedup_key", unique=True)
@@ -801,8 +848,12 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
     return sent
 
 
+class InvoiceReceiptDeliveryUnknown(RuntimeError):
+    """The provider may have accepted the receipt; never automatically resend."""
+
+
 async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
-    """Send a paid-invoice receipt notice through the invoice branch's Meta template."""
+    """Send Whatsflow receipts as a private image with caption; retain other providers."""
     try:
         branch_id = invoice.get("branch_id")
         if not branch_id:
@@ -822,17 +873,25 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
         customer = invoice.get("customer_name_ar") or invoice.get("customer_name") or ""
         invoice_number = invoice.get("invoice_number") or invoice.get("id") or ""
         item_lines = []
+        item_lines_en = []
         for item in (invoice.get("items") or [])[:12]:
             name = item.get("activity_name") or item.get("name") or "بند"
             quantity = item.get("quantity", 1) or 1
             fee = item.get("fee", 0) or 0
             quantity_text = f" × {quantity}" if quantity != 1 else ""
             item_lines.append(f"• {name}{quantity_text}: {fee} ر.س")
+            item_lines_en.append(f"• {name}{quantity_text}: SAR {fee}")
         items_text = "\n".join(item_lines) or "• تفاصيل الفاتورة محفوظة في حسابك"
+        items_text_en = "\n".join(item_lines_en) or "• Invoice details are saved in your account"
         if len(invoice.get("items") or []) > 12:
             items_text += "\n• بنود إضافية موجودة في الفاتورة"
+            items_text_en += "\n• Additional items are included in the invoice"
         discount_line = (
             f"\nالخصم: {invoice.get('discount', 0)} ر.س"
+            if (invoice.get("discount", 0) or 0) > 0 else ""
+        )
+        discount_line_en = (
+            f"\nDiscount: SAR {invoice.get('discount', 0)}"
             if (invoice.get("discount", 0) or 0) > 0 else ""
         )
         message = (
@@ -845,7 +904,46 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
             f"ضريبة القيمة المضافة: {invoice.get('vat_amount', 0)} ر.س\n"
             f"الإجمالي المدفوع: {invoice.get('total', 0)} ر.س"
         )
-        if provider in {"waha", "whatsflow"}:
+        message = _append_english_section(
+            message,
+            f"Your payment has been received successfully ✅\n"
+            f"Customer: {customer}\n"
+            f"Invoice number: {invoice_number}\n\n"
+            f"Items:\n{items_text_en}\n\n"
+            f"Subtotal: SAR {invoice.get('subtotal', 0)}"
+            f"{discount_line_en}\n"
+            f"VAT: SAR {invoice.get('vat_amount', 0)}\n"
+            f"Total paid: SAR {invoice.get('total', 0)}",
+        )
+        if provider == "whatsflow":
+            from services.invoice_receipt_image import render_invoice_receipt_image
+
+            branch = await _db["branches"].find_one({"id": branch_id}, {"_id": 0})
+            image = await asyncio.to_thread(render_invoice_receipt_image, invoice, branch)
+            # One media message, not a text followed by a separate attachment.
+            # Keep the full item list in the image rather than exceed caption limits.
+            caption = (
+                f"تم استلام دفعتك بنجاح ✅\n"
+                f"رقم الفاتورة: {invoice_number}\n"
+                f"الإجمالي المدفوع: {invoice.get('total', 0)} ر.س\n\n"
+                f"{BILINGUAL_ENGLISH_MARKER}\n"
+                f"Your payment has been received successfully ✅\n"
+                f"Invoice number: {invoice_number}\n"
+                f"Total paid: SAR {invoice.get('total', 0)}"
+            )[:1000]
+            try:
+                success, _, error = await _whatsflow_client(config).send_media(
+                    "".join(filter(str.isdigit, phone)), "image", "image/png", caption,
+                    base64.b64encode(image).decode("ascii"), "invoice.png",
+                )
+            except Exception as exc:
+                raise InvoiceReceiptDeliveryUnknown(type(exc).__name__) from exc
+            if not success and not (
+                error and re.fullmatch(r"http_4\d\d", error)
+                and error not in {"http_408", "http_409"}
+            ):
+                raise InvoiceReceiptDeliveryUnknown(error or "unconfirmed_delivery")
+        elif provider == "waha":
             success, _, _ = await _send_session_provider_result(phone, message, config)
         else:
             if not (provider == "meta_cloud" and config.get("phone_number_id") and config.get("access_token_encrypted")
@@ -869,6 +967,8 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
         except Exception as exc:
             logger.warning("Could not save payment WhatsApp log: %s", type(exc).__name__)
         return success
+    except InvoiceReceiptDeliveryUnknown:
+        raise
     except Exception as exc:
         logger.warning("Invoice payment WhatsApp notice failed: %s", type(exc).__name__)
         return False
@@ -878,13 +978,22 @@ async def _deliver_invoice_payment_outbox_item(item: dict) -> bool:
     coll = _db["whatsapp_invoice_payment_outbox"]
     claim_token = str(uuid.uuid4())
     if item.get("status") == "processing":
-        claim_filter = {
-            "invoice_id": item["invoice_id"],
-            "status": "processing",
-            "claim_token": item.get("claim_token"),
-            "claimed_at": item.get("claimed_at"),
-            "attempts": {"$lt": 5},
-        }
+        # A worker can die after the provider accepts a receipt. Reclaiming and
+        # sending again would duplicate a customer's payment notification.
+        await coll.update_one(
+            {
+                "invoice_id": item["invoice_id"],
+                "status": "processing",
+                "claim_token": item.get("claim_token"),
+                "claimed_at": item.get("claimed_at"),
+            },
+            {"$set": {
+                "status": "unknown",
+                "last_error": "worker_interrupted_delivery",
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
+        return False
     else:
         claim_filter = {
             "invoice_id": item["invoice_id"],
@@ -902,7 +1011,12 @@ async def _deliver_invoice_payment_outbox_item(item: dict) -> bool:
     )
     if getattr(claim, "modified_count", 0) == 0:
         return False
-    success = await send_invoice_payment_whatsapp_notice(item.get("invoice") or {})
+    error = None
+    try:
+        success = await send_invoice_payment_whatsapp_notice(item.get("invoice") or {})
+    except InvoiceReceiptDeliveryUnknown as exc:
+        success = False
+        error = str(exc)
     await coll.update_one(
         {
             "invoice_id": item["invoice_id"],
@@ -910,7 +1024,8 @@ async def _deliver_invoice_payment_outbox_item(item: dict) -> bool:
             "claim_token": claim_token,
         },
         {"$set": {
-            "status": "delivered" if success else "failed",
+            "status": "unknown" if error else ("delivered" if success else "failed"),
+            "last_error": error,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
     )
@@ -1199,6 +1314,15 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
             days=days_before,
             end_date=end_date_fmt,
             fee=item.get("fee_str", ""),
+        )
+        message = _append_english_section(
+            message,
+            _renewal_english_summary(
+                name=name,
+                activity=activity_name,
+                end_date=end_date_fmt,
+                days_remaining=days_before,
+            ),
         )
         wa_phone = _format_phone(phone)
         if wa_phone:
@@ -4529,6 +4653,15 @@ async def send_bulk_renewal_reminders(
                     days=days_calc,
                     end_date=end_date_fmt,
                     fee=fee_str,
+                )
+                message = _append_english_section(
+                    message,
+                    _renewal_english_summary(
+                        name=name,
+                        activity=activities_text,
+                        end_date=end_date_fmt,
+                        days_remaining=days_calc,
+                    ),
                 )
                 branch_id = member.get("branch_id")
                 ok = await _send_wa_message_for_branch(wa_phone, message, branch_id)

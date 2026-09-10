@@ -70,49 +70,12 @@ def test_member_schedule_change_sends_old_and_new_times(monkeypatch):
     assert "4:00 م" in sent[0][1]
     assert "5:00 م" in sent[0][1]
     assert sent[0][2]["notice_type"] == "schedule_changed_cloud"
+    assert "Training schedule changed" in sent[0][1]
+    assert "Previous schedule:" in sent[0][1]
+    assert "New schedule:" in sent[0][1]
 
 
-def test_closure_sends_each_affected_member_once(monkeypatch):
-    sent = []
-
-    async def fake_whatsapp(member, message, **kwargs):
-        sent.append((member, message, kwargs))
-        return True
-
-    monkeypatch.setattr(
-        whatsapp_mod, "send_schedule_update_whatsapp_notice", fake_whatsapp
-    )
-    members = [
-        {
-            "id": "member-1",
-            "member_id": "member-1",
-            "name": "محمد",
-            "phone": "0501234567",
-            "branch_id": "branch-a",
-            "details": [{"activity": "الكاراتيه"}],
-        },
-        {
-            "id": "member-2",
-            "member_id": "member-2",
-            "name": "أحمد",
-            "phone": "0507654321",
-            "branch_id": "branch-a",
-            "details": [{"activity": "السباحة"}],
-        },
-    ]
-
-    run(day_extensions_mod._send_closure_whatsapp_notices(
-        {
-            "id": "closure-1",
-            "title_ar": "صيانة الفرع",
-            "start_date": "2026-09-10",
-            "end_date": "2026-09-10",
-        },
-        members,
-    ))
-
-    assert len(sent) == 2
-    assert "صيانة الفرع" in sent[0][1]
-    assert "الكاراتيه" in sent[0][1]
-    assert sent[0][2]["dedup_key"] == "closure:closure-1:member-1"
-    assert sent[1][2]["dedup_key"] == "closure:closure-1:member-2"
+def test_closure_apply_has_no_direct_whatsapp_sender():
+    # Closure delivery is now an explicit, durable campaign operation. Applying
+    # the extension must not expose the former burst-sending helper.
+    assert not hasattr(day_extensions_mod, "_send_closure_whatsapp_notices")

@@ -1,5 +1,4 @@
 """Day Extensions (ترحيل الأيام) routes"""
-import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
@@ -8,38 +7,10 @@ import re
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
+from services import whatsapp_bulk_jobs
 
 router = APIRouter(prefix="/day-extensions", tags=["day-extensions"])
 
-
-async def _send_closure_whatsapp_notices(closure: dict, members: list) -> None:
-    """Best-effort post-apply notices; never delay or roll back the closure."""
-    try:
-        from routes.whatsapp import send_schedule_update_whatsapp_notice
-        title = closure.get("title_ar") or closure.get("title_en") or "إلغاء حصة"
-        start = closure.get("start_date") or ""
-        end = closure.get("end_date") or start
-        date_text = start if start == end else f"{start} إلى {end}"
-        for member in members:
-            details = member.get("details") or []
-            activities = "، ".join(
-                dict.fromkeys(d.get("activity") for d in details if d.get("activity"))
-            ) or "جميع الأنشطة المتأثرة"
-            message = (
-                f"تنبيه بإلغاء/توقف الحصة ⚠️\n"
-                f"العضو: {member.get('name') or ''}\n"
-                f"السبب: {title}\n"
-                f"التاريخ: {date_text}\n"
-                f"النشاط: {activities}"
-            )
-            await send_schedule_update_whatsapp_notice(
-                member,
-                message,
-                notice_type="class_cancelled_cloud",
-                dedup_key=f"closure:{closure.get('id')}:{member.get('member_id')}",
-            )
-    except Exception:
-        pass
 
 def require_admin(user: dict):
     if not user.get("is_admin", False):
@@ -209,9 +180,28 @@ class ManualExtension(BaseModel):
     reason: str
     activity_id: Optional[str] = None
 
+
+class ClosureNoticeSend(BaseModel):
+    closure_id: str
+    message: str
+    branch_id: Optional[str] = None
+    excluded_member_ids: Optional[List[str]] = []
+
 @router.get("/closures")
 async def get_closures(user=Depends(get_current_user)):
     closures = await db.closures.find().sort("created_at", -1).to_list(500)
+    from routes.members import _mask_phone
+    current_user_doc = await db.users.find_one(
+        {"id": user.get("user_id")},
+        {"_id": 0, "is_admin": 1, "permissions": 1},
+    )
+    can_view_phones = bool(
+        current_user_doc
+        and (
+            current_user_doc.get("is_admin", False)
+            or "member-phones" in (current_user_doc.get("permissions") or [])
+        )
+    )
     member_branch_cache = {}
     for c in closures:
         c.pop("_id", None)
@@ -227,6 +217,9 @@ async def get_closures(user=Depends(get_current_user)):
                 if len(filtered) != len(affected):
                     c["affected_members"] = filtered
                     c["applied_count"] = len(filtered)
+        if not can_view_phones:
+            for affected_member in c.get("affected_members") or []:
+                affected_member["phone"] = _mask_phone(affected_member.get("phone"))
     return closures
 
 @router.post("/closures")
@@ -429,7 +422,7 @@ async def extend_freezes_for_closure(closure: dict, member_ids: list, applied_by
 
 @router.post("/apply")
 async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
-    require_admin(user)
+    await _require_current_admin(user)
     if data.days <= 0:
         raise HTTPException(status_code=400, detail="Days must be positive")
     closure = await db.closures.find_one({"id": data.closure_id})
@@ -456,6 +449,55 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         apply_branch = data.branch_id or "all"
     if apply_branch and apply_branch != "all":
         query["branch_id"] = apply_branch
+
+    # Once applied, the normal calculator intentionally finds no work because
+    # day-extension records already exist. Its saved result is the authoritative
+    # preview source instead; only identity/contact/branch fields are refreshed.
+    if data.dry_run and closure.get("applied"):
+        excluded_ids = set(data.excluded_member_ids or [])
+        saved = [
+            item for item in (closure.get("affected_members") or [])
+            if item.get("member_id") and item.get("member_id") not in excluded_ids
+        ]
+        member_ids = [item["member_id"] for item in saved]
+        current_members = {
+            member["id"]: member
+            for member in await db.members.find(
+                {"id": {"$in": member_ids}},
+                {"_id": 0, "id": 1, "name": 1, "name_ar": 1,
+                 "guardian_name": 1, "guardian_name_ar": 1,
+                 "phone": 1, "branch_id": 1},
+            ).to_list(10000)
+        }
+        refreshed = []
+        for saved_item in saved:
+            member = current_members.get(saved_item["member_id"])
+            if not member:
+                continue
+            if apply_branch != "all" and member.get("branch_id") != apply_branch:
+                continue
+            refreshed.append({
+                **saved_item,
+                "id": member["id"],
+                "member_id": member["id"],
+                "name": member.get("name_ar") or member.get("name") or "",
+                "guardian_name": (
+                    member.get("guardian_name_ar")
+                    or member.get("guardian_name")
+                    or ""
+                ),
+                "phone": member.get("phone") or "",
+                "branch_id": member.get("branch_id") or "",
+            })
+        return {
+            "message": f"Applied closure affected {len(refreshed)} members",
+            "dry_run": True,
+            "applied": True,
+            "extended_count": len(refreshed),
+            "extended_members": refreshed,
+            "skipped_count": 0,
+            "skipped_members": [],
+        }
 
     members = await db.members.find(query).to_list(10000)
     extended_count = 0
@@ -777,8 +819,6 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
             "freezes_extended_count": freeze_ext_result.get("extended", 0),
         }}
     )
-    asyncio.create_task(_send_closure_whatsapp_notices(closure, slim_affected))
-
     log_entry = {
         "id": str(uuid.uuid4()),
         "type": "closure",
@@ -822,6 +862,188 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         "extended_members": extended_members,
         "skipped_count": len(skipped_members),
         "skipped_members": skipped_members
+    }
+
+
+def _personalize_closure_notice(template: str, member: dict) -> str:
+    detail = ((member.get("details") or [{}])[0]) or {}
+    values = {
+        "name": member.get("name") or "",
+        "days": detail.get("missed_sessions") or "",
+        "new_end": detail.get("new_end") or "",
+        "old_end": detail.get("old_end") or "",
+        "activity": detail.get("activity") or "",
+    }
+    message = template
+    for key, value in values.items():
+        message = message.replace("{" + key + "}", str(value))
+    if "— English —" not in message:
+        lines = [
+            "— English —",
+            "Subscription extension notice",
+            f"Member: {values['name']}",
+        ]
+        for item in member.get("details") or []:
+            lines.extend([
+                f"Activity: {item.get('activity') or '—'}",
+                f"Sessions to compensate: {item.get('missed_sessions') or 0}",
+                f"Previous end date: {item.get('old_end') or '—'}",
+                f"New end date: {item.get('new_end') or '—'}",
+            ])
+        message += "\n\n" + "\n".join(lines)
+    return message
+
+
+async def _require_current_admin(user: dict) -> None:
+    """Do not authorize a sensitive send from stale JWT role claims alone."""
+    require_admin(user)
+    current = await db.users.find_one(
+        {"id": user.get("user_id")}, {"_id": 0, "is_admin": 1}
+    )
+    if not current or not current.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+async def _closure_provider(branch_id: str) -> str:
+    """Validate the branch's actual provider before any branch is enqueued."""
+    from routes import whatsapp as whatsapp_routes
+
+    if not await db.branches.find_one({"id": branch_id}, {"_id": 1}):
+        raise HTTPException(status_code=400, detail=f"Branch not found: {branch_id}")
+    config = await whatsapp_routes._get_branch_cloud_config(branch_id)
+    provider = whatsapp_routes._branch_provider(config)
+    if provider not in {"meta_cloud", "waha", "whatsflow"}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No supported WhatsApp provider is enabled for branch {branch_id}",
+        )
+    reason = whatsapp_routes._validate_bulk_job_config(provider, config)
+    if reason:
+        raise HTTPException(status_code=400, detail=f"Branch {branch_id}: {reason}")
+    if provider == "meta_cloud" and not (
+        config.get("message_template_name")
+        and config.get("single_variable_template_confirmed")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Branch {branch_id}: confirm an approved Meta text template",
+        )
+    if provider == "waha" and config.get("waha_session_status") not in {"WORKING", "CONNECTED"}:
+        raise HTTPException(status_code=400, detail=f"Branch {branch_id}: WAHA is disconnected")
+    if provider == "whatsflow" and config.get("whatsflow_state") != "open":
+        raise HTTPException(status_code=400, detail=f"Branch {branch_id}: Whatsflow is disconnected")
+    return provider
+
+
+@router.post("/closure-notices")
+async def enqueue_closure_notices(
+    data: ClosureNoticeSend, user=Depends(get_current_user)
+):
+    """Queue a preview's notices without applying or mutating the closure."""
+    await _require_current_admin(user)
+    template = data.message.strip()
+    if not template:
+        raise HTTPException(status_code=400, detail="Message text is required")
+    if len(template) > 4096:
+        raise HTTPException(status_code=400, detail="Message text is too long")
+
+    closure = await db.closures.find_one({"id": data.closure_id})
+    if not closure:
+        raise HTTPException(status_code=404, detail="Closure not found")
+    closure_branch = closure.get("branch_id") or "all"
+    requested_branch = data.branch_id or "all"
+    if closure_branch != "all":
+        effective_branch = closure_branch
+    else:
+        effective_branch = requested_branch
+        if effective_branch != "all" and not await db.branches.find_one(
+            {"id": effective_branch}, {"_id": 1}
+        ):
+            raise HTTPException(status_code=400, detail="Branch not found")
+
+    # Recompute the preview from the stored closure. The client supplies neither
+    # recipient phones nor personalization values.
+    preview = await apply_extension(
+        ExtensionApply(
+            closure_id=closure["id"],
+            days=closure["days"],
+            branch_id=effective_branch,
+            dry_run=True,
+            excluded_member_ids=list(set(data.excluded_member_ids or [])),
+        ),
+        user,
+    )
+    preview_members = preview.get("extended_members") or []
+    excluded_ids = set(data.excluded_member_ids or [])
+    preview_members = [
+        member for member in preview_members
+        if member.get("member_id") not in excluded_ids
+    ]
+    if not preview_members:
+        raise HTTPException(status_code=400, detail="No eligible recipients")
+
+    member_ids = [m["member_id"] for m in preview_members if m.get("member_id")]
+    authoritative = {
+        m["id"]: m
+        for m in await db.members.find(
+            {"id": {"$in": member_ids}},
+            {"_id": 0, "id": 1, "name": 1, "name_ar": 1,
+             "phone": 1, "branch_id": 1},
+        ).to_list(10000)
+    }
+    grouped = {}
+    skipped_without_phone = 0
+    from routes import whatsapp as whatsapp_routes
+    for item in preview_members:
+        member = authoritative.get(item.get("member_id"))
+        if not member:
+            continue
+        branch_id = member.get("branch_id")
+        if not branch_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Member {member.get('id')} has no branch; nothing was queued",
+            )
+        if effective_branch != "all" and branch_id != effective_branch:
+            raise HTTPException(status_code=403, detail="Recipient branch mismatch")
+        phone = member.get("phone") or ""
+        if not phone:
+            skipped_without_phone += 1
+            continue
+        if not whatsapp_routes._format_cloud_phone(phone):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Member {member.get('id')} has an invalid WhatsApp phone; "
+                    "nothing was queued"
+                ),
+            )
+        item["name"] = member.get("name_ar") or member.get("name") or ""
+        message = _personalize_closure_notice(template, item)
+        if not message or len(message) > 4096:
+            raise HTTPException(status_code=400, detail="Personalized message is invalid")
+        grouped.setdefault(branch_id, []).append({"phone": phone, "message": message})
+    if not grouped:
+        raise HTTPException(status_code=400, detail="No recipients have a phone number")
+
+    # Validate every branch first so unsupported/disabled branches cannot result
+    # in an avoidable partial enqueue.
+    providers = {
+        branch_id: await _closure_provider(branch_id) for branch_id in grouped
+    }
+    jobs = []
+    for branch_id, recipients in grouped.items():
+        # Branch-scoped uniqueness makes retries, double-clicks, and a later
+        # all-branches retry return the original job rather than sending twice.
+        key = re.sub(r"[^A-Za-z0-9_-]", "", f"closure_notice_{closure['id']}")[:100]
+        job, created = await whatsapp_bulk_jobs.enqueue(
+            branch_id, providers[branch_id], recipients, key
+        )
+        jobs.append({**job, "created": created})
+    return {
+        "queued": sum(job.get("total", 0) for job in jobs),
+        "skipped_without_phone": skipped_without_phone,
+        "jobs": jobs,
     }
 
 @router.post("/manual")
