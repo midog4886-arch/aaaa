@@ -362,6 +362,7 @@ export const billingAPI = {
 
 // Branches API
 export const registrationRequestsAPI = {
+  stopFollowup: (id, reason) => axios.post(`${API}/registration-requests/${id}/followup-stop`, { reason }),
   getAll: (params = {}) => axios.get(`${API}/registration-requests`, { params }),
   getPendingCount: (params = {}) => axios.get(`${API}/registration-requests/count`, { params }),
   updateStatus: (id, status) => axios.put(`${API}/registration-requests/${id}`, { status }),

@@ -34,7 +34,8 @@ def public_job(job):
     return {k: v for k, v in job.items() if k not in {"_id", "tenant_slug"}}
 
 
-async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=None):
+async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=None,
+                  kind="marketing", source="campaign"):
     jobs = _db["whatsapp_campaign_jobs"]
     await jobs.create_index([("branch_id", 1), ("idempotency_key", 1)], unique=True)
     scope = {"branch_id": branch_id, "idempotency_key": idempotency_key}
@@ -46,6 +47,7 @@ async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=
     total = len(recipients) * max(1, len(attachment_list))
     job = {
         "id": str(uuid.uuid4()), **scope, "provider": provider,
+        "communication_kind": kind, "source": source,
         "status": "initializing", "created_at": now, "updated_at": now,
         "total": total, "pending": total, "sent": 0, "failed": 0, "unknown": 0,
         "cancelled": 0, "attachment_count": len(attachment_list),
@@ -58,13 +60,19 @@ async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=
     for recipient_index, recipient in enumerate(recipients):
         media = attachment_list or [None]
         for media_index, attachment in enumerate(media):
-            items.append({
+            item = {
                 "id": str(uuid.uuid4()), "job_id": job["id"], "branch_id": branch_id,
                 "provider": provider, "recipient_index": recipient_index,
                 "media_index": media_index, "phone": recipient["phone"],
                 "message": recipient["message"], "attachment": attachment,
                 "status": "initializing", "created_at": now,
-            })
+                "communication_kind": recipient.get("communication_kind", kind),
+                "source": recipient.get("source", source),
+                "source_metadata": recipient.get("source_metadata") or {},
+            }
+            if recipient.get("next_attempt_at"):
+                item["next_attempt_at"] = recipient["next_attempt_at"]
+            items.append(item)
     try:
         await _db["whatsapp_campaign_job_items"].insert_many(items)
     except Exception:
@@ -213,6 +221,12 @@ async def _cancel_owned_item(item, now):
     return getattr(changed, "matched_count", 1) == 1
 
 
+async def _notify_completed(item, status):
+    callback = _handlers.get("completed")
+    if callback:
+        await callback(item, status)
+
+
 async def _recover_crashed(now):
     claimed = _db["whatsapp_campaign_job_items"].find({
         "status": {"$in": ["claimed", "quota_reserving"]}, "claim_until": {"$lt": now}})
@@ -225,6 +239,7 @@ async def _recover_crashed(now):
                           "error": "Worker stopped while quota reservation outcome was uncertain"}})
             await _freeze_lane(item, "uncertain quota reservation", now)
             await _refresh_job(item["job_id"])
+            await _notify_completed(item, "unknown")
         else:
             job = await _db["whatsapp_campaign_jobs"].find_one({"id": item["job_id"]})
             if job and job.get("cancel_requested"):
@@ -247,6 +262,7 @@ async def _recover_crashed(now):
                       "error": "Worker stopped after dispatch began; delivery outcome is unknown"}})
         await _freeze_lane(item, "uncertain provider dispatch", now)
         await _refresh_job(item["job_id"])
+        await _notify_completed(item, "unknown")
 
 
 async def process_one():
@@ -302,10 +318,32 @@ async def process_one():
         await _db["whatsapp_campaign_jobs"].update_one({"id": item["job_id"]}, {"$set": {
             "status": "paused", "pause_reason": reason, "updated_at": now}})
         await _release_lane(item, lane_token, datetime.now(timezone.utc))
+        await _notify_completed(item, "blocked")
         return False
+    authorize = _handlers.get("authorize_dispatch")
+    if authorize:
+        decision = await authorize(item)
+        action = (decision or {}).get("action", "send")
+        if action != "send":
+            state = "cancelled" if action == "cancel" else "pending"
+            values = {"status": state}
+            if decision.get("reason"):
+                values["error"] = decision["reason"]
+            if action == "defer":
+                values["next_attempt_at"] = decision["until"]
+            else:
+                values["completed_at"] = datetime.now(timezone.utc)
+            await _db["whatsapp_campaign_job_items"].update_one(
+                {"id": item["id"], "status": "claimed", "claim_token": claim_token},
+                {"$set": values})
+            await _release_lane(item, lane_token, datetime.now(timezone.utc))
+            await _refresh_job(item["job_id"])
+            return False
     reservation = None
     try:
-        if item["provider"] in {"waha", "whatsflow"} and not item.get("quota_reservation_id"):
+        if (item["provider"] in {"waha", "whatsflow"}
+                and item.get("communication_kind") != "registration_followup"
+                and not item.get("quota_reservation_id")):
             changed = await _db["whatsapp_campaign_job_items"].update_one(
                 {"id": item["id"], "status": "claimed", "claim_token": claim_token},
                 {"$set": {"status": "quota_reserving"}})
@@ -373,8 +411,25 @@ async def process_one():
                 "id": item["id"], "status": "dispatching", "claim_token": claim_token})
             if not lane or not owned_item:
                 raise RuntimeError("dispatch_fence_lost")
+            recheck = _handlers.get("recheck_dispatch")
+            if recheck and not await recheck(item):
+                raise RuntimeError("dispatch_cancelled_by_live_recheck")
         success = await _handlers["send"](item, config, assert_fence)
     except Exception as exc:
+        if str(exc) == "dispatch_cancelled_by_live_recheck":
+            completed = await _db["whatsapp_campaign_job_items"].update_one({
+                "id": item["id"], "status": "dispatching", "claim_token": claim_token}, {"$set": {
+                "status": "cancelled", "completed_at": datetime.now(timezone.utc),
+                "error": "registration_followup_stopped"}})
+            if reservation:
+                await _handlers["release_quota"](reservation["_id"], 1, item["id"])
+            await _release_lane(item, lane_token, datetime.now(timezone.utc))
+            await _refresh_job(item["job_id"])
+            cancelled_item = await _db["whatsapp_campaign_job_items"].find_one(
+                {"id": item["id"]}
+            )
+            await _notify_completed(cancelled_item or item, "cancelled")
+            return False
         # Ambiguous transport exceptions are never retried and quota remains used.
         completed = await _db["whatsapp_campaign_job_items"].update_one({
             "id": item["id"], "status": "dispatching", "claim_token": claim_token}, {"$set": {
@@ -396,6 +451,8 @@ async def process_one():
         elif not await _release_lane(item, lane_token, completed_at):
             await _freeze_lane(item, "lane token ownership lost after dispatch", completed_at)
     await _refresh_job(item["job_id"])
+    final_item = await _db["whatsapp_campaign_job_items"].find_one({"id": item["id"]})
+    await _notify_completed(final_item or item, (final_item or {}).get("status", "unknown"))
     return True
 
 

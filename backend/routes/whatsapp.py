@@ -25,7 +25,7 @@ from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_curr
 from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
 from services import whatsapp_bulk_jobs
-from services import campaign_inbox
+from services import campaign_inbox, registration_followups
 
 logger = logging.getLogger("whatsapp")
 _bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
@@ -216,7 +216,11 @@ def set_database(db):
         reserve_quota=_reserve_waha_campaign_quota,
         release_quota=_release_waha_campaign_quota,
         send=_dispatch_bulk_job_item,
+        authorize_dispatch=registration_followups.authorize_dispatch,
+        recheck_dispatch=registration_followups.recheck_dispatch,
+        completed=registration_followups.completed,
     )
+    registration_followups.configure(db, _get_branch_cloud_config)
 
 
 def _format_phone(phone: str) -> str:
@@ -2026,6 +2030,7 @@ def start_scheduler():
     # This queue covers automatic campaign text and media only. Transactional
     # reminders/notices retain their existing delivery paths and are not gated.
     whatsapp_bulk_jobs.start_worker()
+    registration_followups.start_worker()
     if not _admin_alert_started:
         asyncio.ensure_future(_admin_alert_loop())
     if not _invoice_payment_outbox_started:
@@ -2533,6 +2538,9 @@ async def branch_provider_test(branch_id: str, data: WAHABranchTestRequest,
     if not phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
     body = data.message or "رسالة تجريبية من نظام إدارة الأكاديمية"
+    # An explicit staff action stops automation before touching the provider,
+    # closing the webhook-echo race even if the provider call later fails.
+    await registration_followups.stop_phone(branch_id, phone, "staff_contacted")
     ok, message_id, error = await _send_session_provider_result(
         phone, body, config
     )
@@ -2813,6 +2821,9 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                     })
                 except DuplicateKeyError:
                     continue
+                await registration_followups.note_customer_message(
+                    config["branch_id"], phone, body
+                )
                 await _db["whatsapp_cloud_conversations"].update_one(
                     {"id": conversation_id},
                     {
@@ -2890,14 +2901,17 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
             return {"received": True}
         if event not in {"message", "message.any"}:
             return {"received": True}
-        if message.get("fromMe") or message.get("from_me"):
-            return {"received": True}
         chat_id = str(message.get("chatId") or message.get("from") or "")
         if "@g.us" in chat_id:
             return {"received": True}
         phone = "".join(filter(str.isdigit, chat_id))
         message_id = _canonical_waha_message_id(message)
         if not phone or not message_id:
+            return {"received": True}
+        if message.get("fromMe") or message.get("from_me"):
+            await registration_followups.note_outbound(
+                config["branch_id"], phone, message_id, "waha"
+            )
             return {"received": True}
         await _db["whatsapp_cloud_messages"].create_index(
             [("branch_id", 1), ("provider", 1), ("waha_message_id", 1)],
@@ -2919,6 +2933,9 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                 "status": "received", "created_at": now, "received_at": now})
         except DuplicateKeyError:
             return {"received": True}
+        await registration_followups.note_customer_message(
+            config["branch_id"], phone, body
+        )
         await _db["whatsapp_cloud_conversations"].update_one({"id": conversation_id}, {"$set": {
             "id": conversation_id, "branch_id": config["branch_id"], "provider": "waha", "phone": phone,
             "contact_name": message.get("pushName") or message.get("name") or phone,
@@ -3054,6 +3071,9 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
         except DuplicateKeyError:
             return {"received": True}
         if outbound:
+            await registration_followups.note_outbound(
+                config["branch_id"], phone, message_id, "whatsflow"
+            )
             conversations = _db["whatsapp_cloud_conversations"]
             # Never use outgoing pushName: it is the branch's own profile name.
             await conversations.update_one(
@@ -3083,6 +3103,9 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 }},
             )
             return {"received": True}
+        await registration_followups.note_customer_message(
+            config["branch_id"], phone, body
+        )
         await _db["whatsapp_cloud_conversations"].update_one(
             {"id": conversation_id},
             {"$set": {
@@ -3351,6 +3374,9 @@ async def reply_to_cloud_inbox_thread(
     config = await _get_branch_cloud_config(branch_id)
     if _branch_provider(config) in {"waha", "whatsflow"}:
         provider = _branch_provider(config)
+        await registration_followups.stop_phone(
+            branch_id, conversation.get("phone") or "", "staff_contacted"
+        )
         success, provider_message_id, error = await _send_session_provider_result(
             conversation.get("phone") or "", body, config or {}
         )
@@ -3414,6 +3440,9 @@ async def reply_to_cloud_inbox_thread(
             detail="The 24-hour window ended; configure an approved Meta template",
         )
 
+    await registration_followups.stop_phone(
+        branch_id, conversation.get("phone") or "", "staff_contacted"
+    )
     success, meta_message_id, error = await _send_meta_cloud_message_result(
         conversation.get("phone"), body, send_config
     )
@@ -4426,6 +4455,9 @@ async def test_branch_cloud_config(
     wa_phone = _format_cloud_phone(data.phone)
     if not wa_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
+    await registration_followups.stop_phone(
+        branch_id, wa_phone, "staff_contacted"
+    )
     if await _send_meta_cloud_message(wa_phone, message, config):
         return {"success": True}
     raise HTTPException(status_code=502, detail="Meta WhatsApp test failed")
@@ -4439,6 +4471,9 @@ async def send_test(data: SendTestRequest, current_user: dict = Depends(get_curr
     wa_phone = _format_phone(data.phone)
     if not wa_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
+    await registration_followups.stop_phone(
+        data.branch_id, wa_phone, "staff_contacted"
+    )
     if data.branch_id:
         if not current_user.get("is_admin"):
             require_branch_scope(current_user, data.branch_id)

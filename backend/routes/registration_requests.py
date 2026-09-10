@@ -141,6 +141,10 @@ class RegistrationRequestUpdate(BaseModel):
     status: str
 
 
+class RegistrationFollowupStop(BaseModel):
+    reason: str
+
+
 # ============ PUBLIC ROUTES (no auth) ============
 
 @router.get("/public/branches")
@@ -261,6 +265,10 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     if recent >= 3:
         raise HTTPException(status_code=429, detail="تم استلام طلبك بالفعل. برجاء الانتظار قبل إرسال طلب جديد.")
 
+    from services import registration_followups
+    followup_fields = await registration_followups.enrollment_fields_for_new(
+        branch_id, phone
+    )
     doc = {
         "id": str(uuid.uuid4()),
         "customer_name": name,
@@ -279,6 +287,7 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         # normal public link so we never store arbitrary client-supplied values.
         "source": "social_ad" if (payload.source or "").strip().lower() in ("social", "social_ad") else "public_link",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        **followup_fields,
     }
 
     # Marketer (affiliate) referral: attach the marketer if the link carried a
@@ -374,7 +383,8 @@ async def update_registration_request(
         raise HTTPException(status_code=400, detail="حالة غير صحيحة")
 
     req = await db.registration_requests.find_one(
-        {"id": req_id}, {"_id": 0, "branch_id": 1, "status": 1, "archived_from": 1}
+        {"id": req_id}, {"_id": 0, "id": 1, "branch_id": 1, "customer_phone": 1,
+                         "status": 1, "archived_from": 1}
     )
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -389,7 +399,29 @@ async def update_registration_request(
             update["archived_from"] = req.get("status") or "pending"
         update["archived_at"] = datetime.now(timezone.utc).isoformat()
     await db.registration_requests.update_one({"id": req_id}, {"$set": update})
+    if payload.status in {"processed", "rejected", "archived"}:
+        from services import registration_followups
+        await registration_followups.stop_request(req, "request_closed")
     return {"success": True}
+
+
+@router.post("/registration-requests/{req_id}/followup-stop")
+async def stop_registration_followup(
+    req_id: str,
+    payload: RegistrationFollowupStop,
+    current_user: dict = Depends(get_current_user),
+):
+    if payload.reason not in {"contacted", "opted_out"}:
+        raise HTTPException(status_code=400, detail="Invalid follow-up stop reason")
+    req = await db.registration_requests.find_one({"id": req_id}, {"_id": 0})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    scope = require_branch_scope(current_user)
+    if scope and req.get("branch_id") != scope:
+        raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الطلب")
+    from services import registration_followups
+    await registration_followups.stop_request(req, payload.reason)
+    return await db.registration_requests.find_one({"id": req_id}, {"_id": 0})
 
 
 @router.delete("/registration-requests/{req_id}")
@@ -397,12 +429,15 @@ async def delete_registration_request(
     req_id: str,
     current_user: dict = Depends(get_current_user),
 ):
-    req = await db.registration_requests.find_one({"id": req_id}, {"_id": 0, "branch_id": 1})
+    req = await db.registration_requests.find_one(
+        {"id": req_id}, {"_id": 0, "id": 1, "branch_id": 1, "customer_phone": 1})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     scope = require_branch_scope(current_user)
     if scope and req.get("branch_id") != scope:
         raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الطلب")
 
+    from services import registration_followups
+    await registration_followups.stop_request(req, "request_deleted")
     await db.registration_requests.delete_one({"id": req_id})
     return {"success": True}

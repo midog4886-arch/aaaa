@@ -258,6 +258,24 @@ def test_expired_dispatch_lease_recovers_to_unknown_without_send(queue):
     assert run(jobs.get_job(job["id"], "a"))["unknown"] == 1
 
 
+def test_expired_dispatch_lease_notifies_followup_status_callback(queue):
+    db, sent, *_ = queue
+    observed = []
+    async def completed(item, status):
+        observed.append((item["id"], status))
+    jobs._handlers["completed"] = completed
+    run(jobs.enqueue(
+        "a", "meta_cloud",
+        [{**recipients()[0], "communication_kind": "registration_followup"}],
+        "followup-crash-key-123", kind="registration_followup",
+    ))
+    item = db["whatsapp_campaign_job_items"].rows[0]
+    item.update(status="dispatching", lease_until=Clock.now() - timedelta(seconds=1))
+    assert run(jobs.process_one()) is False
+    assert observed == [(item["id"], "unknown")]
+    assert sent == []
+
+
 def test_quota_is_reserved_per_send_on_actual_execution_day_and_failed_released(queue):
     db, sent, reservations, releases = queue
     run(jobs.enqueue("a", "waha", recipients(2), "quota-day-key-123"))

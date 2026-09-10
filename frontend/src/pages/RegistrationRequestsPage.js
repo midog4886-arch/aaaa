@@ -10,6 +10,7 @@ import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import { getPublicBaseUrl } from '../utils/publicUrl';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
+import RegistrationFollowup from '../components/RegistrationFollowup';
 import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download, Search, X, Archive, ArchiveRestore } from 'lucide-react';
 
 const STATUS_FILTERS = [
@@ -257,6 +258,11 @@ export const RegistrationRequestsPage = () => {
           </Button>
         </div>
 
+        <div className="mb-5 rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-xs leading-6 text-gray-700">
+          <strong>متابعة هادئة للطلبات الجديدة فقط:</strong> رسالة بعد 24 ساعة وأخرى أخيرة بعد 3 أيام،
+          بين 10 صباحاً و8 مساءً بتوقيت السعودية. تتوقف عند الرد أو المعالجة أو الأرشفة.
+          عند التواصل من خارج النظام، اضغط «تم التواصل» لإيقاف المتابعة. فتح رابط واتساب وحده لا يُعدّ تأكيداً للتواصل.
+        </div>
         {showLink && (
           <Card className="mb-5 border-emerald-200">
             <CardContent className="p-4">
@@ -502,6 +508,7 @@ export const RegistrationRequestsPage = () => {
                       </Button>
                     </div>
                   </div>
+                  <RegistrationFollowup request={req} onChanged={loadRequests} />
                 </CardContent>
               </Card>
             ))}
