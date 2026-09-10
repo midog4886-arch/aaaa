@@ -97,6 +97,30 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+test.each([
+  [[{loc: ['body', 'recipients'], msg: 'Invalid recipients', type: 'value_error'}], 'Invalid recipients'],
+  [{error: 'Branch is unavailable'}, 'Branch is unavailable'],
+  [{unknown: {nested: true}}, 'Could not confirm campaign enqueue'],
+])('structured send errors remain readable without crashing or resending: %j', async (detail, expected) => {
+  const user = userEvent.setup();
+  window.confirm = jest.fn(() => true);
+  Object.defineProperty(global, 'crypto', { configurable: true, value: {randomUUID: () => 'error-key'} });
+  whatsappAPI.sendBranchCloudBulk.mockRejectedValueOnce({ response: {data: {detail}} });
+  const { toast } = require('sonner');
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+  await user.click(await screen.findByRole('button', {name: /Welcome draft/i}));
+  await user.click(screen.getByRole('button', {name: /Send 1 message.* to 1/i}));
+  await waitFor(() => expect(toast.error).toHaveBeenCalled());
+  const text = toast.error.mock.calls[0][0];
+  expect(typeof text).toBe('string');
+  expect(text).toContain(expected);
+  // A real toast renders its payload as a React child; this must not throw.
+  expect(() => render(<div>{text}</div>)).not.toThrow();
+  expect(screen.getByRole('button', {name: /Send 1 message.* to 1/i})).toBeEnabled();
+  expect(whatsappAPI.sendBranchCloudBulk).toHaveBeenCalledTimes(1);
+});
+
 test('daily quota is advisory because a durable queue may continue next day', async () => {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
   const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;

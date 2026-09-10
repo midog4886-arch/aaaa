@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { toast } from 'sonner';
 import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud, Paperclip, Image as ImageIcon, FileText, Save, History, CalendarClock, RefreshCw } from 'lucide-react';
 import { branchesAPI, whatsappAPI } from '../services/api';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
 
 const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
 const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[d] || d);
@@ -220,7 +221,7 @@ export default function WhatsAppBulkPage() {
         if (cancelled) return;
         const jobs = Array.isArray(response.data) ? response.data : [];
         setCloudJobs(jobs);
-        if (jobs.some(job => ['pending', 'processing', 'paused'].includes(job.status))) {
+        if (jobs.some(job => ['initializing', 'pending', 'processing', 'paused'].includes(job.status))) {
           timer = window.setTimeout(poll, 5000);
         }
       } catch (_) {
@@ -248,7 +249,7 @@ export default function WhatsAppBulkPage() {
       setCampaigns(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       if (generation !== campaignListGeneration.current) return;
-      toast.error(error.response?.data?.detail || t('تعذر تحميل الحملات', 'Could not load campaigns'));
+      toast.error(apiErrorMessage(error, t('تعذر تحميل الحملات', 'Could not load campaigns')));
     } finally {
       if (generation === campaignListGeneration.current) setCampaignsLoading(false);
     }
@@ -295,7 +296,7 @@ export default function WhatsAppBulkPage() {
       setDynamicAudienceBranch(requestedBranch);
     } catch (error) {
       if (generation !== audienceGeneration.current) return;
-      toast.error(error.response?.data?.detail || t('تعذر تحديث الجمهور', 'Could not refresh audience'));
+      toast.error(apiErrorMessage(error, t('تعذر تحديث الجمهور', 'Could not refresh audience')));
     } finally {
       if (generation === audienceGeneration.current) setAudienceLoading(false);
     }
@@ -370,7 +371,7 @@ export default function WhatsAppBulkPage() {
       }
     } catch (error) {
       if (generation !== campaignLoadGeneration.current) return;
-      toast.error(error.response?.data?.detail || t('تعذر تحميل الحملة', 'Could not load campaign'));
+      toast.error(apiErrorMessage(error, t('تعذر تحميل الحملة', 'Could not load campaign')));
     } finally {
       if (generation === campaignLoadGeneration.current) setCampaignLoading(false);
     }
@@ -408,7 +409,7 @@ export default function WhatsAppBulkPage() {
       toast.success(t('تم حفظ المسودة', 'Draft saved'));
       await loadCampaigns();
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('تعذر حفظ المسودة', 'Could not save draft'));
+      toast.error(apiErrorMessage(error, t('تعذر حفظ المسودة', 'Could not save draft')));
     } finally {
       setDraftSaving(false);
     }
@@ -422,7 +423,7 @@ export default function WhatsAppBulkPage() {
       await loadCampaigns();
       toast.success(t('تم حذف الحملة', 'Campaign deleted'));
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('تعذر حذف الحملة', 'Could not delete campaign'));
+      toast.error(apiErrorMessage(error, t('تعذر حذف الحملة', 'Could not delete campaign')));
     }
   };
 
@@ -617,7 +618,7 @@ export default function WhatsAppBulkPage() {
       enqueueKey.current = null;
       toast.success(t('تمت الإضافة إلى قائمة الانتظار؛ لم يتم الإرسال بعد', 'Queued successfully; no message has been sent yet'));
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('فشل الإرسال عبر API الفرع', 'Branch API sending failed'));
+      toast.error(apiErrorMessage(error, t('تعذّر تأكيد إضافة الحملة. تحقّق من قائمة الإرسال قبل المحاولة مجدداً.', 'Could not confirm campaign enqueue. Check the queue before trying again.')));
     } finally {
       setCloudSending(false);
     }
@@ -1126,7 +1127,7 @@ export default function WhatsAppBulkPage() {
                               await whatsappAPI.reconcileBranchCloudLane(branchId);
                               setCloudJobsPollVersion(value => value + 1);
                             } catch (error) {
-                              toast.error(error.response?.data?.detail || t('تعذرت إعادة التفعيل', 'Could not recover the lane'));
+                              toast.error(apiErrorMessage(error, t('تعذرت إعادة التفعيل', 'Could not recover the lane')));
                             }
                           }}
                         >{t('تحققت — إعادة تفعيل قائمة الفرع', 'Verified — recover branch queue')}</Button>
@@ -1143,7 +1144,7 @@ export default function WhatsAppBulkPage() {
                             setCloudJobs(current => current.map(value => value.id === job.id ? response.data : value));
                             toast.success(t('أُلغي المتبقي المعلّق فقط؛ لا يمكن سحب الرسالة قيد الإرسال', 'Only remaining pending messages were cancelled; an in-flight send cannot be undone'));
                           } catch (error) {
-                            toast.error(error.response?.data?.detail || t('تعذر الإلغاء', 'Could not cancel'));
+                            toast.error(apiErrorMessage(error, t('تعذر الإلغاء', 'Could not cancel')));
                           }
                         }}
                       >{t('إلغاء المتبقي', 'Cancel remaining')}</Button>

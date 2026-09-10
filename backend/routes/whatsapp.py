@@ -2364,6 +2364,15 @@ def _require_admin(current_user: dict):
         raise HTTPException(status_code=403, detail="Admin access required")
 
 
+@router.get("/branch-cloud/jobs")
+async def list_branch_cloud_jobs(
+    branch_id: str, current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    return await whatsapp_bulk_jobs.list_jobs(branch_id)
+
+
 @router.get("/branch-cloud/{branch_id}")
 async def get_branch_cloud_config(
     branch_id: str, current_user: dict = Depends(get_current_user)
@@ -4546,15 +4555,6 @@ async def send_branch_cloud_bulk_media(
     if response is not None:
         response.status_code = 202
     return job
-
-
-@router.get("/branch-cloud/jobs")
-async def list_branch_cloud_jobs(
-    branch_id: str, current_user: dict = Depends(get_current_user),
-):
-    _require_bulk_whatsapp_access(current_user)
-    _assert_branch_access(current_user, branch_id)
-    return await whatsapp_bulk_jobs.list_jobs(branch_id)
 
 
 @router.get("/branch-cloud/jobs/{job_id}")
