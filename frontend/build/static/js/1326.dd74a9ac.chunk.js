@@ -1,2 +1,0 @@
-"use strict";(globalThis.webpackChunkchampions_academy_frontend||=[]).push([[1326],{91326(a,r,n){n.d(r,{verifyOperationPassword:()=>i});var t=n(28797);async function i(a,r,n){if(!r)return!1;try{var i;const s={key:a,password:r},e=function(a){return a&&"all"!==a?String(a):null}(n);e&&(s.branch_id=e);return!(null===(i=(await t.A.post("/api/settings/operation-passwords/verify",s)).data)||void 0===i||!i.valid)}catch(s){return!1}}}}]);
-//# sourceMappingURL=1326.dd74a9ac.chunk.js.map

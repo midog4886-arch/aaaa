@@ -758,9 +758,11 @@ export const whatsappAPI = {
   getSettings: () => axios.get(`${API}/whatsapp/settings`),
   updateSettings: (data) => axios.put(`${API}/whatsapp/settings`, data),
   sendTest: (phone, message) => axios.post(`${API}/whatsapp/test`, { phone, message }),
-  sendNow: () => axios.post(`${API}/whatsapp/send-now`),
+  sendNow: (data) => axios.post(`${API}/whatsapp/send-now`, data),
+  previewReminders: (data) => axios.post(`${API}/whatsapp/send-now/preview`, data),
   disconnect: () => axios.post(`${API}/whatsapp/disconnect`),
-  getLogs: (limit = 50) => axios.get(`${API}/whatsapp/logs?limit=${limit}`),
+  getLogs: (limit = 50, branch_filter = 'all') =>
+    axios.get(`${API}/whatsapp/logs`, { params: { limit, branch_filter } }),
   getTargetCount: () => axios.get(`${API}/whatsapp/target-count`),
   getLastReminders: () => axios.get(`${API}/whatsapp/renewal-reminders/last`),
   getLastRemindersFiltered: (items) =>

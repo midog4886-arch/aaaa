@@ -553,6 +553,13 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         the number of sessions the member actually paid for. When omitted it
         falls back to ``end_date`` (e.g. registration-form members with no
         invoice, where the activity dates are already the original ones)."""
+        # Legacy imports sometimes carry full ISO timestamps. Subscription and
+        # attendance windows are day-based, so normalize every source before
+        # comparing, parsing, or returning the quota card.
+        start_date = str(start_date or "")[:10]
+        end_date = str(end_date or "")[:10]
+        quota_start_date = str(quota_start_date or "")[:10] or None
+        quota_end_date = str(quota_end_date or "")[:10] or None
         if not end_date or not schedule_text:
             return
         if activity_id and item_activity_id != activity_id:
@@ -661,15 +668,16 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             if item.get("is_product"):
                 continue
             aid = item.get("activity_id", "")
-            oend = item.get("end_date", "")
+            oend = str(item.get("end_date") or "")[:10]
             if not oend:
                 continue
             if aid:
                 # Keep the original START too: when a subscription is postponed
                 # (both start and end shifted), the paid total must come from the
                 # original window LENGTH, not from (new start → original end).
-                orig_end_by_source[(inv_id, aid)] = (item.get("start_date", ""), oend)
-                orig_end_by_activity[aid] = (item.get("start_date", ""), oend)
+                original_start = str(item.get("start_date") or "")[:10]
+                orig_end_by_source[(inv_id, aid)] = (original_start, oend)
+                orig_end_by_activity[aid] = (original_start, oend)
             # Also index by (invoice, start_date). The member.activities entry is
             # linked to its invoice via source_id, but its activity_id often does
             # NOT match the invoiced item's activity_id (level-based assignment
@@ -679,7 +687,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             # diverge. schedule disambiguates multi-activity invoices that share a
             # start_date; the looser (invoice, start_date) key is flagged ambiguous
             # (None) when two items under it carry different end dates.
-            istart = item.get("start_date", "")
+            istart = str(item.get("start_date") or "")[:10]
             if not istart:
                 continue
             isched = item.get("schedule", "")
@@ -712,7 +720,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         quota_start = None
         if act.get("source") == "invoice" and act.get("source_id"):
             source_id = act.get("source_id")
-            act_start = act.get("start_date", "")
+            act_start = str(act.get("start_date") or "")[:10]
             # 1) Exact (invoice, activity_id) match — carries the original start
             #    too, covering postponed subscriptions where BOTH dates moved.
             pair = orig_end_by_source.get((source_id, item_activity_id))
@@ -744,7 +752,11 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         count_aids = {item_activity_id}
         if act.get("source") == "invoice" and act.get("source_id"):
             extra_aids = aids_by_src_start_sched.get(
-                (act.get("source_id"), act.get("start_date", ""), act.get("schedule", ""))
+                (
+                    act.get("source_id"),
+                    str(act.get("start_date") or "")[:10],
+                    act.get("schedule", ""),
+                )
             )
             if extra_aids:
                 count_aids |= extra_aids

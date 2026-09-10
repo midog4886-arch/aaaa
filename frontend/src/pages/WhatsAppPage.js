@@ -176,10 +176,20 @@ export default function WhatsAppPage() {
   const [testPhone, setTestPhone] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
+  const [reminderPreview, setReminderPreview] = useState({
+    open: false,
+    loading: false,
+    error: '',
+    data: null,
+  });
+  const previewRequestRef = useRef(0);
   const [disconnecting, setDisconnecting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [targetInfo, setTargetInfo] = useState({ count: 0, count_today: 0, target_date: '', count_2: 0, count_today_2: 0, target_date_2: '', reminder_2_enabled: true, loading: false });
   const [sendLogs, setSendLogs] = useState([]);
+  const logRequestRef = useRef(0);
+  const logBranchRef = useRef(selectedBranchId || 'all');
+  logBranchRef.current = selectedBranchId || 'all';
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const intervalRef = useRef(null);
@@ -301,9 +311,22 @@ export default function WhatsAppPage() {
   };
 
   const loadSendLogs = async () => {
+    const requestId = ++logRequestRef.current;
+    const branch = logBranchRef.current;
     setLoadingLogs(true);
-    try { const res = await whatsappAPI.getLogs(30); setSendLogs(res.data || []); } catch { }
-    finally { setLoadingLogs(false); }
+    try {
+      const res = await whatsappAPI.getLogs(30, branch);
+      if (requestId === logRequestRef.current && branch === logBranchRef.current) {
+        setSendLogs(res.data || []);
+      }
+    } catch {
+      if (requestId === logRequestRef.current && branch === logBranchRef.current) {
+        setSendLogs([]);
+        toast.error(t('تعذّر تحميل سجل إرسال الفرع', 'Could not load branch send logs'));
+      }
+    } finally {
+      if (requestId === logRequestRef.current && branch === logBranchRef.current) setLoadingLogs(false);
+    }
   };
 
   const loadTargetCount = async () => {
@@ -430,13 +453,23 @@ export default function WhatsAppPage() {
   useEffect(() => {
     loadStatus();
     loadWaSettings();
-    loadSendLogs();
     loadTargetCount();
     loadCloudConversations();
     // Poll every 5s when not connected (waiting for QR or waiting for scan)
     intervalRef.current = setInterval(() => { if (!status.connected) loadStatus(); }, 5000);
     return () => clearInterval(intervalRef.current);
   }, []);
+
+  useEffect(() => {
+    setSendLogs([]);
+    loadSendLogs();
+    return () => { logRequestRef.current += 1; };
+  }, [selectedBranchId]);
+
+  useEffect(() => {
+    previewRequestRef.current += 1;
+    setReminderPreview({ open: false, loading: false, error: '', data: null });
+  }, [selectedBranchId]);
 
   useEffect(() => {
     clearInterval(intervalRef.current);
@@ -645,14 +678,44 @@ export default function WhatsAppPage() {
     finally { setSendingTest(false); }
   };
 
-  const handleSendNow = async () => {
-    if (!window.confirm(t(`سيتم إرسال تذكير لـ ${targetInfo.count} عضو. هل تريد المتابعة؟`, `Will send to ${targetInfo.count} members. Continue?`))) return;
-    setSendingNow(true);
+  const closeReminderPreview = () => {
+    if (sendingNow) return;
+    previewRequestRef.current += 1;
+    setReminderPreview({ open: false, loading: false, error: '', data: null });
+  };
+
+  const loadReminderPreview = async () => {
+    if (sendingNow || reminderPreview.loading) return;
+    const requestId = ++previewRequestRef.current;
+    const branchId = selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all';
+    setReminderPreview({ open: true, loading: true, error: '', data: null });
     try {
-      await whatsappAPI.sendNow();
+      const response = await whatsappAPI.previewReminders({ branch_id: branchId });
+      if (requestId !== previewRequestRef.current) return;
+      setReminderPreview({ open: true, loading: false, error: '', data: response.data });
+    } catch (err) {
+      if (requestId !== previewRequestRef.current) return;
+      const message = err.response?.data?.detail || t('تعذر تحميل معاينة التذكيرات', 'Could not load reminder preview');
+      setReminderPreview({ open: true, loading: false, error: message, data: null });
+      toast.error(message);
+    }
+  };
+
+  const handleSendNow = async () => {
+    if (!reminderPreview.data?.preview_id || sendingNow) return;
+    setSendingNow(true);
+    setReminderPreview(previous => ({ ...previous, error: '' }));
+    try {
+      await whatsappAPI.sendNow({ preview_id: reminderPreview.data.preview_id, confirm: true });
       toast.success(t('جاري إرسال التذكيرات...', 'Sending reminders...'));
+      previewRequestRef.current += 1;
+      setReminderPreview({ open: false, loading: false, error: '', data: null });
       setTimeout(loadSendLogs, 5000);
-    } catch (err) { toast.error(err.response?.data?.detail || t('فشل الإرسال', 'Send failed')); }
+    } catch (err) {
+      const message = err.response?.data?.detail || t('فشل الإرسال', 'Send failed');
+      setReminderPreview(previous => ({ ...previous, error: message }));
+      toast.error(message);
+    }
     finally { setSendingNow(false); }
   };
 
@@ -1820,18 +1883,138 @@ export default function WhatsAppPage() {
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-1">
                   <p className="text-sm font-medium">{t('إرسال التذكيرات التلقائية الآن', 'Send Auto Reminders Now')}</p>
-                  {targetInfo.count > 0 && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{targetInfo.count} {t('عضو', 'members')}</span>}
                 </div>
                 <p className="text-xs text-muted-foreground mb-3">
-                  {t(`يُرسل لأعضاء ينتهي اشتراكهم بعد ${waSettings.days_before} يوم عبر: WhatsApp (إذا متصل) + Push + بوابة العضو`,
-                     `Members expiring in ${waSettings.days_before} days via: WhatsApp (if connected) + Push + Portal`)}
+                  {t(
+                    `تعتمد التذكيرات على الفترات المفعّلة في الإعدادات (${(waSettings.offsets || []).filter(offset => offset.enabled).map(offset => offset.days).join('، ') || '—'} يوم). ستعرض المعاينة العدد النهائي والقنوات قبل الإرسال.`,
+                    `Reminders use the configured enabled offsets (${(waSettings.offsets || []).filter(offset => offset.enabled).map(offset => offset.days).join(', ') || '—'} days). The preview shows the authoritative count and channels before sending.`
+                  )}
                 </p>
-                <Button onClick={handleSendNow} disabled={sendingNow} className="w-full" variant="outline">
-                  {sendingNow ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <MessageSquare className="w-4 h-4 me-2" />}
+                <Button onClick={loadReminderPreview} disabled={sendingNow || reminderPreview.loading} className="w-full" variant="outline">
+                  {reminderPreview.loading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <MessageSquare className="w-4 h-4 me-2" />}
                   {t('إرسال التذكيرات الآن', 'Send Reminders Now')}
                 </Button>
               </div>
             </div>
+
+            <Dialog
+              open={reminderPreview.open}
+              onOpenChange={open => {
+                if (!open) closeReminderPreview();
+              }}
+            >
+              <DialogContent
+                className="max-w-5xl"
+                dir={isRTL ? 'rtl' : 'ltr'}
+                data-testid="reminder-preview-dialog"
+              >
+                <DialogHeader>
+                  <DialogTitle>{t('تأكيد إرسال التذكيرات', 'Confirm reminder send')}</DialogTitle>
+                </DialogHeader>
+
+                {reminderPreview.loading ? (
+                  <div className="flex flex-col items-center justify-center gap-3 py-12" role="status">
+                    <Loader2 className="w-7 h-7 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">{t('جاري إعداد المعاينة...', 'Preparing preview...')}</p>
+                  </div>
+                ) : reminderPreview.error && !reminderPreview.data ? (
+                  <div className="space-y-4 py-6 text-center" role="alert">
+                    <AlertTriangle className="w-8 h-8 mx-auto text-red-600" />
+                    <p className="text-sm text-red-700">{reminderPreview.error}</p>
+                    <Button type="button" variant="outline" onClick={loadReminderPreview}>
+                      <RefreshCw className="w-4 h-4 me-2" />
+                      {t('إعادة المحاولة', 'Try again')}
+                    </Button>
+                  </div>
+                ) : reminderPreview.data && (
+                  <div className="space-y-4">
+                    <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">
+                          {t(`${reminderPreview.data.member_count ?? 0} عضو`, `${reminderPreview.data.member_count ?? 0} members`)}
+                        </Badge>
+                        <Badge variant="secondary">
+                          {t(`${reminderPreview.data.count ?? 0} تذكير مستهدف`, `${reminderPreview.data.count ?? 0} targeted reminders`)}
+                        </Badge>
+                        {(reminderPreview.data.channels || []).map(channel => (
+                          <Badge key={channel} variant="outline">
+                            {{
+                              whatsapp: t('واتساب', 'WhatsApp'),
+                              push: t('إشعار Push', 'Push'),
+                              portal: t('بوابة العضو', 'Portal'),
+                            }[channel] || channel}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {t('القنوات المفعّلة موضحة أعلاه؛ وصول الإشعار يعتمد على توفر رقم صالح أو اشتراك إشعارات واتصال الخدمة.', 'Enabled channels are shown above; delivery depends on valid contact details, notification subscriptions, and service connectivity.')}
+                      </p>
+                      {reminderPreview.data.expires_at && (
+                        <p className="text-xs text-muted-foreground">
+                          {t('صلاحية المعاينة حتى:', 'Preview valid until:')}{' '}
+                          <span dir="ltr">{new Date(reminderPreview.data.expires_at).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-US')}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    {(reminderPreview.data.recipients || []).length === 0 ? (
+                      <div className="py-10 text-center text-sm text-muted-foreground" role="status">
+                        <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        {t('لا يوجد مستلمون مطابقون لفترات التذكير الحالية.', 'No recipients match the current reminder offsets.')}
+                      </div>
+                    ) : (
+                      <div className="max-h-[50vh] overflow-auto rounded-lg border">
+                        <table className="w-full min-w-[760px] text-sm">
+                          <thead className="sticky top-0 bg-background shadow-sm">
+                            <tr>
+                              <th className="text-start p-3">{t('العضو', 'Member')}</th>
+                              <th className="text-start p-3">{t('النشاط', 'Activity')}</th>
+                              <th className="text-start p-3">{t('الفرع', 'Branch')}</th>
+                              <th className="text-start p-3">{t('انتهاء الاشتراك', 'Expiry')}</th>
+                              <th className="text-center p-3">{t('حضور الاشتراك الحالي', 'Current subscription attended')}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(reminderPreview.data.recipients || []).map((recipient, index) => (
+                              <tr
+                                key={`${recipient.member_id}-${recipient.activity_id}-${index}`}
+                                className="border-t"
+                              >
+                                <td className="p-3 font-medium">{recipient.member_name || '—'}</td>
+                                <td className="p-3">{recipient.activity_name || '—'}</td>
+                                <td className="p-3">{recipient.branch_name || '—'}</td>
+                                <td className="p-3" dir="ltr">{recipient.end_date || '—'}</td>
+                                <td className="p-3 text-center">{recipient.attended_sessions ?? 0}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {reminderPreview.error && (
+                      <p className="text-sm text-red-700" role="alert">{reminderPreview.error}</p>
+                    )}
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={closeReminderPreview} disabled={sendingNow}>
+                        {t('إلغاء', 'Cancel')}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleSendNow}
+                        disabled={sendingNow || !(reminderPreview.data.recipients || []).length}
+                        data-testid="confirm-reminder-send"
+                      >
+                        {sendingNow ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Send className="w-4 h-4 me-2" />}
+                        {sendingNow
+                          ? t('جاري الإرسال...', 'Sending...')
+                          : t('تأكيد وإرسال التذكيرات', 'Confirm and send reminders')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
 
             {/* Send Log */}
             <div className="rounded-2xl border p-6 bg-card">

@@ -26,3 +26,9 @@ Customer transactional WhatsApp notices should include Arabic and English togeth
 **Why:** The user requested both languages, explicitly including attendance confirmations.
 
 **How to apply:** Include both languages when adding automatic notices and receipt labels. Preserve operator-authored campaign content and saved custom reminder text; build English transactional summaries from structured facts rather than guessing translations of names.
+
+The manual “send reminders now” action requires a recipient preview and explicit confirmation; this does not disable the separately configured daily scheduler.
+
+**Why:** The user needs to inspect subscription expiry and attended-session counts before authorizing a manual send.
+
+**How to apply:** Bind confirmation to the previewed tenant, branch, recipient and subscription facts. Count attendance using the existing subscription-quota rules, not lifetime attendance. Never dispatch a fresh unrestricted audience after confirmation.

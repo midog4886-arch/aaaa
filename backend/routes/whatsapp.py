@@ -135,6 +135,8 @@ DEFAULT_SETTINGS = {
     "push_body_template_en": "Your {activity} subscription expires in {days} days ({end_date})",
 }
 
+SEND_NOW_PREVIEW_TTL_SECONDS = 300
+
 
 def _normalize_offsets(settings: dict) -> List[dict]:
     """Return a deduplicated, validated list of {days, enabled} for the scheduler.
@@ -1235,6 +1237,215 @@ async def _get_expiring_members(days_before: int) -> list:
             "fee_str": fee_str,
         })
     return results
+
+
+def _send_now_settings_fingerprint(settings: dict) -> str:
+    """Fingerprint only settings that affect this send-now cohort/delivery."""
+    relevant = {
+        "enabled": bool(settings.get("enabled")),
+        "offsets": _normalize_offsets(settings),
+        "message_template": settings.get("message_template", ""),
+        "templates": settings.get("templates") or {},
+        "push_enabled": bool(settings.get("push_enabled", True)),
+        "portal_enabled": bool(settings.get("portal_enabled", True)),
+        "push_title_template": settings.get("push_title_template", ""),
+        "push_body_template": settings.get("push_body_template", ""),
+        "push_title_template_en": settings.get("push_title_template_en", ""),
+        "push_body_template_en": settings.get("push_body_template_en", ""),
+    }
+    encoded = json.dumps(relevant, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _mapping_fingerprint(value: dict) -> str:
+    encoded = json.dumps(value or {}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+async def _build_send_now_candidates(branch_id: Optional[str], enabled_offsets: list[int]) -> list:
+    """Build activity-level candidates and use attendance's quota source of truth."""
+    from .attendance import check_member_session_quota
+
+    today = datetime.now(RIYADH_TZ).date()
+    target_to_offset = {
+        (today + timedelta(days=days)).strftime("%Y-%m-%d"): days
+        for days in enabled_offsets
+    }
+    # Some older activities store an ISO timestamp rather than a bare date. A
+    # single anchored regex handles both forms while keeping the DB-side cohort
+    # narrow before the quota helper performs its more involved invoice reads.
+    target_pattern = "^(" + "|".join(re.escape(day) for day in target_to_offset) + ")"
+    query: dict = {
+        "activities": {
+            "$elemMatch": {
+                "status": "active",
+                "end_date": {"$regex": target_pattern},
+            }
+        }
+    }
+    if branch_id:
+        query["branch_id"] = branch_id
+    members = await _db["members"].find(query).to_list(length=None)
+    members = [
+        member for member in members
+        if any(
+            activity.get("status") == "active"
+            and str(activity.get("end_date") or "")[:10] in target_to_offset
+            for activity in (member.get("activities") or [])
+        )
+    ]
+
+    branch_ids = {m.get("branch_id") for m in members if m.get("branch_id")}
+    branch_names: dict = {}
+    if branch_ids:
+        async for branch in _db["branches"].find(
+            {"id": {"$in": list(branch_ids)}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
+        ):
+            branch_names[branch.get("id")] = branch.get("name_ar") or branch.get("name") or ""
+
+    # One quota calculation per member obtains all activity cards. This reuses the
+    # authoritative invoice-window/off-schedule logic instead of a raw attendance count.
+    quota_lists = await asyncio.gather(*[
+        check_member_session_quota(m.get("id", "")) for m in members
+    ])
+    quotas_by_member = {
+        m.get("id", ""): quotas for m, quotas in zip(members, quota_lists)
+    }
+
+    candidates = []
+    for member in members:
+        member_id = member.get("id", "")
+        quotas = quotas_by_member.get(member_id, [])
+        for activity in member.get("activities", []) or []:
+            raw_end = str(activity.get("end_date") or "")[:10]
+            if activity.get("status") != "active" or raw_end not in target_to_offset:
+                continue
+            activity_id = activity.get("activity_id", "")
+            start_date = str(activity.get("start_date") or "")[:10]
+            exact_quota = next((
+                q for q in quotas
+                if q.get("activity_id") == activity_id
+                and (
+                    not start_date
+                    or str(q.get("start_date") or "")[:10] == start_date
+                )
+                and str(q.get("end_date") or "")[:10] == raw_end
+            ), None)
+            if exact_quota is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"تعذر حساب حضور الاشتراك الحالي للعضو "
+                        f"{member.get('name_ar') or member.get('name') or member_id}"
+                    ),
+                )
+            fee_value = activity.get("fee") or activity.get("amount") or 0
+            try:
+                fee_value = float(fee_value)
+            except (TypeError, ValueError):
+                fee_value = 0.0
+            candidates.append({
+                "member_id": member_id,
+                "member_name": member.get("name_ar") or member.get("name") or "",
+                "phone": member.get("phone") or "",
+                "activity_id": activity_id,
+                "activity_name": activity.get("activity_name", ""),
+                "start_date": start_date,
+                "end_date": raw_end,
+                "attended_sessions": int(exact_quota.get("used_sessions", 0)),
+                "fee": fee_value,
+                "branch_id": member.get("branch_id"),
+                "branch_name": branch_names.get(member.get("branch_id"), ""),
+                "days_before": target_to_offset[raw_end],
+            })
+    candidates.sort(key=lambda row: (
+        row["end_date"], row["member_name"], row["member_id"], row["activity_id"]
+    ))
+    return candidates
+
+
+def _candidate_identity(rows: list) -> list:
+    """Canonical full send/render snapshot; any recipient mutation makes it stale."""
+    fields = (
+        "member_id", "member_name", "phone", "activity_id", "activity_name",
+        "start_date", "end_date", "attended_sessions", "fee", "branch_id",
+        "branch_name", "days_before",
+    )
+    return sorted(
+        tuple(row.get(field) for field in fields)
+        for row in rows
+    )
+
+
+def _send_now_reminder_count(rows: list) -> int:
+    """Scheduler-compatible sends: one reminder per member and offset."""
+    return len({
+        (row.get("member_id"), int(row.get("days_before", 0)))
+        for row in rows
+    })
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Mongo may return legacy naive UTC datetimes despite timezone-aware writes."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+async def _dispatch_send_now_snapshot(snapshot: dict, settings: dict):
+    """Dispatch exactly the consumed activity cohort, grouped like the scheduler."""
+    rows = snapshot.get("candidates") or []
+    branch_templates = snapshot.get("branch_templates") or {}
+    shared_template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
+    per_offset_templates = settings.get("templates") or {}
+    manual_settings = {**settings, "_manual_run": True}
+
+    for days in sorted({int(row["days_before"]) for row in rows}, reverse=True):
+        grouped: dict = {}
+        for row in rows:
+            if int(row["days_before"]) != days:
+                continue
+            key = row["member_id"]
+            item = grouped.setdefault(key, {
+                # Use the validated frozen snapshot, not an unscoped live reload.
+                "member": {
+                    "id": row["member_id"],
+                    "name": row["member_name"],
+                    "name_ar": row["member_name"],
+                    "phone": row["phone"],
+                    "branch_id": row["branch_id"],
+                },
+                "activity_name": "",
+                "expiring_activities": [],
+                "end_date_str": row["end_date"],
+                "end_date_fmt": row["end_date"].replace("-", "/"),
+                "_fee": 0.0,
+            })
+            if row["activity_name"]:
+                item["expiring_activities"].append(row["activity_name"])
+            item["_fee"] += float(row.get("fee") or 0)
+        members_data = []
+        for item in grouped.values():
+            item["activity_name"] = "، ".join(item["expiring_activities"])
+            item["fee_str"] = (
+                str(int(item["_fee"]))
+                if item["_fee"].is_integer()
+                else f"{item['_fee']:.2f}"
+            )
+            item.pop("_fee", None)
+            members_data.append(item)
+        if not members_data:
+            continue
+        channels = snapshot.get("channels") or []
+        if "whatsapp" in channels:
+            template = per_offset_templates.get(str(days)) or shared_template
+            await _send_wa_for_members(
+                members_data, days, template, manual=True, branch_templates=branch_templates
+            )
+        if "push" in channels:
+            await _send_push_for_members(members_data, days, manual_settings)
+        if "portal" in channels:
+            await _send_portal_for_members(members_data, days, manual_settings)
 
 
 def _render_template(template: str, *, name: str, activity: str, days, end_date: str, fee: str = "") -> str:
@@ -4006,11 +4217,178 @@ async def send_test(data: SendTestRequest, current_user: dict = Depends(get_curr
     raise HTTPException(status_code=500, detail="Failed to send message")
 
 
-@router.post("/send-now")
-async def send_reminders_now(current_user: dict = Depends(get_current_user)):
+class SendNowPreviewRequest(BaseModel):
+    branch_id: Optional[str] = None
+
+
+class SendNowConfirmRequest(BaseModel):
+    preview_id: str
+    confirm: bool
+
+
+def _send_now_actor_id(current_user: dict) -> str:
+    return str(current_user.get("user_id") or current_user.get("id") or "")
+
+
+async def _validated_send_now_settings() -> tuple[dict, list[int]]:
+    if _db is None:
+        raise HTTPException(status_code=503, detail="قاعدة البيانات غير متاحة")
+    settings = await _get_settings()
+    if not settings.get("enabled"):
+        raise HTTPException(status_code=400, detail="يجب تفعيل تذكيرات التجديد أولاً")
+    offsets = [
+        int(item["days"]) for item in _normalize_offsets(settings) if item.get("enabled")
+    ]
+    if not offsets:
+        raise HTTPException(status_code=400, detail="يجب تفعيل موعد تذكير واحد على الأقل")
+    return settings, offsets
+
+
+@router.post("/send-now/preview")
+async def preview_reminders_now(
+    data: SendNowPreviewRequest,
+    current_user: dict = Depends(get_current_user),
+):
     _require_whatsapp_access(current_user)
-    asyncio.ensure_future(_run_daily_reminders())
-    return {"success": True, "message": "Reminders are being sent in the background (WhatsApp + Push + Portal)"}
+    effective_branch = resolve_branch_filter(current_user, data.branch_id)
+    settings, offsets = await _validated_send_now_settings()
+    candidates = await _build_send_now_candidates(effective_branch, offsets)
+    all_branch_templates = await _get_branch_templates()
+    candidate_branch_ids = {row.get("branch_id") for row in candidates}
+    branch_templates = {
+        branch_id: templates
+        for branch_id, templates in all_branch_templates.items()
+        if branch_id in candidate_branch_ids
+    }
+    channels = ["whatsapp"]
+    if settings.get("push_enabled", True):
+        channels.append("push")
+    if settings.get("portal_enabled", True):
+        channels.append("portal")
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=SEND_NOW_PREVIEW_TTL_SECONDS)
+    preview_id = str(uuid.uuid4())
+    tenant_slug = get_current_tenant_slug()
+    snapshot = {
+        "preview_id": preview_id,
+        "tenant_slug": tenant_slug,
+        "actor_id": _send_now_actor_id(current_user),
+        "branch_id": effective_branch,
+        "settings_fingerprint": _send_now_settings_fingerprint(settings),
+        "branch_templates_fingerprint": _mapping_fingerprint(branch_templates),
+        "branch_templates": branch_templates,
+        "offsets": offsets,
+        "channels": channels,
+        "candidates": candidates,
+        "candidate_identity": _candidate_identity(candidates),
+        "created_at": now,
+        "expires_at": expires_at,
+        "consumed_at": None,
+    }
+    previews = _db["whatsapp_send_previews"]
+    await previews.create_index("expires_at", expireAfterSeconds=0)
+    await previews.create_index(
+        [("tenant_slug", 1), ("preview_id", 1)], unique=True
+    )
+    await previews.insert_one(snapshot)
+
+    public_recipients = [{
+        key: row[key] for key in (
+            "member_id", "member_name", "activity_id", "activity_name",
+            "end_date", "attended_sessions", "branch_name",
+        )
+    } for row in candidates]
+    return {
+        "preview_id": preview_id,
+        "expires_at": expires_at.isoformat(),
+        "recipients": public_recipients,
+        "member_count": len({row["member_id"] for row in candidates}),
+        "channels": channels,
+        "count": _send_now_reminder_count(candidates),
+        "row_count": len(candidates),
+    }
+
+
+@router.post("/send-now")
+async def send_reminders_now(
+    data: SendNowConfirmRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_whatsapp_access(current_user)
+    if data.confirm is not True:
+        raise HTTPException(status_code=400, detail="يجب تأكيد الإرسال صراحةً")
+    if _db is None:
+        raise HTTPException(status_code=503, detail="قاعدة البيانات غير متاحة")
+
+    tenant_slug = get_current_tenant_slug()
+    actor_id = _send_now_actor_id(current_user)
+    previews = _db["whatsapp_send_previews"]
+    preview = await previews.find_one({
+        "preview_id": data.preview_id,
+        "tenant_slug": tenant_slug,
+        "actor_id": actor_id,
+    })
+    if not preview:
+        raise HTTPException(status_code=404, detail="معاينة الإرسال غير موجودة")
+    effective_branch = resolve_branch_filter(current_user, preview.get("branch_id"))
+    if effective_branch != preview.get("branch_id"):
+        raise HTTPException(status_code=403, detail="لم تعد لديك صلاحية هذا الفرع")
+    now = datetime.now(timezone.utc)
+    if preview.get("consumed_at") is not None:
+        raise HTTPException(status_code=409, detail="تم استخدام هذه المعاينة مسبقاً")
+    expires_at = preview.get("expires_at")
+    if not isinstance(expires_at, datetime) or _as_utc(expires_at) <= now:
+        raise HTTPException(status_code=409, detail="انتهت صلاحية المعاينة، يرجى إنشاؤها مجدداً")
+
+    # Claim first: even concurrent confirmations can only produce one dispatcher.
+    consumed = await previews.find_one_and_update(
+        {
+            "preview_id": data.preview_id,
+            "tenant_slug": tenant_slug,
+            "actor_id": actor_id,
+            "consumed_at": None,
+            "expires_at": {"$gt": now},
+        },
+        {"$set": {"consumed_at": now}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not consumed:
+        raise HTTPException(status_code=409, detail="تم استخدام المعاينة أو انتهت صلاحيتها")
+
+    settings, offsets = await _validated_send_now_settings()
+    current_candidates = await _build_send_now_candidates(effective_branch, offsets)
+    all_branch_templates = await _get_branch_templates()
+    candidate_branch_ids = {row.get("branch_id") for row in current_candidates}
+    current_branch_templates = {
+        branch_id: templates
+        for branch_id, templates in all_branch_templates.items()
+        if branch_id in candidate_branch_ids
+    }
+    if (
+        _send_now_settings_fingerprint(settings) != consumed.get("settings_fingerprint")
+        or _mapping_fingerprint(current_branch_templates)
+        != consumed.get("branch_templates_fingerprint")
+        or offsets != consumed.get("offsets")
+        or _candidate_identity(current_candidates) != consumed.get("candidate_identity")
+    ):
+        await previews.update_one(
+            {"preview_id": data.preview_id},
+            {"$set": {"stale": True}},
+        )
+        raise HTTPException(
+            status_code=409,
+            detail="تغيّرت الإعدادات أو بيانات الاشتراكات، يرجى إنشاء معاينة جديدة",
+        )
+
+    asyncio.ensure_future(_dispatch_send_now_snapshot(consumed, settings))
+    return {
+        "success": True,
+        "preview_id": data.preview_id,
+        "count": _send_now_reminder_count(consumed.get("candidates") or []),
+        "row_count": len(consumed.get("candidates") or []),
+        "message": "تم تأكيد الإرسال",
+    }
 
 
 @router.post("/disconnect")
@@ -4025,13 +4403,17 @@ async def disconnect(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/logs")
-async def get_send_logs(limit: int = 50, current_user: dict = Depends(get_current_user)):
+async def get_send_logs(
+    limit: int = 50, branch_filter: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
     _require_whatsapp_access(current_user)
+    branch_id = resolve_branch_filter(current_user, branch_filter)
     if _db is None:
         return []
     logs = await _db["whatsapp_send_log"].find(
-        {}, {"_id": 0}
-    ).sort("timestamp", -1).limit(limit).to_list(length=limit)
+        {"branch_id": branch_id} if branch_id else {}, {"_id": 0}
+    ).sort("timestamp", -1).limit(max(1, min(limit, 200))).to_list(length=max(1, min(limit, 200)))
     return logs
 
 
