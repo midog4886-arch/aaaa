@@ -166,11 +166,66 @@ test('enqueues without claiming sent and renders returned progress', async () =>
 
   await waitFor(() => expect(whatsappAPI.sendBranchCloudBulk).toHaveBeenCalledWith(
     'branch-a',
-    [{ phone: '966500000001', message: 'Hello Aisha' }],
+    [{ phone: '966500000001', message: 'Hello Aisha', name: 'Aisha' }],
     'stable-ui-key-123',
+    { campaign_id: 'campaign-1', campaign_title: 'Welcome draft', branch_name: 'Main' },
   ));
   expect(await screen.findByTestId('cloud-job-progress')).toHaveTextContent('Pending: 1');
   expect(screen.getByTestId('cloud-job-progress')).toHaveTextContent('Sent: 0');
+});
+
+test('includes recipient identity and campaign metadata in multipart sends', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  window.confirm = jest.fn(() => true);
+  Object.defineProperty(global, 'crypto', {
+    configurable: true, value: { randomUUID: jest.fn(() => 'media-metadata-key-123') },
+  });
+  whatsappAPI.getCampaign.mockResolvedValueOnce({
+    data: {
+      id: 'campaign-1',
+      name: 'Welcome draft',
+      message: 'Hello {name}',
+      audience: 'pasted',
+      recipients: [{
+        phone: '966500000001',
+        name: 'Aisha',
+        id: 'recipient-1',
+        member_id: 'member-1',
+      }],
+      has_attachment: true,
+      attachments: [{ attachment_name: 'first.png', attachment_type: 'image/png' }],
+    },
+  });
+  whatsappAPI.getCampaignAttachment.mockResolvedValueOnce({
+    data: new Blob(['first'], { type: 'image/png' }),
+  });
+  whatsappAPI.sendBranchCloudBulkMedia.mockResolvedValue({
+    data: { id: 'media-job', status: 'pending', total: 1, pending: 1, sent: 0, failed: 0, unknown: 0 },
+  });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+
+  await user.click(await screen.findByRole('button', { name: /Welcome draft/i }));
+  await screen.findByText('first.png');
+  await user.click(screen.getByRole('button', { name: /Send 1 message.* to 1/i }));
+
+  await waitFor(() => expect(whatsappAPI.sendBranchCloudBulkMedia).toHaveBeenCalled());
+  const [formData, metadata] = whatsappAPI.sendBranchCloudBulkMedia.mock.calls[0];
+  expect(JSON.parse(formData.get('recipients_json'))).toEqual([{
+    phone: '966500000001',
+    message: 'Hello Aisha',
+    name: 'Aisha',
+    id: 'recipient-1',
+    member_id: 'member-1',
+  }]);
+  expect(formData.get('campaign_id')).toBe('campaign-1');
+  expect(formData.get('campaign_title')).toBe('Welcome draft');
+  expect(formData.get('branch_name')).toBe('Main');
+  expect(metadata).toEqual({
+    campaign_id: 'campaign-1',
+    campaign_title: 'Welcome draft',
+    branch_name: 'Main',
+  });
 });
 
 test('a newly enqueued job starts polling even when the initial server list was empty', async () => {

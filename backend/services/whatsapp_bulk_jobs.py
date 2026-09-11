@@ -7,6 +7,7 @@ recovery marks it ``unknown`` rather than retrying a possibly delivered message.
 import asyncio
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -34,8 +35,381 @@ def public_job(job):
     return {k: v for k, v in job.items() if k not in {"_id", "tenant_slug"}}
 
 
+def _report_phone(value):
+    """Return the provider-independent phone key used to group media items."""
+    digits = re.sub(r"\D", "", str(value or "").split("@", 1)[0])
+    return "966" + digits[1:] if len(digits) == 10 and digits.startswith("0") else digits
+
+
+def _report_name(value):
+    if value in (None, ""):
+        return None
+    name = str(value).strip()
+    digits = re.sub(r"\D", "", name)
+    if len(digits) >= 7:
+        return None
+    return name[:200] or None
+
+
+def _receipt_status(value):
+    status = str(value or "").strip().lower()
+    if status in {"read", "played"}:
+        return "read"
+    if status in {"delivered", "device"}:
+        return "delivered"
+    if status in {"sent", "server", "accepted"}:
+        return "accepted"
+    if status in {"failed", "error"}:
+        return "failed"
+    return None
+
+
+def _receipt_can_advance(current, incoming):
+    """Return whether an incoming receipt may replace the stored receipt."""
+    incoming = _receipt_status(incoming)
+    current = _receipt_status(current)
+    if not incoming:
+        return False
+    if not current:
+        return True
+    # Failure and read are terminal observations.  A delayed provider event
+    # must never turn either into an earlier state.
+    if current in {"failed", "read"}:
+        return False
+    if incoming == "failed":
+        return current == "accepted"
+    return {
+        "accepted": 1,
+        "delivered": 2,
+        "read": 3,
+    }.get(incoming, 0) > {
+        "accepted": 1,
+        "delivered": 2,
+        "read": 3,
+    }.get(current, 0)
+
+
+def _iso(value):
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=value.tzinfo or timezone.utc).isoformat()
+    return value
+
+
+def _report_error(value, phone_visible=True):
+    if value in (None, ""):
+        return None
+    if not phone_visible:
+        return "Provider error"
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value)).strip()
+    text = re.sub(r"https?://\S+", "[link]", text, flags=re.IGNORECASE)
+    return text[:500] or None
+
+
+def _recipient_status(items):
+    """Collapse one recipient's text/media items into one report row.
+
+    A campaign with multiple attachments has one item per attachment.  Receipt
+    state is deliberately read from the item that has the exact provider
+    message id; the local ``sent`` state alone is only provider acceptance.
+    """
+    def item_receipt(item):
+        # A delivery/read value is evidence only when tied to the exact
+        # provider message ID that produced the receipt.
+        if not item.get("provider_message_id"):
+            return None
+        return _receipt_status(item.get("delivery_status") or item.get("receipt_status"))
+
+    states = [str(item.get("status") or "unknown").lower() for item in items]
+    receipts = [item_receipt(item) for item in items]
+    receipts = [value for value in receipts if value]
+    effective_states = []
+    for item, state in zip(items, states):
+        effective_states.append(
+            item_receipt(item)
+            or ("accepted" if state == "sent" else state)
+        )
+    mixed = len(set(effective_states)) > 1
+    active = any(value in {"initializing", "pending", "claimed",
+                           "quota_reserving", "dispatching", "processing"}
+                 for value in states)
+    terminal = set(states) - {
+        "initializing", "pending", "claimed", "quota_reserving",
+        "dispatching", "processing",
+    }
+    receipt = max(
+        receipts,
+        key={"failed": 0, "accepted": 1, "delivered": 2, "read": 3}.get,
+        default=None,
+    )
+    if active:
+        status = "partial" if terminal or receipt else "pending"
+    elif mixed:
+        status = "partial"
+    elif receipt in {"read", "delivered"}:
+        status = receipt
+    elif receipt == "accepted" or "sent" in terminal:
+        status = "accepted"
+    elif receipt == "failed" or "failed" in terminal:
+        status = "failed"
+    elif "unknown" in terminal:
+        status = "unknown"
+    elif terminal and terminal <= {"cancelled"}:
+        status = "cancelled"
+    else:
+        status = "unknown"
+
+    # A partial group is useful to callers even though it is not one of the
+    # historical item counters.  The summary includes this extension.
+    if status == "partial":
+        delivery_status = receipt or (
+            "failed" if "failed" in terminal else "unconfirmed"
+        )
+    elif status == "accepted":
+        delivery_status = "accepted" if receipt == "accepted" else "unconfirmed"
+    elif status in {"pending", "unknown"}:
+        delivery_status = "pending" if status == "pending" else "unconfirmed"
+    else:
+        delivery_status = status
+    return status, delivery_status
+
+
+async def get_report(job_id, branch_id, *, phone_visible=True, names_by_phone=None):
+    """Build a read-only recipient report for one branch-owned job.
+
+    This function intentionally performs no writes (including no receipt
+    reconciliation).  ``names_by_phone`` is an exact, branch-scoped lookup
+    supplied by the route; no fuzzy or family-name matching is performed.
+    """
+    job = await _db["whatsapp_campaign_jobs"].find_one(
+        {"id": job_id, "branch_id": branch_id}, {"_id": 0}
+    )
+    if not job:
+        return None
+    cursor = _db["whatsapp_campaign_job_items"].find(
+        {"job_id": job_id, "branch_id": branch_id}, {"_id": 0}
+    )
+    if hasattr(cursor, "to_list"):
+        items = await cursor.to_list(length=10000)
+    else:
+        items = [row async for row in cursor]
+
+    # Older receipts were recorded on the unified cloud-message projection
+    # before campaign items carried delivery fields.  Read them by exact
+    # provider ID as a backwards-compatible evidence source; this remains
+    # strictly read-only.
+    messages = _db["whatsapp_cloud_messages"]
+    if hasattr(messages, "find_one"):
+        checked = set()
+        for item in items:
+            provider_id = str(item.get("provider_message_id") or "").strip()
+            provider = item.get("provider")
+            if not provider_id or (provider, provider_id) in checked:
+                continue
+            checked.add((provider, provider_id))
+            key = {
+                "meta_cloud": "meta_message_id",
+                "waha": "waha_message_id",
+                "whatsflow": "provider_message_id",
+            }.get(provider, "provider_message_id")
+            query = {"branch_id": branch_id, key: provider_id}
+            if provider != "meta_cloud":
+                query["provider"] = provider
+            receipt = await messages.find_one(
+                query,
+                {"_id": 0, "status": 1, "status_updated_at": 1,
+                 "delivered_at": 1, "read_at": 1, "error": 1},
+            )
+            if not receipt:
+                continue
+            value = _receipt_status(receipt.get("status"))
+            if not value:
+                continue
+            for candidate in items:
+                if (
+                    candidate.get("provider") == provider
+                    and candidate.get("provider_message_id") == provider_id
+                ):
+                    if not _receipt_can_advance(
+                        candidate.get("delivery_status")
+                        or candidate.get("receipt_status"),
+                        value,
+                    ):
+                        continue
+                    candidate["delivery_status"] = value
+                    candidate["receipt_status"] = value
+                    timestamp = (
+                        receipt.get("status_updated_at")
+                        or receipt.get("delivered_at")
+                        or receipt.get("read_at")
+                    )
+                    if value == "delivered" and timestamp:
+                        candidate["delivered_at"] = timestamp
+                    elif value == "read" and timestamp:
+                        candidate["read_at"] = timestamp
+                    if value == "failed" and receipt.get("error"):
+                        candidate["error"] = receipt["error"]
+
+    groups = {}
+    for ordinal, item in enumerate(items):
+        # recipient_index is authoritative for newly-created jobs.  The phone
+        # fallback keeps old jobs readable while still coalescing attachments.
+        index = item.get("recipient_index")
+        key = ("index", index) if index is not None else (
+            "phone", _report_phone(item.get("phone"))
+        )
+        groups.setdefault(key, []).append(item)
+
+    recipients = []
+    missing_metadata = False
+    for ordinal, grouped in enumerate(groups.values()):
+        first = grouped[0]
+        phone = _report_phone(first.get("phone"))
+        recipient_id = first.get("recipient_id")
+        if not recipient_id:
+            source_metadata = first.get("source_metadata") or {}
+            recipient_id = source_metadata.get("recipient_id") or source_metadata.get("member_id")
+        if not phone_visible and len(re.sub(r"\D", "", str(recipient_id or ""))) >= 7:
+            recipient_id = None
+        name = _report_name(first.get("recipient_name") or first.get("name"))
+        if not name and names_by_phone:
+            name = _report_name(names_by_phone.get(phone))
+        if not recipient_id or not name:
+            missing_metadata = True
+        status, delivery_status = _recipient_status(grouped)
+        sent_values = [item.get("sent_at") for item in grouped if item.get("sent_at")]
+        delivered_values = [
+            item.get("delivered_at") for item in grouped if item.get("delivered_at")
+        ]
+        read_values = [item.get("read_at") for item in grouped if item.get("read_at")]
+        errors = [
+            _report_error(item.get("error"), phone_visible=phone_visible)
+            for item in grouped if item.get("error")
+        ]
+        recipients.append({
+            "id": recipient_id,
+            "name": name or None,
+            "phone": phone if phone_visible else "********",
+            "status": status,
+            "delivery_status": delivery_status,
+            "sent_at": min((_iso(value) for value in sent_values), default=None),
+            "delivered_at": min((_iso(value) for value in delivered_values), default=None),
+            "read_at": min((_iso(value) for value in read_values), default=None),
+            "error": errors[0] if errors else None,
+        })
+
+    summary = {
+        "total": len(recipients),
+        "pending": 0,
+        "accepted": 0,
+        "delivered": 0,
+        "read": 0,
+        "failed": 0,
+        "unknown": 0,
+        "cancelled": 0,
+        "partial": 0,
+    }
+    for recipient in recipients:
+        status = recipient["status"]
+        if status in summary:
+            summary[status] += 1
+        elif status == "partial":
+            summary["partial"] += 1
+
+    notes = []
+    if job.get("total") and not items:
+        notes.append(
+            "Recipient item details were unavailable for this historical job; the empty table is not a claim that no recipients were queued."
+        )
+    if missing_metadata:
+        notes.append(
+            "Some historical recipient IDs or names were not stored; unavailable values are null."
+        )
+    if any(row["status"] in {"accepted", "partial", "unknown"} for row in recipients):
+        notes.append(
+            "Accepted and unknown messages have no confirmed delivery unless an exact provider receipt ID was recorded; unconfirmed delivery is shown explicitly."
+        )
+    if any(row["status"] == "partial" for row in recipients):
+        notes.append(
+            "Partial indicates mixed outcomes across attachment items for one recipient; attachments are grouped as one recipient."
+        )
+    if "started_at" not in job or "completed_at" not in job:
+        notes.append(
+            "Historical start or completion timestamps were unavailable and are shown as null."
+        )
+    return {
+        "job": public_job(job),
+        "summary": summary,
+        "recipients": recipients,
+        "notes": notes,
+    }
+
+
+async def record_receipt(
+    branch_id, provider, provider_message_id, status, *,
+    timestamp=None, error=None,
+):
+    """Persist a provider receipt only when its exact message ID is known."""
+    if _db is None:
+        return 0
+    message_id = str(provider_message_id or "").strip()
+    normalized = _receipt_status(status)
+    if not message_id or not normalized:
+        return 0
+    timestamp = timestamp or datetime.now(timezone.utc)
+    values = {
+        "delivery_status": normalized,
+        "receipt_status": normalized,
+        "receipt_at": timestamp,
+        "status_updated_at": timestamp,
+    }
+    if normalized == "delivered":
+        values["delivered_at"] = timestamp
+    elif normalized == "read":
+        values["read_at"] = timestamp
+    elif normalized == "failed" and error:
+        values["error"] = str(error)[:500]
+    collection = _db["whatsapp_campaign_job_items"]
+    query = {
+        "branch_id": branch_id, "provider": provider,
+        "provider_message_id": message_id,
+    }
+    existing = None
+    if hasattr(collection, "find_one"):
+        existing = await collection.find_one(query)
+    current_field = None
+    current = None
+    if existing:
+        for field in ("delivery_status", "receipt_status"):
+            if _receipt_status(existing.get(field)):
+                current_field = field
+                current = existing.get(field)
+                break
+        if not current_field:
+            for field in ("delivery_status", "receipt_status"):
+                if field in existing:
+                    current_field = field
+                    current = existing.get(field)
+                    break
+        if not _receipt_can_advance(current, normalized):
+            return 0
+        if current_field:
+            # This guard makes concurrent webhook deliveries monotonic too.
+            query[current_field] = current
+        else:
+            query["delivery_status"] = {"$exists": False}
+            query["receipt_status"] = {"$exists": False}
+    else:
+        query["delivery_status"] = {"$exists": False}
+        query["receipt_status"] = {"$exists": False}
+    if hasattr(collection, "update_many"):
+        result = await collection.update_many(query, {"$set": values})
+    else:
+        result = await collection.update_one(query, {"$set": values})
+    return getattr(result, "matched_count", getattr(result, "modified_count", 0))
+
+
 async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=None,
-                  kind="marketing", source="campaign"):
+                  kind="marketing", source="campaign", metadata=None):
     jobs = _db["whatsapp_campaign_jobs"]
     await jobs.create_index([("branch_id", 1), ("idempotency_key", 1)], unique=True)
     scope = {"branch_id": branch_id, "idempotency_key": idempotency_key}
@@ -51,7 +425,16 @@ async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=
         "status": "initializing", "created_at": now, "updated_at": now,
         "total": total, "pending": total, "sent": 0, "failed": 0, "unknown": 0,
         "cancelled": 0, "attachment_count": len(attachment_list),
+        "recipient_count": len(recipients),
     }
+    # Keep optional enqueue-time campaign metadata for future reports.  Do not
+    # copy message bodies or phone numbers into the parent job.
+    for key in (
+        "campaign_title", "campaign_name", "campaign_id", "branch_name"
+    ):
+        value = (metadata or {}).get(key)
+        if value not in (None, ""):
+            job[key] = value
     try:
         await jobs.insert_one(job)
     except DuplicateKeyError:
@@ -70,6 +453,22 @@ async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=
                 "source": recipient.get("source", source),
                 "source_metadata": recipient.get("source_metadata") or {},
             }
+            recipient_id = (
+                recipient.get("recipient_id")
+                or recipient.get("id")
+                or recipient.get("member_id")
+                or (recipient.get("source_metadata") or {}).get("recipient_id")
+                or (recipient.get("source_metadata") or {}).get("member_id")
+            )
+            recipient_name = (
+                recipient.get("recipient_name")
+                or recipient.get("name")
+                or recipient.get("member_name")
+            )
+            if recipient_id:
+                item["recipient_id"] = str(recipient_id)
+            if recipient_name:
+                item["recipient_name"] = str(recipient_name)[:200]
             if recipient.get("next_attempt_at"):
                 item["next_attempt_at"] = recipient["next_attempt_at"]
             items.append(item)
@@ -157,9 +556,13 @@ async def _refresh_job(job_id):
     if not pending:
         status = "cancelled" if counts["cancelled"] and not (
             counts["sent"] or counts["failed"] or counts["unknown"]) else "completed"
-    await _db["whatsapp_campaign_jobs"].update_one({"id": job_id}, {"$set": {
+    current = await _db["whatsapp_campaign_jobs"].find_one({"id": job_id}) or {}
+    values = {
         **{k: counts[k] for k in ("sent", "failed", "unknown", "cancelled")},
-        "pending": pending, "status": status, "updated_at": datetime.now(timezone.utc)}})
+        "pending": pending, "status": status, "updated_at": datetime.now(timezone.utc)}
+    if not pending and not current.get("completed_at"):
+        values["completed_at"] = datetime.now(timezone.utc)
+    await _db["whatsapp_campaign_jobs"].update_one({"id": job_id}, {"$set": values})
 
 
 async def _acquire_gate(branch_id, provider, now):
@@ -403,6 +806,11 @@ async def process_one():
         await _release_lane(item, lane_token, datetime.now(timezone.utc))
         await _refresh_job(item["job_id"])
         return False
+    # ``started_at`` is the first real provider dispatch, not enqueue time.
+    await _db["whatsapp_campaign_jobs"].update_one(
+        {"id": item["job_id"], "started_at": {"$exists": False}},
+        {"$set": {"started_at": datetime.now(timezone.utc)}},
+    )
     try:
         async def assert_fence():
             lane = await _db["whatsapp_campaign_rate_gates"].find_one({

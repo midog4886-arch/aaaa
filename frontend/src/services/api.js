@@ -778,18 +778,51 @@ export const whatsappAPI = {
   },
   getBranchCloudAvailability: (branchId) =>
     axios.get(`${API}/whatsapp/branch-cloud/${branchId}/availability`),
-  sendBranchCloudBulk: (branchId, recipients, idempotencyKey) =>
+  sendBranchCloudBulk: (branchId, recipients, idempotencyKey, metadata = {}) =>
     axios.post(`${API}/whatsapp/branch-cloud/send-bulk`, {
       branch_id: branchId,
       recipients,
-      idempotency_key: idempotencyKey
+      idempotency_key: idempotencyKey,
+      campaign_id: metadata.campaign_id || null,
+      campaign_title: metadata.campaign_title || '',
+      branch_name: metadata.branch_name || ''
     }),
-  sendBranchCloudBulkMedia: (formData) =>
-    axios.post(`${API}/whatsapp/branch-cloud/send-bulk-media`, formData),
+  sendBranchCloudBulkMedia: (formData, metadata = {}) => {
+    // Keep the multipart contract explicit for callers that build their own
+    // FormData. WhatsAppBulkPage appends these fields before calling this
+    // method so its request can also be inspected/tested without axios.
+    const hasField = key => typeof formData.get === 'function' && formData.get(key);
+    if (metadata.campaign_id !== undefined && !hasField('campaign_id')) {
+      formData.append('campaign_id', metadata.campaign_id || '');
+    }
+    if (metadata.campaign_title !== undefined && !hasField('campaign_title')) {
+      formData.append('campaign_title', metadata.campaign_title || '');
+    }
+    if (metadata.branch_name !== undefined && !hasField('branch_name')) {
+      formData.append('branch_name', metadata.branch_name || '');
+    }
+    return axios.post(`${API}/whatsapp/branch-cloud/send-bulk-media`, formData);
+  },
   listBranchCloudJobs: (branchId) =>
     axios.get(`${API}/whatsapp/branch-cloud/jobs`, { params: { branch_id: branchId } }),
   getBranchCloudJob: (branchId, jobId) =>
     axios.get(`${API}/whatsapp/branch-cloud/jobs/${encodeURIComponent(jobId)}`, { params: { branch_id: branchId } }),
+  getBranchCloudJobReport: (branchId, jobId) =>
+    axios.get(`${API}/whatsapp/branch-cloud/jobs/${encodeURIComponent(jobId)}/report`, {
+      params: { branch_id: branchId }
+    }),
+  downloadBranchCloudJobReport: (branchId, jobId) =>
+    axios.get(`${API}/whatsapp/branch-cloud/jobs/${encodeURIComponent(jobId)}/report.xlsx`, {
+      params: { branch_id: branchId },
+      responseType: 'blob'
+    }),
+  // Kept as a descriptive alias for callers that want to make the file
+  // format explicit. Both methods use the authenticated axios instance.
+  getBranchCloudJobReportXlsx: (branchId, jobId) =>
+    axios.get(`${API}/whatsapp/branch-cloud/jobs/${encodeURIComponent(jobId)}/report.xlsx`, {
+      params: { branch_id: branchId },
+      responseType: 'blob'
+    }),
   cancelBranchCloudJob: (branchId, jobId) =>
     axios.post(`${API}/whatsapp/branch-cloud/jobs/${encodeURIComponent(jobId)}/cancel`, null, { params: { branch_id: branchId } }),
   reconcileBranchCloudLane: (branchId) =>

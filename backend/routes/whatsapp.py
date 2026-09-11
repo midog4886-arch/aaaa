@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import uuid
+from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
@@ -16,7 +17,7 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 from pymongo import ReturnDocument
 from .common import get_current_user
@@ -324,8 +325,10 @@ def _waha_physical_session_id(branch_id: str, alias: str = "", tenant_slug: Opti
 def _canonical_waha_message_id(value) -> Optional[str]:
     if isinstance(value, dict):
         key = value.get("key")
-        if isinstance(key, dict) and key.get("_serialized"):
-            return str(key["_serialized"])
+        if isinstance(key, dict):
+            nested = _canonical_waha_message_id(key)
+            if nested:
+                return nested
         for candidate in (value.get("_serialized"), value.get("id"), value.get("messageId")):
             if isinstance(candidate, dict):
                 nested = _canonical_waha_message_id(candidate)
@@ -3016,13 +3019,25 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                     continue
                 status_name = status.get("status") or "unknown"
                 errors = status.get("errors") or []
+                receipt_at = received_at
+                try:
+                    receipt_at = datetime.fromtimestamp(
+                        float(status.get("timestamp")), tz=timezone.utc
+                    )
+                except (TypeError, ValueError, OSError, OverflowError):
+                    pass
                 await _db["whatsapp_cloud_messages"].update_one(
-                    {"meta_message_id": meta_id},
+                    {"branch_id": config["branch_id"], "meta_message_id": meta_id},
                     {"$set": {
                         "status": status_name,
                         "status_updated_at": now,
                         "error": errors[0].get("title") if errors else None,
                     }},
+                )
+                await whatsapp_bulk_jobs.record_receipt(
+                    config["branch_id"], "meta_cloud", meta_id, status_name,
+                    timestamp=receipt_at,
+                    error=(errors[0].get("title") if errors else None),
                 )
         return {"received": True}
     finally:
@@ -3063,9 +3078,14 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         if event in {"message.ack", "message_ack"}:
             message_id = _canonical_waha_message_id(payload)
             if message_id:
+                ack_status = _normalize_waha_ack(payload)
                 await _db["whatsapp_cloud_messages"].update_one({"branch_id": config["branch_id"], "provider": "waha", "waha_message_id": message_id}, {"$set": {
-                    "status": _normalize_waha_ack(payload), "status_updated_at": now,
+                    "status": ack_status, "status_updated_at": now,
                 }})
+                await whatsapp_bulk_jobs.record_receipt(
+                    config["branch_id"], "waha", message_id, ack_status,
+                    timestamp=datetime.now(timezone.utc),
+                )
             return {"received": True}
         if event not in {"message", "message.any"}:
             return {"received": True}
@@ -3161,6 +3181,10 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 {"branch_id": config["branch_id"], "provider": "whatsflow",
                  "provider_message_id": message_id},
                 {"$set": {"status": status, "status_updated_at": now}},
+            )
+            await whatsapp_bulk_jobs.record_receipt(
+                config["branch_id"], "whatsflow", message_id, status,
+                timestamp=datetime.now(timezone.utc),
             )
             return {"received": True}
         if event != "messages.upsert":
@@ -3650,12 +3674,58 @@ class BranchCloudTestRequest(BaseModel):
 class BulkCloudRecipient(BaseModel):
     phone: str
     message: str
+    id: Optional[str] = None
+    member_id: Optional[str] = None
+    name: Optional[str] = None
+    source_metadata: Optional[dict] = None
 
 
 class BulkCloudSendRequest(BaseModel):
     branch_id: str
     recipients: List[BulkCloudRecipient]
     idempotency_key: str
+    campaign_title: Optional[str] = Field(default=None, max_length=160)
+    campaign_id: Optional[str] = Field(default=None, max_length=128)
+    branch_name: Optional[str] = Field(default=None, max_length=200)
+
+
+def _bulk_campaign_metadata(
+    campaign_title: Optional[str] = None,
+    campaign_id: Optional[str] = None,
+    branch_name: Optional[str] = None,
+) -> dict:
+    """Validate report metadata without changing dispatch payload semantics."""
+    title = campaign_title.strip() if isinstance(campaign_title, str) else ""
+    if len(title) > 160:
+        raise HTTPException(status_code=400, detail="Campaign title is too long")
+    identifier = campaign_id.strip() if isinstance(campaign_id, str) else ""
+    if len(identifier) > 128:
+        raise HTTPException(status_code=400, detail="Campaign ID is too long")
+    branch = branch_name.strip() if isinstance(branch_name, str) else ""
+    if len(branch) > 200:
+        raise HTTPException(status_code=400, detail="Branch name is too long")
+    return {
+        key: value
+        for key, value in (
+            ("campaign_title", title),
+            ("campaign_id", identifier),
+            ("branch_name", branch),
+        )
+        if value
+    }
+
+
+def _bulk_recipient_payload(recipient: BulkCloudRecipient) -> dict:
+    payload = {"phone": recipient.phone, "message": recipient.message.strip()}
+    if recipient.id:
+        payload["recipient_id"] = recipient.id
+    if recipient.member_id:
+        payload["member_id"] = recipient.member_id
+    if recipient.name:
+        payload["name"] = recipient.name.strip()[:200]
+    if recipient.source_metadata:
+        payload["source_metadata"] = recipient.source_metadata
+    return payload
 
 
 def _campaign_scope(branch_id: str) -> dict:
@@ -4101,6 +4171,189 @@ def _assert_branch_access(current_user: dict, branch_id: str):
         raise HTTPException(status_code=403, detail="Branch access denied")
 
 
+def _report_phone_key(value: str) -> str:
+    digits = re.sub(r"\D", "", str(value or "").split("@", 1)[0])
+    return "966" + digits[1:] if len(digits) == 10 and digits.startswith("0") else digits
+
+
+def _report_name(value) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    name = str(value).strip()
+    digits = re.sub(r"\D", "", name)
+    if len(digits) >= 7:
+        return None
+    return name[:200] or None
+
+
+async def _report_names_by_phone(branch_id: str) -> dict[str, str]:
+    """Resolve only exact phone matches within the requested branch."""
+    candidates = {}
+    members = _db["members"]
+    if not hasattr(members, "find"):
+        return names
+    cursor = members.find(
+        {"branch_id": branch_id},
+        {
+            "_id": 0, "phone": 1, "customer_phone": 1,
+            "name": 1, "name_ar": 1, "name_en": 1, "customer_name": 1,
+        },
+    )
+    rows = (
+        await cursor.to_list(length=10000)
+        if hasattr(cursor, "to_list")
+        else [row async for row in cursor]
+    )
+    for member in rows:
+        name = (
+            member.get("name_ar") or member.get("name")
+            or member.get("name_en") or member.get("customer_name")
+        )
+        name = _report_name(name)
+        for phone_value in (member.get("phone"), member.get("customer_phone")):
+            phone = _report_phone_key(phone_value)
+            if phone and name:
+                candidates.setdefault(phone, set()).add(name)
+    return {
+        phone: " / ".join(sorted(names))
+        for phone, names in candidates.items()
+    }
+
+
+async def _report_can_view_phones(current_user: dict) -> bool:
+    if current_user.get("is_admin", False):
+        return True
+    if "member-phones" in (current_user.get("permissions") or []):
+        return True
+    user_id = current_user.get("user_id") or current_user.get("id")
+    user = await _db["users"].find_one(
+        {"id": user_id}, {"_id": 0, "permissions": 1}
+    )
+    return "member-phones" in ((user or {}).get("permissions") or [])
+
+
+def _sanitize_report_error(value, *, phone_visible: bool) -> Optional[str]:
+    if value in (None, ""):
+        return None
+    if not phone_visible:
+        return "Provider error"
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value)).strip()
+    # Provider error payloads must never become an HTML/Excel injection vector.
+    text = re.sub(r"https?://\S+", "[link]", text, flags=re.IGNORECASE)
+    return text[:500] or None
+
+
+async def _campaign_report(job_id: str, branch_id: str, current_user: dict) -> dict:
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    phone_visible = await _report_can_view_phones(current_user)
+    names = await _report_names_by_phone(branch_id)
+    report = await whatsapp_bulk_jobs.get_report(
+        job_id, branch_id, phone_visible=phone_visible, names_by_phone=names
+    )
+    if not report:
+        raise HTTPException(status_code=404, detail="Campaign job not found")
+
+    # Keep branch metadata best-effort and historical-safe.  No inferred title
+    # or timestamps are manufactured when old jobs did not store them.
+    branch = await _db["branches"].find_one(
+        {"id": branch_id}, {"_id": 0, "name": 1, "name_ar": 1, "name_en": 1}
+    )
+    branch_name = (branch or {}).get("name") or (branch or {}).get("name_ar") or (branch or {}).get("name_en")
+    if branch_name and not report["job"].get("branch_name"):
+        report["job"]["branch_name"] = branch_name
+    elif not report["job"].get("branch_name"):
+        report["notes"].append("Branch name was unavailable for this historical job.")
+    if not report["job"].get("campaign_title"):
+        report["job"]["campaign_title"] = (
+            report["job"].get("campaign_name")
+            or report["job"].get("name")
+            or report["job"].get("title")
+        )
+    if not report["job"].get("campaign_title"):
+        report["job"]["campaign_title"] = None
+        report["notes"].append("Campaign title was unavailable for this historical job.")
+    for field in ("branch_name", "created_at", "started_at", "completed_at"):
+        report["job"].setdefault(field, None)
+    for field in ("pause_reason", "error"):
+        if field in report["job"]:
+            report["job"][field] = _sanitize_report_error(
+                report["job"].get(field), phone_visible=phone_visible
+            )
+    for recipient in report["recipients"]:
+        recipient["error"] = _sanitize_report_error(
+            recipient.get("error"), phone_visible=phone_visible
+        )
+    return report
+
+
+def _excel_safe(value):
+    """Prevent formula interpretation for every user/provider-supplied cell."""
+    if value is None:
+        return ""
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    text = str(value)
+    if text.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + text
+    return text
+
+
+def _campaign_report_xlsx(report: dict) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "Summary"
+    summary_sheet.append(["Campaign report", ""])
+    summary_sheet["A1"].font = Font(bold=True, size=14)
+    job = report.get("job") or {}
+    summary_sheet.append(["Campaign title", _excel_safe(job.get("campaign_title"))])
+    summary_sheet.append(["Branch", _excel_safe(job.get("branch_name"))])
+    summary_sheet.append(["Job ID", _excel_safe(job.get("id"))])
+    summary_sheet.append(["Created", _excel_safe(job.get("created_at"))])
+    summary_sheet.append(["Started", _excel_safe(job.get("started_at"))])
+    summary_sheet.append(["Completed", _excel_safe(job.get("completed_at"))])
+    summary_sheet.append([])
+    summary_sheet.append(["Metric", "Count"])
+    for cell in summary_sheet[9]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="D9EAF7")
+    for key, value in (report.get("summary") or {}).items():
+        summary_sheet.append([_excel_safe(key), _excel_safe(value)])
+    if report.get("notes"):
+        summary_sheet.append([])
+        summary_sheet.append(["Notes", ""])
+        for note in report["notes"]:
+            summary_sheet.append(["", _excel_safe(note)])
+
+    recipients_sheet = workbook.create_sheet("Recipients")
+    columns = [
+        "id", "name", "phone", "status", "delivery_status",
+        "sent_at", "delivered_at", "read_at", "error",
+    ]
+    recipients_sheet.append(columns)
+    for cell in recipients_sheet[1]:
+        cell.font = Font(bold=True)
+        cell.fill = PatternFill("solid", fgColor="D9EAF7")
+    for recipient in report.get("recipients") or []:
+        recipients_sheet.append([
+            _excel_safe(recipient.get(column)) for column in columns
+        ])
+    for sheet in workbook.worksheets:
+        sheet.freeze_panes = "A2"
+        sheet.auto_filter.ref = sheet.dimensions
+        for column in sheet.columns:
+            letter = column[0].column_letter
+            sheet.column_dimensions[letter].width = min(
+                60, max(12, max(len(str(cell.value or "")) for cell in column) + 2)
+            )
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 @router.get("/branch-cloud/{branch_id}/availability")
 async def get_branch_cloud_availability(
     branch_id: str, current_user: dict = Depends(get_current_user)
@@ -4167,6 +4420,9 @@ async def send_branch_cloud_bulk(
         raise HTTPException(status_code=400, detail="No recipients supplied")
     if len(data.recipients) > 200:
         raise HTTPException(status_code=400, detail="Maximum 200 recipients per batch")
+    metadata = _bulk_campaign_metadata(
+        data.campaign_title, data.campaign_id, data.branch_name
+    )
     config = await _get_branch_cloud_config(data.branch_id)
     provider = _branch_provider(config)
     if provider not in {"meta_cloud", "waha", "whatsflow"}:
@@ -4197,12 +4453,17 @@ async def send_branch_cloud_bulk(
     key = re.sub(r"[^A-Za-z0-9_-]", "", data.idempotency_key or "")[:100]
     if len(key) < 12:
         raise HTTPException(status_code=400, detail="Invalid idempotency key")
-    recipients = [{"phone": r.phone, "message": r.message.strip()} for r in data.recipients]
+    recipients = [_bulk_recipient_payload(r) for r in data.recipients]
     if any(not _format_cloud_phone(r["phone"]) or not r["message"] or len(r["message"]) > 4096
            for r in recipients):
         raise HTTPException(status_code=400, detail="Invalid phone or message")
-    job, _created = await whatsapp_bulk_jobs.enqueue(
-        data.branch_id, provider, recipients, key)
+    enqueue_args = (data.branch_id, provider, recipients, key)
+    if metadata:
+        job, _created = await whatsapp_bulk_jobs.enqueue(
+            *enqueue_args, metadata=metadata
+        )
+    else:
+        job, _created = await whatsapp_bulk_jobs.enqueue(*enqueue_args)
     if response is not None:
         response.status_code = 202
     return job
@@ -4233,17 +4494,17 @@ async def _upload_meta_bulk_media(
     return media_id
 
 
-async def _send_meta_media_template(
+async def _send_meta_media_template_result(
     phone: str,
     message: str,
     media_id: str,
     media_type: str,
     filename: str,
     config: dict,
-) -> bool:
+) -> tuple[bool, Optional[str], Optional[str]]:
     wa_phone = _format_cloud_phone(phone)
     if not wa_phone:
-        return False
+        return False, None, "invalid_phone"
     template_name = (
         config.get("image_template_name")
         if media_type == "image"
@@ -4292,12 +4553,36 @@ async def _send_meta_media_template(
                 json=payload,
             )
         if 200 <= response.status_code < 300:
-            return True
+            provider_message_id = None
+            try:
+                provider_message_id = (
+                    (response.json().get("messages") or [{}])[0].get("id")
+                )
+            except Exception:
+                pass
+            return True, provider_message_id, None
         logger.error("Meta media template send failed: HTTP %s", response.status_code)
     except Exception as exc:
         logger.error("Meta media template send failed: %s", type(exc).__name__)
         raise
-    return False
+    return False, None, (
+        f"http_{response.status_code}" if "response" in locals() else "send_failed"
+    )
+
+
+async def _send_meta_media_template(
+    phone: str,
+    message: str,
+    media_id: str,
+    media_type: str,
+    filename: str,
+    config: dict,
+) -> bool:
+    """Backward-compatible bool wrapper for non-campaign callers."""
+    success, _, _ = await _send_meta_media_template_result(
+        phone, message, media_id, media_type, filename, config
+    )
+    return success
 
 
 def _validate_bulk_job_config(provider: str, config: dict) -> Optional[str]:
@@ -4361,8 +4646,7 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
             success, provider_response, error = await WAHAClient().send_media(
                 session, _waha_chat_id(wa_phone), content, mime, filename, caption,
                 image=media_type == "image")
-            if isinstance(provider_response, dict):
-                provider_message_id = provider_response.get("id")
+            provider_message_id = _canonical_waha_message_id(provider_response)
             if not success and error and not error.startswith("http_"):
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
         elif provider == "whatsflow":
@@ -4377,13 +4661,19 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
         else:
             media_id = await _upload_meta_bulk_media(content, filename, mime, config)
             await assert_fence()
-            success = await _send_meta_media_template(
-                item["phone"], caption, media_id, media_type, filename, config)
+            success, provider_message_id, _error = await _send_meta_media_template_result(
+                item["phone"], caption, media_id, media_type, filename, config
+            )
     try:
         if isinstance(provider_message_id, str) and provider_message_id:
             await _db["whatsapp_campaign_job_items"].update_one(
                 {"id": item["id"], "branch_id": item["branch_id"]},
                 {"$set": {"provider_message_id": provider_message_id}},
+            )
+        if success:
+            await _db["whatsapp_campaign_job_items"].update_one(
+                {"id": item["id"], "branch_id": item["branch_id"]},
+                {"$set": {"sent_at": datetime.now(timezone.utc)}},
             )
     except Exception as exc:
         # Recording inbox metadata must never change a send result or cause retry.
@@ -4405,6 +4695,9 @@ async def send_branch_cloud_bulk_media(
     branch_id: str = Form(...),
     recipients_json: str = Form(...),
     idempotency_key: str = Form(...),
+    campaign_title: str = Form(""),
+    campaign_id: str = Form(""),
+    branch_name: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     attachments: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
@@ -4412,6 +4705,7 @@ async def send_branch_cloud_bulk_media(
 ):
     _require_bulk_whatsapp_access(current_user)
     _assert_branch_access(current_user, branch_id)
+    metadata = _bulk_campaign_metadata(campaign_title, campaign_id, branch_name)
     try:
         raw_recipients = json.loads(recipients_json)
         recipients = [BulkCloudRecipient(**item) for item in raw_recipients]
@@ -4535,10 +4829,17 @@ async def send_branch_cloud_bulk_media(
             ref.update({"media_type": item["media_type"], "filename": item["filename"],
                         "mime_type": item["mime_type"]})
             stored.append(ref)
-        job, created = await whatsapp_bulk_jobs.enqueue(
+        enqueue_args = (
             branch_id, provider,
-            [{"phone": r.phone, "message": r.message.strip()} for r in recipients],
-            idempotency_key, stored)
+            [_bulk_recipient_payload(r) for r in recipients],
+            idempotency_key, stored,
+        )
+        if metadata:
+            job, created = await whatsapp_bulk_jobs.enqueue(
+                *enqueue_args, metadata=metadata
+            )
+        else:
+            job, created = await whatsapp_bulk_jobs.enqueue(*enqueue_args)
         if not created:
             for ref in stored:
                 await _delete_campaign_attachment(branch_id, ref.get("attachment_id"))
@@ -4567,6 +4868,40 @@ async def get_branch_cloud_job(
     if not job:
         raise HTTPException(status_code=404, detail="Campaign job not found")
     return job
+
+
+@router.get("/branch-cloud/jobs/{job_id}/report")
+async def get_branch_cloud_job_report(
+    job_id: str, branch_id: str, current_user: dict = Depends(get_current_user),
+):
+    """Return a read-only, recipient-grouped delivery report."""
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    return await _campaign_report(job_id, branch_id, current_user)
+
+
+@router.get("/branch-cloud/jobs/{job_id}/report.xlsx")
+async def export_branch_cloud_job_report(
+    job_id: str, branch_id: str, current_user: dict = Depends(get_current_user),
+):
+    """Export the same privacy-filtered report as a real XLSX workbook."""
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    report = await _campaign_report(job_id, branch_id, current_user)
+    content = _campaign_report_xlsx(report)
+    safe_job_id = re.sub(r"[^A-Za-z0-9_-]", "", job_id)[:80] or "job"
+    return StreamingResponse(
+        iter([content]),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="campaign_report_{safe_job_id}.xlsx"'
+            ),
+        },
+    )
 
 
 @router.post("/branch-cloud/jobs/{job_id}/cancel")

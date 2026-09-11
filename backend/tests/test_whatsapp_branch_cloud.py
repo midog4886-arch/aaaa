@@ -234,8 +234,8 @@ def test_bulk_cloud_send_uses_selected_branch_and_messages(monkeypatch):
     })
     monkeypatch.setattr(whatsapp_mod, "_db", db)
     seen = []
-    async def enqueue(branch, provider, recipients, key):
-        seen.append((branch, provider, recipients, key))
+    async def enqueue(branch, provider, recipients, key, **kwargs):
+        seen.append((branch, provider, recipients, key, kwargs.get("metadata")))
         return {"id": "job-1", "status": "pending", "total": 2, "pending": 2}, True
     monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "enqueue", enqueue)
     http_response = Response()
@@ -243,6 +243,9 @@ def test_bulk_cloud_send_uses_selected_branch_and_messages(monkeypatch):
         whatsapp_mod.BulkCloudSendRequest(
             branch_id="branch-b",
             idempotency_key="bulk-text-key-123",
+            campaign_title="Spring enrollment",
+            campaign_id="campaign-42",
+            branch_name="Downtown",
             recipients=[
                 {"phone": "0501234567", "message": "أهلاً محمد"},
                 {"phone": "0509876543", "message": "أهلاً سارة"},
@@ -257,6 +260,11 @@ def test_bulk_cloud_send_uses_selected_branch_and_messages(monkeypatch):
     assert seen[0][2] == [
         {"phone": "0501234567", "message": "أهلاً محمد"},
         {"phone": "0509876543", "message": "أهلاً سارة"}]
+    assert seen[0][4] == {
+        "campaign_title": "Spring enrollment",
+        "campaign_id": "campaign-42",
+        "branch_name": "Downtown",
+    }
 
 
 def test_bulk_cloud_accepts_messages_permission_and_preserves_international_numbers(monkeypatch):
@@ -512,8 +520,8 @@ def test_bulk_pdf_upload_uses_document_template(monkeypatch):
     async def store(_branch, _upload):
         return {"attachment_id": "stored-pdf", "attachment_name": "offer.pdf",
                 "attachment_type": "application/pdf", "attachment_size": 13}
-    async def enqueue(branch, provider, recipients, key, attachments):
-        queued.append((branch, provider, recipients, key, attachments))
+    async def enqueue(branch, provider, recipients, key, attachments, **kwargs):
+        queued.append((branch, provider, recipients, key, attachments, kwargs.get("metadata")))
         return {"id": "media-job", "status": "pending", "total": 1, "pending": 1}, True
     monkeypatch.setattr(whatsapp_mod.whatsapp_bulk_jobs, "get_job_by_key", no_existing)
     monkeypatch.setattr(whatsapp_mod, "_store_campaign_attachment", store)
@@ -539,6 +547,9 @@ def test_bulk_pdf_upload_uses_document_template(monkeypatch):
             "message": "عرض خاص",
         }]),
         idempotency_key="test-batch-key-123",
+        campaign_title="PDF offer",
+        campaign_id="campaign-pdf-7",
+        branch_name="Main branch",
         attachment=_Upload(),
         current_user={"is_admin": True},
     ))
@@ -547,6 +558,11 @@ def test_bulk_pdf_upload_uses_document_template(monkeypatch):
     assert queued[0][0:2] == ("branch-a", "meta_cloud")
     assert queued[0][4][0]["media_type"] == "document"
     assert queued[0][4][0]["attachment_id"] == "stored-pdf"
+    assert queued[0][5] == {
+        "campaign_title": "PDF offer",
+        "campaign_id": "campaign-pdf-7",
+        "branch_name": "Main branch",
+    }
 
 
 def test_multi_image_waha_reserves_actual_messages_and_refunds_only_failures(monkeypatch):

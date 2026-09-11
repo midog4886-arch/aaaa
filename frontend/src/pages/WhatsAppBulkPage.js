@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud, Paperclip, Image as ImageIcon, FileText, Save, History, CalendarClock, RefreshCw } from 'lucide-react';
 import { branchesAPI, whatsappAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import WhatsAppCampaignReport from '../components/WhatsAppCampaignReport';
 
 const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
 const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[d] || d);
@@ -100,15 +101,27 @@ const rowsToItems = (rows) => {
     if (!cleaned) continue;
     if (seen.has(cleaned)) continue;
     seen.add(cleaned);
+    const recipientId = r.recipient_id || r.recipientId || r.id || '';
+    const memberId = r.member_id || r.memberId || '';
     out.push({
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: (r.name || '').trim(),
       phone: cleaned,
       original: r.phoneRaw,
       valid: isValidPhone(cleaned),
+      recipientId: recipientId || null,
+      member_id: memberId || null,
     });
   }
   return out;
+};
+
+const recipientIdentityPayload = (item) => {
+  const payload = {};
+  if (item.name) payload.name = item.name;
+  if (item.recipientId) payload.id = item.recipientId;
+  if (item.member_id) payload.member_id = item.member_id;
+  return payload;
 };
 
 export default function WhatsAppBulkPage() {
@@ -131,6 +144,7 @@ export default function WhatsAppBulkPage() {
   const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, provider: 'meta_cloud', configured: false, connected: false, template_configured: false, daily_limit: 0, daily_used: 0, daily_remaining: 0 });
   const [cloudSending, setCloudSending] = useState(false);
   const [cloudJobs, setCloudJobs] = useState([]);
+  const [reportJob, setReportJob] = useState(null);
   const [cloudJobsPollVersion, setCloudJobsPollVersion] = useState(0);
   const enqueueKey = useRef(null);
   const [attachments, setAttachments] = useState([]);
@@ -259,6 +273,7 @@ export default function WhatsAppBulkPage() {
     campaignListGeneration.current += 1;
     campaignLoadGeneration.current += 1;
     audienceGeneration.current += 1;
+    setReportJob(null);
     setCampaignId(null);
     setCampaignName('');
     setMessage('');
@@ -291,7 +306,12 @@ export default function WhatsAppBulkPage() {
       if (generation !== audienceGeneration.current || requestedBranch !== branchId) return;
       setItems(rowsToItems((response.data?.recipients || []).map(row => ({
         name: row.name || '',
-        phoneRaw: row.phone
+        phoneRaw: row.phone,
+        id: row.id,
+        recipient_id: row.recipient_id,
+        member_id: row.member_id || (
+          ['active_members', 'all_members'].includes(nextAudience) ? row.id : undefined
+        ),
       }))));
       setDynamicAudienceBranch(requestedBranch);
     } catch (error) {
@@ -342,7 +362,13 @@ export default function WhatsAppBulkPage() {
       setAudience(draft.audience || 'pasted');
       if (draft.audience === 'pasted') {
         setDynamicAudienceBranch('');
-        setItems(rowsToItems((draft.recipients || []).map(row => ({ name: row.name, phoneRaw: row.phone }))));
+        setItems(rowsToItems((draft.recipients || []).map(row => ({
+          name: row.name,
+          phoneRaw: row.phone,
+          id: row.id,
+          recipient_id: row.recipient_id,
+          member_id: row.member_id,
+        }))));
       } else {
         await refreshAudience(draft.audience);
         if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
@@ -394,7 +420,9 @@ export default function WhatsAppBulkPage() {
     formData.append('proposed_send_at', proposedSendAt);
     formData.append('default_name', defaultName);
     formData.append('recipients_json', JSON.stringify(
-      audience === 'pasted' ? items.map(item => ({ name: item.name, phone: item.phone })) : []
+      audience === 'pasted'
+        ? items.map(item => ({ phone: item.phone, ...recipientIdentityPayload(item) }))
+        : []
     ));
     attachments.forEach(file => formData.append('attachments', file));
     if (removeStoredAttachment) formData.append('remove_attachment', 'true');
@@ -588,6 +616,11 @@ export default function WhatsAppBulkPage() {
       return;
     }
     const branchName = branches.find(branch => branch.id === branchId)?.name || '';
+    const campaignMetadata = {
+      campaign_id: campaignId || null,
+      campaign_title: campaignName.trim(),
+      branch_name: branchName,
+    };
     if (!window.confirm(t(
        `ستتم إضافة ${automaticMessageCount} رسالة إلى قائمة الانتظار (لم تُرسل بعد). الفاصل دقيقة واحدة على الأقل والمدة التقديرية ${Math.max(0, automaticMessageCount - 1)} دقيقة. لا يشمل هذا الحد إشعارات المعاملات. هل تريد المتابعة؟`,
        `Queue ${automaticMessageCount} message(s) (queued is not sent). At least one minute apart; estimated minimum ${Math.max(0, automaticMessageCount - 1)} minute(s). Transactional notices are not affected. Continue?`
@@ -597,7 +630,8 @@ export default function WhatsAppBulkPage() {
     try {
       const recipients = validItems.map(item => ({
         phone: item.phone,
-        message: personalize(message.trim(), item.name)
+        message: personalize(message.trim(), item.name),
+        ...recipientIdentityPayload(item),
       }));
       let response;
       const idempotencyKey = enqueueKey.current || crypto.randomUUID();
@@ -607,10 +641,13 @@ export default function WhatsAppBulkPage() {
         formData.append('branch_id', branchId);
         formData.append('recipients_json', JSON.stringify(recipients));
         formData.append('idempotency_key', idempotencyKey);
+        formData.append('campaign_id', campaignMetadata.campaign_id || '');
+        formData.append('campaign_title', campaignMetadata.campaign_title);
+        formData.append('branch_name', campaignMetadata.branch_name);
         attachments.forEach(file => formData.append('attachments', file));
-        response = await whatsappAPI.sendBranchCloudBulkMedia(formData);
+        response = await whatsappAPI.sendBranchCloudBulkMedia(formData, campaignMetadata);
       } else {
-        response = await whatsappAPI.sendBranchCloudBulk(branchId, recipients, idempotencyKey);
+        response = await whatsappAPI.sendBranchCloudBulk(branchId, recipients, idempotencyKey, campaignMetadata);
       }
       const job = response.data || {};
       setCloudJobs(current => [job, ...current.filter(item => item.id !== job.id)]);
@@ -1101,10 +1138,32 @@ export default function WhatsAppBulkPage() {
             </Button>
             </div>
             {cloudJobs.length > 0 && (
-              <div className="mt-4 space-y-2" data-testid="cloud-job-progress">
-                {cloudJobs.slice(0, 5).map(job => (
-                  <div key={job.id} className="rounded-md border p-3 text-xs">
-                    <div className="font-medium">{t('حملة تلقائية', 'Automatic campaign')} · {job.status}</div>
+              <div className="mt-4 space-y-2 max-h-[560px] overflow-y-auto" data-testid="cloud-job-progress">
+                {cloudJobs.map(job => (
+                  <div key={job.id || job.job_id} className="rounded-md border p-3 text-xs">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-medium">
+                        {job.campaign_name || job.campaign_title || job.name || t('حملة تلقائية', 'Automatic campaign')} · {
+                          ['initializing', 'processing'].includes(String(job.status || '').toLowerCase())
+                            ? t('معلّق', 'Pending')
+                            : String(job.status || '').toLowerCase() === 'partial'
+                              ? t('جزئي', 'Partial')
+                              : job.status
+                        }
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0"
+                        onClick={() => setReportJob(job)}
+                        disabled={!job.id && !job.job_id}
+                        aria-label={t('عرض تقرير الحملة', 'View campaign report')}
+                      >
+                        <FileText className="w-3 h-3 me-1" />
+                        {t('التقرير', 'Report')}
+                      </Button>
+                     </div>
                     <div className="mt-1 text-muted-foreground">
                       {t('معلّق', 'Pending')}: {job.pending || 0} · {t('تم', 'Sent')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
                     </div>
@@ -1155,6 +1214,16 @@ export default function WhatsAppBulkPage() {
             )}
           </CardContent>
         </Card>
+
+        <WhatsAppCampaignReport
+          branchId={branchId}
+          job={reportJob}
+          open={Boolean(reportJob)}
+          onOpenChange={open => { if (!open) setReportJob(null); }}
+          language={language}
+          branchName={branches.find(branch => branch.id === branchId)?.name}
+          campaignName={campaignName}
+        />
 
         {waQueue.length > 0 && (
           <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-white border-2 border-green-500 rounded-lg shadow-2xl p-4 z-[100]">
