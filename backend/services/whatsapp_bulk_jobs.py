@@ -17,7 +17,7 @@ from pymongo.errors import DuplicateKeyError
 from utils.tenant import for_each_active_tenant
 
 log = logging.getLogger("whatsapp.bulk_jobs")
-MIN_INTERVAL_SECONDS = max(60, int(os.environ.get("WHATSAPP_CAMPAIGN_INTERVAL_SECONDS", "60")))
+MIN_INTERVAL_SECONDS = max(180, int(os.environ.get("WHATSAPP_CAMPAIGN_INTERVAL_SECONDS", "180")))
 LEASE_SECONDS = 600
 _started = False
 _db = None
@@ -568,7 +568,7 @@ async def _refresh_job(job_id):
 async def _acquire_gate(branch_id, provider, now):
     gates = _db["whatsapp_campaign_rate_gates"]
     # One branch-wide gate covers every automatic provider. A configuration
-    # switch must not create a fresh lane and bypass the one-minute interval.
+    # switch must not create a fresh lane and bypass the three-minute interval.
     key = branch_id
     try:
         await gates.update_one({"_id": key}, {"$setOnInsert": {

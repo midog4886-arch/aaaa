@@ -7,6 +7,10 @@ Keep automatic campaign delivery paced across all jobs for one branch, counting 
 
 **Why:** A user observed twenty recipients receiving messages in one minute with the prior parallel sender and explicitly objected to that burst.
 
+On 2026-09-11, the user chose a three-minute minimum after confirming that actual 67–71-second intervals still felt too fast.
+
+**Why:** This is an explicit campaign operating constraint, not a throughput target to optimize away. Preserve it unless the user requests a different interval.
+
 **How to apply:** Preserve server-side inter-message spacing when adding campaign paths or providers. Do not describe any interval as protection guaranteed to prevent WhatsApp bans.
 
 An uncertain provider outcome must not automatically retry. Stop the lane for explicit review rather than risk duplicate delivery.

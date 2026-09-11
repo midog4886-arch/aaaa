@@ -622,8 +622,8 @@ export default function WhatsAppBulkPage() {
       branch_name: branchName,
     };
     if (!window.confirm(t(
-       `ستتم إضافة ${automaticMessageCount} رسالة إلى قائمة الانتظار (لم تُرسل بعد). الفاصل دقيقة واحدة على الأقل والمدة التقديرية ${Math.max(0, automaticMessageCount - 1)} دقيقة. لا يشمل هذا الحد إشعارات المعاملات. هل تريد المتابعة؟`,
-       `Queue ${automaticMessageCount} message(s) (queued is not sent). At least one minute apart; estimated minimum ${Math.max(0, automaticMessageCount - 1)} minute(s). Transactional notices are not affected. Continue?`
+       `ستتم إضافة ${automaticMessageCount} رسالة إلى قائمة الانتظار (لم تُرسل بعد). الفاصل 3 دقائق على الأقل بين الرسائل داخل الفرع والمدة التقديرية الدنيا ${Math.max(0, automaticMessageCount - 1) * 3} دقيقة. قد تزيد المدة بسبب الحملات الأخرى قيد الانتظار. لا يشمل هذا الحد إشعارات المعاملات. هل تريد المتابعة؟`,
+       `Queue ${automaticMessageCount} message(s) (queued is not sent). At least 3 minutes apart within the branch; estimated minimum ${Math.max(0, automaticMessageCount - 1) * 3} minute(s). Other queued campaigns may increase this duration. Transactional notices are not affected. Continue?`
     ))) return;
 
     setCloudSending(true);

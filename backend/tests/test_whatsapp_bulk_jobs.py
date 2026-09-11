@@ -212,7 +212,7 @@ def test_gate_is_branch_wide_across_jobs_workers_and_provider_change(queue):
     run(workers())
     assert [(branch, provider) for _, branch, provider, _ in sent] == [
         ("a", "meta_cloud"), ("b", "meta_cloud")]
-    Clock.set(Clock.now() + timedelta(seconds=59))
+    Clock.set(Clock.now() + timedelta(seconds=179))
     run(jobs.process_one())
     assert len(sent) == 2
     Clock.set(Clock.now() + timedelta(seconds=1))
@@ -315,9 +315,9 @@ def test_slow_worker_sets_cooldown_from_completion_not_gate_acquisition(queue):
     jobs._handlers["send"] = slow_send
     run(jobs.process_one())
     completed = Clock.now()
-    Clock.set(completed + timedelta(seconds=59))
+    Clock.set(completed + timedelta(seconds=179))
     assert run(jobs.process_one()) is False
-    Clock.set(completed + timedelta(seconds=60))
+    Clock.set(completed + timedelta(seconds=180))
     assert run(jobs.process_one()) is True
     assert len(sent) == 2
 
