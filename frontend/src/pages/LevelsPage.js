@@ -2088,7 +2088,7 @@ ${slotTables}
             end_date: activity.end_date || '',
           };
           try {
-            await membersAPI.updateActivity(member.id, activity.activity_id, updated);
+            await membersAPI.updateActivity(member.id, activity.activity_id, updated, { notifyWhatsapp: false });
             hourShifted = true;
           } catch (_) { /* schedule update is best-effort; the move already succeeded */ }
         }

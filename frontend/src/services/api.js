@@ -144,7 +144,9 @@ export const membersAPI = {
   delete: (id) => axios.delete(`${API}/members/${id}`),
   addActivity: (memberId, activity) => axios.post(`${API}/members/${memberId}/activities`, activity),
   deleteActivity: (memberId, payload) => axios.post(`${API}/members/${memberId}/activities/delete`, payload),
-  updateActivity: (memberId, activityId, activity) => axios.put(`${API}/members/${memberId}/activities/${activityId}`, activity),
+  updateActivity: (memberId, activityId, activity, options = {}) => axios.put(`${API}/members/${memberId}/activities/${activityId}`, activity, {
+    params: options.notifyWhatsapp === false ? { notify_whatsapp: false } : {},
+  }),
   setMarked: (id, marked) => axios.patch(`${API}/members/${id}/marked`, { marked }),
   transfer: (id, data) => axios.post(`${API}/members/${id}/transfer`, data),
   transferBulk: (data) => axios.post(`${API}/members/transfer-bulk`, data),

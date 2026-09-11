@@ -1,5 +1,5 @@
 """Members routes"""
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import re
@@ -1069,7 +1069,7 @@ async def reject_profile_change_request(
 
 
 @router.put("/{member_id}/activities/{activity_id}")
-async def update_member_activity(member_id: str, activity_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user)):
+async def update_member_activity(member_id: str, activity_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user), notify_whatsapp: bool = Query(True)):
     """Update a member's activity"""
     from utils.subscription_dates import validate_subscription_windows
     validate_subscription_windows([activity])
@@ -1113,6 +1113,7 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
             member_doc=before_member,
             before_act=before_act,
             after_act=activity.model_dump(),
+            notify_whatsapp=notify_whatsapp is not False,
         )
     except Exception:
         pass
@@ -1147,7 +1148,8 @@ def _activity_schedule_str(act: dict) -> str:
 
 
 async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
-                                  before_act: Optional[dict], after_act: dict) -> None:
+                                  before_act: Optional[dict], after_act: dict,
+                                  notify_whatsapp: bool = True) -> None:
     """Insert an in-app notification + send a push when a member's training
     schedule fields (schedule / training_days / training_time) changed."""
     def _sig(a: Optional[dict]):
@@ -1205,11 +1207,12 @@ async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
             f"Previous schedule: {_activity_schedule_str(before_act) or 'Not specified'}\n"
             f"New schedule: {new_sched or 'Please contact the branch'}"
         )
-        await send_schedule_update_whatsapp_notice(
-            member_doc or {"id": member_id},
-            whatsapp_message,
-            notice_type="schedule_changed_cloud",
-        )
+        if notify_whatsapp:
+            await send_schedule_update_whatsapp_notice(
+                member_doc or {"id": member_id},
+                whatsapp_message,
+                notice_type="schedule_changed_cloud",
+            )
     except Exception:
         pass
 

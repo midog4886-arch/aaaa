@@ -79,3 +79,27 @@ def test_closure_apply_has_no_direct_whatsapp_sender():
     # Closure delivery is now an explicit, durable campaign operation. Applying
     # the extension must not expose the former burst-sending helper.
     assert not hasattr(day_extensions_mod, "_send_closure_whatsapp_notices")
+
+
+def test_level_transfer_keeps_internal_and_push_but_skips_whatsapp(monkeypatch):
+    fake_db = _MemberDB()
+    monkeypatch.setattr(members_mod, "db", fake_db)
+    sent, pushed = [], []
+
+    async def fake_whatsapp(*args, **kwargs):
+        sent.append(args)
+
+    async def fake_push(*args, **kwargs):
+        pushed.append(args)
+
+    monkeypatch.setattr(whatsapp_mod, "send_schedule_update_whatsapp_notice", fake_whatsapp)
+    monkeypatch.setattr(push_mod, "send_push_to_members", fake_push)
+    run(members_mod._notify_schedule_change(
+        "member-1", {"id": "member-1", "branch_id": "branch-a"},
+        {"training_time": "4:00 م"},
+        {"training_time": "5:00 م"},
+        notify_whatsapp=False,
+    ))
+    assert sent == []
+    assert len(fake_db.member_notifications.rows) == 1
+    assert len(pushed) == 1
