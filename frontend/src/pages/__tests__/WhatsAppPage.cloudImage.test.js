@@ -134,12 +134,9 @@ test('does not refetch the inbox or branches when opening a read-only thread', a
   expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(1);
 });
 
-test('loads unread conversations across branches without changing the normal branch filter', async () => {
+test('loads unread conversations for the selected branch and keeps the branch selector visible', async () => {
   const unreadConversation = {
     ...conversation,
-    id: 'branch-b:966501234567',
-    branch_id: 'branch-b',
-    branch_name: 'الفرع الثاني',
     unread_count: 2,
   };
   whatsappAPI.getCloudInboxConversations
@@ -153,16 +150,16 @@ test('loads unread conversations across branches without changing the normal bra
 
   await user.click(screen.getByRole('button', { name: /غير مقروءة/ }));
 
-  await screen.findByText('الفرع الثاني');
+  await screen.findByText('أحمد');
   expect(whatsappAPI.getCloudInboxConversations).toHaveBeenNthCalledWith(1, 'branch-a', false);
-  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('all', true);
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('branch-a', true);
   expect(screen.getAllByText('2').length).toBeGreaterThan(0);
-  expect(screen.getByText('الفرع الثاني')).toBeInTheDocument();
+  expect(screen.getByRole('combobox')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: /الفرع الحالي/ }));
   await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('branch-a', false));
 });
 
-test('opening an unread thread refreshes the unread list and count after it is marked read', async () => {
+test('opening an unread thread refreshes the selected branch unread list and count after it is marked read', async () => {
   const unreadConversation = {
     ...conversation,
     unread_count: 2,
@@ -186,7 +183,7 @@ test('opening an unread thread refreshes the unread list and count after it is m
   await user.click(screen.getByRole('button', { name: /أحمد/ }));
 
   await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3));
-  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('all', true);
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('branch-a', true);
   await user.click(screen.getByRole('button', { name: /رجوع/ }));
   expect(await screen.findByText('لا توجد محادثات واتساب واردة بعد')).toBeInTheDocument();
 });

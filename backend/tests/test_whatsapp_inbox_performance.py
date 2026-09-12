@@ -1,6 +1,9 @@
 import asyncio
 import copy
 
+import pytest
+from fastapi import HTTPException
+
 from routes import whatsapp as mod
 
 
@@ -205,7 +208,7 @@ def test_cloud_list_runs_cloud_and_campaign_reads_concurrently(monkeypatch):
     assert result == {"conversations": [], "unread_count": 0}
 
 
-def test_cloud_unread_filter_runs_before_limit_and_skips_campaign_projection(monkeypatch):
+def test_cloud_unread_filter_respects_selected_branch_before_limit_and_skips_campaign_projection(monkeypatch):
     db = _Database(conversations=[
         {
             "id": "branch-a:old-unread",
@@ -249,16 +252,16 @@ def test_cloud_unread_filter_runs_before_limit_and_skips_campaign_projection(mon
     ))
 
     assert [row["id"] for row in result["conversations"]] == [
-        "branch-b:unread",
         "branch-a:old-unread",
     ]
-    assert result["unread_count"] == 5
+    assert result["unread_count"] == 2
     assert db["whatsapp_cloud_conversations"].find_queries[0] == {
+        "branch_id": "branch-a",
         "unread_count": {"$gt": 0},
     }
 
 
-def test_cloud_unread_non_admin_uses_all_authorized_branches(monkeypatch):
+def test_cloud_unread_non_admin_respects_selected_authorized_branch(monkeypatch):
     db = _Database(
         conversations=[
             {
@@ -304,14 +307,91 @@ def test_cloud_unread_non_admin_uses_all_authorized_branches(monkeypatch):
 
     assert [row["id"] for row in result["conversations"]] == [
         "branch-a:unread",
-        "branch-b:unread",
     ]
     assert [row["branch_name"] for row in result["conversations"]] == [
         "Branch A",
-        "Branch B",
     ]
-    assert result["unread_count"] == 4
+    assert result["unread_count"] == 1
     assert db["whatsapp_cloud_conversations"].find_queries[0] == {
-        "branch_id": {"$in": ["branch-a", "branch-b"]},
+        "branch_id": "branch-a",
         "unread_count": {"$gt": 0},
     }
+
+
+def test_cloud_unread_non_admin_can_select_another_authorized_branch(monkeypatch):
+    db = _Database(conversations=[
+        {
+            "id": "branch-a:unread",
+            "branch_id": "branch-a",
+            "phone": "966500000001",
+            "last_message_at": "2026-02-02T00:00:00+00:00",
+            "unread_count": 1,
+        },
+        {
+            "id": "branch-b:unread",
+            "branch_id": "branch-b",
+            "phone": "966500000002",
+            "last_message_at": "2026-02-01T00:00:00+00:00",
+            "unread_count": 3,
+        },
+    ], branches=[
+        {"id": "branch-a", "name": "Branch A"},
+        {"id": "branch-b", "name": "Branch B"},
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+
+    result = run(mod.list_cloud_inbox_conversations(
+        branch_filter="branch-b",
+        unread_only=True,
+        current_user={
+            "is_admin": False,
+            "permissions": ["messages"],
+            "branch_id": "branch-a",
+            "branch_ids": ["branch-a", "branch-b"],
+            "_active_branch": "branch-a",
+        },
+    ))
+
+    assert [row["id"] for row in result["conversations"]] == [
+        "branch-b:unread",
+    ]
+    assert result["unread_count"] == 3
+    assert db["whatsapp_cloud_conversations"].find_queries[0] == {
+        "branch_id": "branch-b",
+        "unread_count": {"$gt": 0},
+    }
+
+
+def test_cloud_unread_requires_whatsapp_or_messages_permission(monkeypatch):
+    db = _Database(conversations=[])
+    monkeypatch.setattr(mod, "_db", db)
+
+    with pytest.raises(HTTPException) as error:
+        run(mod.list_cloud_inbox_conversations(
+            branch_filter="branch-a",
+            unread_only=True,
+            current_user={
+                "is_admin": False,
+                "permissions": [],
+                "branch_id": "branch-a",
+            },
+        ))
+
+    assert error.value.status_code == 403
+
+
+def test_cloud_unread_without_branch_assignment_fails_closed(monkeypatch):
+    db = _Database(conversations=[])
+    monkeypatch.setattr(mod, "_db", db)
+
+    with pytest.raises(HTTPException) as error:
+        run(mod.list_cloud_inbox_conversations(
+            branch_filter="branch-a",
+            unread_only=True,
+            current_user={
+                "is_admin": False,
+                "permissions": ["messages"],
+            },
+        ))
+
+    assert error.value.status_code == 403

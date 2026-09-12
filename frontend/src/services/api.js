@@ -852,9 +852,9 @@ export const whatsappAPI = {
       responseType: 'blob'
     }),
   getMetaWebhookInfo: () => axios.get(`${API}/whatsapp/meta-webhook-info`),
-  getCloudInboxConversations: (branchFilter, unreadOnly = false) => {
+  getCloudInboxConversations: (branchFilter = 'all', unreadOnly = false) => {
     const query = new URLSearchParams();
-    if (branchFilter && branchFilter !== 'all') {
+    if (branchFilter) {
       query.set('branch_filter', branchFilter);
     }
     if (unreadOnly) query.set('unread_only', 'true');

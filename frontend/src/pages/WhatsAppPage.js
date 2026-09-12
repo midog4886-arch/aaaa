@@ -464,9 +464,10 @@ export default function WhatsAppPage() {
     unreadOnly = cloudInboxViewRef.current === 'unread',
   ) => {
     const isUnreadView = Boolean(unreadOnly);
-    const branchKey = isUnreadView
-      ? 'all'
-      : branchFilter && branchFilter !== 'all' ? branchFilter : 'all';
+    // Unread is still scoped to the branch selected in this inbox.  "all" is
+    // an explicit admin choice, not an implicit aggregation for the unread
+    // tab.
+    const branchKey = branchFilter && branchFilter !== 'all' ? branchFilter : 'all';
     const viewKey = isUnreadView ? 'unread' : 'current';
     const requestKey = `${cloudAuthScope}:${viewKey}:${branchKey}`;
     const requestId = ++cloudInboxRequestRef.current;
@@ -477,11 +478,11 @@ export default function WhatsAppPage() {
       requestId === cloudInboxRequestRef.current
       && cloudAuthScope === cloudBranchesScopeRef.current
       && viewKey === (cloudInboxViewRef.current === 'unread' ? 'unread' : 'current')
-      && (isUnreadView || branchKey === (
+      && branchKey === (
         cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
           ? cloudBranchFilterRef.current
           : 'all'
-      ))
+      )
     );
 
     try {
@@ -508,10 +509,14 @@ export default function WhatsAppPage() {
       const [inboxResponse] = await request;
       if (!isCurrentRequest()) return;
       setCloudConversations(inboxResponse.data?.conversations || []);
+      const unreadCount = inboxResponse.data?.unread_count || 0;
       if (isUnreadView) {
-        setCloudUnreadCount(inboxResponse.data?.unread_count || 0);
+        setCloudUnreadCount(unreadCount);
       } else {
-        setCloudCurrentUnreadCount(inboxResponse.data?.unread_count || 0);
+        setCloudCurrentUnreadCount(unreadCount);
+        // Both views are branch-scoped now, so the tab badge can stay
+        // authoritative when the selected branch changes in the normal view.
+        setCloudUnreadCount(unreadCount);
       }
     } catch {
       if (isCurrentRequest()) {
@@ -571,11 +576,9 @@ export default function WhatsAppPage() {
     const authScope = cloudAuthScope;
     const unreadView = cloudInboxViewRef.current === 'unread';
     const viewKey = unreadView ? 'unread' : 'current';
-    const branchKey = unreadView
-      ? 'all'
-      : cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
-        ? cloudBranchFilterRef.current
-        : 'all';
+    const branchKey = cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+      ? cloudBranchFilterRef.current
+      : 'all';
     const previousThread = selectedCloudThreadRef.current;
     const selectedConversation = cloudConversations.find(
       conversation => conversation.id === conversationId
@@ -595,11 +598,11 @@ export default function WhatsAppPage() {
       && authScope === cloudBranchesScopeRef.current
       && selectedCloudThreadRef.current === conversationId
       && viewKey === (cloudInboxViewRef.current === 'unread' ? 'unread' : 'current')
-      && (unreadView || branchKey === (
+      && branchKey === (
         cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
           ? cloudBranchFilterRef.current
           : 'all'
-      ))
+      )
     );
 
     try {
@@ -2994,19 +2997,17 @@ export default function WhatsAppPage() {
                         )}
                       </Button>
                     </div>
-                    {cloudInboxView === 'current' && (
-                      <Select value={cloudBranchFilter} onValueChange={setCloudBranchFilter}>
-                        <SelectTrigger className="w-56">
-                          <SelectValue placeholder={t('كل الفروع', 'All branches')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {isAdmin && <SelectItem value="all">{t('كل الفروع', 'All branches')}</SelectItem>}
-                          {branches.map(branch => (
-                            <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
+                    <Select value={cloudBranchFilter} onValueChange={setCloudBranchFilter}>
+                      <SelectTrigger className="w-56">
+                        <SelectValue placeholder={t('كل الفروع', 'All branches')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {isAdmin && <SelectItem value="all">{t('كل الفروع', 'All branches')}</SelectItem>}
+                        {branches.map(branch => (
+                          <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </>
                 )}
               </div>
