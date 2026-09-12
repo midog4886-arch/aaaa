@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -65,7 +65,10 @@ const MEDAL_STYLES = {
 
 export const DashboardPage = () => {
   const { t, language } = useLanguage();
-  const { selectedBranchId } = useAuth();
+  const { selectedBranchId, user, token } = useAuth();
+  // A branch id alone is not a sufficient request identity: the same branch
+  // can be selected by a different login after logout/login.
+  const authScope = token || user?.id || user?.username || 'current';
   const [stats, setStats] = useState(null);
   const [expiring, setExpiring] = useState([]);
   const [discounts, setDiscounts] = useState([]);
@@ -85,6 +88,17 @@ export const DashboardPage = () => {
   const [activeDetail, setActiveDetail] = useState(null); // 'members', 'subscriptions', 'revenue', 'expiring', 'coupons'
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Dashboard reads are scoped to the active branch. Keep only in-flight
+  // requests here (never a persistent cache), so StrictMode/effect retries do
+  // not send the same branch's five independent reads twice.
+  const branchLoadRequestsRef = useRef(new Map());
+  const branchLoadGenerationRef = useRef(0);
+  const selectedBranchKeyRef = useRef(null);
+  const selectedBranchKey = selectedBranchId && selectedBranchId !== 'all'
+    ? selectedBranchId
+    : 'all';
+  const requestKey = `${authScope}:${selectedBranchKey}`;
+  selectedBranchKeyRef.current = requestKey;
 
   useEffect(() => {
     loadDashboardSettings();
@@ -92,7 +106,7 @@ export const DashboardPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [selectedBranchId]);
+  }, [selectedBranchId, authScope]);
 
   const loadDashboardSettings = async () => {
     try {
@@ -143,24 +157,64 @@ export const DashboardPage = () => {
   };
 
   const loadData = async () => {
+    const branchKey = selectedBranchKey;
+    const requestGeneration = ++branchLoadGenerationRef.current;
+    setLoading(true);
+
+    let request = branchLoadRequestsRef.current.get(requestKey);
+
     try {
-      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [statsRes, expiringRes, discountsRes, championsRes, todayRes] = await Promise.all([
-        dashboardAPI.getStats(branchParams),
-        reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
-        discountsAPI.getAll(branchParams),
-        tournamentsAPI.getRecentMedalists({ limit: 5, ...branchParams }).catch(() => ({ data: [] })),
-        attendanceAPI.getTodaySummary(branchParams).catch(() => ({ data: null })),
-      ]);
+      if (!request) {
+        const branchParams = branchKey !== 'all' ? { branch_filter: branchKey } : {};
+        request = Promise.all([
+          dashboardAPI.getStats(branchParams),
+          reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
+          discountsAPI.getAll(branchParams),
+          tournamentsAPI.getRecentMedalists({ limit: 5, ...branchParams }).catch(() => ({ data: [] })),
+          attendanceAPI.getTodaySummary(branchParams).catch(() => ({ data: null })),
+        ]);
+        branchLoadRequestsRef.current.set(requestKey, request);
+        // Remove only this promise. A newer request for the same branch cannot
+        // be accidentally removed if the old one settles later.
+        request.then(
+          () => {
+            if (branchLoadRequestsRef.current.get(requestKey) === request) {
+              branchLoadRequestsRef.current.delete(requestKey);
+            }
+          },
+          () => {
+            if (branchLoadRequestsRef.current.get(requestKey) === request) {
+              branchLoadRequestsRef.current.delete(requestKey);
+            }
+          },
+        );
+      }
+      const [statsRes, expiringRes, discountsRes, championsRes, todayRes] = await request;
+      // A branch switch can leave the old request in flight. Its result must
+      // never overwrite the newly selected branch's dashboard.
+      if (
+        requestGeneration !== branchLoadGenerationRef.current
+        || requestKey !== selectedBranchKeyRef.current
+      ) return;
       setStats(statsRes.data);
       setExpiring(expiringRes.data);
       setDiscounts(discountsRes.data);
       setRecentChampions(championsRes.data || []);
       setTodayAttendance(todayRes.data);
     } catch (error) {
-      console.error('Failed to load dashboard data:', error);
+      if (
+        requestGeneration === branchLoadGenerationRef.current
+        && requestKey === selectedBranchKeyRef.current
+      ) {
+        console.error('Failed to load dashboard data:', error);
+      }
     } finally {
-      setLoading(false);
+      if (
+        requestGeneration === branchLoadGenerationRef.current
+        && requestKey === selectedBranchKeyRef.current
+      ) {
+        setLoading(false);
+      }
     }
   };
 

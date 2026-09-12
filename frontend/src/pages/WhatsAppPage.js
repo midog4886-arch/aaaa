@@ -148,7 +148,8 @@ const HOURS = Array.from({ length: 24 }, (_, i) => {
 
 export default function WhatsAppPage() {
   const { language } = useLanguage();
-  const { user, selectedBranchId } = useAuth();
+  const { user, token, selectedBranchId } = useAuth();
+  const cloudAuthScope = token || user?.id || user?.username || 'current';
   const t = (ar, en) => language === 'ar' ? ar : en;
   const navigate = useNavigate();
   const isRTL = language === 'ar';
@@ -255,6 +256,27 @@ export default function WhatsAppPage() {
   const [cloudReply, setCloudReply] = useState('');
   const [loadingCloudInbox, setLoadingCloudInbox] = useState(false);
   const [sendingCloudReply, setSendingCloudReply] = useState(false);
+  // These maps intentionally hold only in-flight work. They prevent an
+  // effect, a poll, and a click from issuing the same safe GET together
+  // without keeping data around across users or branch changes.
+  const cloudConversationRequestsRef = useRef(new Map());
+  const cloudThreadRequestsRef = useRef(new Map());
+  const cloudMediaRequestsRef = useRef(new Map());
+  const cloudBranchesRequestRef = useRef(null);
+  const cloudBranchesLoadedRef = useRef(false);
+  const cloudBranchesScopeRef = useRef(null);
+  const cloudBranchesResetRef = useRef(false);
+  const cloudInboxRequestRef = useRef(0);
+  const cloudBranchFilterRef = useRef(cloudBranchFilter);
+  cloudBranchFilterRef.current = cloudBranchFilter;
+  if (cloudBranchesScopeRef.current !== cloudAuthScope) {
+    if (cloudBranchesScopeRef.current !== null) cloudBranchesResetRef.current = true;
+    cloudBranchesScopeRef.current = cloudAuthScope;
+    cloudBranchesLoadedRef.current = false;
+    cloudBranchesRequestRef.current = null;
+  }
+  const selectedCloudThreadRef = useRef(null);
+  const cloudThreadRequestRef = useRef(0);
   const sendingCloudReplyRef = useRef(false);
   const [cloudMediaUrls, setCloudMediaUrls] = useState({});
   const cloudMediaUrlsRef = useRef({});
@@ -401,32 +423,165 @@ export default function WhatsAppPage() {
     finally { setLoadingConversations(false); }
   };
 
-  const loadCloudConversations = async () => {
+  const loadCloudBranches = () => {
+    const requestScope = cloudAuthScope;
+    if (cloudBranchesRequestRef.current) return cloudBranchesRequestRef.current;
+    const ignoreExistingBranches = cloudBranchesResetRef.current;
+    cloudBranchesResetRef.current = false;
+    if (ignoreExistingBranches && branches.length) setBranches([]);
+    if (!ignoreExistingBranches && branches.length) {
+      cloudBranchesLoadedRef.current = true;
+      return Promise.resolve(branches);
+    }
+    if (cloudBranchesLoadedRef.current) return Promise.resolve([]);
+
+    const request = branchesAPI.getAll().then(response => {
+      const branchList = response.data || [];
+      if (cloudBranchesScopeRef.current === requestScope) {
+        cloudBranchesLoadedRef.current = true;
+        setBranches(branchList);
+      }
+      return branchList;
+    });
+    cloudBranchesRequestRef.current = request;
+    request.then(
+      () => {
+        if (cloudBranchesRequestRef.current === request) cloudBranchesRequestRef.current = null;
+      },
+      () => {
+        if (cloudBranchesRequestRef.current === request) cloudBranchesRequestRef.current = null;
+      },
+    );
+    return request;
+  };
+
+  const loadCloudConversations = async (branchFilter = cloudBranchFilterRef.current) => {
+    const branchKey = branchFilter && branchFilter !== 'all' ? branchFilter : 'all';
+    const requestKey = `${cloudAuthScope}:${branchKey}`;
+    const requestId = ++cloudInboxRequestRef.current;
     setLoadingCloudInbox(true);
+
+    let request = cloudConversationRequestsRef.current.get(requestKey);
+    const isCurrentRequest = () => (
+      requestId === cloudInboxRequestRef.current
+      && cloudAuthScope === cloudBranchesScopeRef.current
+      && branchKey === (
+        cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+          ? cloudBranchFilterRef.current
+          : 'all'
+      )
+    );
+
     try {
-      const [inboxResponse, branchesResponse] = await Promise.all([
-        whatsappAPI.getCloudInboxConversations(cloudBranchFilter),
-        branches.length ? Promise.resolve({ data: branches }) : branchesAPI.getAll()
-      ]);
+      if (!request) {
+        const inboxRequest = whatsappAPI.getCloudInboxConversations(branchKey);
+        const branchesRequest = branches.length
+          ? Promise.resolve(branches)
+          : loadCloudBranches();
+        request = Promise.all([inboxRequest, branchesRequest]);
+        cloudConversationRequestsRef.current.set(requestKey, request);
+        request.then(
+          () => {
+            if (cloudConversationRequestsRef.current.get(requestKey) === request) {
+              cloudConversationRequestsRef.current.delete(requestKey);
+            }
+          },
+          () => {
+            if (cloudConversationRequestsRef.current.get(requestKey) === request) {
+              cloudConversationRequestsRef.current.delete(requestKey);
+            }
+          },
+        );
+      }
+      const [inboxResponse] = await request;
+      if (!isCurrentRequest()) return;
       setCloudConversations(inboxResponse.data?.conversations || []);
       setCloudUnreadCount(inboxResponse.data?.unread_count || 0);
-      if (!branches.length) setBranches(branchesResponse.data || []);
     } catch {
-      toast.error(t('تعذر تحميل شات واتساب', 'Could not load WhatsApp chats'));
+      if (isCurrentRequest()) {
+        toast.error(t('تعذر تحميل شات واتساب', 'Could not load WhatsApp chats'));
+      }
     } finally {
-      setLoadingCloudInbox(false);
+      if (isCurrentRequest()) setLoadingCloudInbox(false);
     }
   };
 
-  const openCloudThread = async (conversationId) => {
+  const getCloudThreadRequest = (conversationId, branchKey, authScope) => {
+    const requestKey = `${authScope}:${branchKey}:${conversationId}`;
+    let request = cloudThreadRequestsRef.current.get(requestKey);
+    if (!request) {
+      request = whatsappAPI.getCloudInboxThread(conversationId);
+      cloudThreadRequestsRef.current.set(requestKey, request);
+      request.then(
+        () => {
+          if (cloudThreadRequestsRef.current.get(requestKey) === request) {
+            cloudThreadRequestsRef.current.delete(requestKey);
+          }
+        },
+        () => {
+          if (cloudThreadRequestsRef.current.get(requestKey) === request) {
+            cloudThreadRequestsRef.current.delete(requestKey);
+          }
+        },
+      );
+    }
+    return request;
+  };
+
+  const getCloudMediaRequest = (messageId, branchKey, authScope) => {
+    const requestKey = `${authScope}:${branchKey}:${messageId}`;
+    let request = cloudMediaRequestsRef.current.get(requestKey);
+    if (!request) {
+      request = whatsappAPI.getCloudInboxMedia(messageId);
+      cloudMediaRequestsRef.current.set(requestKey, request);
+      request.then(
+        () => {
+          if (cloudMediaRequestsRef.current.get(requestKey) === request) {
+            cloudMediaRequestsRef.current.delete(requestKey);
+          }
+        },
+        () => {
+          if (cloudMediaRequestsRef.current.get(requestKey) === request) {
+            cloudMediaRequestsRef.current.delete(requestKey);
+          }
+        },
+      );
+    }
+    return request;
+  };
+
+  const openCloudThread = async (conversationId, { refreshInbox = false } = {}) => {
+    const requestId = ++cloudThreadRequestRef.current;
+    const authScope = cloudAuthScope;
+    const branchKey = cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+      ? cloudBranchFilterRef.current
+      : 'all';
+    const previousThread = selectedCloudThreadRef.current;
+    selectedCloudThreadRef.current = conversationId;
+    setSelectedCloudThread(conversationId);
     setLoadingCloudInbox(true);
+    if (previousThread && previousThread !== conversationId) {
+      clearCloudImage();
+      setCloudImageCaption('');
+      setCloudThread(null);
+      setCloudMessages([]);
+    }
+
+    const isCurrentRequest = () => (
+      requestId === cloudThreadRequestRef.current
+      && authScope === cloudBranchesScopeRef.current
+      && selectedCloudThreadRef.current === conversationId
+      && branchKey === (
+        cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+          ? cloudBranchFilterRef.current
+          : 'all'
+      )
+    );
+
     try {
-      if (selectedCloudThread && selectedCloudThread !== conversationId) {
-        clearCloudImage();
-        setCloudImageCaption('');
-      }
-      const response = await whatsappAPI.getCloudInboxThread(conversationId);
-      setSelectedCloudThread(conversationId);
+      const response = await getCloudThreadRequest(conversationId, branchKey, authScope);
+      if (!isCurrentRequest()) return;
+
       setCloudThread(response.data?.conversation || null);
       const messages = response.data?.messages || [];
       setCloudMessages(messages);
@@ -435,19 +590,25 @@ export default function WhatsAppPage() {
       setCloudMediaUrls({});
       const mediaMessages = messages.filter(message => message.media_id);
       mediaMessages.forEach(message => {
-        whatsappAPI.getCloudInboxMedia(message.id)
+        getCloudMediaRequest(message.id, branchKey, authScope)
           .then(mediaResponse => {
+            if (!isCurrentRequest()) return;
             const url = URL.createObjectURL(mediaResponse.data);
             cloudMediaUrlsRef.current = { ...cloudMediaUrlsRef.current, [message.id]: url };
             setCloudMediaUrls(previous => ({ ...previous, [message.id]: url }));
           })
           .catch(() => {});
       });
-      await loadCloudConversations();
+      // Opening a thread is read-only and must not refetch the inbox/branch
+      // list. Writes opt into this refresh below so unread/list state remains
+      // authoritative after a reply or image send.
+      if (refreshInbox) await loadCloudConversations(branchKey);
     } catch {
-      toast.error(t('تعذر تحميل المحادثة', 'Could not load conversation'));
+      if (isCurrentRequest()) {
+        toast.error(t('تعذر تحميل المحادثة', 'Could not load conversation'));
+      }
     } finally {
-      setLoadingCloudInbox(false);
+      if (isCurrentRequest()) setLoadingCloudInbox(false);
     }
   };
 
@@ -500,12 +661,15 @@ export default function WhatsAppPage() {
 
   const handleCloudReply = async () => {
     if (!selectedCloudThread || !cloudReply.trim() || sendingCloudReplyRef.current) return;
+    const conversationId = selectedCloudThread;
     sendingCloudReplyRef.current = true;
     setSendingCloudReply(true);
     try {
-      const response = await whatsappAPI.replyCloudInbox(selectedCloudThread, cloudReply.trim());
+      const response = await whatsappAPI.replyCloudInbox(conversationId, cloudReply.trim());
       setCloudReply('');
-      await openCloudThread(selectedCloudThread);
+      if (selectedCloudThreadRef.current === conversationId) {
+        await openCloudThread(conversationId, { refreshInbox: true });
+      }
       toast.success(response.data?.used_template
         ? t('تم الرد باستخدام قالب Meta لأن نافذة 24 ساعة انتهت', 'Reply sent using the Meta template because the 24-hour window ended')
         : t('تم إرسال الرد من رقم الفرع', 'Reply sent from the branch number'));
@@ -577,6 +741,7 @@ export default function WhatsAppPage() {
 
   const handleCloudImageSend = async () => {
     if (!selectedCloudThread || !cloudImage || sendingCloudImage || sendingCloudImageRef.current) return;
+    const conversationId = selectedCloudThread;
     sendingCloudImageRef.current = true;
     const formData = new FormData();
     // Keep this field plural to match the production FastAPI List contract,
@@ -585,12 +750,14 @@ export default function WhatsAppPage() {
     if (cloudImageCaption.trim()) formData.append('caption', cloudImageCaption.trim());
     setSendingCloudImage(true);
     try {
-      const response = await whatsappAPI.sendCloudInboxMedia(selectedCloudThread, formData);
+      const response = await whatsappAPI.sendCloudInboxMedia(conversationId, formData);
       if (!response.data?.success) {
         throw new Error(t('لم يؤكد الخادم الإرسال', 'The server did not confirm the send'));
       }
       clearCloudImage();
-      await openCloudThread(selectedCloudThread);
+      if (selectedCloudThreadRef.current === conversationId) {
+        await openCloudThread(conversationId, { refreshInbox: true });
+      }
       toast.success(response.data?.used_template
         ? t('تم إرسال الصورة باستخدام قالب Meta المعتمد', 'Image sent using the approved Meta template')
         : t('تم إرسال الصورة من رقم الفرع', 'Image sent from the branch number'));
@@ -618,7 +785,6 @@ export default function WhatsAppPage() {
     loadStatus();
     loadWaSettings();
     loadTargetCount();
-    loadCloudConversations();
     // Poll every 5s when not connected (waiting for QR or waiting for scan)
     intervalRef.current = setInterval(() => { if (!status.connected) loadStatus(); }, 5000);
     return () => clearInterval(intervalRef.current);
@@ -666,7 +832,6 @@ export default function WhatsAppPage() {
     if (activeTab === 'manual' && !members.length) loadMembers();
     if (activeTab === 'portal') loadPortalNotifications();
     if (activeTab === 'internal') loadConversations();
-    if (activeTab === 'cloud_inbox') loadCloudConversations();
     if (activeTab === 'push') loadPushData();
     if (activeTab === 'activity_notif') loadActivityNotifActivities(actNotifBranch);
   }, [activeTab]);
@@ -675,12 +840,12 @@ export default function WhatsAppPage() {
     if (activeTab !== 'cloud_inbox') return undefined;
     loadCloudConversations();
     const interval = setInterval(() => {
-      if (selectedCloudThread) openCloudThread(selectedCloudThread);
+      if (selectedCloudThreadRef.current) openCloudThread(selectedCloudThreadRef.current);
       else loadCloudConversations();
     }, 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, cloudBranchFilter, selectedCloudThread]);
+  }, [activeTab, cloudBranchFilter, cloudAuthScope]);
 
   useEffect(() => () => {
     Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
@@ -2748,9 +2913,12 @@ export default function WhatsAppPage() {
                     onClick={() => {
                        clearCloudImage();
                        setCloudImageCaption('');
+                       selectedCloudThreadRef.current = null;
+                       cloudThreadRequestRef.current += 1;
                       setSelectedCloudThread(null);
                       setCloudThread(null);
                       setCloudMessages([]);
+                       loadCloudConversations();
                     }}
                   >
                     {isRTL ? <ArrowRight className="w-4 h-4 me-1" /> : <ArrowLeft className="w-4 h-4 me-1" />}

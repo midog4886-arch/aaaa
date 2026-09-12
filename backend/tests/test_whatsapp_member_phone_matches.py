@@ -98,7 +98,34 @@ def test_admin_match_ignores_active_branch_and_returns_only_boolean(monkeypatch)
         "id", "phone", "branch_id", "member_phone_match",
     }
     assert "branch_id" not in db.members.queries[0]
-    assert set(db.members.queries[0]) == {"$or"}
+    assert set(db.members.queries[0]) == {"phone"}
+    assert "branch_id" not in db.members.queries[1]
+    assert set(db.members.queries[1]) == {"$or"}
+
+
+def test_exact_phone_lookup_skips_legacy_regex_for_resolved_phones(monkeypatch):
+    db = _Database(member_rows=[
+        {"phone": "0501234567", "branch_id": "branch-a"},
+        {"phone": "966501234568", "branch_id": "branch-a"},
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+    rows = [
+        {"id": "branch-a:966501234567", "phone": "966501234567", "branch_id": "branch-a"},
+        {"id": "branch-a:966501234568", "phone": "966501234568", "branch_id": "branch-a"},
+        {"id": "branch-a:966501234569", "phone": "966501234569", "branch_id": "branch-a"},
+    ]
+
+    enriched = run(mod._enrich_member_phone_matches(
+        rows,
+        {"is_admin": True},
+    ))
+
+    assert [row["member_phone_match"] for row in enriched] == [True, True, False]
+    # One exact $in query resolves two phones; the fallback contains only the
+    # one unresolved phone instead of one regex clause for every phone.
+    assert len(db.members.queries) == 2
+    assert "$in" in db.members.queries[0]["phone"]
+    assert len(db.members.queries[1]["$or"]) == 1
 
 
 def test_non_admin_match_is_limited_to_authorized_branch(monkeypatch):
@@ -123,6 +150,7 @@ def test_non_admin_match_is_limited_to_authorized_branch(monkeypatch):
 
     assert [row["member_phone_match"] for row in enriched] == [True, False]
     assert db.members.queries[0]["branch_id"] == "branch-a"
+    assert len(db.members.queries) == 1
 
 
 def test_unauthorized_user_receives_no_match_flag_or_member_query(monkeypatch):

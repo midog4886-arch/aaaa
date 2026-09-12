@@ -126,6 +126,14 @@ async function renderCloudInbox() {
   return user;
 }
 
+test('does not refetch the inbox or branches when opening a read-only thread', async () => {
+  await renderOpenCloudThread();
+
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(1);
+  expect(branchesAPI.getAll).toHaveBeenCalledTimes(1);
+  expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(1);
+});
+
 test('uses the backend match flag for orange cloud phone styling without a render lookup', async () => {
   whatsappAPI.getCloudInboxConversations.mockResolvedValue({
     data: {

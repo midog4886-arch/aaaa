@@ -140,7 +140,7 @@ async def _enrich_member_phone_matches(
     current_user: dict,
     member_branch: Optional[str] = None,
 ) -> list:
-    """Add a boolean registered-member indicator with one scoped DB lookup.
+    """Add a boolean registered-member indicator with exact-first lookups.
 
     ``rows`` are already scoped conversations.  Matching is intentionally
     independent of the conversation branch for admins: a member registered in
@@ -157,47 +157,66 @@ async def _enrich_member_phone_matches(
             row.pop("member_phone_match", None)
         return rows
 
-    normalized_phones = {
+    normalized_row_phones = [
         normalize_phone(row.get("phone"))
         for row in rows
-        if normalize_phone(row.get("phone"))
+    ]
+    normalized_phones = {
+        phone for phone in normalized_row_phones if phone
     }
     if not normalized_phones:
         for row in rows:
             row["member_phone_match"] = False
         return rows
 
-    exact_values = []
-    for phone in normalized_phones:
-        exact_values.extend(phone_lookup_values(phone))
-    exact_values = list(dict.fromkeys(exact_values))
-    phone_clauses = [{"phone": {"$in": exact_values}}]
-    phone_clauses.extend(
-        {"phone": {"$regex": _member_phone_regex(phone)}}
+    exact_values = list(dict.fromkeys(
+        value
         for phone in normalized_phones
-    )
-    query = {"$or": phone_clauses}
+        for value in phone_lookup_values(phone)
+    ))
 
     # Admins intentionally have no branch restriction.  For a non-admin,
     # ``member_branch`` comes from resolve_branch_filter/_assert_branch_access
     # and therefore cannot be widened by the inbox phone data.
+    member_scope = {}
     if not current_user.get("is_admin", False):
         if not member_branch:
             member_branch = resolve_branch_filter(current_user, None)
-        query["branch_id"] = member_branch
+        member_scope["branch_id"] = member_branch
 
-    member_rows = await _db["members"].find(
-        query,
+    # Most records use one of the canonical/local forms covered by the exact
+    # lookup values.  Keep this query index-friendly and only pay for legacy
+    # formatting regexes for canonical phones not found by the exact lookup.
+    exact_rows = await _db["members"].find(
+        {**member_scope, "phone": {"$in": exact_values}},
         {"_id": 0, "phone": 1, "branch_id": 1},
     ).to_list(length=None)
     matched_phones = {
         normalize_phone(member.get("phone"))
-        for member in member_rows
+        for member in exact_rows
         if normalize_phone(member.get("phone")) in normalized_phones
     }
-    for row in rows:
+    unresolved_phones = normalized_phones - matched_phones
+    if unresolved_phones:
+        legacy_query = {
+            **member_scope,
+            "$or": [
+                {"phone": {"$regex": _member_phone_regex(phone)}}
+                for phone in unresolved_phones
+            ],
+        }
+        legacy_rows = await _db["members"].find(
+            legacy_query,
+            {"_id": 0, "phone": 1, "branch_id": 1},
+        ).to_list(length=None)
+        matched_phones.update(
+            normalize_phone(member.get("phone"))
+            for member in legacy_rows
+            if normalize_phone(member.get("phone")) in unresolved_phones
+        )
+    for row, normalized_phone in zip(rows, normalized_row_phones):
         row["member_phone_match"] = (
-            normalize_phone(row.get("phone")) in matched_phones
+            normalized_phone in matched_phones
             and (
                 current_user.get("is_admin", False)
                 or not member_branch
@@ -3439,15 +3458,19 @@ async def list_cloud_inbox_conversations(
     _require_bulk_whatsapp_access(current_user)
     effective_branch = resolve_branch_filter(current_user, branch_filter)
     query = {"branch_id": effective_branch} if effective_branch else {}
-    rows = await (
+    # Both projections are read-only and use the request's inherited tenant
+    # context. Run them together so a slow campaign aggregation does not delay
+    # the cloud-conversation read (or vice versa).
+    rows, campaign_rows = await asyncio.gather(
         _db["whatsapp_cloud_conversations"]
         .find(query, {"_id": 0})
         .sort("last_message_at", -1)
         .limit(200)
-        .to_list(length=200)
+        .to_list(length=200),
+        campaign_inbox.conversations(_db, query),
     )
     merged = {row["id"]: row for row in rows}
-    for campaign in await campaign_inbox.conversations(_db, query):
+    for campaign in campaign_rows:
         existing = merged.get(campaign["id"])
         if not existing:
             merged[campaign["id"]] = campaign
@@ -3463,15 +3486,25 @@ async def list_cloud_inbox_conversations(
         # non-admins stay within the branch resolved for this list request.
         member_branch=effective_branch,
     )
-    branch_cache = {}
+    branch_ids = {
+        row.get("branch_id")
+        for row in rows
+        if row.get("branch_id")
+    }
+    branch_names = {}
+    if branch_ids:
+        branch_rows = await _db["branches"].find(
+            {"id": {"$in": list(branch_ids)}},
+            {"_id": 0, "id": 1, "name": 1},
+        ).to_list(length=None)
+        branch_names = {
+            branch.get("id"): branch.get("name") or branch.get("id")
+            for branch in branch_rows
+            if branch.get("id")
+        }
     for row in rows:
         branch_id = row.get("branch_id")
-        if branch_id not in branch_cache:
-            branch = await _db["branches"].find_one(
-                {"id": branch_id}, {"_id": 0, "name": 1}
-            )
-            branch_cache[branch_id] = (branch or {}).get("name") or branch_id
-        row["branch_name"] = branch_cache[branch_id]
+        row["branch_name"] = branch_names.get(branch_id) or branch_id
     return {
         "conversations": rows,
         "unread_count": sum(int(row.get("unread_count") or 0) for row in rows),
@@ -3489,15 +3522,18 @@ async def get_cloud_inbox_thread(
     if not conversation:
         conversation = await _campaign_conversation(conversation_id, current_user)
     _assert_branch_access(current_user, conversation.get("branch_id"))
-    messages = await (
+    messages, campaign_messages = await asyncio.gather(
         _db["whatsapp_cloud_messages"]
         .find({"conversation_id": conversation_id}, {"_id": 0})
         .sort("created_at", 1)
         .limit(500)
-        .to_list(length=500)
+        .to_list(length=500),
+        campaign_inbox.thread(
+            _db, conversation["branch_id"], conversation["phone"]
+        ),
     )
     messages = campaign_inbox.merge_messages(
-        messages, await campaign_inbox.thread(_db, conversation["branch_id"], conversation["phone"])
+        messages, campaign_messages
     )
     await _db["whatsapp_cloud_conversations"].update_one(
         {"id": conversation_id}, {"$set": {"unread_count": 0}}
