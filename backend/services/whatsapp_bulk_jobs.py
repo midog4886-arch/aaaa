@@ -1,4 +1,4 @@
-"""Durable, globally paced automatic WhatsApp campaign delivery.
+"""Durable, independently branch-paced automatic WhatsApp campaign delivery.
 
 The Mongo gate is deliberately acquired immediately before each provider call.
 An item is changed to ``dispatching`` before the call; if its worker disappears,
@@ -17,11 +17,17 @@ from pymongo.errors import DuplicateKeyError
 from utils.tenant import for_each_active_tenant
 
 log = logging.getLogger("whatsapp.bulk_jobs")
+_DATETIME_TYPE = datetime
 MIN_INTERVAL_SECONDS = max(180, int(os.environ.get("WHATSAPP_CAMPAIGN_INTERVAL_SECONDS", "180")))
 LEASE_SECONDS = 600
+BRANCH_PARALLELISM = max(
+    1, int(os.environ.get("WHATSAPP_CAMPAIGN_BRANCH_WORKERS", "8"))
+)
+TERMINAL_ITEM_STATUSES = {"sent", "failed", "unknown", "cancelled"}
 _started = False
 _db = None
 _handlers = {}
+_inflight_branch_tasks = {}
 
 
 def configure(db, **handlers):
@@ -92,6 +98,13 @@ def _receipt_can_advance(current, incoming):
 def _iso(value):
     if isinstance(value, datetime):
         return value.replace(tzinfo=value.tzinfo or timezone.utc).isoformat()
+    return value
+
+
+def _utc_datetime(value):
+    """Normalize Mongo/Python datetimes before comparing queue timestamps."""
+    if isinstance(value, _DATETIME_TYPE):
+        return value.replace(tzinfo=value.tzinfo or timezone.utc)
     return value
 
 
@@ -668,22 +681,139 @@ async def _recover_crashed(now):
         await _notify_completed(item, "unknown")
 
 
-async def process_one():
-    now = datetime.now(timezone.utc)
-    await _recover_crashed(now)
-    # Claim briefly only to select work. If the gate is busy, put it back; no
-    # future slots are reserved, preventing delayed workers from bunching up.
+def _pending_item_sort():
+    # created_at is the queue order across jobs.  Mongo's generated _id is a
+    # stable insertion-order tie breaker when two jobs share a timestamp; the
+    # recipient/media indexes make legacy documents deterministic too.
+    return [
+        ("created_at", 1), ("_id", 1), ("recipient_index", 1), ("media_index", 1)
+    ]
+
+
+async def _oldest_branch_item(branch_id):
+    # Include claimed/dispatching heads in the peek.  A second worker must
+    # not skip an in-flight head and claim a later pending item for the same
+    # branch.
+    cursor = _db["whatsapp_campaign_job_items"].find({
+        "branch_id": branch_id,
+        "status": {"$nin": list(TERMINAL_ITEM_STATUSES)},
+    }).sort(_pending_item_sort())
+    if hasattr(cursor, "to_list"):
+        rows = await cursor.to_list(length=1)
+        return rows[0] if rows else None
+    async for row in cursor:
+        return row
+    return None
+
+
+async def _pending_branch_ids():
+    """Return each branch with pending work, ordered by its queue head.
+
+    This is intentionally a read-only discovery query.  The actual claim is
+    still a Mongo find-and-update CAS in ``_claim_next_for_branch``.  Keeping
+    discovery separate means one frozen or rate-limited branch cannot consume
+    the global oldest-item slot while other branches wait behind it.
+    """
+    cursor = _db["whatsapp_campaign_job_items"].aggregate([
+        {"$match": {"status": "pending"}},
+        {"$sort": {
+            "created_at": 1,
+            "_id": 1,
+        }},
+        {"$group": {
+            "_id": "$branch_id",
+            "head_created_at": {"$first": "$created_at"},
+            "head_id": {"$first": "$_id"},
+        }},
+        {"$sort": {"head_created_at": 1, "head_id": 1}},
+        {"$project": {"_id": 0, "branch_id": "$_id"}},
+    ])
+    if hasattr(cursor, "to_list"):
+        rows = await cursor.to_list(length=None)
+    else:
+        rows = [row async for row in cursor]
+    branches = []
+    seen = set()
+    for row in rows:
+        branch_id = row.get("branch_id")
+        if branch_id is None or branch_id in seen:
+            continue
+        seen.add(branch_id)
+        branches.append(branch_id)
+    return branches
+
+
+async def _claim_next_for_branch(branch_id, now):
+    """Atomically claim the FIFO head for one branch.
+
+    Looking up the head before the CAS is important: a query containing only
+    ``next_attempt_at <= now`` would skip a deferred head and send a later
+    item, violating FIFO.  The second query prevents two workers from owning
+    the same head after the read.
+    """
+    candidate = await _oldest_branch_item(branch_id)
+    if not candidate or candidate.get("status") != "pending":
+        return None
+    next_attempt_at = _utc_datetime(candidate.get("next_attempt_at"))
+    if next_attempt_at is not None and next_attempt_at > now:
+        return None
     claim_token = str(uuid.uuid4())
-    item = await _db["whatsapp_campaign_job_items"].find_one_and_update(
-        {"status": "pending", "$or": [
-            {"next_attempt_at": {"$exists": False}}, {"next_attempt_at": {"$lte": now}}]},
+    return await _db["whatsapp_campaign_job_items"].find_one_and_update(
+        {"id": candidate["id"], "branch_id": branch_id, "status": "pending",
+         "$or": [
+             {"next_attempt_at": {"$exists": False}},
+             {"next_attempt_at": None},
+             {"next_attempt_at": {"$lte": now}},
+         ]},
         {"$set": {"status": "claimed", "claim_token": claim_token,
                   "claim_until": now + timedelta(seconds=LEASE_SECONDS)}},
-        sort=[("created_at", 1), ("recipient_index", 1), ("media_index", 1)],
-        return_document=ReturnDocument.AFTER)
+        return_document=ReturnDocument.AFTER,
+    )
+
+
+async def _tick_branch_ids(now, limit=None):
+    """Select runnable branch heads for one worker tick.
+
+    Frozen and future-deferred heads are omitted before applying the worker
+    bound.  Thus a large backlog of blocked branches cannot fill every worker
+    slot and starve a branch that can send now.  The caller applies the global
+    task bound after accounting for every tenant's in-flight registry.
+    """
+    selected = []
+    for branch_id in await _pending_branch_ids():
+        item = await _oldest_branch_item(branch_id)
+        if not item or item.get("status") != "pending":
+            continue
+        next_attempt_at = _utc_datetime(item.get("next_attempt_at"))
+        if next_attempt_at is not None and next_attempt_at > now:
+            continue
+        gate = await _db["whatsapp_campaign_rate_gates"].find_one({"_id": branch_id})
+        if gate:
+            if gate.get("frozen"):
+                continue
+            next_allowed_at = _utc_datetime(gate.get("next_allowed_at"))
+            lease_until = _utc_datetime(gate.get("lease_until"))
+            if next_allowed_at and next_allowed_at > now:
+                continue
+            if lease_until and lease_until > now:
+                continue
+        selected.append(branch_id)
+        if limit is not None and len(selected) >= limit:
+            break
+    return selected
+
+
+async def _process_one_for_branch(branch_id):
+    now = datetime.now(timezone.utc)
+    # Claim briefly only to select work. Claiming is branch-scoped so a
+    # blocked branch cannot prevent an independent branch from progressing.
+    item = await _claim_next_for_branch(branch_id, now)
     if not item:
         return False
-    parent = await _db["whatsapp_campaign_jobs"].find_one({"id": item["job_id"]})
+    claim_token = item["claim_token"]
+    parent = await _db["whatsapp_campaign_jobs"].find_one(
+        {"id": item["job_id"], "branch_id": item["branch_id"]}
+    )
     if not parent or parent.get("status") not in {"pending", "processing", "paused"}:
         await _db["whatsapp_campaign_job_items"].update_one(
             {"id": item["id"], "status": "claimed", "claim_token": claim_token},
@@ -698,11 +828,17 @@ async def process_one():
     if not gate:
         gate_doc = await _db["whatsapp_campaign_rate_gates"].find_one(
             {"_id": item["branch_id"]})
+        values = {"status": "pending"}
+        # A frozen gate may have a stale/past next_allowed_at.  Persisting
+        # that value made the old global claimant select this same item on
+        # every tick.  Frozen heads stay ordinary pending work until explicit
+        # reconciliation; another branch is free to run in the meantime.
+        next_allowed_at = _utc_datetime((gate_doc or {}).get("next_allowed_at"))
+        if not (gate_doc or {}).get("frozen") and next_allowed_at and next_allowed_at > now:
+            values["next_attempt_at"] = next_allowed_at
         await _db["whatsapp_campaign_job_items"].update_one(
-            {"id": item["id"], "status": "claimed", "claim_token": claim_token}, {"$set": {
-                "status": "pending",
-                "next_attempt_at": (gate_doc or {}).get(
-                    "next_allowed_at", now + timedelta(seconds=MIN_INTERVAL_SECONDS))}})
+            {"id": item["id"], "status": "claimed", "claim_token": claim_token},
+            {"$set": values})
         return False
     owned = await _db["whatsapp_campaign_job_items"].update_one(
         {"id": item["id"], "status": "claimed", "claim_token": claim_token},
@@ -793,7 +929,9 @@ async def process_one():
         await _freeze_lane(item, "prior-day quota reservation", datetime.now(timezone.utc))
         await _refresh_job(item["job_id"])
         return False
-    job = await _db["whatsapp_campaign_jobs"].find_one({"id": item["job_id"]})
+    job = await _db["whatsapp_campaign_jobs"].find_one(
+        {"id": item["job_id"], "branch_id": item["branch_id"]}
+    )
     if job and job.get("cancel_requested"):
         item["lane_token"] = lane_token
         item["quota_reservation_id"] = (reservation or {}).get("_id") or item.get("quota_reservation_id")
@@ -864,9 +1002,104 @@ async def process_one():
     return True
 
 
+async def process_one(branch_id=None):
+    """Process one item, optionally constrained to one branch.
+
+    The optional branch argument is used by the parallel tenant tick.  Calls
+    without it retain the historical one-item API while trying each pending
+    branch until one can make progress, so a frozen head does not starve the
+    rest of the queue.
+    """
+    now = datetime.now(timezone.utc)
+    await _recover_crashed(now)
+    if branch_id is not None:
+        return await _process_one_for_branch(branch_id)
+    for candidate_branch in await _pending_branch_ids():
+        if await _process_one_for_branch(candidate_branch):
+            return True
+    return False
+
+
+def _tenant_task_key(tenant):
+    if isinstance(tenant, dict):
+        tenant_id = (
+            tenant.get("slug")
+            or tenant.get("db_name")
+            or tenant.get("id")
+            or "default"
+        )
+    else:
+        tenant_id = tenant or "default"
+    return str(tenant_id)
+
+
+async def _run_branch_task(task_key, branch_id):
+    try:
+        await _process_one_for_branch(branch_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        # A branch task must not become an unobserved task exception or stop
+        # later tenants from getting their own queue tick.
+        log.error("Bulk campaign branch task error: %s", type(exc).__name__)
+    finally:
+        task = asyncio.current_task()
+        if _inflight_branch_tasks.get(task_key) is task:
+            _inflight_branch_tasks.pop(task_key, None)
+
+
+def _reap_branch_tasks():
+    for task_key, task in list(_inflight_branch_tasks.items()):
+        if not task.done():
+            continue
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            log.error("Bulk campaign branch task reap error: %s", type(exc).__name__)
+        if _inflight_branch_tasks.get(task_key) is task:
+            _inflight_branch_tasks.pop(task_key, None)
+
+
+async def _shutdown_branch_tasks():
+    tasks = list(_inflight_branch_tasks.values())
+    for task in tasks:
+        if not task.done():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    _inflight_branch_tasks.clear()
+
+
+async def stop_worker():
+    """Cancel and await detached branch tasks during worker shutdown."""
+    await _shutdown_branch_tasks()
+
+
 async def _tenant_tick(_tenant):
-    # More than one process may run this; Mongo claims and gates serialize them.
-    await process_one()
+    # More than one process may run this; Mongo claims and gates serialize
+    # them.  Branch tasks are deliberately detached from this short tenant
+    # tick: a slow provider must not hold up later ticks or later tenants.
+    now = datetime.now(timezone.utc)
+    await _recover_crashed(now)
+    _reap_branch_tasks()
+    capacity = BRANCH_PARALLELISM - len(_inflight_branch_tasks)
+    if capacity <= 0:
+        return False
+    branch_ids = await _tick_branch_ids(now)
+    created = 0
+    tenant_key = _tenant_task_key(_tenant)
+    for branch_id in branch_ids:
+        task_key = (tenant_key, branch_id)
+        if task_key in _inflight_branch_tasks:
+            continue
+        if created >= capacity:
+            break
+        task = asyncio.create_task(_run_branch_task(task_key, branch_id))
+        _inflight_branch_tasks[task_key] = task
+        created += 1
+    return bool(created)
 
 
 async def worker_loop():
@@ -875,6 +1108,7 @@ async def worker_loop():
             await for_each_active_tenant(_tenant_tick, label="whatsapp-bulk-jobs")
             await asyncio.sleep(1)
         except asyncio.CancelledError:
+            await _shutdown_branch_tasks()
             return
         except Exception as exc:
             log.error("Bulk campaign worker error: %s", type(exc).__name__)

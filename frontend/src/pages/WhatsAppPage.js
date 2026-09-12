@@ -247,6 +247,8 @@ export default function WhatsAppPage() {
   // ── Provider-neutral WhatsApp Inbox State ──
   const [cloudConversations, setCloudConversations] = useState([]);
   const [cloudUnreadCount, setCloudUnreadCount] = useState(0);
+  const [cloudCurrentUnreadCount, setCloudCurrentUnreadCount] = useState(0);
+  const [cloudInboxView, setCloudInboxView] = useState('current');
   const [cloudBranchFilter, setCloudBranchFilter] = useState(
     selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all'
   );
@@ -269,6 +271,8 @@ export default function WhatsAppPage() {
   const cloudInboxRequestRef = useRef(0);
   const cloudBranchFilterRef = useRef(cloudBranchFilter);
   cloudBranchFilterRef.current = cloudBranchFilter;
+  const cloudInboxViewRef = useRef(cloudInboxView);
+  cloudInboxViewRef.current = cloudInboxView;
   if (cloudBranchesScopeRef.current !== cloudAuthScope) {
     if (cloudBranchesScopeRef.current !== null) cloudBranchesResetRef.current = true;
     cloudBranchesScopeRef.current = cloudAuthScope;
@@ -455,9 +459,16 @@ export default function WhatsAppPage() {
     return request;
   };
 
-  const loadCloudConversations = async (branchFilter = cloudBranchFilterRef.current) => {
-    const branchKey = branchFilter && branchFilter !== 'all' ? branchFilter : 'all';
-    const requestKey = `${cloudAuthScope}:${branchKey}`;
+  const loadCloudConversations = async (
+    branchFilter = cloudBranchFilterRef.current,
+    unreadOnly = cloudInboxViewRef.current === 'unread',
+  ) => {
+    const isUnreadView = Boolean(unreadOnly);
+    const branchKey = isUnreadView
+      ? 'all'
+      : branchFilter && branchFilter !== 'all' ? branchFilter : 'all';
+    const viewKey = isUnreadView ? 'unread' : 'current';
+    const requestKey = `${cloudAuthScope}:${viewKey}:${branchKey}`;
     const requestId = ++cloudInboxRequestRef.current;
     setLoadingCloudInbox(true);
 
@@ -465,16 +476,17 @@ export default function WhatsAppPage() {
     const isCurrentRequest = () => (
       requestId === cloudInboxRequestRef.current
       && cloudAuthScope === cloudBranchesScopeRef.current
-      && branchKey === (
+      && viewKey === (cloudInboxViewRef.current === 'unread' ? 'unread' : 'current')
+      && (isUnreadView || branchKey === (
         cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
           ? cloudBranchFilterRef.current
           : 'all'
-      )
+      ))
     );
 
     try {
       if (!request) {
-        const inboxRequest = whatsappAPI.getCloudInboxConversations(branchKey);
+        const inboxRequest = whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView);
         const branchesRequest = branches.length
           ? Promise.resolve(branches)
           : loadCloudBranches();
@@ -496,7 +508,11 @@ export default function WhatsAppPage() {
       const [inboxResponse] = await request;
       if (!isCurrentRequest()) return;
       setCloudConversations(inboxResponse.data?.conversations || []);
-      setCloudUnreadCount(inboxResponse.data?.unread_count || 0);
+      if (isUnreadView) {
+        setCloudUnreadCount(inboxResponse.data?.unread_count || 0);
+      } else {
+        setCloudCurrentUnreadCount(inboxResponse.data?.unread_count || 0);
+      }
     } catch {
       if (isCurrentRequest()) {
         toast.error(t('تعذر تحميل شات واتساب', 'Could not load WhatsApp chats'));
@@ -553,10 +569,17 @@ export default function WhatsAppPage() {
   const openCloudThread = async (conversationId, { refreshInbox = false } = {}) => {
     const requestId = ++cloudThreadRequestRef.current;
     const authScope = cloudAuthScope;
-    const branchKey = cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
-      ? cloudBranchFilterRef.current
-      : 'all';
+    const unreadView = cloudInboxViewRef.current === 'unread';
+    const viewKey = unreadView ? 'unread' : 'current';
+    const branchKey = unreadView
+      ? 'all'
+      : cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+        ? cloudBranchFilterRef.current
+        : 'all';
     const previousThread = selectedCloudThreadRef.current;
+    const selectedConversation = cloudConversations.find(
+      conversation => conversation.id === conversationId
+    );
     selectedCloudThreadRef.current = conversationId;
     setSelectedCloudThread(conversationId);
     setLoadingCloudInbox(true);
@@ -571,11 +594,12 @@ export default function WhatsAppPage() {
       requestId === cloudThreadRequestRef.current
       && authScope === cloudBranchesScopeRef.current
       && selectedCloudThreadRef.current === conversationId
-      && branchKey === (
+      && viewKey === (cloudInboxViewRef.current === 'unread' ? 'unread' : 'current')
+      && (unreadView || branchKey === (
         cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
           ? cloudBranchFilterRef.current
           : 'all'
-      )
+      ))
     );
 
     try {
@@ -599,10 +623,25 @@ export default function WhatsAppPage() {
           })
           .catch(() => {});
       });
+      if (unreadView) {
+        // The detail endpoint marks the conversation read. Remove it
+        // optimistically so the unread view responds immediately, then let
+        // the authoritative list refresh reconcile the count.
+        setCloudConversations(previous => previous.filter(
+          conversation => conversation.id !== conversationId
+        ));
+        setCloudUnreadCount(previous => Math.max(
+          0,
+          previous - Number(selectedConversation?.unread_count || 0)
+        ));
+      }
       // Opening a thread is read-only and must not refetch the inbox/branch
-      // list. Writes opt into this refresh below so unread/list state remains
-      // authoritative after a reply or image send.
-      if (refreshInbox) await loadCloudConversations(branchKey);
+      // list in the normal view. The unread view refreshes after a read so
+      // its list/count remain authoritative; writes opt into this refresh in
+      // either view.
+      if (refreshInbox || unreadView) {
+        await loadCloudConversations(branchKey, unreadView);
+      }
     } catch {
       if (isCurrentRequest()) {
         toast.error(t('تعذر تحميل المحادثة', 'Could not load conversation'));
@@ -838,14 +877,17 @@ export default function WhatsAppPage() {
 
   useEffect(() => {
     if (activeTab !== 'cloud_inbox') return undefined;
-    loadCloudConversations();
+    loadCloudConversations(
+      cloudBranchFilterRef.current,
+      cloudInboxViewRef.current === 'unread',
+    );
     const interval = setInterval(() => {
       if (selectedCloudThreadRef.current) openCloudThread(selectedCloudThreadRef.current);
       else loadCloudConversations();
     }, 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, cloudBranchFilter, cloudAuthScope]);
+  }, [activeTab, cloudBranchFilter, cloudInboxView, cloudAuthScope]);
 
   useEffect(() => () => {
     Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
@@ -2926,17 +2968,46 @@ export default function WhatsAppPage() {
                   </Button>
                 )}
                 {!selectedCloudThread && (
-                  <Select value={cloudBranchFilter} onValueChange={setCloudBranchFilter}>
-                    <SelectTrigger className="w-56">
-                      <SelectValue placeholder={t('كل الفروع', 'All branches')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isAdmin && <SelectItem value="all">{t('كل الفروع', 'All branches')}</SelectItem>}
-                      {branches.map(branch => (
-                        <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <>
+                    <div role="tablist" className="flex items-center gap-1 rounded-lg border p-1">
+                      <Button
+                        type="button"
+                        aria-pressed={cloudInboxView === 'current'}
+                        variant={cloudInboxView === 'current' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setCloudInboxView('current')}
+                      >
+                        {t('الفرع الحالي', 'Current branch')}
+                      </Button>
+                      <Button
+                        type="button"
+                        aria-pressed={cloudInboxView === 'unread'}
+                        variant={cloudInboxView === 'unread' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setCloudInboxView('unread')}
+                      >
+                        {t('غير مقروءة', 'Unread')}
+                        {cloudUnreadCount > 0 && (
+                          <Badge variant="destructive" className="text-xs px-1.5 py-0.5 ms-1">
+                            {cloudUnreadCount}
+                          </Badge>
+                        )}
+                      </Button>
+                    </div>
+                    {cloudInboxView === 'current' && (
+                      <Select value={cloudBranchFilter} onValueChange={setCloudBranchFilter}>
+                        <SelectTrigger className="w-56">
+                          <SelectValue placeholder={t('كل الفروع', 'All branches')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {isAdmin && <SelectItem value="all">{t('كل الفروع', 'All branches')}</SelectItem>}
+                          {branches.map(branch => (
+                            <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </>
                 )}
               </div>
               <Button
@@ -2954,8 +3025,14 @@ export default function WhatsAppPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <MessageCircle className="w-5 h-5 text-green-600" />
-                    {t('محادثات واتساب الفروع', 'Branch WhatsApp conversations')}
-                    {cloudUnreadCount > 0 && <Badge variant="destructive">{cloudUnreadCount}</Badge>}
+                    {cloudInboxView === 'unread'
+                      ? t('المحادثات غير المقروءة', 'Unread conversations')
+                      : t('محادثات واتساب الفروع', 'Branch WhatsApp conversations')}
+                    {(cloudInboxView === 'unread' ? cloudUnreadCount : cloudCurrentUnreadCount) > 0 && (
+                      <Badge variant="destructive">
+                        {cloudInboxView === 'unread' ? cloudUnreadCount : cloudCurrentUnreadCount}
+                      </Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

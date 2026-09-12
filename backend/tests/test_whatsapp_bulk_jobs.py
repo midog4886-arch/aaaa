@@ -14,6 +14,14 @@ def run(coro):
     return asyncio.run(coro)
 
 
+async def finish_tenant_tick(tenant=None):
+    result = await jobs._tenant_tick(tenant)
+    tasks = list(jobs._inflight_branch_tasks.values())
+    if tasks:
+        await asyncio.gather(*tasks)
+    return result
+
+
 class Clock(datetime):
     value = datetime(2026, 1, 1, 8, 0, tzinfo=timezone.utc)
 
@@ -43,6 +51,8 @@ def match(row, query):
                     return False
                 if op == "$in" and actual not in value:
                     return False
+                if op == "$nin" and actual in value:
+                    return False
                 if op == "$ne" and actual == value:
                     return False
         elif actual != expected:
@@ -54,8 +64,22 @@ class Cursor:
     def __init__(self, rows):
         self.rows = [deepcopy(row) for row in rows]
 
-    def sort(self, key, direction):
-        self.rows.sort(key=lambda row: row.get(key), reverse=direction < 0)
+    def sort(self, key, direction=None):
+        if direction is None:
+            assert isinstance(key, list)
+            for field, field_direction in reversed(key):
+                self.rows.sort(
+                    key=lambda row: (
+                        row.get(field) is not None,
+                        row.get(field),
+                    ),
+                    reverse=field_direction < 0,
+                )
+            return self
+        self.rows.sort(
+            key=lambda row: (row.get(key) is not None, row.get(key)),
+            reverse=direction < 0,
+        )
         return self
 
     def limit(self, number):
@@ -140,6 +164,42 @@ class Collection:
 
     def aggregate(self, pipeline):
         query = pipeline[0]["$match"]
+        if (
+            len(pipeline) > 2
+            and "$group" in pipeline[2]
+            and pipeline[2]["$group"]["_id"] == "$branch_id"
+        ):
+            rows = [deepcopy(row) for row in self.rows if match(row, query)]
+            sort_spec = pipeline[1]["$sort"]
+            for field, direction in reversed(list(sort_spec.items())):
+                rows.sort(
+                    key=lambda row: (
+                        row.get(field) is not None,
+                        row.get(field),
+                    ),
+                    reverse=direction < 0,
+                )
+            grouped = {}
+            for row in rows:
+                branch_id = row.get("branch_id")
+                if branch_id in grouped:
+                    continue
+                grouped[branch_id] = {
+                    "_id": branch_id,
+                    "head_created_at": row.get("created_at"),
+                    "head_id": row.get("_id"),
+                }
+            rows = list(grouped.values())
+            sort_spec = pipeline[3]["$sort"]
+            for field, direction in reversed(list(sort_spec.items())):
+                rows.sort(
+                    key=lambda row: (
+                        row.get(field) is not None,
+                        row.get(field),
+                    ),
+                    reverse=direction < 0,
+                )
+            return Cursor({"branch_id": row["_id"]} for row in rows)
         counts = {}
         for row in self.rows:
             if match(row, query):
@@ -410,4 +470,190 @@ def test_prior_day_quota_reservation_is_refunded_then_unknown_and_frozen(queue):
     assert releases == [("a:2025-12-31", 1)]
     assert item["status"] == "unknown"
     assert db["whatsapp_campaign_rate_gates"].rows[0]["frozen"] is True
+    assert sent == []
+
+
+def test_frozen_oldest_branch_does_not_starve_independent_branch(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "frozen-head-key-123"))
+    run(jobs.enqueue("b", "meta_cloud", recipients(), "healthy-head-key-123"))
+    db["whatsapp_campaign_rate_gates"].rows.append({
+        "_id": "a",
+        "branch_id": "a",
+        "frozen": True,
+        "freeze_reason": "uncertain provider outcome",
+        "next_allowed_at": Clock.now() - timedelta(seconds=1),
+    })
+
+    run(finish_tenant_tick())
+
+    assert [entry[1] for entry in sent] == ["b"]
+    assert db["whatsapp_campaign_job_items"].rows[0]["status"] == "pending"
+    assert "next_attempt_at" not in db["whatsapp_campaign_job_items"].rows[0]
+
+
+def test_slow_branch_provider_does_not_block_parallel_branch_tick(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "slow-branch-key-123"))
+    run(jobs.enqueue("b", "meta_cloud", recipients(), "fast-branch-key-123"))
+    slow_started = asyncio.Event()
+    fast_sent = asyncio.Event()
+    release_slow = asyncio.Event()
+
+    async def send(item, _config, assert_fence):
+        await assert_fence()
+        if item["branch_id"] == "a":
+            slow_started.set()
+            await release_slow.wait()
+        sent.append((Clock.now(), item["branch_id"], item["id"]))
+        if item["branch_id"] == "b":
+            fast_sent.set()
+        return True
+
+    jobs._handlers["send"] = send
+
+    async def exercise():
+        assert await jobs._tenant_tick(None) is True
+        await slow_started.wait()
+        await fast_sent.wait()
+        assert any(
+            key[1] == "a" and not task.done()
+            for key, task in jobs._inflight_branch_tasks.items()
+        )
+        release_slow.set()
+        await asyncio.gather(*list(jobs._inflight_branch_tasks.values()))
+
+    run(exercise())
+    assert [entry[1] for entry in sent] == ["b", "a"]
+
+
+def test_detached_branch_tasks_survive_later_ticks_with_global_bound_and_tenants(
+    queue, monkeypatch
+):
+    db, sent, *_ = queue
+    monkeypatch.setattr(jobs, "BRANCH_PARALLELISM", 2)
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "tenant-a-slow-key-123"))
+    run(jobs.enqueue("b", "meta_cloud", recipients(2), "tenant-a-paced-key-123"))
+    run(jobs.enqueue("c", "meta_cloud", recipients(), "tenant-b-key-123"))
+    slow_started = asyncio.Event()
+    first_b_started = asyncio.Event()
+    first_b_sent = asyncio.Event()
+    second_b_sent = asyncio.Event()
+    c_started = asyncio.Event()
+    release_slow = asyncio.Event()
+    release_first_b = asyncio.Event()
+    release_c = asyncio.Event()
+
+    async def send(item, _config, assert_fence):
+        await assert_fence()
+        branch = item["branch_id"]
+        if branch == "a":
+            slow_started.set()
+            await release_slow.wait()
+        elif branch == "b" and item["recipient_index"] == 0:
+            first_b_started.set()
+            await release_first_b.wait()
+        elif branch == "c":
+            c_started.set()
+            await release_c.wait()
+        sent.append((Clock.now(), branch, item["id"]))
+        if branch == "b" and item["recipient_index"] == 0:
+            first_b_sent.set()
+        elif branch == "b" and item["recipient_index"] == 1:
+            second_b_sent.set()
+        return True
+
+    jobs._handlers["send"] = send
+
+    async def exercise():
+        try:
+            assert await jobs._tenant_tick({"slug": "tenant-a"}) is True
+            await slow_started.wait()
+            await first_b_started.wait()
+            assert len(jobs._inflight_branch_tasks) == 2
+
+            # Both global slots are occupied, so another tenant's branch waits
+            # without being confused with tenant-a's same process registry.
+            assert await jobs._tenant_tick({"slug": "tenant-b"}) is False
+
+            release_first_b.set()
+            await first_b_sent.wait()
+            while ("tenant-a", "b") in jobs._inflight_branch_tasks:
+                await asyncio.sleep(0)
+            Clock.set(Clock.now() + timedelta(seconds=181))
+
+            # The slow a task remains held, but b's later item gets a new
+            # branch task on a subsequent tick after its 180-second gate.
+            assert await jobs._tenant_tick({"slug": "tenant-a"}) is True
+            await second_b_sent.wait()
+            while ("tenant-a", "b") in jobs._inflight_branch_tasks:
+                await asyncio.sleep(0)
+
+            # A later tenant can now use the freed global slot and its task key
+            # remains isolated even though this test uses one mocked database.
+            assert await jobs._tenant_tick({"slug": "tenant-b"}) is True
+            await c_started.wait()
+            assert ("tenant-b", "c") in jobs._inflight_branch_tasks
+        finally:
+            release_slow.set()
+            release_first_b.set()
+            release_c.set()
+            tasks = list(jobs._inflight_branch_tasks.values())
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            await jobs.stop_worker()
+
+    run(exercise())
+    assert [entry[1] for entry in sent[:2]] == ["b", "b"]
+    assert {entry[1] for entry in sent[2:]} == {"a", "c"}
+
+
+def test_future_deferred_head_preserves_branch_fifo_and_pacing(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "fifo-first-key-123"))
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "fifo-second-key-123"))
+    items = db["whatsapp_campaign_job_items"].rows
+    deferred_until = Clock.now() + timedelta(seconds=30)
+    items[0]["next_attempt_at"] = deferred_until
+
+    assert run(jobs.process_one()) is False
+    assert sent == []
+    assert [item["status"] for item in items] == ["pending", "pending"]
+
+    Clock.set(deferred_until)
+    assert run(jobs.process_one()) is True
+    assert sent[0][3] == items[0]["id"]
+
+    Clock.set(Clock.now() + timedelta(seconds=179))
+    assert run(jobs.process_one()) is False
+    assert len(sent) == 1
+    Clock.set(Clock.now() + timedelta(seconds=1))
+    assert run(jobs.process_one()) is True
+    assert [entry[3] for entry in sent] == [items[0]["id"], items[1]["id"]]
+
+
+def test_inflight_oldest_head_cannot_be_skipped_by_another_worker(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(2), "claimed-head-key-123"))
+    items = db["whatsapp_campaign_job_items"].rows
+    items[0].update(
+        status="claimed",
+        claim_token="another-worker",
+        claim_until=Clock.now() + timedelta(minutes=5),
+    )
+
+    assert run(jobs.process_one()) is False
+    assert sent == []
+    assert items[1]["status"] == "pending"
+
+
+def test_naive_mongo_queue_timestamps_are_normalized_before_comparison(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "naive-defer-key-123"))
+    item = db["whatsapp_campaign_job_items"].rows[0]
+    item["next_attempt_at"] = (
+        Clock.now().replace(tzinfo=None) + timedelta(seconds=30)
+    )
+
+    assert run(jobs.process_one()) is False
     assert sent == []

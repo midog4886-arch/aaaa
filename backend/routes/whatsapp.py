@@ -21,7 +21,11 @@ from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 from pymongo import ReturnDocument
 from .common import get_current_user
-from utils.auth import require_branch_scope, resolve_branch_filter
+from utils.auth import (
+    get_allowed_branch_ids,
+    require_branch_scope,
+    resolve_branch_filter,
+)
 from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_current_tenant
 from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
@@ -3454,21 +3458,51 @@ class CloudInboxReplyRequest(BaseModel):
 async def list_cloud_inbox_conversations(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
+    unread_only: bool = False,
 ):
     _require_bulk_whatsapp_access(current_user)
-    effective_branch = resolve_branch_filter(current_user, branch_filter)
-    query = {"branch_id": effective_branch} if effective_branch else {}
+    if unread_only:
+        # Unread is intentionally a cross-branch view.  Admins are scoped to
+        # this tenant by ``_db``; other users are restricted to every branch
+        # in their signed authorization payload, not the currently selected
+        # branch/header.  Never accept the requested branch as a widening
+        # mechanism for this view.
+        if current_user.get("is_admin", False):
+            query = {}
+            effective_branch = None
+        else:
+            allowed_branch_ids = get_allowed_branch_ids(current_user)
+            if not allowed_branch_ids:
+                raise HTTPException(status_code=403, detail="No branch assigned")
+            query = {"branch_id": {"$in": allowed_branch_ids}}
+            effective_branch = None
+        # Apply this predicate before Mongo's sort/limit so an old unread
+        # conversation cannot be hidden behind newer read conversations.
+        query["unread_count"] = {"$gt": 0}
+    else:
+        effective_branch = resolve_branch_filter(current_user, branch_filter)
+        query = {"branch_id": effective_branch} if effective_branch else {}
+
     # Both projections are read-only and use the request's inherited tenant
     # context. Run them together so a slow campaign aggregation does not delay
     # the cloud-conversation read (or vice versa).
-    rows, campaign_rows = await asyncio.gather(
+    cloud_rows_request = (
         _db["whatsapp_cloud_conversations"]
         .find(query, {"_id": 0})
         .sort("last_message_at", -1)
         .limit(200)
-        .to_list(length=200),
-        campaign_inbox.conversations(_db, query),
+        .to_list(length=200)
     )
+    if unread_only:
+        # Campaign sends are outbound projections and always have
+        # ``unread_count == 0``.  Keep them out of this view entirely.
+        rows = await cloud_rows_request
+        campaign_rows = []
+    else:
+        rows, campaign_rows = await asyncio.gather(
+            cloud_rows_request,
+            campaign_inbox.conversations(_db, query),
+        )
     merged = {row["id"]: row for row in rows}
     for campaign in campaign_rows:
         existing = merged.get(campaign["id"])

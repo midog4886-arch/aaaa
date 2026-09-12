@@ -18,6 +18,10 @@ def _matches(row, query):
             if row.get(key) not in value["$in"]:
                 return False
             continue
+        if isinstance(value, dict) and "$gt" in value:
+            if not (row.get(key) is not None and row.get(key) > value["$gt"]):
+                return False
+            continue
         if row.get(key) != value:
             return False
     return True
@@ -199,3 +203,115 @@ def test_cloud_list_runs_cloud_and_campaign_reads_concurrently(monkeypatch):
     ))
 
     assert result == {"conversations": [], "unread_count": 0}
+
+
+def test_cloud_unread_filter_runs_before_limit_and_skips_campaign_projection(monkeypatch):
+    db = _Database(conversations=[
+        {
+            "id": "branch-a:old-unread",
+            "branch_id": "branch-a",
+            "phone": "966500000001",
+            "last_message_at": "2025-01-01T00:00:00+00:00",
+            "unread_count": 2,
+        },
+        {
+            "id": "branch-b:unread",
+            "branch_id": "branch-b",
+            "phone": "966500000002",
+            "last_message_at": "2025-01-02T00:00:00+00:00",
+            "unread_count": 3,
+        },
+        *[
+            {
+                "id": f"branch-a:read-{index}",
+                "branch_id": "branch-a",
+                "phone": f"96650000{index:04d}",
+                "last_message_at": f"2026-01-{(index % 28) + 1:02d}T00:00:00+00:00",
+                "unread_count": 0,
+            }
+            for index in range(250)
+        ],
+    ], branches=[
+        {"id": "branch-a", "name": "Branch A"},
+        {"id": "branch-b", "name": "Branch B"},
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+
+    async def campaigns_should_not_run(*_args):
+        raise AssertionError("campaign projections must not enter unread view")
+
+    monkeypatch.setattr(mod.campaign_inbox, "conversations", campaigns_should_not_run)
+
+    result = run(mod.list_cloud_inbox_conversations(
+        branch_filter="branch-a",
+        unread_only=True,
+        current_user={"is_admin": True},
+    ))
+
+    assert [row["id"] for row in result["conversations"]] == [
+        "branch-b:unread",
+        "branch-a:old-unread",
+    ]
+    assert result["unread_count"] == 5
+    assert db["whatsapp_cloud_conversations"].find_queries[0] == {
+        "unread_count": {"$gt": 0},
+    }
+
+
+def test_cloud_unread_non_admin_uses_all_authorized_branches(monkeypatch):
+    db = _Database(
+        conversations=[
+            {
+                "id": "branch-a:unread",
+                "branch_id": "branch-a",
+                "phone": "966500000001",
+                "last_message_at": "2026-02-02T00:00:00+00:00",
+                "unread_count": 1,
+            },
+            {
+                "id": "branch-b:unread",
+                "branch_id": "branch-b",
+                "phone": "966500000002",
+                "last_message_at": "2026-02-01T00:00:00+00:00",
+                "unread_count": 3,
+            },
+            {
+                "id": "branch-c:unread",
+                "branch_id": "branch-c",
+                "phone": "966500000003",
+                "last_message_at": "2026-01-31T00:00:00+00:00",
+                "unread_count": 7,
+            },
+        ],
+        branches=[
+            {"id": "branch-a", "name": "Branch A"},
+            {"id": "branch-b", "name": "Branch B"},
+        ],
+    )
+    monkeypatch.setattr(mod, "_db", db)
+
+    result = run(mod.list_cloud_inbox_conversations(
+        branch_filter="branch-a",
+        unread_only=True,
+        current_user={
+            "is_admin": False,
+            "permissions": ["messages"],
+            "branch_id": "branch-a",
+            "branch_ids": ["branch-a", "branch-b"],
+            "_active_branch": "branch-a",
+        },
+    ))
+
+    assert [row["id"] for row in result["conversations"]] == [
+        "branch-a:unread",
+        "branch-b:unread",
+    ]
+    assert [row["branch_name"] for row in result["conversations"]] == [
+        "Branch A",
+        "Branch B",
+    ]
+    assert result["unread_count"] == 4
+    assert db["whatsapp_cloud_conversations"].find_queries[0] == {
+        "branch_id": {"$in": ["branch-a", "branch-b"]},
+        "unread_count": {"$gt": 0},
+    }

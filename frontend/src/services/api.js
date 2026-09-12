@@ -852,10 +852,13 @@ export const whatsappAPI = {
       responseType: 'blob'
     }),
   getMetaWebhookInfo: () => axios.get(`${API}/whatsapp/meta-webhook-info`),
-  getCloudInboxConversations: (branchFilter) => {
-    const params = branchFilter && branchFilter !== 'all'
-      ? `?branch_filter=${encodeURIComponent(branchFilter)}`
-      : '';
+  getCloudInboxConversations: (branchFilter, unreadOnly = false) => {
+    const query = new URLSearchParams();
+    if (branchFilter && branchFilter !== 'all') {
+      query.set('branch_filter', branchFilter);
+    }
+    if (unreadOnly) query.set('unread_only', 'true');
+    const params = query.toString() ? `?${query.toString()}` : '';
     return axios.get(`${API}/whatsapp/cloud-inbox/conversations${params}`);
   },
   getCloudInboxThread: (conversationId) =>
