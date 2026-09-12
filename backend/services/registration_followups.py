@@ -23,6 +23,10 @@ _get_config = None
 _started = False
 
 STOP_STATUSES = {"processed", "rejected", "archived", "deleted"}
+STAFF_CONTACT_REASONS = {"contacted", "staff_contacted"}
+PRESERVE_ON_REQUEST_CLOSE = {
+    "contacted", "staff_contacted", "opted_out", "customer_replied", "replied",
+}
 RETRYABLE_BLOCK_REASONS = {
     "provider_unavailable",
     "compatible_provider_unavailable",
@@ -176,17 +180,49 @@ async def stop_phone(branch_id: str, phone: str, reason: str, *, persistent=Fals
     if not phone:
         return
     now = datetime.now(timezone.utc)
+    effective_reason = reason
+    # A staff contact is durable evidence for the history tab.  Processing or
+    # archiving the request afterwards must not erase that evidence by
+    # replacing it with the generic request_closed reason.
+    if reason == "request_closed":
+        existing_stop = await _db["registration_followup_stops"].find_one(
+            {"phone": phone}
+        )
+        contacted_request = await _db["registration_requests"].find_one(
+            {
+                "followup_enrolled": True,
+                "followup_normalized_phone": phone,
+                "followup_staff_contacted_at": {"$exists": True},
+            },
+            {"_id": 1},
+        )
+        existing_reason = (existing_stop or {}).get("reason")
+        if existing_reason in PRESERVE_ON_REQUEST_CLOSE:
+            effective_reason = existing_reason
+        elif contacted_request:
+            effective_reason = "staff_contacted"
+    effective_persistent = bool(
+        persistent
+        or (existing_stop or {}).get("persistent", False)
+        or effective_reason == "opted_out"
+    ) if reason == "request_closed" else bool(persistent)
     await _db["registration_followup_stops"].update_one(
         {"phone": phone},
-        {"$set": {"reason": reason, "persistent": bool(persistent), "updated_at": now},
+        {"$set": {"reason": effective_reason, "persistent": effective_persistent, "updated_at": now},
          "$setOnInsert": {"created_at": now, "origin_branch_id": branch_id}},
         upsert=True,
     )
+    values = {
+        "followup_status": "stopped",
+        "followup_stop_reason": effective_reason,
+        "followup_stopped_at": now.isoformat(),
+    }
+    if reason in STAFF_CONTACT_REASONS:
+        values["followup_staff_contacted_at"] = now.isoformat()
     await _db["registration_requests"].update_many(
         {"followup_enrolled": True, "followup_normalized_phone": phone,
          "followup_status": {"$in": ["scheduled", "first_sent", "blocked"]}},
-        {"$set": {"followup_status": "stopped", "followup_stop_reason": reason,
-                  "followup_stopped_at": now.isoformat()}},
+        {"$set": values},
     )
 
 
@@ -195,11 +231,31 @@ async def stop_request(request: dict, reason: str):
     # Explicitly stopping a legacy row is allowed and prevents future enrollment
     # logic from ever contacting this phone.
     await stop_phone(request.get("branch_id"), phone, reason, persistent=reason == "opted_out")
+    effective_reason = reason
+    if reason == "request_closed":
+        refreshed = await _db["registration_requests"].find_one(
+            {"id": request["id"]},
+            {"_id": 0, "followup_stop_reason": 1, "followup_staff_contacted_at": 1},
+        )
+        if (
+            (refreshed or {}).get("followup_stop_reason") in PRESERVE_ON_REQUEST_CLOSE
+            or (refreshed or {}).get("followup_staff_contacted_at")
+        ):
+            effective_reason = (
+                (refreshed or {}).get("followup_stop_reason")
+                or "staff_contacted"
+            )
     now = datetime.now(timezone.utc).isoformat()
+    values = {
+        "followup_status": "stopped",
+        "followup_stop_reason": effective_reason,
+        "followup_stopped_at": now,
+    }
+    if reason in STAFF_CONTACT_REASONS:
+        values["followup_staff_contacted_at"] = now
     await _db["registration_requests"].update_one(
         {"id": request["id"]},
-        {"$set": {"followup_status": "stopped", "followup_stop_reason": reason,
-                  "followup_stopped_at": now}},
+        {"$set": values},
     )
 
 

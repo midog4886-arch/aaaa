@@ -15,6 +15,7 @@ import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode,
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'قيد الانتظار' },
+  { value: 'followed_up', label: 'تمت المتابعة' },
   { value: 'processed', label: 'تمت المعالجة' },
   { value: 'all', label: 'الكل' },
   { value: 'archived', label: 'الأرشيف' },
@@ -56,6 +57,7 @@ export const RegistrationRequestsPage = () => {
     try {
       const params = { status: statusFilter };
       if (isAdmin && selectedBranch !== 'all') params.branch_filter = selectedBranch;
+      if (searchQuery.trim()) params.search = searchQuery.trim();
       const res = await registrationRequestsAPI.getAll(params);
       setRequests(res.data || []);
     } catch (e) {
@@ -65,11 +67,21 @@ export const RegistrationRequestsPage = () => {
     }
   };
 
-  useEffect(() => { loadRequests(); /* eslint-disable-next-line */ }, [selectedBranch, statusFilter]);
+  useEffect(() => { loadRequests(); /* eslint-disable-next-line */ }, [selectedBranch, statusFilter, searchQuery]);
 
   const branchName = (id) => {
     const b = branches.find(x => x.id === id);
     return b ? (b.name_ar || b.name) : '—';
+  };
+
+  const canViewPhones = Boolean(
+    isAdmin || (user?.permissions || []).includes('member-phones')
+  );
+
+  const formatFollowupTimestamp = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('ar-EG');
   };
 
   // Client-side search over the loaded requests: name, phone (Arabic digits
@@ -427,7 +439,7 @@ export const RegistrationRequestsPage = () => {
         ) : filteredRequests.length === 0 ? (
           <div className="text-center py-20 text-gray-400">
             <Inbox className="w-12 h-12 mx-auto mb-3 opacity-40" />
-            <p className="text-sm">{searchQuery.trim() ? 'لا توجد نتائج مطابقة للبحث' : statusFilter === 'processed' ? 'لا توجد طلبات تمت معالجتها' : statusFilter === 'archived' ? 'لا توجد طلبات مؤرشفة' : statusFilter === 'all' ? 'لا توجد طلبات تسجيل' : 'لا توجد طلبات تسجيل جديدة'}</p>
+            <p className="text-sm">{searchQuery.trim() ? 'لا توجد نتائج مطابقة للبحث' : statusFilter === 'followed_up' ? 'لا توجد طلبات تمت متابعتها' : statusFilter === 'processed' ? 'لا توجد طلبات تمت معالجتها' : statusFilter === 'archived' ? 'لا توجد طلبات مؤرشفة' : statusFilter === 'all' ? 'لا توجد طلبات تسجيل' : 'لا توجد طلبات تسجيل جديدة'}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -442,6 +454,24 @@ export const RegistrationRequestsPage = () => {
                         {(() => { const b = STATUS_BADGE[req.status] || STATUS_BADGE.pending; return (
                           <span className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${b.cls}`}>{b.label}</span>
                         ); })()}
+                        {req.followup_staff_contacted && (
+                          <span
+                            className="text-[11px] rounded-full px-2 py-0.5 font-medium bg-sky-100 text-sky-700 inline-flex items-center gap-1"
+                            data-testid={`badge-followup-staff-${req.id}`}
+                          >
+                            <Phone className="w-3 h-3" /> تم التواصل يدوياً
+                            {formatFollowupTimestamp(req.followup_staff_contacted_at) && ` — ${formatFollowupTimestamp(req.followup_staff_contacted_at)}`}
+                          </span>
+                        )}
+                        {req.followup_automatic_sent && (
+                          <span
+                            className="text-[11px] rounded-full px-2 py-0.5 font-medium bg-violet-100 text-violet-700 inline-flex items-center gap-1"
+                            data-testid={`badge-followup-automatic-${req.id}`}
+                          >
+                            <CheckCircle2 className="w-3 h-3" /> متابعة آلية أُرسلت
+                            {formatFollowupTimestamp(req.followup_automatic_sent_at) && ` — ${formatFollowupTimestamp(req.followup_automatic_sent_at)}`}
+                          </span>
+                        )}
                         {req.source === 'social_ad' && (
                           <span className="text-[11px] rounded-full px-2 py-0.5 font-medium bg-indigo-100 text-indigo-700 inline-flex items-center gap-1" data-testid={`badge-source-${req.id}`}>
                             <Megaphone className="w-3 h-3" /> إعلان سوشيال ميديا
@@ -454,7 +484,7 @@ export const RegistrationRequestsPage = () => {
                         )}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
-                        {req.customer_phone ? (
+                        {req.customer_phone && canViewPhones && !req.customer_phone_masked ? (
                           <a
                             href={whatsappChatUrl(req.customer_phone)}
                             target="_blank"

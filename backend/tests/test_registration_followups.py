@@ -189,6 +189,24 @@ def test_staff_stop_endpoint_returns_updated_request_and_guards_branch(database)
     assert error.value.status_code == 403
 
 
+def test_explicit_staff_contact_survives_later_request_processing(database):
+    database.registration_requests.rows.append(request_doc())
+    run(routes.stop_registration_followup(
+        "r1",
+        routes.RegistrationFollowupStop(reason="contacted"),
+        {"is_admin": False, "branch_id": "b1"},
+    ))
+    run(routes.update_registration_request(
+        "r1",
+        routes.RegistrationRequestUpdate(status="processed"),
+        {"is_admin": False, "branch_id": "b1"},
+    ))
+    row = database.registration_requests.rows[0]
+    assert row["status"] == "processed"
+    assert row["followup_stop_reason"] == "contacted"
+    assert row["followup_staff_contacted_at"]
+
+
 def test_first_is_due_at_24_hours_not_immediately(database, monkeypatch):
     database.registration_requests.rows.append(request_doc())
     config = AsyncMock(return_value={"provider": "whatsflow"})
@@ -392,3 +410,74 @@ def test_unknown_recovery_conservatively_stops_unmatched_observation(database):
     run(followups.completed(item, "unknown"))
     assert database["registration_followup_outbound_observations"].rows[0]["status"] == "staff_contact"
     assert database.registration_requests.rows[0]["followup_status"] == "stopped"
+
+
+def test_followed_up_list_uses_contact_or_provider_accepted_send_across_statuses(database):
+    database.registration_requests.rows.extend([
+        request_doc(
+            id="staff-pending",
+            followup_stop_reason="contacted",
+            followup_stopped_at="2026-01-02T08:00:00+00:00",
+        ),
+        request_doc(id="auto-processed", status="processed"),
+        request_doc(
+            id="both-archived",
+            status="archived",
+            followup_stop_reason="staff_contacted",
+            followup_stopped_at="2026-01-03T08:00:00+00:00",
+        ),
+        request_doc(
+            id="optout-only",
+            followup_status="stopped",
+            followup_stop_reason="opted_out",
+        ),
+    ])
+    database["whatsapp_campaign_job_items"].rows.extend([
+        {
+            "id": "accepted-auto",
+            "branch_id": "b1",
+            "communication_kind": "registration_followup",
+            "status": "sent",
+            "source_metadata": {"request_ids": ["auto-processed", "both-archived"]},
+            "sent_at": "2026-01-03T09:00:00+00:00",
+        },
+        {
+            "id": "unknown-auto",
+            "branch_id": "b1",
+            "communication_kind": "registration_followup",
+            "status": "unknown",
+            "source_metadata": {"request_ids": ["optout-only"]},
+            "sent_at": "2026-01-03T10:00:00+00:00",
+        },
+        {
+            "id": "failed-auto",
+            "branch_id": "b1",
+            "communication_kind": "registration_followup",
+            "status": "failed",
+            "source_metadata": {"request_ids": ["optout-only"]},
+            "sent_at": "2026-01-03T11:00:00+00:00",
+        },
+    ])
+
+    rows = run(routes.list_registration_requests(
+        status="followed_up",
+        current_user={"is_admin": True},
+    ))
+    by_id = {row["id"]: row for row in rows}
+    assert set(by_id) == {"staff-pending", "auto-processed", "both-archived"}
+    assert by_id["staff-pending"]["followup_types"] == ["staff_contacted"]
+    assert by_id["auto-processed"]["followup_types"] == ["automatic"]
+    assert by_id["auto-processed"]["followup_automatic_sent_at"] == "2026-01-03T09:00:00+00:00"
+    assert by_id["both-archived"]["followup_types"] == ["staff_contacted", "automatic"]
+    assert by_id["both-archived"]["followup_staff_contacted_at"] == "2026-01-03T08:00:00+00:00"
+
+
+def test_registration_request_list_masks_phone_without_existing_phone_permission(database):
+    database.registration_requests.rows.append(request_doc(customer_phone="0501234567"))
+    database.users.rows.append({"id": "staff-1", "permissions": []})
+    rows = run(routes.list_registration_requests(
+        status="pending",
+        current_user={"is_admin": False, "user_id": "staff-1", "branch_id": "b1"},
+    ))
+    assert rows[0]["customer_phone"] == "050•••••67"
+    assert rows[0]["customer_phone_masked"] is True

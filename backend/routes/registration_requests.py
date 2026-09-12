@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
+import re
 import uuid
 
 from database import db
@@ -28,6 +29,8 @@ from utils.tenant import get_current_tenant
 
 router = APIRouter(tags=["RegistrationRequests"])
 
+STAFF_CONTACT_FOLLOWUP_REASONS = {"contacted", "staff_contacted"}
+
 
 def _safe_location_url(url) -> str:
     """Only expose http(s) links to the public page — the value is rendered
@@ -35,6 +38,181 @@ def _safe_location_url(url) -> str:
     even if bad legacy data exists in the DB."""
     url = (url or "").strip()
     return url if url.lower().startswith(("http://", "https://")) else ""
+
+
+def _mask_phone(phone):
+    """Keep the same phone privacy boundary used by the members API."""
+    if not phone:
+        return phone
+    value = str(phone).strip()
+    if len(value) <= 5:
+        return value
+    return value[:3] + "•" * (len(value) - 5) + value[-2:]
+
+
+async def _can_view_registration_request_phones(current_user: dict) -> bool:
+    """Admins and users with the existing member-phones permission may see
+    registration-request numbers.  Do not trust permissions from a stale
+    client token; load them from the tenant user document when needed."""
+    if current_user.get("is_admin", False):
+        return True
+    if "member-phones" in (current_user.get("permissions") or []):
+        return True
+    user_id = current_user.get("user_id") or current_user.get("id")
+    if not user_id:
+        return False
+    user_doc = await db.users.find_one(
+        {"id": user_id}, {"_id": 0, "permissions": 1}
+    )
+    return "member-phones" in ((user_doc or {}).get("permissions") or [])
+
+
+def _timestamp_value(value):
+    """Return a JSON-safe timestamp without inventing one for old data."""
+    if isinstance(value, datetime):
+        return value.replace(tzinfo=value.tzinfo or timezone.utc).isoformat()
+    return value
+
+
+def _latest_timestamp(*values):
+    """Choose the latest known timestamp while retaining malformed legacy
+    values rather than fabricating a fallback date."""
+    known = [value for value in values if value not in (None, "")]
+    if not known:
+        return None
+    parsed = []
+    for value in known:
+        timestamp = _timestamp_value(value)
+        try:
+            parsed_time = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            if parsed_time.tzinfo is None:
+                parsed_time = parsed_time.replace(tzinfo=timezone.utc)
+            parsed.append((
+                parsed_time,
+                timestamp,
+            ))
+        except (TypeError, ValueError):
+            pass
+    if parsed:
+        return max(parsed, key=lambda pair: pair[0])[1]
+    return _timestamp_value(known[0])
+
+
+def _search_registration_requests(query: dict, search: Optional[str]):
+    """Apply the same name/phone/marketer/activity search on the server.
+
+    The page still keeps its local filtering for an immediate UI response, but
+    the API must constrain the result before pagination/limits so a followed
+    request outside the first loaded page cannot disappear.
+    """
+    raw = str(search or "").strip()
+    if not raw:
+        return
+    normalized = raw.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")).lower()
+    terms = [
+        {"customer_name": {"$regex": re.escape(normalized), "$options": "i"}},
+        {"marketer_name": {"$regex": re.escape(normalized), "$options": "i"}},
+        {"activity_name": {"$regex": re.escape(normalized), "$options": "i"}},
+    ]
+    digits = "".join(c for c in normalized if c.isdigit())
+    if len(digits) >= 3:
+        # Customer numbers are commonly stored with spaces/dashes.  Match the
+        # requested digits while allowing formatting characters between them.
+        phone_pattern = r"\D*".join(re.escape(char) for char in digits)
+        terms.append({"customer_phone": {"$regex": phone_pattern}})
+    query["$or"] = terms
+
+
+async def _followed_up_evidence(scope: dict) -> dict:
+    """Return read-only evidence for the Followed up tab.
+
+    Staff evidence comes only from the explicit contact stop reasons.  The
+    automatic evidence comes only from a registration-followup campaign item
+    whose durable provider outcome is ``sent`` (provider accepted).  Pending,
+    failed, unknown, cancelled and merely opened WhatsApp links are
+    deliberately excluded.
+    """
+    evidence = {}
+    contact_rows = await db.registration_requests.find(
+        {
+            **scope,
+            "$or": [
+                {"followup_stop_reason": {"$in": list(STAFF_CONTACT_FOLLOWUP_REASONS)}},
+                {"followup_staff_contacted_at": {"$exists": True}},
+            ],
+        },
+        {
+            "_id": 0, "id": 1, "followup_stop_reason": 1,
+            "followup_staff_contacted_at": 1, "followup_contacted_at": 1,
+            "followup_stopped_at": 1,
+        },
+    ).to_list(10000)
+    for row in contact_rows:
+        request_id = row.get("id")
+        if not request_id:
+            continue
+        entry = evidence.setdefault(request_id, {})
+        entry["staff_contacted"] = True
+        entry["staff_contacted_at"] = _latest_timestamp(
+            row.get("followup_staff_contacted_at"),
+            row.get("followup_contacted_at"),
+            row.get("followup_stopped_at"),
+        )
+
+    # request_ids are written into every newly-created follow-up item.  Do not
+    # infer a relationship from a phone number: that could attribute a send
+    # to the wrong request, especially for shared household numbers.
+    item_query = {
+        **scope,
+        "communication_kind": "registration_followup",
+        "status": "sent",
+    }
+    items = await db["whatsapp_campaign_job_items"].find(
+        item_query,
+        {"_id": 0, "source_metadata": 1, "sent_at": 1, "completed_at": 1},
+    ).to_list(10000)
+    for item in items:
+        metadata = item.get("source_metadata") or {}
+        request_ids = metadata.get("request_ids") or []
+        if isinstance(request_ids, str):
+            request_ids = [request_ids]
+        if not isinstance(request_ids, (list, tuple, set)):
+            continue
+        sent_at = _latest_timestamp(item.get("sent_at"), item.get("completed_at"))
+        for request_id in request_ids:
+            if not request_id:
+                continue
+            entry = evidence.setdefault(request_id, {})
+            entry["automatic_sent"] = True
+            entry["automatic_sent_at"] = _latest_timestamp(
+                entry.get("automatic_sent_at"), sent_at
+            )
+    return evidence
+
+
+async def _sanitize_registration_requests(rows: list, current_user: dict) -> list:
+    if await _can_view_registration_request_phones(current_user):
+        return rows
+    for row in rows:
+        row["customer_phone"] = _mask_phone(row.get("customer_phone"))
+        row["customer_phone_masked"] = True
+    return rows
+
+
+def _attach_followed_evidence(row: dict, evidence: dict):
+    details = evidence.get(row.get("id"))
+    if not details:
+        return
+    types = []
+    if details.get("staff_contacted"):
+        types.append("staff_contacted")
+    if details.get("automatic_sent"):
+        types.append("automatic")
+    row["followup_types"] = types
+    row["followup_staff_contacted"] = bool(details.get("staff_contacted"))
+    row["followup_staff_contacted_at"] = details.get("staff_contacted_at")
+    row["followup_automatic_sent"] = bool(details.get("automatic_sent"))
+    row["followup_automatic_sent_at"] = details.get("automatic_sent_at")
 
 
 def _academy_name() -> str:
@@ -357,19 +535,34 @@ async def list_registration_requests(
     branch_filter: Optional[str] = None,
     status: Optional[str] = "pending",
     current_user: dict = Depends(get_current_user),
+    search: Optional[str] = None,
 ):
     query: dict = {}
     effective_branch = resolve_branch_filter(current_user, branch_filter)
     if effective_branch:
         query["branch_id"] = effective_branch
-    if status and status != "all":
+    followed_evidence = {}
+    if status == "followed_up":
+        followed_evidence = await _followed_up_evidence(
+            {"branch_id": effective_branch} if effective_branch else {}
+        )
+        # This intentionally does not constrain request status.  A follow-up
+        # can be recorded while pending and the request can later be
+        # processed, rejected, or archived; all such rows belong in this
+        # history tab.
+        query["id"] = {"$in": list(followed_evidence)}
+    elif status and status != "all":
         query["status"] = status
     elif status == "all":
         # "الكل" tab shows active requests only; archived ones live in their own tab
         query["status"] = {"$ne": "archived"}
 
+    _search_registration_requests(query, search)
     requests = await db.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    return requests
+    if followed_evidence:
+        for request in requests:
+            _attach_followed_evidence(request, followed_evidence)
+    return await _sanitize_registration_requests(requests, current_user)
 
 
 @router.put("/registration-requests/{req_id}")
@@ -421,7 +614,11 @@ async def stop_registration_followup(
         raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الطلب")
     from services import registration_followups
     await registration_followups.stop_request(req, payload.reason)
-    return await db.registration_requests.find_one({"id": req_id}, {"_id": 0})
+    updated = await db.registration_requests.find_one({"id": req_id}, {"_id": 0})
+    if not updated:
+        raise HTTPException(status_code=404, detail="Request not found")
+    sanitized = await _sanitize_registration_requests([updated], current_user)
+    return sanitized[0]
 
 
 @router.delete("/registration-requests/{req_id}")
