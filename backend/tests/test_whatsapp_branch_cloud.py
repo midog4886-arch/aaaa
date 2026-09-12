@@ -424,6 +424,205 @@ def test_cloud_inbox_reply_inside_24_hours_uses_free_text(monkeypatch):
     assert db["whatsapp_cloud_messages"].rows[0]["meta_message_id"] == "wamid.outbound-1"
 
 
+def test_whatsflow_text_send_preserves_existing_digits_recipient(monkeypatch):
+    seen = []
+
+    class Client:
+        async def send_text(self, number, message, **kwargs):
+            seen.append((number, message, kwargs))
+            return True, {"key": {"id": "flow-text-1"}}, None
+
+    monkeypatch.setattr(whatsapp_mod, "_whatsflow_client", lambda _config: Client())
+    result = run(whatsapp_mod._send_whatsflow_message_result(
+        "0501234567",
+        "hello",
+        {"provider": "whatsflow", "enabled": True},
+    ))
+
+    assert result == (True, "flow-text-1", None)
+    assert seen == [(
+        "0501234567",
+        "hello",
+        {"delay": 0, "link_preview": False},
+    )]
+
+
+def test_cloud_inbox_image_send_persists_private_media_message(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "provider": "waha",
+        "enabled": True,
+        "waha_session_name": "main",
+    })
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-a:966501234567",
+        "branch_id": "branch-a",
+        "provider": "waha",
+        "phone": "966501234567",
+        "last_inbound_at": whatsapp_mod.datetime.now(
+            whatsapp_mod.timezone.utc
+        ).isoformat(),
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    stopped = []
+    sent = []
+
+    async def stop_phone(*args):
+        stopped.append(args)
+
+    async def store(branch_id, content, mime_type, filename):
+        assert branch_id == "branch-a"
+        assert content.startswith(b"\x89PNG\r\n\x1a\n")
+        assert mime_type == "image/png"
+        return {
+            "media_id": "private-media-1",
+            "mime_type": mime_type,
+            "filename": filename,
+            "size": len(content),
+        }
+
+    async def send(phone, content, mime_type, filename, caption, config, inside, branch):
+        sent.append((phone, content, mime_type, filename, caption, config, inside, branch))
+        return True, "waha-image-1", None, False, None
+
+    monkeypatch.setattr(whatsapp_mod.registration_followups, "stop_phone", stop_phone)
+    monkeypatch.setattr(whatsapp_mod, "_store_cloud_chat_image", store)
+    monkeypatch.setattr(whatsapp_mod, "_send_cloud_chat_image_result", send)
+
+    class Upload:
+        filename = "../../offer.png"
+        content_type = "image/png"
+        done = False
+
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\nprivate-image"
+
+    result = run(whatsapp_mod.send_cloud_inbox_media(
+        "branch-a:966501234567",
+        caption="Offer",
+        attachments=[Upload()],
+        current_user={"is_admin": True, "id": "staff-1"},
+    ))
+
+    assert result["success"] is True
+    assert result["message"]["status"] == "sent"
+    assert result["message"]["type"] == "image"
+    assert result["message"]["media_storage_id"] == "private-media-1"
+    assert result["message"]["waha_message_id"] == "waha-image-1"
+    assert stopped == [("branch-a", "966501234567", "staff_contacted")]
+    assert sent[0][0] == "966501234567"
+    assert sent[0][4] == "Offer"
+    assert sent[0][7] == "branch-a"
+
+
+def test_cloud_inbox_image_send_rejects_cross_branch_before_storage(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-b:966501234567",
+        "branch_id": "branch-b",
+        "provider": "waha",
+        "phone": "966501234567",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    called = []
+
+    async def store(*_args):
+        called.append(True)
+        raise AssertionError("unauthorized upload must not be stored")
+
+    monkeypatch.setattr(whatsapp_mod, "_store_cloud_chat_image", store)
+
+    class Upload:
+        filename = "image.png"
+        content_type = "image/png"
+        done = False
+
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\nimage"
+
+    with pytest.raises(Exception) as exc:
+        run(whatsapp_mod.send_cloud_inbox_media(
+            "branch-b:966501234567",
+            attachments=[Upload()],
+            current_user={
+                "is_admin": False,
+                "permissions": ["messages"],
+                "branch_id": "branch-a",
+            },
+        ))
+    assert getattr(exc.value, "status_code", None) == 403
+    assert called == []
+
+
+def test_cloud_inbox_image_unknown_provider_failure_is_explicit_and_cleans_media(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a",
+        "provider": "waha",
+        "enabled": True,
+        "waha_session_name": "main",
+    })
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-a:966501234567",
+        "branch_id": "branch-a",
+        "provider": "waha",
+        "phone": "966501234567",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    deleted = []
+
+    async def stop_phone(*_args):
+        return None
+
+    async def store(*_args):
+        return {
+            "media_id": "private-media-failed",
+            "mime_type": "image/png",
+            "filename": "image.png",
+            "size": 12,
+        }
+
+    async def send(*_args):
+        return False, None, "ReadTimeout", False, None
+
+    async def delete(branch_id, media_id):
+        deleted.append((branch_id, media_id))
+
+    monkeypatch.setattr(whatsapp_mod.registration_followups, "stop_phone", stop_phone)
+    monkeypatch.setattr(whatsapp_mod, "_store_cloud_chat_image", store)
+    monkeypatch.setattr(whatsapp_mod, "_send_cloud_chat_image_result", send)
+    monkeypatch.setattr(whatsapp_mod, "_delete_cloud_chat_image", delete)
+
+    class Upload:
+        filename = "image.png"
+        content_type = "image/png"
+        done = False
+
+        async def read(self, _size=-1):
+            if self.done:
+                return b""
+            self.done = True
+            return b"\x89PNG\r\n\x1a\nimage"
+
+    with pytest.raises(Exception) as exc:
+        run(whatsapp_mod.send_cloud_inbox_media(
+            "branch-a:966501234567",
+            attachments=[Upload()],
+            current_user={"is_admin": True},
+        ))
+    assert getattr(exc.value, "status_code", None) == 502
+    assert "delivery outcome is unknown" in str(exc.value.detail)
+    assert deleted == [("branch-a", "private-media-failed")]
+    assert db["whatsapp_cloud_messages"].rows == []
+
+
 def test_meta_webhook_routes_multi_phone_batch_to_each_branch(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
     db = _DB()

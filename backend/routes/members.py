@@ -11,6 +11,7 @@ from utils.auth import require_branch_scope, resolve_branch_filter, require_perm
 from utils.sequences import get_branch_seq_start
 from utils.member_code import generate_member_code
 from utils.cache import cache_invalidate, invalidate_dashboard_caches
+from utils.phone import normalize_phone, phone_lookup_values
 
 router = APIRouter(prefix="/members", tags=["members"])
 
@@ -374,6 +375,85 @@ def _scoped_member_query(member_id: str, current_user: dict) -> dict:
     if effective_branch:
         query["branch_id"] = effective_branch
     return query
+
+
+@router.get("/lookup-by-phone")
+async def lookup_members_by_phone(
+    phone: str = Query(""),
+    current_user: dict = Depends(get_current_user),
+):
+    """Find member profiles associated with a WhatsApp phone number.
+
+    This is intentionally separate from the regular member list: admins may
+    resolve a conversation from any branch in the current tenant, while
+    non-admins remain pinned to their active branch and must have the
+    ``member-phones`` permission.  Only the fields needed to choose a profile
+    are returned; the full member document is loaded by the existing
+    ``?focus=<id>`` Members page deeplink after a choice.
+    """
+    if not await _can_view_member_phones(current_user):
+        raise HTTPException(status_code=403, detail="تتطلب هذه العملية صلاحية member-phones")
+
+    normalized = normalize_phone(phone)
+    if not normalized:
+        return {"members": []}
+
+    effective_branch = resolve_branch_filter(current_user, None)
+    significant = (
+        normalized[3:] if normalized.startswith("966") else
+        normalized[2:] if normalized.startswith("20") else normalized
+    )
+    query = {
+        "$or": [
+            {"phone": {"$in": phone_lookup_values(phone)}},
+            # Legacy imports may contain spaces, dashes, or parentheses.  The
+            # final Python comparison below remains authoritative, so this
+            # broad sequence only narrows the minimal projection query.
+            {"phone": {"$regex": r"\D*".join(
+                re.escape(digit) for digit in significant
+            )}},
+        ],
+    }
+    if effective_branch:
+        query["branch_id"] = effective_branch
+
+    projection = {
+        "_id": 0,
+        "id": 1,
+        "name": 1,
+        "name_ar": 1,
+        "phone": 1,
+        "branch_id": 1,
+    }
+    rows = await db.members.find(query, projection).limit(100).to_list(100)
+    members = [
+        dict(row) for row in rows
+        if normalize_phone(row.get("phone")) == normalized
+    ]
+
+    branch_ids = list({row.get("branch_id") for row in members if row.get("branch_id")})
+    branch_names = {}
+    if branch_ids:
+        branch_rows = await db.branches.find(
+            {"id": {"$in": branch_ids}},
+            {"_id": 0, "id": 1, "name": 1, "name_ar": 1},
+        ).to_list(len(branch_ids))
+        branch_names = {row["id"]: row for row in branch_rows}
+
+    for member in members:
+        branch = branch_names.get(member.get("branch_id")) or {}
+        member["branch_name"] = branch.get("name") or member.get("branch_id") or ""
+        member["branch_name_ar"] = (
+            branch.get("name_ar")
+            or branch.get("name")
+            or member.get("branch_id")
+            or ""
+        )
+        # ``phone`` is needed only for the canonical comparison above and is
+        # deliberately not exposed in the lookup response.
+        member.pop("phone", None)
+
+    return {"members": members}
 
 
 @router.get("/{member_id}", response_model=Member)

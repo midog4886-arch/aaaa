@@ -465,7 +465,10 @@ export const MembersPage = () => {
   const consumedFocusRef = useRef(null);
   useEffect(() => {
     const focusId = searchParams.get('focus');
-    if (!focusId || !members || members.length === 0) return;
+    // Wait for the branch-filtered list to finish loading.  An empty list is
+    // still a valid loaded state for an admin arriving from another branch;
+    // the direct getById fallback below must run in that case.
+    if (!focusId || loading) return;
     // Consume each focus id once: without this, any later members reload
     // (loadData after freeze/renewal...) re-opens the focused member on top
     // of whatever the admin navigated to.
@@ -484,7 +487,7 @@ export const MembersPage = () => {
         .catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members, searchParams]);
+  }, [members, searchParams, loading]);
 
   const loadData = async () => {
     try {

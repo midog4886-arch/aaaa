@@ -27,6 +27,7 @@ from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
 from services import whatsapp_bulk_jobs
 from services import campaign_inbox, registration_followups
+from utils.phone import normalize_phone, phone_lookup_values
 
 logger = logging.getLogger("whatsapp")
 _bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
@@ -36,6 +37,12 @@ CAMPAIGN_PDF_LIMIT = 20 * 1024 * 1024
 CAMPAIGN_MAX_PASTED_RECIPIENTS = 2000
 CAMPAIGN_ATTACHMENT_CHUNK_SIZE = 1024 * 1024
 CAMPAIGN_MAX_IMAGES = 10
+# Direct inbox media is deliberately smaller than the provider's general
+# limits.  It is stored in private tenant/branch-scoped chunks so a successful
+# chat send can still be rendered after the provider's temporary media URL has
+# expired.
+CLOUD_CHAT_IMAGE_LIMIT = 5 * 1024 * 1024
+CLOUD_CHAT_MEDIA_CHUNK_SIZE = 1024 * 1024
 BILINGUAL_ENGLISH_MARKER = "— English —"
 
 
@@ -92,6 +99,112 @@ def _require_bulk_whatsapp_access(current_user: dict):
     permissions = current_user.get("permissions") or []
     if "messages" not in permissions and "whatsapp" not in permissions:
         raise HTTPException(status_code=403, detail="Messages access required")
+
+
+async def _can_view_member_phone_matches(current_user: dict) -> bool:
+    """Return whether the caller may receive member-existence indicators.
+
+    The inbox only needs a boolean match indicator, but that is still member
+    PII.  Check the tenant-local user document rather than trusting a client
+    supplied flag.  Admins are tenant-wide; non-admins need the same
+    ``member-phones`` permission used by the member lookup endpoint.
+    """
+    if current_user.get("is_admin", False):
+        return True
+    if _db is None or not current_user.get("user_id"):
+        return False
+    user = await _db["users"].find_one(
+        {"id": current_user["user_id"]},
+        {"_id": 0, "permissions": 1},
+    )
+    return "member-phones" in ((user or {}).get("permissions") or [])
+
+
+def _member_phone_regex(canonical: str) -> str:
+    """Match a legacy phone value whose digits normalize to ``canonical``.
+
+    The final Python normalization below is authoritative.  This regex only
+    narrows one batched Mongo query to values containing the canonical local
+    number, including records imported with spaces/dashes/parentheses.
+    """
+    significant = (
+        canonical[3:] if canonical.startswith("966")
+        else canonical[2:] if canonical.startswith("20")
+        else canonical
+    )
+    return r"\D*".join(re.escape(digit) for digit in significant)
+
+
+async def _enrich_member_phone_matches(
+    rows: list,
+    current_user: dict,
+    member_branch: Optional[str] = None,
+) -> list:
+    """Add a boolean registered-member indicator with one scoped DB lookup.
+
+    ``rows`` are already scoped conversations.  Matching is intentionally
+    independent of the conversation branch for admins: a member registered in
+    any tenant branch is a proven match, even when the admin's active branch
+    differs.  Non-admins are restricted to the branch already authorized by
+    the conversation route.  Only ``phone`` and ``branch_id`` are projected;
+    no member details are returned in the indicator.
+    """
+    can_view = await _can_view_member_phone_matches(current_user)
+    if not can_view:
+        # Do not leak a stale or user-controlled flag to callers who cannot
+        # view member phones.  The frontend treats an absent flag as neutral.
+        for row in rows:
+            row.pop("member_phone_match", None)
+        return rows
+
+    normalized_phones = {
+        normalize_phone(row.get("phone"))
+        for row in rows
+        if normalize_phone(row.get("phone"))
+    }
+    if not normalized_phones:
+        for row in rows:
+            row["member_phone_match"] = False
+        return rows
+
+    exact_values = []
+    for phone in normalized_phones:
+        exact_values.extend(phone_lookup_values(phone))
+    exact_values = list(dict.fromkeys(exact_values))
+    phone_clauses = [{"phone": {"$in": exact_values}}]
+    phone_clauses.extend(
+        {"phone": {"$regex": _member_phone_regex(phone)}}
+        for phone in normalized_phones
+    )
+    query = {"$or": phone_clauses}
+
+    # Admins intentionally have no branch restriction.  For a non-admin,
+    # ``member_branch`` comes from resolve_branch_filter/_assert_branch_access
+    # and therefore cannot be widened by the inbox phone data.
+    if not current_user.get("is_admin", False):
+        if not member_branch:
+            member_branch = resolve_branch_filter(current_user, None)
+        query["branch_id"] = member_branch
+
+    member_rows = await _db["members"].find(
+        query,
+        {"_id": 0, "phone": 1, "branch_id": 1},
+    ).to_list(length=None)
+    matched_phones = {
+        normalize_phone(member.get("phone"))
+        for member in member_rows
+        if normalize_phone(member.get("phone")) in normalized_phones
+    }
+    for row in rows:
+        row["member_phone_match"] = (
+            normalize_phone(row.get("phone")) in matched_phones
+            and (
+                current_user.get("is_admin", False)
+                or not member_branch
+                or row.get("branch_id") == member_branch
+            )
+        )
+    return rows
 
 
 def _require_renewals_or_whatsapp_access(current_user: dict):
@@ -3343,6 +3456,13 @@ async def list_cloud_inbox_conversations(
                 "last_message", "last_message_at", "last_direction",
             )})
     rows = sorted(merged.values(), key=lambda row: campaign_inbox.iso(row.get("last_message_at")), reverse=True)[:200]
+    rows = await _enrich_member_phone_matches(
+        rows,
+        current_user,
+        # Admins are intentionally enriched tenant-wide inside the helper;
+        # non-admins stay within the branch resolved for this list request.
+        member_branch=effective_branch,
+    )
     branch_cache = {}
     for row in rows:
         branch_id = row.get("branch_id")
@@ -3386,6 +3506,13 @@ async def get_cloud_inbox_thread(
         {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
     )
     conversation["branch_name"] = (branch or {}).get("name")
+    conversation = (
+        await _enrich_member_phone_matches(
+            [conversation],
+            current_user,
+            member_branch=conversation.get("branch_id"),
+        )
+    )[0]
     return {"conversation": conversation, "messages": messages}
 
 
@@ -3400,6 +3527,126 @@ async def _campaign_conversation(conversation_id, current_user):
     latest = max(messages, key=lambda m: m["created_at"])
     return {"id": conversation_id, "branch_id": branch_id, "phone": phone,
             "provider": latest["provider"], "contact_name": phone, "unread_count": 0}
+
+
+def _cloud_media_scope(branch_id: str, media_id: str) -> dict:
+    """Build the complete scope for a private direct-chat media object.
+
+    Tenant databases are already isolated by the database proxy, but retaining
+    the tenant slug in these records makes accidental cross-tenant reads
+    fail closed if a proxy or test double is ever misconfigured.
+    """
+    return {
+        "tenant_slug": get_current_tenant_slug(),
+        "branch_id": branch_id,
+        "media_id": media_id,
+    }
+
+
+async def _read_cloud_chat_image(upload: UploadFile) -> tuple[bytes, str, str]:
+    """Read and validate one direct-chat JPG/PNG upload.
+
+    The browser's MIME type is only a hint.  The signature and bounded read are
+    authoritative, so a renamed HTML/JS file cannot become an image message.
+    """
+    mime = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    if mime not in {"image/jpeg", "image/png"}:
+        raise HTTPException(status_code=400, detail="Only JPG and PNG images are supported")
+
+    content = bytearray()
+    while True:
+        chunk = await upload.read(CLOUD_CHAT_MEDIA_CHUNK_SIZE)
+        if not chunk:
+            break
+        content.extend(chunk)
+        if len(content) > CLOUD_CHAT_IMAGE_LIMIT:
+            raise HTTPException(status_code=413, detail="Image exceeds the 5 MB limit")
+    raw = bytes(content)
+    if not raw:
+        raise HTTPException(status_code=400, detail="Image is empty")
+    signature_ok = (
+        raw.startswith(b"\xff\xd8\xff")
+        if mime == "image/jpeg"
+        else raw.startswith(b"\x89PNG\r\n\x1a\n")
+    )
+    if not signature_ok:
+        raise HTTPException(status_code=400, detail="Image content does not match its type")
+    extension = ".jpg" if mime == "image/jpeg" else ".png"
+    filename = Path(upload.filename or f"image{extension}").name[:180]
+    if not filename or filename in {".", ".."}:
+        filename = f"image{extension}"
+    return raw, mime, filename
+
+
+async def _store_cloud_chat_image(branch_id: str, content: bytes, mime: str, filename: str) -> dict:
+    """Store direct-chat bytes privately before provider dispatch."""
+    media_id = str(uuid.uuid4())
+    scope = _cloud_media_scope(branch_id, media_id)
+    chunks = _db["whatsapp_cloud_media_chunks"]
+    meta = _db["whatsapp_cloud_media"]
+    try:
+        for index, offset in enumerate(
+            range(0, len(content), CLOUD_CHAT_MEDIA_CHUNK_SIZE)
+        ):
+            await chunks.insert_one({
+                **scope,
+                "index": index,
+                "data": content[offset:offset + CLOUD_CHAT_MEDIA_CHUNK_SIZE],
+            })
+        await meta.insert_one({
+            **scope,
+            "name": filename,
+            "mime_type": mime,
+            "size": len(content),
+            "chunk_count": (
+                len(content) + CLOUD_CHAT_MEDIA_CHUNK_SIZE - 1
+            ) // CLOUD_CHAT_MEDIA_CHUNK_SIZE,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        await _delete_cloud_chat_image(branch_id, media_id)
+        raise
+    return {
+        "media_id": media_id,
+        "mime_type": mime,
+        "filename": filename,
+        "size": len(content),
+    }
+
+
+async def _delete_cloud_chat_image(branch_id: str, media_id: Optional[str]):
+    if not media_id:
+        return
+    scope = _cloud_media_scope(branch_id, media_id)
+    chunks = _db["whatsapp_cloud_media_chunks"]
+    meta = _db["whatsapp_cloud_media"]
+    if hasattr(chunks, "delete_many"):
+        await chunks.delete_many(scope)
+    if hasattr(meta, "delete_one"):
+        await meta.delete_one(scope)
+
+
+async def _load_cloud_chat_image(branch_id: str, media_id: str) -> tuple[bytes, str, str]:
+    scope = _cloud_media_scope(branch_id, media_id)
+    meta = await _db["whatsapp_cloud_media"].find_one(scope, {"_id": 0})
+    if not meta:
+        raise HTTPException(status_code=404, detail="Media not found")
+    expected_chunks = int(meta.get("chunk_count") or 0)
+    cursor = _db["whatsapp_cloud_media_chunks"].find(scope).sort("index", 1)
+    chunks = await cursor.to_list(length=expected_chunks + 1)
+    if (
+        len(chunks) != expected_chunks
+        or any(chunk.get("index") != index for index, chunk in enumerate(chunks))
+        or sum(len(chunk.get("data") or b"") for chunk in chunks)
+        != int(meta.get("size") or 0)
+    ):
+        raise HTTPException(status_code=500, detail="Stored image data is incomplete")
+    content = b"".join(chunk.get("data") or b"" for chunk in chunks)
+    if len(content) > CLOUD_CHAT_IMAGE_LIMIT:
+        raise HTTPException(status_code=500, detail="Stored image exceeds the allowed size")
+    return content, str(meta.get("mime_type") or "application/octet-stream"), str(
+        meta.get("name") or "image"
+    )
 
 
 @router.get("/cloud-inbox/media/{message_id}")
@@ -3419,9 +3666,22 @@ async def get_cloud_inbox_media(
     message = await _db["whatsapp_cloud_messages"].find_one(
         {"id": message_id}, {"_id": 0}
     )
-    if not message or not (message.get("media_id") or message.get("media_url")):
+    if not message or not (
+        message.get("media_storage_id")
+        or message.get("media_id")
+        or message.get("media_url")
+    ):
         raise HTTPException(status_code=404, detail="Media not found")
     _assert_branch_access(current_user, message.get("branch_id"))
+    if message.get("media_storage_id"):
+        content, mime_type, _filename = await _load_cloud_chat_image(
+            message["branch_id"], message["media_storage_id"]
+        )
+        return Response(
+            content=content,
+            media_type=mime_type,
+            headers={"Cache-Control": "private, max-age=300"},
+        )
     config = await _get_branch_cloud_config(message.get("branch_id"))
     if message.get("provider") == "whatsflow":
         media_url = str(message.get("media_url") or "")
@@ -3664,6 +3924,222 @@ async def reply_to_cloud_inbox_thread(
         }},
     )
     return {"success": True, "message": message, "used_template": not inside_service_window}
+
+
+@router.post("/cloud-inbox/conversations/{conversation_id}/media")
+async def send_cloud_inbox_media(
+    conversation_id: str,
+    caption: str = Form(""),
+    # Keep this as a plain list: production FastAPI's multipart parser does
+    # not correctly unwrap Optional[List[UploadFile]].
+    attachments: List[UploadFile] = File(default=[]),
+    current_user: dict = Depends(get_current_user),
+):
+    """Send one private JPG/PNG image from the authenticated branch thread."""
+    _require_bulk_whatsapp_access(current_user)
+    uploads = list(attachments) if isinstance(attachments, (list, tuple)) else []
+    if len(uploads) != 1:
+        raise HTTPException(status_code=400, detail="Attach exactly one JPG or PNG image")
+    caption = (caption if isinstance(caption, str) else "").strip()
+    if len(caption) > 4096:
+        raise HTTPException(status_code=400, detail="Caption must be 4096 characters or fewer")
+
+    conversation = await _db["whatsapp_cloud_conversations"].find_one(
+        {"id": conversation_id}, {"_id": 0}
+    )
+    if not conversation:
+        conversation = await _campaign_conversation(conversation_id, current_user)
+    branch_id = conversation.get("branch_id")
+    _assert_branch_access(current_user, branch_id)
+    config = await _get_branch_cloud_config(branch_id)
+    provider = _branch_provider(config)
+
+    now_dt = datetime.now(timezone.utc)
+    inside_service_window = False
+    if provider == "meta_cloud":
+        try:
+            last_inbound = datetime.fromisoformat(
+                str(conversation.get("last_inbound_at") or "").replace("Z", "+00:00")
+            )
+            if last_inbound.tzinfo is None:
+                last_inbound = last_inbound.replace(tzinfo=timezone.utc)
+            inside_service_window = now_dt - last_inbound <= timedelta(hours=24)
+        except Exception:
+            inside_service_window = False
+    if provider not in {"meta_cloud", "waha", "whatsflow"}:
+        raise HTTPException(
+            status_code=400,
+            detail="No active WhatsApp provider is configured for this branch",
+        )
+    if provider == "waha" and not _waha_config_for_branch(config):
+        raise HTTPException(status_code=400, detail="WAHA is not configured for this branch")
+    if provider == "whatsflow" and not (
+        config
+        and config.get("enabled")
+        and config.get("whatsflow_instance")
+        and config.get("whatsflow_api_key_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Whatsflow is not configured for this branch")
+    if provider == "meta_cloud" and not (
+        config
+        and config.get("enabled")
+        and config.get("phone_number_id")
+        and config.get("access_token_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Branch Meta API is not configured")
+    if provider == "meta_cloud" and not inside_service_window:
+        if not (
+            config.get("image_template_name")
+            and config.get("media_templates_confirmed")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="The 24-hour window ended; configure an approved Meta image template",
+            )
+        if not caption:
+            raise HTTPException(
+                status_code=400,
+                detail="A caption is required when Meta uses the approved image template",
+            )
+
+    # Validate and store before dispatch.  This avoids a sent message pointing
+    # at missing bytes if the provider accepts it immediately.  Failed sends
+    # remove the private object and return an explicit error; nothing retries.
+    content, mime_type, filename = await _read_cloud_chat_image(uploads[0])
+    if provider == "whatsflow":
+        # Match the webhook's existing index exactly, and prepare it before
+        # dispatch so index failures cannot follow a successful external send.
+        await _db["whatsapp_cloud_messages"].create_index(
+            [("branch_id", 1), ("provider", 1), ("provider_message_id", 1)],
+            unique=True,
+            partialFilterExpression={
+                "provider": "whatsflow", "provider_message_id": {"$exists": True}
+            },
+        )
+    media_ref = None
+    media_owned_by_message = False
+    try:
+        media_ref = await _store_cloud_chat_image(
+            branch_id, content, mime_type, filename
+        )
+        # Explicit staff contact stops registration follow-up before touching
+        # the provider, preserving the existing webhook-echo race guard.
+        await registration_followups.stop_phone(
+            branch_id, conversation.get("phone") or "", "staff_contacted"
+        )
+        (
+            success,
+            provider_message_id,
+            error,
+            used_template,
+            provider_media_id,
+        ) = await _send_cloud_chat_image_result(
+            conversation.get("phone") or "",
+            content,
+            mime_type,
+            filename,
+            caption,
+            config or {},
+            inside_service_window,
+            branch_id,
+        )
+        if not success:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"{provider} image delivery outcome is unknown "
+                    f"({error or 'unknown'}); no automatic retry was attempted"
+                ),
+            )
+        now = now_dt.isoformat()
+        message = {
+            "id": str(uuid.uuid4()),
+            "conversation_id": conversation_id,
+            "branch_id": branch_id,
+            "provider": provider,
+            "provider_message_id": provider_message_id,
+            "direction": "outbound",
+            "phone": conversation.get("phone"),
+            "type": "image",
+            "body": caption,
+            # media_id remains present for the existing inbox renderer, while
+            # media_storage_id makes retrieval unambiguously private.
+            "media_id": media_ref["media_id"],
+            "media_storage_id": media_ref["media_id"],
+            "provider_media_id": provider_media_id,
+            "mime_type": mime_type,
+            "filename": filename,
+            "status": "sent",
+            "created_at": now,
+            "sent_by": current_user.get("user_id") or current_user.get("id"),
+            "source": "cloud_inbox",
+        }
+        if provider == "waha" and provider_message_id:
+            message["waha_message_id"] = provider_message_id
+        if provider == "meta_cloud" and provider_message_id:
+            message["meta_message_id"] = provider_message_id
+        messages = _db["whatsapp_cloud_messages"]
+        try:
+            await messages.insert_one(message)
+            media_owned_by_message = True
+        except DuplicateKeyError:
+            existing = await messages.find_one(
+                {
+                    "branch_id": branch_id,
+                    "provider": provider,
+                    "provider_message_id": provider_message_id,
+                },
+                {"_id": 0},
+            )
+            if not existing:
+                raise
+            # Attach the authenticated upload to the already-recorded echo so
+            # the image remains private and visible after refresh.
+            await messages.update_one(
+                {"id": existing["id"], "branch_id": branch_id},
+                {"$set": {
+                    "media_id": media_ref["media_id"],
+                    "media_storage_id": media_ref["media_id"],
+                    "mime_type": mime_type,
+                    "filename": filename,
+                    "body": caption,
+                    "type": "image",
+                }},
+            )
+            media_owned_by_message = True
+            message = {**existing, **{
+                "media_id": media_ref["media_id"],
+                "media_storage_id": media_ref["media_id"],
+                "mime_type": mime_type,
+                "filename": filename,
+                "body": caption,
+                "type": "image",
+            }}
+        await _db["whatsapp_cloud_conversations"].update_one(
+            {"id": conversation_id, "branch_id": branch_id},
+            {"$set": {
+                "last_message": caption or "[image]",
+                "last_message_at": now,
+                "last_direction": "outbound",
+            }},
+        )
+        return {
+            "success": True,
+            "message": message,
+            "used_template": used_template,
+        }
+    except HTTPException:
+        if media_ref and not media_owned_by_message:
+            await _delete_cloud_chat_image(branch_id, media_ref["media_id"])
+        raise
+    except Exception as exc:
+        if media_ref and not media_owned_by_message:
+            await _delete_cloud_chat_image(branch_id, media_ref["media_id"])
+        logger.error("Cloud inbox image send failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail="Image delivery outcome is unknown; no automatic retry was attempted",
+        )
 
 
 class BranchCloudTestRequest(BaseModel):
@@ -4568,6 +5044,142 @@ async def _send_meta_media_template_result(
     return False, None, (
         f"http_{response.status_code}" if "response" in locals() else "send_failed"
     )
+
+
+async def _send_meta_chat_image_result(
+    phone: str, caption: str, media_id: str, config: dict
+) -> tuple[bool, Optional[str], Optional[str]]:
+    """Send an uploaded image as a normal Meta media message.
+
+    This path is only used inside Meta's customer-service window.  Outside
+    that window the caller uses the branch's explicitly approved image
+    template instead.
+    """
+    digits = "".join(filter(str.isdigit, phone or ""))
+    if not digits:
+        return False, None, "invalid_phone"
+    token = _decrypt_access_token(config["access_token_encrypted"])
+    version = (config.get("graph_api_version") or "v23.0").strip()
+    url = f"https://graph.facebook.com/{version}/{config['phone_number_id']}/messages"
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": wa_phone.split("@")[0],
+        "type": "image",
+        "image": {
+            "id": media_id,
+            **({"caption": caption} if caption else {}),
+        },
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                json=payload,
+            )
+        provider_message_id = None
+        if 200 <= response.status_code < 300:
+            try:
+                provider_message_id = (
+                    (response.json().get("messages") or [{}])[0].get("id")
+                )
+            except Exception:
+                pass
+            return True, provider_message_id, None
+        logger.error("Meta chat image send failed: HTTP %s", response.status_code)
+        return False, None, f"http_{response.status_code}"
+    except Exception as exc:
+        logger.error("Meta chat image send failed: %s", type(exc).__name__)
+        return False, None, type(exc).__name__
+
+
+async def _send_cloud_chat_image_result(
+    phone: str,
+    content: bytes,
+    mime_type: str,
+    filename: str,
+    caption: str,
+    config: dict,
+    inside_service_window: bool,
+    branch_id: Optional[str] = None,
+) -> tuple[bool, Optional[str], Optional[str], bool, Optional[str]]:
+    """Dispatch one inbox image through exactly the configured branch provider.
+
+    The final two return values are whether a Meta template was used and the
+    provider's uploaded media ID (if one exists).  No provider call is retried
+    here; callers surface all failures to the operator.
+    """
+    provider = _branch_provider(config)
+    if provider == "waha":
+        session = config.get("waha_physical_session_id") or _waha_physical_session_id(
+            str(branch_id or config.get("branch_id") or ""),
+            str(config.get("waha_session_name") or ""),
+        )
+        wa_phone = _format_cloud_phone(phone)
+        if not wa_phone or not session:
+            return False, None, "invalid_waha_config", False, None
+        success, response, error = await WAHAClient().send_media(
+            session,
+            _waha_chat_id(wa_phone),
+            content,
+            mime_type,
+            filename,
+            caption,
+            image=True,
+        )
+        return (
+            success,
+            _canonical_waha_message_id(response),
+            error,
+            False,
+            None,
+        )
+    if provider == "whatsflow":
+        wa_phone = _format_cloud_phone(phone)
+        if not wa_phone:
+            return False, None, "invalid_phone", False, None
+        success, response, error = await _whatsflow_client(config).send_media(
+            wa_phone,
+            "image",
+            mime_type,
+            caption,
+            base64.b64encode(content).decode("ascii"),
+            filename,
+        )
+        provider_message_id = None
+        if isinstance(response, dict):
+            key = response.get("key")
+            provider_message_id = (
+                (key.get("id") if isinstance(key, dict) else None)
+                or response.get("id")
+            )
+        return success, provider_message_id, error, False, None
+    if provider != "meta_cloud":
+        return False, None, "image_not_supported_for_branch_provider", False, None
+    if not (
+        config.get("enabled")
+        and config.get("phone_number_id")
+        and config.get("access_token_encrypted")
+    ):
+        return False, None, "meta_not_configured", False, None
+    if not inside_service_window and not (
+        config.get("image_template_name")
+        and config.get("media_templates_confirmed")
+    ):
+        return False, None, "approved_meta_image_template_required", False, None
+    if not inside_service_window and not caption:
+        return False, None, "caption_required_for_meta_image_template", False, None
+    media_id = await _upload_meta_bulk_media(content, filename, mime_type, config)
+    if inside_service_window:
+        success, provider_message_id, error = await _send_meta_chat_image_result(
+            phone, caption, media_id, config
+        )
+        return success, provider_message_id, error, False, media_id
+    success, provider_message_id, error = await _send_meta_media_template_result(
+        phone, caption, media_id, "image", filename, config
+    )
+    return success, provider_message_id, error, True, media_id
 
 
 async def _send_meta_media_template(

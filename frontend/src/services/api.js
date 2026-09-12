@@ -138,6 +138,7 @@ export const tournamentsAPI = {
 export const membersAPI = {
   getAll: (params = {}) => axios.get(`${API}/members`, { params }),
   getById: (id) => axios.get(`${API}/members/${id}`),
+  lookupByPhone: (phone) => axios.get(`${API}/members/lookup-by-phone`, { params: { phone } }),
   create: (data) => axios.post(`${API}/members`, data),
   quickCreate: (data) => axios.post(`${API}/members/quick-create`, data),
   update: (id, data) => axios.put(`${API}/members/${id}`, data),
@@ -863,6 +864,12 @@ export const whatsappAPI = {
     axios.get(`${API}/whatsapp/cloud-inbox/media/${encodeURIComponent(messageId)}`, { responseType: 'blob' }),
   replyCloudInbox: (conversationId, body) =>
     axios.post(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/reply`, { body }),
+  sendCloudInboxMedia: (conversationId, formData) =>
+    axios.post(
+      `${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/media`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
   getReminderHistory: (filters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {

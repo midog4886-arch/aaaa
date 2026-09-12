@@ -14,6 +14,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popove
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { toast } from 'sonner';
 import { whatsappAPI, membersAPI, activitiesAPI, branchesAPI, messagesAPI, pushNotificationsAPI, levelsAPI } from '../services/api';
+import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { normalizePhone } from '../utils/phone';
 import {
   MessageSquare, CheckCircle2, XCircle, RefreshCw, Send, Settings, Loader2,
   Wifi, WifiOff, PhoneCall, Bell, Eye, Users, History, Clock, Phone,
@@ -28,6 +30,12 @@ const PROFILE_FIELD_LABELS = {
   phone: { ar: 'رقم الجوال', en: 'Phone' },
   date_of_birth: { ar: 'تاريخ الميلاد', en: 'Date of birth' },
 };
+
+const cloudPhoneClassName = (isRegisteredMember) => (
+  isRegisteredMember === true
+    ? 'text-orange-600 hover:text-orange-700 hover:underline cursor-pointer'
+    : 'text-muted-foreground hover:text-muted-foreground hover:underline cursor-pointer'
+);
 
 const ChangeRequestCard = ({ msg, language, onApply, onReject, disabled }) => {
   const cr = msg.change_request || {};
@@ -247,8 +255,23 @@ export default function WhatsAppPage() {
   const [cloudReply, setCloudReply] = useState('');
   const [loadingCloudInbox, setLoadingCloudInbox] = useState(false);
   const [sendingCloudReply, setSendingCloudReply] = useState(false);
+  const sendingCloudReplyRef = useRef(false);
   const [cloudMediaUrls, setCloudMediaUrls] = useState({});
   const cloudMediaUrlsRef = useRef({});
+  const [cloudImage, setCloudImage] = useState(null);
+  const [cloudImagePreviewUrl, setCloudImagePreviewUrl] = useState('');
+  const [cloudImageCaption, setCloudImageCaption] = useState('');
+  const [sendingCloudImage, setSendingCloudImage] = useState(false);
+  const sendingCloudImageRef = useRef(false);
+  const cloudImageInputRef = useRef(null);
+  const cloudImagePreviewUrlRef = useRef('');
+  const [phoneLookup, setPhoneLookup] = useState({
+    open: false,
+    loading: false,
+    phone: '',
+    members: [],
+  });
+  const phoneLookupRequestRef = useRef(0);
 
   // ── Push Notifications State ──
   const [pushSubscribersCount, setPushSubscribersCount] = useState(0);
@@ -398,6 +421,10 @@ export default function WhatsAppPage() {
   const openCloudThread = async (conversationId) => {
     setLoadingCloudInbox(true);
     try {
+      if (selectedCloudThread && selectedCloudThread !== conversationId) {
+        clearCloudImage();
+        setCloudImageCaption('');
+      }
       const response = await whatsappAPI.getCloudInboxThread(conversationId);
       setSelectedCloudThread(conversationId);
       setCloudThread(response.data?.conversation || null);
@@ -424,8 +451,56 @@ export default function WhatsAppPage() {
     }
   };
 
+  const openMemberProfile = (member) => {
+    if (!member?.id) {
+      toast.error(t('تعذر فتح ملف العضو', 'Could not open member profile'));
+      return;
+    }
+    phoneLookupRequestRef.current += 1;
+    setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
+    // MembersPage already supports this focus deeplink and fetches the member
+    // directly when it is not in the currently selected branch list.  That is
+    // important for admins resolving a conversation from another branch.
+    navigate(`/admin/members?focus=${encodeURIComponent(member.id)}`);
+  };
+
+  const lookupMemberByCloudPhone = async (phone, event) => {
+    event?.stopPropagation();
+    const normalized = normalizePhone(phone);
+    if (!normalized) {
+      toast.error(t('لا يوجد رقم هاتف صالح للبحث', 'No valid phone number to search'));
+      return;
+    }
+
+    const requestId = ++phoneLookupRequestRef.current;
+    setPhoneLookup({ open: true, loading: true, phone: normalized, members: [] });
+    try {
+      const response = await membersAPI.lookupByPhone(normalized);
+      if (requestId !== phoneLookupRequestRef.current) return;
+      const candidates = Array.isArray(response.data)
+        ? response.data
+        : response.data?.members || [];
+      if (!candidates.length) {
+        setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
+        toast.error(t('لم يتم العثور على عضو بهذا الرقم', 'No member was found for this phone number'));
+        return;
+      }
+      if (candidates.length === 1) {
+        openMemberProfile(candidates[0]);
+        return;
+      }
+      // Never pick an arbitrary member when a family shares one phone number.
+      setPhoneLookup({ open: true, loading: false, phone: normalized, members: candidates });
+    } catch (error) {
+      if (requestId !== phoneLookupRequestRef.current) return;
+      setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
+      toast.error(apiErrorMessage(error, t('تعذر البحث عن العضو', 'Could not find the member')));
+    }
+  };
+
   const handleCloudReply = async () => {
-    if (!selectedCloudThread || !cloudReply.trim()) return;
+    if (!selectedCloudThread || !cloudReply.trim() || sendingCloudReplyRef.current) return;
+    sendingCloudReplyRef.current = true;
     setSendingCloudReply(true);
     try {
       const response = await whatsappAPI.replyCloudInbox(selectedCloudThread, cloudReply.trim());
@@ -435,9 +510,98 @@ export default function WhatsAppPage() {
         ? t('تم الرد باستخدام قالب Meta لأن نافذة 24 ساعة انتهت', 'Reply sent using the Meta template because the 24-hour window ended')
         : t('تم إرسال الرد من رقم الفرع', 'Reply sent from the branch number'));
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('فشل إرسال الرد', 'Failed to send reply'));
+      toast.error(apiErrorMessage(error, t('فشل إرسال الرد', 'Failed to send reply')));
     } finally {
+      sendingCloudReplyRef.current = false;
       setSendingCloudReply(false);
+    }
+  };
+
+  const clearCloudImage = () => {
+    if (cloudImagePreviewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+      URL.revokeObjectURL(cloudImagePreviewUrl);
+    }
+    setCloudImage(null);
+    setCloudImagePreviewUrl('');
+    cloudImagePreviewUrlRef.current = '';
+    setCloudImageCaption('');
+    if (cloudImageInputRef.current) cloudImageInputRef.current.value = '';
+  };
+
+  const handleCloudImageChange = async event => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const maxBytes = 5 * 1024 * 1024;
+    const mime = (file.type || '').toLowerCase();
+    if (!['image/jpeg', 'image/png'].includes(mime)) {
+      toast.error(t('اختر صورة JPG أو PNG فقط', 'Choose a JPG or PNG image'));
+      return;
+    }
+    if (file.size > maxBytes) {
+      toast.error(t('حجم الصورة يجب ألا يتجاوز 5 ميجابايت', 'Image must be 5 MB or smaller'));
+      return;
+    }
+    // The server is authoritative, but reject an obvious MIME/signature
+    // mismatch before creating a preview when the browser exposes arrayBuffer.
+    try {
+      const headerBlob = file.slice?.(0, mime === 'image/png' ? 8 : 3);
+      const header = headerBlob?.arrayBuffer
+        ? new Uint8Array(await headerBlob.arrayBuffer())
+        : null;
+      if (header) {
+        const expected = mime === 'image/png'
+          ? [137, 80, 78, 71, 13, 10, 26, 10]
+          : [255, 216, 255];
+        if (!expected.every((value, index) => header[index] === value)) {
+          toast.error(t('محتوى الصورة لا يطابق نوعها', 'Image content does not match its type'));
+          return;
+        }
+      }
+    } catch {
+      // Multipart upload is still sent to the server, which performs the
+      // authoritative signature check.
+    }
+    if (cloudImagePreviewUrl && typeof URL !== 'undefined' && URL.revokeObjectURL) {
+      URL.revokeObjectURL(cloudImagePreviewUrl);
+    }
+    setCloudImage(file);
+    const previewUrl = (
+      typeof URL !== 'undefined' && URL.createObjectURL
+        ? URL.createObjectURL(file)
+        : ''
+    );
+    setCloudImagePreviewUrl(previewUrl);
+    cloudImagePreviewUrlRef.current = previewUrl;
+  };
+
+  const handleCloudImageSend = async () => {
+    if (!selectedCloudThread || !cloudImage || sendingCloudImage || sendingCloudImageRef.current) return;
+    sendingCloudImageRef.current = true;
+    const formData = new FormData();
+    // Keep this field plural to match the production FastAPI List contract,
+    // even though this chat composer intentionally permits one image.
+    formData.append('attachments', cloudImage);
+    if (cloudImageCaption.trim()) formData.append('caption', cloudImageCaption.trim());
+    setSendingCloudImage(true);
+    try {
+      const response = await whatsappAPI.sendCloudInboxMedia(selectedCloudThread, formData);
+      if (!response.data?.success) {
+        throw new Error(t('لم يؤكد الخادم الإرسال', 'The server did not confirm the send'));
+      }
+      clearCloudImage();
+      await openCloudThread(selectedCloudThread);
+      toast.success(response.data?.used_template
+        ? t('تم إرسال الصورة باستخدام قالب Meta المعتمد', 'Image sent using the approved Meta template')
+        : t('تم إرسال الصورة من رقم الفرع', 'Image sent from the branch number'));
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t(
+        'تعذر تأكيد إرسال الصورة؛ لم تتم إعادة المحاولة تلقائياً',
+        'Image delivery could not be confirmed; it was not retried automatically'
+      )));
+    } finally {
+      sendingCloudImageRef.current = false;
+      setSendingCloudImage(false);
     }
   };
 
@@ -520,6 +684,9 @@ export default function WhatsAppPage() {
 
   useEffect(() => () => {
     Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
+    if (cloudImagePreviewUrlRef.current && typeof URL !== 'undefined') {
+      URL.revokeObjectURL(cloudImagePreviewUrlRef.current);
+    }
   }, []);
 
   // Reload activities when branch changes (in activity_notif tab)
@@ -2579,6 +2746,8 @@ export default function WhatsAppPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                       clearCloudImage();
+                       setCloudImageCaption('');
                       setSelectedCloudThread(null);
                       setCloudThread(null);
                       setCloudMessages([]);
@@ -2656,7 +2825,23 @@ export default function WhatsAppPage() {
                                   </Badge>
                                   <Badge variant="outline" className="text-[10px]">{conversation.provider === 'waha' ? 'WAHA' : conversation.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
                                 </div>
-                                <p className="text-xs text-muted-foreground" dir="ltr">{conversation.phone}</p>
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  dir="ltr"
+                                  onClick={(event) => lookupMemberByCloudPhone(conversation.phone, event)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      lookupMemberByCloudPhone(conversation.phone, event);
+                                    }
+                                  }}
+                                  className={`inline-block text-xs ${cloudPhoneClassName(conversation.member_phone_match)}`}
+                                  data-testid="cloud-conversation-phone"
+                                  aria-label={t('فتح ملف العضو عبر رقم الهاتف', 'Open member profile by phone')}
+                                >
+                                  {conversation.phone}
+                                </span>
                                 <p className="text-sm text-muted-foreground truncate mt-1">
                                   {conversation.last_direction === 'outbound' ? t('أنت: ', 'You: ') : ''}
                                   {conversation.last_message}
@@ -2682,7 +2867,25 @@ export default function WhatsAppPage() {
                   <CardTitle className="flex flex-wrap items-center gap-2">
                     <Phone className="w-5 h-5 text-green-600" />
                     <span>{cloudThread?.contact_name || cloudThread?.phone}</span>
-                    <span className="font-normal text-sm text-muted-foreground" dir="ltr">{cloudThread?.phone}</span>
+                    {cloudThread?.phone && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        dir="ltr"
+                        onClick={(event) => lookupMemberByCloudPhone(cloudThread.phone, event)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            lookupMemberByCloudPhone(cloudThread.phone, event);
+                          }
+                        }}
+                        className={`font-normal text-sm ${cloudPhoneClassName(cloudThread.member_phone_match)}`}
+                        data-testid="cloud-thread-phone"
+                        aria-label={t('فتح ملف العضو عبر رقم الهاتف', 'Open member profile by phone')}
+                      >
+                        {cloudThread.phone}
+                      </span>
+                    )}
                     <Badge variant="secondary" className="gap-1">
                       <Building2 className="w-3 h-3" />{cloudThread?.branch_name}
                     </Badge>
@@ -2762,9 +2965,89 @@ export default function WhatsAppPage() {
                       );
                     })}
                   </div>
+                   {cloudImage && (
+                     <div className="mb-3 rounded-lg border border-green-200 bg-green-50/60 p-3">
+                       <div className="flex items-start gap-3">
+                         {cloudImagePreviewUrl ? (
+                           <img
+                             src={cloudImagePreviewUrl}
+                             alt={t('معاينة الصورة', 'Image preview')}
+                             className="h-24 w-24 rounded-md border bg-white object-cover"
+                           />
+                         ) : (
+                           <div className="h-24 w-24 rounded-md border bg-white flex items-center justify-center text-xs text-muted-foreground">
+                             {cloudImage.name}
+                           </div>
+                         )}
+                         <div className="min-w-0 flex-1">
+                           <p className="truncate text-sm font-medium">{cloudImage.name}</p>
+                           <p className="text-xs text-muted-foreground">
+                             {(cloudImage.size / 1024 / 1024).toFixed(2)} MB
+                           </p>
+                           <Input
+                             value={cloudImageCaption}
+                             onChange={e => setCloudImageCaption(e.target.value)}
+                             maxLength={4096}
+                             placeholder={t('تعليق اختياري للصورة…', 'Optional image caption…')}
+                             className="mt-2 bg-white"
+                             disabled={sendingCloudImage}
+                           />
+                         </div>
+                         <Button
+                           type="button"
+                           variant="ghost"
+                           size="sm"
+                           onClick={clearCloudImage}
+                           disabled={sendingCloudImage}
+                           aria-label={t('إزالة الصورة', 'Remove image')}
+                           data-testid="button-remove-cloud-image"
+                         >
+                           <Trash2 className="w-4 h-4 text-red-600" />
+                         </Button>
+                       </div>
+                     </div>
+                   )}
+                   <div className="flex flex-wrap items-end gap-2 mb-3 border-t pt-3">
+                     <input
+                       ref={cloudImageInputRef}
+                       type="file"
+                       accept="image/jpeg,image/png"
+                       className="hidden"
+                       onChange={handleCloudImageChange}
+                       data-testid="input-cloud-image"
+                     />
+                     <Button
+                       type="button"
+                       variant="outline"
+                       onClick={() => cloudImageInputRef.current?.click()}
+                       disabled={sendingCloudImage || sendingCloudReply}
+                       className="gap-1"
+                       data-testid="button-attach-cloud-image"
+                     >
+                       <Paperclip className="w-4 h-4" />
+                       {t('إرفاق صورة', 'Attach image')}
+                     </Button>
+                     {cloudImage && (
+                       <Button
+                         type="button"
+                         onClick={handleCloudImageSend}
+                         disabled={sendingCloudImage || sendingCloudReply || !cloudImage}
+                         className="gap-1 bg-green-600 hover:bg-green-700"
+                         data-testid="button-send-cloud-image"
+                       >
+                         {sendingCloudImage
+                           ? <Loader2 className="w-4 h-4 animate-spin" />
+                           : <Send className="w-4 h-4" />}
+                         {sendingCloudImage
+                           ? t('جاري إرسال الصورة…', 'Sending image…')
+                           : t('إرسال الصورة', 'Send image')}
+                       </Button>
+                     )}
+                   </div>
                   <div className="flex gap-2 border-t pt-3">
                     <Textarea
                       value={cloudReply}
+                      disabled={sendingCloudReply}
                       onChange={e => setCloudReply(e.target.value)}
                       rows={2}
                       maxLength={4096}
@@ -2773,6 +3056,7 @@ export default function WhatsAppPage() {
                     />
                     <Button
                       onClick={handleCloudReply}
+                      aria-label={t('إرسال الرد', 'Send reply')}
                       disabled={sendingCloudReply || !cloudReply.trim()}
                       className="self-end bg-green-600 hover:bg-green-700"
                     >
@@ -2789,6 +3073,74 @@ export default function WhatsAppPage() {
             )}
           </div>
         )}
+
+        <Dialog
+          open={phoneLookup.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              phoneLookupRequestRef.current += 1;
+              setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
+            }
+          }}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t('اختيار ملف العضو', 'Choose member profile')}</DialogTitle>
+            </DialogHeader>
+            {phoneLookup.loading ? (
+              <div className="py-8 text-center">
+                <Loader2 className="w-6 h-6 animate-spin mx-auto" />
+                <p className="text-sm text-muted-foreground mt-2">
+                  {t('جاري البحث عن العضو…', 'Searching for this member…')}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground" dir="ltr">
+                  {phoneLookup.phone}
+                </p>
+                <p className="text-sm">
+                  {t(
+                    'يوجد أكثر من عضو بهذا الرقم. اختر الملف الصحيح.',
+                    'More than one member uses this phone number. Choose the correct profile.',
+                  )}
+                </p>
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {phoneLookup.members.map(member => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => openMemberProfile(member)}
+                      className="w-full text-start rounded-lg border p-3 hover:bg-accent/50 transition-colors"
+                      data-testid={`phone-member-choice-${member.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold truncate">
+                          {isRTL
+                            ? (member.name_ar || member.name || member.member_code)
+                            : (member.name || member.name_ar || member.member_code)}
+                        </span>
+                        {member.member_code && (
+                          <Badge variant="outline" className="text-xs shrink-0">
+                            #{member.member_code}
+                          </Badge>
+                        )}
+                      </div>
+                      {(member.branch_name || member.branch_name_ar || member.branch_id) && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                          <Building2 className="w-3 h-3" />
+                          {isRTL
+                            ? (member.branch_name_ar || member.branch_name || member.branch_id)
+                            : (member.branch_name || member.branch_name_ar || member.branch_id)}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* ══════════════════════════════════════════
             INTERNAL MESSAGES
