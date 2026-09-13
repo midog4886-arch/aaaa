@@ -274,6 +274,7 @@ async def is_system_outbound(branch_id: str, phone: str, provider_message_id: st
     if not provider_message_id:
         return False
     query = {
+        "branch_id": branch_id,
         "communication_kind": "registration_followup",
         "provider_message_id": provider_message_id,
     }
@@ -283,6 +284,8 @@ async def is_system_outbound(branch_id: str, phone: str, provider_message_id: st
 
 
 async def _has_inflight_system_send(phone: str, provider: str = "") -> bool:
+    if _db is None:
+        return False
     query = {
         "phone": normalize_phone(phone),
         "communication_kind": "registration_followup",

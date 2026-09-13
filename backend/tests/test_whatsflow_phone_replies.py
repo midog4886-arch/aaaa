@@ -15,11 +15,31 @@ def matches(row, query):
         elif isinstance(value, dict):
             if "$exists" in value and (key in row) != value["$exists"]:
                 return False
+            if "$in" in value and row.get(key) not in value["$in"]:
+                return False
             if "$lte" in value and (key not in row or row[key] > value["$lte"]):
+                return False
+            if "$gte" in value and (key not in row or row[key] < value["$gte"]):
                 return False
         elif row.get(key) != value:
             return False
     return True
+
+
+class Cursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def sort(self, key, direction):
+        self.rows.sort(key=lambda row: row.get(key) or "", reverse=direction < 0)
+        return self
+
+    def limit(self, amount):
+        self.rows = self.rows[:amount]
+        return self
+
+    async def to_list(self, length=None):
+        return self.rows if length is None else self.rows[:length]
 
 
 class Collection:
@@ -32,6 +52,20 @@ class Collection:
     async def create_index(self, *args, **kwargs):
         pass
 
+    def find(self, query, projection=None):
+        rows = [r.copy() for r in self.rows if matches(r, query)]
+        if projection:
+            included = {
+                key for key, value in projection.items()
+                if value and key != "_id"
+            }
+            if included:
+                rows = [
+                    {key: row[key] for key in included if key in row}
+                    for row in rows
+                ]
+        return Cursor(rows)
+
     async def insert_one(self, row):
         if any(all(r.get(k) == row.get(k) for k in (
             "branch_id", "provider", "provider_message_id"
@@ -41,15 +75,48 @@ class Collection:
 
     async def update_one(self, query, update, upsert=False):
         row = next((r for r in self.rows if matches(r, query)), None)
+        inserted = False
         if row is None:
             if not upsert:
-                return
+                return type("Result", (), {
+                    "matched_count": 0, "modified_count": 0,
+                })()
             row = dict(query)
             row.update(update.get("$setOnInsert", {}))
             self.rows.append(row)
+            inserted = True
+        changed = any(
+            row.get(key) != value
+            for key, value in update.get("$set", {}).items()
+        )
         row.update(update.get("$set", {}))
         for key, value in update.get("$inc", {}).items():
             row[key] = row.get(key, 0) + value
+            changed = True
+        return type("Result", (), {
+            "matched_count": int(not inserted),
+            "modified_count": int(changed),
+        })()
+
+    async def update_many(self, query, update):
+        matched = 0
+        modified = 0
+        for row in self.rows:
+            if not matches(row, query):
+                continue
+            matched += 1
+            changed = any(
+                row.get(key) != value
+                for key, value in update.get("$set", {}).items()
+            )
+            row.update(update.get("$set", {}))
+            for key, value in update.get("$inc", {}).items():
+                row[key] = row.get(key, 0) + value
+                changed = True
+            modified += int(changed)
+        return type("Result", (), {
+            "matched_count": matched, "modified_count": modified,
+        })()
 
 
 @pytest.fixture
@@ -63,9 +130,14 @@ def db(monkeypatch):
         "whatsapp_cloud_conversations": Collection([{
             "id": "a:966500000001", "branch_id": "a", "contact_name": "Customer",
             "last_inbound_at": "2026-09-10T10:00:00+00:00",
+            "last_inbound_message_id": "seed-inbound",
+            "inbound_generation": 1,
             "last_message_at": "2026-09-10T10:00:00+00:00",
             "last_message": "Question", "unread_count": 2,
         }]),
+        "whatsapp_campaign_job_items": Collection(),
+        "whatsapp_invoice_payment_outbox": Collection(),
+        "whatsapp_automated_outbound": Collection(),
     }
     monkeypatch.setattr(mod, "_db", database)
     async def tenant(slug):
@@ -116,6 +188,290 @@ def test_old_reply_does_not_clear_newer_incoming_or_replace_preview(db):
     assert conversation["unread_count"] == 2
     assert conversation["last_message"] == "Question"
     assert len(db["whatsapp_cloud_messages"].rows) == 1
+
+
+def test_phone_reply_reconciles_only_older_marked_inbound_messages(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 3
+    db["whatsapp_cloud_messages"].rows.extend([
+        {
+            "id": "inbound-old-1", "conversation_id": conversation["id"],
+            "branch_id": "a", "provider": "whatsflow",
+            "direction": "inbound", "created_at": "2026-09-10T09:58:00+00:00",
+            "unread": True,
+        },
+        {
+            "id": "inbound-old-2", "conversation_id": conversation["id"],
+            "branch_id": "a", "provider": "whatsflow",
+            "direction": "inbound", "created_at": "2026-09-10T09:59:00+00:00",
+            "unread": True,
+        },
+        {
+            "id": "inbound-new", "conversation_id": conversation["id"],
+            "branch_id": "a", "provider": "whatsflow",
+            "direction": "inbound", "created_at": "2026-09-10T10:02:00+00:00",
+            "unread": True,
+        },
+    ])
+    conversation["last_inbound_at"] = "2026-09-10T10:02:00+00:00"
+
+    deliver(timestamp="2026-09-10T10:00:00+00:00")
+
+    assert conversation["unread_count"] == 1
+    by_id = {
+        row.get("id"): row for row in db["whatsapp_cloud_messages"].rows
+    }
+    assert by_id["inbound-old-1"]["unread"] is False
+    assert by_id["inbound-old-2"]["unread"] is False
+    assert by_id["inbound-new"]["unread"] is True
+
+
+def test_phone_reply_mixed_legacy_and_marked_old_inbound_clears_safely(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 2
+    conversation["last_inbound_at"] = "2026-09-10T09:59:00+00:00"
+    conversation["last_inbound_message_id"] = "marked-old"
+    conversation["inbound_generation"] = 2
+    legacy = {
+        "id": "legacy-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T09:58:00+00:00",
+    }
+    marked = {
+        "id": "marked-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T09:59:00+00:00", "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.extend([legacy, marked])
+
+    deliver(timestamp="2026-09-10T10:00:00+00:00")
+
+    assert conversation["unread_count"] == 0
+    assert marked["unread"] is False
+    assert "unread" not in legacy
+
+
+def test_phone_reply_equal_timestamp_keeps_inbound_unread(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 1
+    conversation["last_inbound_at"] = "2026-09-10T10:00:00+00:00"
+    conversation["last_inbound_message_id"] = "same-second"
+    conversation["inbound_generation"] = 2
+    inbound = {
+        "id": "same-second", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T10:00:00+00:00", "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.append(inbound)
+
+    deliver(timestamp="2026-09-10T10:00:00+00:00")
+
+    assert conversation["unread_count"] == 1
+    assert inbound["unread"] is True
+
+
+def test_concurrent_duplicate_reconciliation_uses_transitioned_rows(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 2
+    old = {
+        "id": "inbound-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T09:59:00+00:00", "unread": True,
+    }
+    newer = {
+        "id": "inbound-new", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T10:02:00+00:00", "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.extend([old, newer])
+    conversation["last_inbound_at"] = newer["created_at"]
+    messages = db["whatsapp_cloud_messages"]
+    calls = 0
+
+    async def raced_update(query, update):
+        nonlocal calls
+        if query.get("unread") is True:
+            calls += 1
+            call_number = calls
+            await asyncio.sleep(0)
+            return type("Result", (), {
+                "matched_count": 1,
+                "modified_count": 1 if call_number == 1 else 0,
+            })()
+        return await Collection.update_one(messages, query, update)
+
+    messages.update_one = raced_update
+    async def run_both():
+        await asyncio.gather(
+            mod._reconcile_whatsflow_phone_reply_unread(
+                conversation["id"], "a", "2026-09-10T10:00:00+00:00"
+            ),
+            mod._reconcile_whatsflow_phone_reply_unread(
+                conversation["id"], "a", "2026-09-10T10:00:00+00:00"
+            ),
+        )
+    asyncio.run(run_both())
+
+    assert calls == 2
+    assert conversation["unread_count"] == 1
+
+
+def test_thread_read_race_preserves_arrival_after_fetch(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 2
+    conversation["last_inbound_at"] = "2026-09-10T10:00:00+00:00"
+    conversation["last_inbound_message_id"] = "marked-inbound"
+    conversation["inbound_generation"] = 2
+    old = {
+        "id": "fetched-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T10:00:00+00:00", "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.append(old)
+    messages = db["whatsapp_cloud_messages"]
+    original_update_many = messages.update_many
+
+    async def update_and_arrive(query, update):
+        result = await original_update_many(query, update)
+        newer = {
+            "id": "arrived-after-fetch", "conversation_id": conversation["id"],
+            "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+            "created_at": "2026-09-10T10:00:00+00:00", "unread": True,
+        }
+        messages.rows.append(newer)
+        conversation["last_inbound_at"] = newer["created_at"]
+        conversation["last_inbound_message_id"] = newer["id"]
+        conversation["inbound_generation"] = 3
+        conversation["unread_count"] = 3
+        return result
+
+    messages.update_many = update_and_arrive
+    asyncio.run(mod._mark_cloud_inbound_read(
+        conversation["id"], "a", [old]
+    ))
+
+    by_id = {row["id"]: row for row in messages.rows}
+    assert by_id["fetched-old"]["unread"] is False
+    assert by_id["arrived-after-fetch"]["unread"] is True
+    assert conversation["unread_count"] == 2
+
+
+def test_thread_read_mixed_legacy_and_new_clears_when_cutoff_is_safe(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 2
+    conversation["last_inbound_at"] = "2026-09-10T10:00:00+00:00"
+    conversation["last_inbound_message_id"] = "marked-inbound"
+    conversation["inbound_generation"] = 2
+    legacy = {
+        "id": "legacy-inbound", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T09:59:00+00:00",
+    }
+    marked = {
+        "id": "marked-inbound", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T10:00:00+00:00", "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.extend([legacy, marked])
+
+    asyncio.run(mod._mark_cloud_inbound_read(
+        conversation["id"], "a", [legacy, marked]
+    ))
+
+    assert conversation["unread_count"] == 0
+    assert marked["unread"] is False
+
+
+def test_common_whatsflow_send_persists_exact_automation_evidence(db, monkeypatch):
+    class Client:
+        async def send_text(self, *args, **kwargs):
+            return True, {"key": {"id": "attendance-send-1"}}, None
+
+    monkeypatch.setattr(mod, "_whatsflow_client", lambda config: Client())
+    config = {"branch_id": "a", "provider": "whatsflow", "enabled": True}
+
+    result = asyncio.run(mod._send_whatsflow_message_result(
+        "966500000001", "Attendance", config
+    ))
+
+    assert result[:2] == (True, "attendance-send-1")
+    evidence = db["whatsapp_automated_outbound"].rows
+    assert evidence[0]["provider_message_id"] == "attendance-send-1"
+    assert evidence[0]["status"] == "sent"
+    assert asyncio.run(mod._classify_whatsflow_echo(
+        "a", "966500000001", "attendance-send-1"
+    )) == "automated"
+
+
+def test_inflight_whatsflow_automation_echo_is_conservative(db):
+    db["whatsapp_automated_outbound"].rows.append({
+        "id": "pending-send",
+        "branch_id": "a",
+        "provider": "whatsflow",
+        "phone": "966500000001",
+        "status": "unknown",
+    })
+
+    assert asyncio.run(mod._classify_whatsflow_echo(
+        "a", "966500000001", "untracked-echo"
+    )) == "ambiguous_automation"
+
+
+def test_automation_evidence_persistence_fails_closed(db, monkeypatch):
+    class FailingEvidence:
+        async def insert_one(self, row):
+            raise RuntimeError("storage unavailable")
+
+    class Client:
+        called = False
+
+        async def send_text(self, *args, **kwargs):
+            self.called = True
+            return True, {"key": {"id": "must-not-send"}}, None
+
+    client = Client()
+    db["whatsapp_automated_outbound"] = FailingEvidence()
+    monkeypatch.setattr(mod, "_whatsflow_client", lambda config: client)
+
+    with pytest.raises(RuntimeError, match="automation_evidence_unavailable"):
+        asyncio.run(mod._send_whatsflow_message_result(
+            "966500000001",
+            "Attendance",
+            {"branch_id": "a", "provider": "whatsflow", "enabled": True},
+        ))
+    assert client.called is False
+
+
+def test_campaign_echo_does_not_clear_unread(db):
+    db["whatsapp_campaign_job_items"].rows.append({
+        "branch_id": "a", "provider": "whatsflow",
+        "provider_message_id": "message-1",
+        "communication_kind": "marketing",
+    })
+
+    deliver()
+
+    assert db["whatsapp_cloud_conversations"].rows[0]["unread_count"] == 2
+
+
+def test_whatsflow_read_receipt_does_not_clear_unread(db):
+    envelope = {
+        "event": "messages.update", "instance": "instance-a",
+        "data": {
+            "key": {"id": "message-1"},
+            "status": "read",
+        },
+    }
+
+    class Request:
+        headers = {"x-webhook-secret": "test-secret"}
+
+        async def body(self):
+            return json.dumps(envelope).encode()
+
+    asyncio.run(mod.receive_whatsflow_webhook("tenant-a", "a", Request()))
+
+    assert db["whatsapp_cloud_conversations"].rows[0]["unread_count"] == 2
 
 
 def test_incoming_still_increments_unread(db):

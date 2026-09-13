@@ -399,7 +399,9 @@ async def _get_wa_status() -> dict:
 
 
 async def _send_wa_message(phone: str, message: str) -> bool:
-    return await _send_wa_message_for_branch(phone, message, None)
+    return await _send_wa_message_for_branch(
+        phone, message, None, automated=False
+    )
 
 
 def _token_cipher():
@@ -533,23 +535,144 @@ def _whatsflow_webhook_secret(tenant_slug: str, branch_id: str) -> str:
     ).hexdigest()
 
 
-async def _send_whatsflow_message_result(phone: str, message: str, config: dict):
+async def _send_whatsflow_message_result(
+    phone: str, message: str, config: dict, *, automated: bool = True
+):
     digits = "".join(filter(str.isdigit, phone or ""))
     if not digits:
         return False, None, "invalid_phone"
-    ok, response, error = await _whatsflow_client(config).send_text(
-        digits, message, delay=0, link_preview=False
+    if not automated:
+        ok, response, error = await _whatsflow_client(config).send_text(
+            digits, message, delay=0, link_preview=False
+        )
+        return ok, _provider_message_id(response), error
+    evidence_id = await _start_whatsflow_automation_evidence(digits, config)
+    try:
+        ok, response, error = await _whatsflow_client(config).send_text(
+            digits, message, delay=0, link_preview=False
+        )
+    except Exception as exc:
+        await _finish_whatsflow_automation_evidence(
+            evidence_id, status="unknown", error=type(exc).__name__
+        )
+        raise
+    message_id = _provider_message_id(response)
+    await _finish_whatsflow_automation_evidence(
+        evidence_id,
+        status="sent" if ok and message_id else "unknown",
+        provider_message_id=message_id,
+        error=error,
     )
-    message_id = None
-    if isinstance(response, dict):
-        key = response.get("key")
-        message_id = (key.get("id") if isinstance(key, dict) else None) or response.get("id")
-    return ok, str(message_id) if message_id else None, error
+    return ok, message_id, error
 
 
-async def _send_session_provider_result(phone: str, message: str, config: dict):
+def _provider_message_id(response) -> Optional[str]:
+    if not isinstance(response, dict):
+        return None
+    key = response.get("key")
+    message_id = (
+        (key.get("id") if isinstance(key, dict) else None)
+        or response.get("id")
+    )
+    return str(message_id) if message_id else None
+
+
+async def _start_whatsflow_automation_evidence(phone: str, config: dict):
+    """Record an automated send before the provider call can echo it."""
+    if _db is None or not config.get("branch_id"):
+        raise RuntimeError("whatsflow_automation_evidence_unavailable")
+    evidence_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    try:
+        await _db["whatsapp_automated_outbound"].insert_one({
+            "id": evidence_id,
+            "branch_id": config["branch_id"],
+            "provider": "whatsflow",
+            "phone": normalize_phone(phone),
+            "status": "in_flight",
+            "created_at": now.isoformat(),
+        })
+        return evidence_id
+    except Exception as exc:
+        raise RuntimeError(
+            "whatsflow_automation_evidence_unavailable"
+        ) from exc
+
+
+async def _finish_whatsflow_automation_evidence(
+    evidence_id: Optional[str],
+    *,
+    status: str,
+    provider_message_id: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    if not evidence_id or _db is None:
+        return
+    update = {
+        "status": status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if provider_message_id:
+        update["provider_message_id"] = provider_message_id
+    if error:
+        update["error"] = error
+    try:
+        await _db["whatsapp_automated_outbound"].update_one(
+            {"id": evidence_id}, {"$set": update}
+        )
+    except Exception as exc:
+        logger.warning(
+            "Could not finalize Whatsflow automation evidence: %s",
+            type(exc).__name__,
+        )
+
+
+async def _send_whatsflow_media_result(
+    phone: str,
+    media_type: str,
+    mime_type: str,
+    caption: str,
+    media: str,
+    filename: str,
+    config: dict,
+):
+    """Send automated Whatsflow media with the same echo evidence as text."""
+    digits = "".join(filter(str.isdigit, phone or ""))
+    if not digits:
+        return False, None, "invalid_phone"
+    evidence_id = await _start_whatsflow_automation_evidence(digits, config)
+    try:
+        ok, response, error = await _whatsflow_client(config).send_media(
+            digits, media_type, mime_type, caption, media, filename
+        )
+    except Exception as exc:
+        await _finish_whatsflow_automation_evidence(
+            evidence_id, status="unknown", error=type(exc).__name__
+        )
+        raise
+    message_id = _provider_message_id(response)
+    await _finish_whatsflow_automation_evidence(
+        evidence_id,
+        status="sent" if ok and message_id else "unknown",
+        provider_message_id=message_id,
+        error=error,
+    )
+    return ok, message_id, error
+
+
+async def _send_session_provider_result(
+    phone: str, message: str, config: dict, *, automated: bool = True
+):
     if _branch_provider(config) == "whatsflow":
-        return await _send_whatsflow_message_result(phone, message, config)
+        if automated:
+            return await _send_whatsflow_message_result(phone, message, config)
+        digits = "".join(filter(str.isdigit, phone or ""))
+        if not digits:
+            return False, None, "invalid_phone"
+        ok, response, error = await _whatsflow_client(config).send_text(
+            digits, message, delay=0, link_preview=False
+        )
+        return ok, _provider_message_id(response), error
     return await _send_waha_message_result(phone, message, config)
 
 
@@ -1279,9 +1402,10 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
                 f"Total paid: SAR {invoice.get('total', 0)}"
             )[:1000]
             try:
-                success, _, error = await _whatsflow_client(config).send_media(
-                    "".join(filter(str.isdigit, phone)), "image", "image/png", caption,
+                success, _, error = await _send_whatsflow_media_result(
+                    phone, "image", "image/png", caption,
                     base64.b64encode(image).decode("ascii"), "invoice.png",
+                    config,
                 )
             except Exception as exc:
                 raise InvoiceReceiptDeliveryUnknown(type(exc).__name__) from exc
@@ -1444,13 +1568,17 @@ async def _send_wa_message_for_branch(
     message: str,
     branch_id: Optional[str],
     quick_reply_payload: Optional[str] = None,
+    *,
+    automated: bool = True,
 ) -> bool:
     cloud_config = await _get_branch_cloud_config(branch_id)
     provider = _branch_provider(cloud_config)
     if provider == "disabled":
         return False
     if provider in {"waha", "whatsflow"}:
-        success, _, _ = await _send_session_provider_result(phone, message, cloud_config or {})
+        success, _, _ = await _send_session_provider_result(
+            phone, message, cloud_config or {}, automated=automated
+        )
         return success
     if provider == "meta_cloud" and cloud_config and cloud_config.get("enabled"):
         if quick_reply_payload and cloud_config.get("renewal_contact_button_confirmed"):
@@ -2848,7 +2976,7 @@ async def branch_provider_test(branch_id: str, data: WAHABranchTestRequest,
     # closing the webhook-echo race even if the provider call later fails.
     await registration_followups.stop_phone(branch_id, phone, "staff_contacted")
     ok, message_id, error = await _send_session_provider_result(
-        phone, body, config
+        phone, body, config, automated=False
     )
     if not ok:
         raise HTTPException(status_code=502, detail=f"WhatsApp test failed ({error or 'unknown'})")
@@ -3121,6 +3249,7 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                         "media_id": media.get("id") if isinstance(media, dict) else None,
                         "mime_type": media.get("mime_type") if isinstance(media, dict) else None,
                         "status": "received",
+                        "unread": True,
                         "created_at": event_at,
                         "received_at": now,
                         "meta_timestamp": message.get("timestamp"),
@@ -3141,9 +3270,10 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                             "last_message": body or f"[{message_type}]",
                             "last_message_at": event_at,
                             "last_inbound_at": event_dt.isoformat() if event_dt else None,
+                            "last_inbound_message_id": meta_id,
                             "last_direction": "inbound",
                         },
-                        "$inc": {"unread_count": 1},
+                        "$inc": {"unread_count": 1, "inbound_generation": 1},
                         "$setOnInsert": {"created_at": now},
                     },
                     upsert=True,
@@ -3253,7 +3383,8 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                 "media_url": (message.get("media") or {}).get("url") if isinstance(message.get("media"), dict) else None,
                 "mime_type": (message.get("media") or {}).get("mimetype") if isinstance(message.get("media"), dict) else message.get("mimetype") or message.get("mimeType"),
                 "filename": (message.get("media") or {}).get("filename") if isinstance(message.get("media"), dict) else None,
-                "status": "received", "created_at": now, "received_at": now})
+                "status": "received", "unread": True,
+                "created_at": now, "received_at": now})
         except DuplicateKeyError:
             return {"received": True}
         await registration_followups.note_customer_message(
@@ -3262,12 +3393,453 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         await _db["whatsapp_cloud_conversations"].update_one({"id": conversation_id}, {"$set": {
             "id": conversation_id, "branch_id": config["branch_id"], "provider": "waha", "phone": phone,
             "contact_name": message.get("pushName") or message.get("name") or phone,
-            "last_message": body or f"[{kind}]", "last_message_at": now, "last_inbound_at": now, "last_direction": "inbound",
-        }, "$inc": {"unread_count": 1}, "$setOnInsert": {"created_at": now}}, upsert=True)
+            "last_message": body or f"[{kind}]", "last_message_at": now,
+            "last_inbound_at": now, "last_inbound_message_id": message_id,
+            "last_direction": "inbound",
+        }, "$inc": {"unread_count": 1, "inbound_generation": 1},
+        "$setOnInsert": {"created_at": now}}, upsert=True)
         return {"received": True}
     finally:
         reset_current_tenant(token)
 
+
+WHATSFLOW_REPLY_UNREAD_SCAN_LIMIT = 1000
+
+
+def _parse_cloud_message_time(value):
+    """Return an aware UTC datetime for inbox ordering comparisons."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+async def _cloud_message_rows(query: dict, limit: int):
+    """Read a bounded set of inbox messages, tolerating small test doubles."""
+    collection = _db["whatsapp_cloud_messages"]
+    finder = getattr(collection, "find", None)
+    if not finder:
+        return None
+    cursor = finder(query, {
+        "_id": 0, "id": 1, "provider_message_id": 1,
+        "created_at": 1, "direction": 1, "unread": 1,
+    })
+    if hasattr(cursor, "sort"):
+        cursor = cursor.sort("created_at", 1)
+    if hasattr(cursor, "limit"):
+        cursor = cursor.limit(limit + 1)
+    if hasattr(cursor, "to_list"):
+        return await cursor.to_list(length=limit + 1)
+    try:
+        rows = [row async for row in cursor]
+    except TypeError:
+        rows = list(cursor)
+    return rows[: limit + 1]
+
+
+async def _mark_cloud_inbound_read(
+    conversation_id: str,
+    branch_id: str,
+    fetched_messages: list[dict],
+    *,
+    provider: Optional[str] = None,
+):
+    """Mark only inbound rows included in the fetched thread as read.
+
+    ``unread_count`` predates per-message unread markers. New webhook rows carry
+    ``unread=True``. Marking only fetched IDs keeps a later webhook arrival out
+    of the read operation. Legacy rows without markers can clear the aggregate
+    only when this fetch was complete through the stored latest inbound cutoff
+    and the aggregate's inbound identity/generation still matches the snapshot.
+    """
+    fetched_inbound = [
+        row for row in (fetched_messages or [])
+        if row.get("direction") == "inbound"
+        and (row.get("id") or row.get("provider_message_id"))
+    ]
+    if not fetched_inbound:
+        return False
+
+    conversations = _db["whatsapp_cloud_conversations"]
+    snapshot = await conversations.find_one(
+        {"id": conversation_id, "branch_id": branch_id},
+        {
+            "_id": 0,
+            "unread_count": 1,
+            "last_inbound_at": 1,
+            "last_inbound_message_id": 1,
+            "inbound_generation": 1,
+        },
+    )
+    if not snapshot:
+        return False
+    snapshot_count = int(snapshot.get("unread_count") or 0)
+    snapshot_message_id = snapshot.get("last_inbound_message_id")
+    snapshot_generation = snapshot.get("inbound_generation")
+
+    message_ids = [
+        row.get("id") or row.get("provider_message_id")
+        for row in fetched_inbound
+    ]
+    query = {
+        "id": {"$in": message_ids},
+        "conversation_id": conversation_id,
+        "branch_id": branch_id,
+        "direction": "inbound",
+        "unread": True,
+    }
+    if provider:
+        query["provider"] = provider
+    collection = _db["whatsapp_cloud_messages"]
+    transitioned = 0
+    updater = getattr(collection, "update_many", None)
+    if updater:
+        result = await updater(query, {"$set": {"unread": False}})
+        transitioned = int(getattr(result, "modified_count", 0) or 0)
+    else:
+        for row in fetched_inbound:
+            message_id = row.get("id") or row.get("provider_message_id")
+            key = {
+                "id": message_id,
+                "branch_id": branch_id,
+                "direction": "inbound",
+                "unread": True,
+            }
+            if provider:
+                key["provider"] = provider
+            result = await collection.update_one(
+                key, {"$set": {"unread": False}}
+            )
+            transitioned += int(getattr(result, "modified_count", 0) or 0)
+
+    fetched_times = [
+        moment for moment in (
+            _parse_cloud_message_time(row.get("created_at"))
+            for row in fetched_inbound
+        ) if moment
+    ]
+    if not fetched_times:
+        return False
+    cutoff = max(fetched_times)
+    latest_inbound = _parse_cloud_message_time(snapshot.get("last_inbound_at"))
+    # The thread query is capped at 500 rows. A short result proves that the
+    # fetched set is complete; otherwise only a cutoff reaching the last row
+    # can safely clear legacy aggregate state.
+    fetch_complete = len(fetched_messages) < 500
+    safe_full_clear = fetch_complete and (
+        not latest_inbound or latest_inbound <= cutoff
+    )
+    conversations = _db["whatsapp_cloud_conversations"]
+    if safe_full_clear and (snapshot_message_id or snapshot_generation is not None):
+        cas_query = {
+            "id": conversation_id,
+            "branch_id": branch_id,
+            "unread_count": snapshot_count,
+        }
+        if snapshot_message_id:
+            cas_query["last_inbound_message_id"] = snapshot_message_id
+        if snapshot_generation is not None:
+            cas_query["inbound_generation"] = snapshot_generation
+        result = await conversations.update_one(
+            cas_query,
+            {"$set": {"unread_count": 0}},
+        )
+        if getattr(result, "matched_count", 0):
+            return True
+
+    if transitioned:
+        await conversations.update_one(
+            {
+                "id": conversation_id,
+                "branch_id": branch_id,
+                "unread_count": {"$gte": transitioned},
+            },
+            {"$inc": {"unread_count": -transitioned}},
+        )
+    return False
+
+
+async def _classify_whatsflow_echo(
+    branch_id: str, phone: str, provider_message_id: str
+) -> str:
+    """Classify an echo without guessing through an automation race.
+
+    ``automated`` requires an exact durable provider ID. ``ambiguous_*`` means
+    an automatic send is currently in flight for this phone, so unread state is
+    preserved; registration follow-ups additionally need their unresolved
+    observation persisted by ``note_outbound``. A phone match alone never
+    becomes proof of automation.
+    """
+    if not provider_message_id:
+        item = None
+    else:
+        item = await _db["whatsapp_campaign_job_items"].find_one(
+            {
+                "branch_id": branch_id,
+                "provider": "whatsflow",
+                "provider_message_id": provider_message_id,
+            },
+            {"_id": 1},
+        )
+        if not item:
+            evidence = await _db["whatsapp_automated_outbound"].find_one(
+                {
+                    "branch_id": branch_id,
+                    "provider": "whatsflow",
+                    "provider_message_id": provider_message_id,
+                },
+                {"_id": 1},
+            )
+            if evidence:
+                return "automated"
+    if item:
+        # Exact provider IDs are the only safe way to classify a completed
+        # campaign echo. In particular, do not infer automation from body text
+        # or from a delivery receipt, since either can belong to an operator's
+        # phone reply.
+        return "automated"
+
+    # A provider echo may beat persistence of the returned ID. A dispatching
+    # campaign item for the exact branch/provider/phone is durable evidence of
+    # that race; do not classify that ambiguous event as a human reply.
+    normalized_phone = normalize_phone(phone)
+    jobs = _db["whatsapp_campaign_job_items"]
+    finder = getattr(jobs, "find", None)
+    if finder and normalized_phone:
+        cursor = finder(
+            {
+                "branch_id": branch_id,
+                "provider": "whatsflow",
+                "status": "dispatching",
+            },
+            {"_id": 0, "phone": 1, "communication_kind": 1},
+        )
+        if hasattr(cursor, "limit"):
+            cursor = cursor.limit(1000)
+        if hasattr(cursor, "to_list"):
+            rows = await cursor.to_list(length=1000)
+        else:
+            try:
+                rows = [row async for row in cursor]
+            except TypeError:
+                rows = list(cursor)
+        matching = [
+            row for row in rows
+            if normalize_phone(row.get("phone")) == normalized_phone
+        ]
+        if matching:
+            if any(
+                row.get("communication_kind") == "registration_followup"
+                for row in matching
+            ):
+                return "ambiguous_registration"
+            return "ambiguous_automation"
+
+    # A text/media send can echo before its wrapper receives the provider ID.
+    # This short-lived evidence is intentionally phone-scoped only while the
+    # send is unresolved; it is never used to classify a historical echo.
+    evidence = _db["whatsapp_automated_outbound"]
+    finder = getattr(evidence, "find", None)
+    if finder and normalized_phone:
+        cursor = finder(
+            {
+                "branch_id": branch_id,
+                "provider": "whatsflow",
+                "phone": normalized_phone,
+                "status": {"$in": ["in_flight", "unknown"]},
+            },
+            {"_id": 0, "status": 1},
+        )
+        if hasattr(cursor, "limit"):
+            cursor = cursor.limit(1000)
+        if hasattr(cursor, "to_list"):
+            rows = await cursor.to_list(length=1000)
+        else:
+            try:
+                rows = [row async for row in cursor]
+            except TypeError:
+                rows = list(cursor)
+        for row in rows:
+            if row.get("status") in {"in_flight", "unknown"}:
+                return "ambiguous_automation"
+
+    # Payment receipts have a durable processing claim but historically did not
+    # retain their provider ID. It is still safe to suppress only this exact
+    # branch/phone race; completed rows are deliberately not guessed.
+    outbox = _db["whatsapp_invoice_payment_outbox"]
+    finder = getattr(outbox, "find", None)
+    if finder and normalized_phone:
+        cursor = finder(
+            {"status": "processing"},
+            {"_id": 0, "invoice": 1},
+        )
+        if hasattr(cursor, "limit"):
+            cursor = cursor.limit(1000)
+        if hasattr(cursor, "to_list"):
+            rows = await cursor.to_list(length=1000)
+        else:
+            try:
+                rows = [row async for row in cursor]
+            except TypeError:
+                rows = list(cursor)
+        if any(
+            (row.get("invoice") or {}).get("branch_id") == branch_id
+            and normalize_phone((row.get("invoice") or {}).get("customer_phone"))
+            == normalized_phone
+            for row in rows
+        ):
+            return "ambiguous_automation"
+    return "human"
+
+
+async def _reconcile_whatsflow_phone_reply_unread(
+    conversation_id: str, branch_id: str, event_at: str
+):
+    """Clear only proven old inbound notifications for a human phone reply.
+
+    New inbound rows have an ``unread`` marker, allowing partial reconciliation
+    when a newer customer message arrived after the reply. Older rows may not
+    have that marker, so a legacy conversation is only fully cleared when its
+    stored latest inbound identity/generation is unchanged and strictly older
+    than the reply. Equal timestamps remain unread.
+    """
+    conversations = _db["whatsapp_cloud_conversations"]
+    conversation = await conversations.find_one(
+        {"id": conversation_id, "branch_id": branch_id},
+        {
+            "_id": 0,
+            "unread_count": 1,
+            "last_inbound_at": 1,
+            "last_inbound_message_id": 1,
+            "inbound_generation": 1,
+        },
+    )
+    if not conversation:
+        return
+    try:
+        current_count = max(int(conversation.get("unread_count") or 0), 0)
+    except (TypeError, ValueError):
+        current_count = 0
+    snapshot_count = current_count
+    snapshot_message_id = conversation.get("last_inbound_message_id")
+    snapshot_generation = conversation.get("inbound_generation")
+    if not current_count:
+        return
+    reply_time = _parse_cloud_message_time(event_at)
+    if not reply_time:
+        return
+
+    rows = await _cloud_message_rows(
+        {
+            "conversation_id": conversation_id,
+            "branch_id": branch_id,
+            "provider": "whatsflow",
+            "direction": "inbound",
+        },
+        WHATSFLOW_REPLY_UNREAD_SCAN_LIMIT,
+    )
+    if rows is not None and len(rows) > WHATSFLOW_REPLY_UNREAD_SCAN_LIMIT:
+        # A partial scan cannot prove which unread rows are older than this
+        # reply. Leave the count untouched instead of making a broad guess.
+        return
+
+    inbound_rows = []
+    if rows is not None:
+        for row in rows:
+            message_time = _parse_cloud_message_time(row.get("created_at"))
+            if message_time:
+                inbound_rows.append((row, message_time))
+
+    latest_inbound = _parse_cloud_message_time(conversation.get("last_inbound_at"))
+    has_newer_inbound = any(moment >= reply_time for _, moment in inbound_rows)
+    if latest_inbound and latest_inbound >= reply_time:
+        has_newer_inbound = True
+
+    # Only rows explicitly marked unread can be partially reconciled. Rows
+    # without the marker belong to the legacy schema and are intentionally not
+    # guessed when a newer inbound exists.
+    old_unread = [
+        row for row, moment in inbound_rows
+        if moment < reply_time and row.get("unread") is True
+    ]
+    messages = _db["whatsapp_cloud_messages"]
+    transitioned = 0
+    for row in old_unread:
+        message_id = row.get("id") or row.get("provider_message_id")
+        if not message_id:
+            continue
+        result = await messages.update_one(
+            {
+                "id": message_id,
+                "branch_id": branch_id,
+                "provider": "whatsflow",
+                "conversation_id": conversation_id,
+                "direction": "inbound",
+                "unread": True,
+            },
+            {"$set": {"unread": False}},
+        )
+        transitioned += int(
+            getattr(result, "modified_count", 0) or 0
+        )
+
+    newer_unread = sum(
+        1 for row, moment in inbound_rows
+        if moment >= reply_time and row.get("unread") is True
+    )
+
+    def _cas_query(*, minimum_count: Optional[int] = None):
+        query = {"id": conversation_id, "branch_id": branch_id}
+        if minimum_count is None:
+            query["unread_count"] = snapshot_count
+        else:
+            query["unread_count"] = {"$gte": minimum_count}
+        if snapshot_message_id:
+            query["last_inbound_message_id"] = snapshot_message_id
+        if snapshot_generation is not None:
+            query["inbound_generation"] = snapshot_generation
+        return query
+
+    # A mixed legacy/new snapshot can be fully cleared only with a durable
+    # inbound identity or generation and a strictly older latest inbound. The
+    # aggregate CAS prevents a new inbound from being zeroed between snapshot
+    # and update.
+    observed_latest = max(
+        (moment for _, moment in inbound_rows), default=latest_inbound
+    )
+    can_full_clear = bool(
+        (snapshot_message_id or snapshot_generation is not None)
+        and observed_latest
+        and observed_latest < reply_time
+        and not has_newer_inbound
+    )
+    if can_full_clear:
+        result = await conversations.update_one(
+            _cas_query(), {"$set": {"unread_count": 0}}
+        )
+        if getattr(result, "matched_count", 0):
+            return
+
+    if not transitioned:
+        return
+    if has_newer_inbound:
+        clear_count = min(
+            transitioned,
+            max(0, snapshot_count - newer_unread),
+        )
+    else:
+        clear_count = min(transitioned, snapshot_count)
+    # The decrement carries the same snapshot identity/generation, so a
+    # concurrent inbound cannot be mistaken for this old snapshot.
+    if clear_count:
+        await conversations.update_one(
+            _cas_query(minimum_count=clear_count),
+            {"$inc": {"unread_count": -clear_count}},
+        )
+    return
 
 @router.post("/whatsflow-webhook/{tenant_slug}/{branch_id}")
 async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: Request):
@@ -3370,6 +3942,12 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             or ""
         )
         conversation_id = f"{config['branch_id']}:{phone}"
+        echo_class = (
+            await _classify_whatsflow_echo(
+                config["branch_id"], phone, message_id
+            )
+            if outbound else "inbound"
+        )
         messages = _db["whatsapp_cloud_messages"]
         await messages.create_index(
             [("branch_id", 1), ("provider", 1), ("provider_message_id", 1)],
@@ -3393,14 +3971,43 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                     or media_message.get("filename")
                 ),
                 "status": "sent" if outbound else "received",
+                "unread": not outbound,
+                **(
+                    {"echo_source": echo_class}
+                    if outbound else {}
+                ),
                 "created_at": event_at, "received_at": now,
             })
         except DuplicateKeyError:
+            existing = await messages.find_one(
+                {
+                    "branch_id": config["branch_id"],
+                    "provider": "whatsflow",
+                    "provider_message_id": message_id,
+                },
+                {"_id": 0, "echo_source": 1},
+            ) if outbound else None
+            duplicate_class = (
+                (existing or {}).get("echo_source")
+                or echo_class
+            )
+            if (
+                outbound
+                and duplicate_class == "human"
+            ):
+                await _reconcile_whatsflow_phone_reply_unread(
+                    conversation_id, config["branch_id"], event_at
+                )
             return {"received": True}
         if outbound:
-            await registration_followups.note_outbound(
-                config["branch_id"], phone, message_id, "whatsflow"
-            )
+            if echo_class in {"human", "ambiguous_registration"}:
+                await registration_followups.note_outbound(
+                    config["branch_id"], phone, message_id, "whatsflow"
+                )
+            if echo_class == "human":
+                await _reconcile_whatsflow_phone_reply_unread(
+                    conversation_id, config["branch_id"], event_at
+                )
             conversations = _db["whatsapp_cloud_conversations"]
             # Never use outgoing pushName: it is the branch's own profile name.
             await conversations.update_one(
@@ -3410,14 +4017,6 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                     "provider": "whatsflow", "phone": phone, "contact_name": phone,
                     "created_at": now, "unread_count": 0,
                 }}, upsert=True,
-            )
-            # A delayed phone reply must not erase a newer incoming notification.
-            await conversations.update_one(
-                {"id": conversation_id, "$or": [
-                    {"last_inbound_at": {"$lte": event_at}},
-                    {"last_inbound_at": {"$exists": False}},
-                ]},
-                {"$set": {"unread_count": 0}},
             )
             await conversations.update_one(
                 {"id": conversation_id, "$or": [
@@ -3440,8 +4039,11 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 "provider": "whatsflow", "phone": phone,
                 "contact_name": data.get("pushName") or phone,
                 "last_message": body or "[message]", "last_message_at": event_at,
-                "last_inbound_at": event_at, "last_direction": "inbound",
-            }, "$inc": {"unread_count": 1}, "$setOnInsert": {"created_at": now}},
+                "last_inbound_at": event_at,
+                "last_inbound_message_id": message_id,
+                "last_direction": "inbound",
+            }, "$inc": {"unread_count": 1, "inbound_generation": 1},
+            "$setOnInsert": {"created_at": now}},
             upsert=True,
         )
         return {"received": True}
@@ -3552,11 +4154,15 @@ async def get_cloud_inbox_thread(
             _db, conversation["branch_id"], conversation["phone"]
         ),
     )
+    cloud_messages = messages
     messages = campaign_inbox.merge_messages(
-        messages, campaign_messages
+        cloud_messages, campaign_messages
     )
-    await _db["whatsapp_cloud_conversations"].update_one(
-        {"id": conversation_id}, {"$set": {"unread_count": 0}}
+    await _mark_cloud_inbound_read(
+        conversation_id,
+        conversation.get("branch_id") or "",
+        cloud_messages,
+        provider=None,
     )
     branch = await _db["branches"].find_one(
         {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
@@ -3886,7 +4492,7 @@ async def reply_to_cloud_inbox_thread(
             branch_id, conversation.get("phone") or "", "staff_contacted"
         )
         success, provider_message_id, error = await _send_session_provider_result(
-            conversation.get("phone") or "", body, config or {}
+            conversation.get("phone") or "", body, config or {}, automated=False
         )
         if not success:
             raise HTTPException(status_code=502, detail=f"{provider} send failed ({error or 'unknown'})")
@@ -5319,11 +5925,10 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
         elif provider == "whatsflow":
             await assert_fence()
-            success, provider_response, error = await _whatsflow_client(config).send_media(
+            success, provider_message_id, error = await _send_whatsflow_media_result(
                 wa_phone, media_type, mime, caption,
-                base64.b64encode(content).decode("ascii"), filename)
-            if isinstance(provider_response, dict):
-                provider_message_id = (provider_response.get("key") or {}).get("id") or provider_response.get("id")
+                base64.b64encode(content).decode("ascii"), filename, config
+            )
             if not success and error and not error.startswith("http_"):
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
         else:
@@ -5639,7 +6244,9 @@ async def send_test(data: SendTestRequest, current_user: dict = Depends(get_curr
     if data.branch_id:
         if not current_user.get("is_admin"):
             require_branch_scope(current_user, data.branch_id)
-        success = await _send_wa_message_for_branch(wa_phone, message, data.branch_id)
+        success = await _send_wa_message_for_branch(
+            wa_phone, message, data.branch_id, automated=False
+        )
     else:
         wa_status = await _get_wa_status()
         if not wa_status.get("connected"):

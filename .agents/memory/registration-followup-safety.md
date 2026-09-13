@@ -20,3 +20,9 @@ An authenticated outbound echo can arrive before the provider's send response su
 **Why:** Immediately treating an unmatched outbound echo as a human reply can stop the reminder's own final follow-up; treating every message during dispatch as automated can ignore a real employee's contact.
 
 **How to apply:** Correlate exact provider IDs, not message text or phone alone. Persist unresolved observations and pause automation until they are resolved; explicit staff actions should stop automation before calling the provider.
+
+Unread reconciliation must not treat automatic outbound echoes as human phone replies, or infer ordering within the same provider timestamp.
+
+**Why:** Mobile replies and automated notices share the echo channel; provider timestamps can have only second precision. Clearing counters by timestamp alone can hide an unseen arrival.
+
+**How to apply:** Retain durable automation evidence, keep unresolved echoes conservative, and use atomic inbound identity/generation checks for full clears. Preserve ambiguous legacy counts instead of guessing.

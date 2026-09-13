@@ -45,6 +45,12 @@ Phone-originated outgoing messages must be reflected in the inbox; receiving an 
 
 **How to apply:** Preserve the customer's name, use message timestamps for reply ordering, and deduplicate by branch/provider/message ID, including the race where an echo arrives before the API send returns. Do not claim historical phone replies were imported when only new webhook events are supported.
 
+Do not promise phone-read synchronization merely by subscribing to chat updates.
+
+**Why:** On 2026-09-13 the hosted root endpoint reported Evolution API 2.3.7. Its upstream tagged chat-update handler forwards only remoteJid and instanceId, discarding the unread state; hosted custom patches remain unverified.
+
+**How to apply:** Confirm the actual provider payload contains a trustworthy read boundary before clearing local unread counts. A generic chat update or an outbound delivery receipt is not proof that staff read incoming messages. Hosted-provider changes are outside this application's deployment.
+
 Renewal WhatsApp reminders are grouped by normalized phone and branch across each send batch, including different selected expiry dates and shared family numbers.
 
 **Why:** The user explicitly wants multiple expired activities for one number in a single message rather than separate activity/member messages.

@@ -437,6 +437,7 @@ def test_whatsflow_text_send_preserves_existing_digits_recipient(monkeypatch):
         "0501234567",
         "hello",
         {"provider": "whatsflow", "enabled": True},
+        automated=False,
     ))
 
     assert result == (True, "flow-text-1", None)
