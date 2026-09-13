@@ -199,25 +199,17 @@ export const RegistrationRequestsPage = () => {
 
   const handleProcess = async (req) => {
     storePrefill(req);
-    try {
-      await registrationRequestsAPI.updateStatus(req.id, 'processed');
-      if (statusFilter === 'pending') {
-        setRequests(prev => prev.filter(r => r.id !== req.id));
-      } else {
-        setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'processed' } : r));
-      }
-    } catch {
-      toast.error('تعذّر تحديث حالة الطلب');
-    }
+    // Prefilling is navigation only.  The invoice endpoint receives
+    // request_id and performs the authoritative conversion after it has
+    // successfully inserted the linked invoice.  Keeping this request in
+    // Pending also makes cancel/failure paths safe.
     navigate('/admin/invoices');
   };
 
-  // Re-open the invoice dialog for an already-"processed" request. The status is set
-  // optimistically when the button is first clicked, so a request can be marked
-  // processed without an invoice ever being created — this lets staff complete it.
+  // Historical processed rows without a real linked invoice are normalized by
+  // the server back to Pending, so they use the same action as new requests.
   const handleCreateInvoice = (req) => {
-    storePrefill(req);
-    navigate('/admin/invoices');
+    handleProcess(req);
   };
 
   const handleArchive = async (req) => {
@@ -514,17 +506,14 @@ export const RegistrationRequestsPage = () => {
                         <Button size="sm" variant="outline" onClick={() => handleUnarchive(req)} className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid={`button-unarchive-${req.id}`}>
                           <ArchiveRestore className="w-3.5 h-3.5" /> استعادة من الأرشيف
                         </Button>
-                      ) : req.status === 'processed' ? (
+                      ) : req.status === 'processed' && req.invoice_id ? (
                         <>
                           <span className="inline-flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2 py-0.5">
                             <CheckCircle2 className="w-4 h-4" /> تمت المعالجة
                           </span>
-                          <Button size="sm" variant="outline" onClick={() => handleCreateInvoice(req)} className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50">
-                            <UserPlus className="w-3.5 h-3.5" /> إنشاء فاتورة
-                          </Button>
                         </>
                       ) : (
-                        <Button size="sm" onClick={() => handleProcess(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+                        <Button size="sm" onClick={() => handleCreateInvoice(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
                           <UserPlus className="w-3.5 h-3.5" /> معالجة وإنشاء فاتورة
                         </Button>
                       )}

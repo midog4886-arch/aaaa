@@ -30,6 +30,13 @@ from utils.tenant import get_current_tenant
 router = APIRouter(tags=["RegistrationRequests"])
 
 STAFF_CONTACT_FOLLOWUP_REASONS = {"contacted", "staff_contacted"}
+# A registration request is considered converted when it has a real invoice
+# document.  Payment is intentionally not part of this invariant: a pending
+# invoice is still an invoice.  A cancelled/failed invoice, however, is not a
+# successful conversion and must not hide the request from the pending queue.
+INVALID_REGISTRATION_INVOICE_STATUSES = {
+    "cancelled", "canceled", "failed", "error", "void",
+}
 
 
 def _safe_location_url(url) -> str:
@@ -213,6 +220,108 @@ def _attach_followed_evidence(row: dict, evidence: dict):
     row["followup_staff_contacted_at"] = details.get("staff_contacted_at")
     row["followup_automatic_sent"] = bool(details.get("automatic_sent"))
     row["followup_automatic_sent_at"] = details.get("automatic_sent_at")
+
+
+async def _registration_invoice_links(rows: list) -> dict:
+    """Resolve actual invoice links for registration requests, read-only.
+
+    ``invoice_id`` is the request-side link, while
+    ``registration_request_id`` is the invoice-side link written by the
+    invoice creation path.  Looking up both makes this safe during recovery
+    from an interrupted link write and lets old processed rows be repaired by
+    the next normal invoice creation without a bulk migration.
+
+    The returned map contains only invoices that still represent a successful
+    conversion.  Cancelled/failed invoices deliberately do not count.
+    """
+    request_ids = [row.get("id") for row in rows if row.get("id")]
+    request_invoice_ids = [
+        row.get("invoice_id") for row in rows if row.get("invoice_id")
+    ]
+    if not request_ids and not request_invoice_ids:
+        return {}
+
+    terms = []
+    if request_ids:
+        terms.append({"registration_request_id": {"$in": request_ids}})
+    if request_invoice_ids:
+        terms.append({"id": {"$in": request_invoice_ids}})
+    invoices = await db.invoices.find(
+        {"$or": terms},
+        {
+            "_id": 0,
+            "id": 1,
+            "registration_request_id": 1,
+            "status": 1,
+            "branch_id": 1,
+        },
+    ).to_list(max(len(request_ids) + len(request_invoice_ids), 100))
+
+    by_request_id = {}
+    request_by_invoice_id = {
+        row.get("invoice_id"): row
+        for row in rows
+        if row.get("invoice_id")
+    }
+    request_by_id = {row.get("id"): row for row in rows if row.get("id")}
+    for invoice in invoices:
+        if invoice.get("status") in INVALID_REGISTRATION_INVOICE_STATUSES:
+            continue
+        invoice_id = invoice.get("id")
+        request_id = invoice.get("registration_request_id")
+        request = request_by_id.get(request_id) or request_by_invoice_id.get(invoice_id)
+        if not request or not invoice_id:
+            continue
+        # A link from another branch must never satisfy this request.  This is
+        # defense in depth for admin reads and protects a future cross-branch
+        # invoice import from changing queue state.
+        request_branch = request.get("branch_id")
+        if request_branch and invoice.get("branch_id") != request_branch:
+            continue
+        by_request_id[request["id"]] = invoice
+    return by_request_id
+
+
+async def _normalize_registration_request_rows(rows: list) -> list:
+    """Normalize queue status from the authoritative invoice relationship.
+
+    This is intentionally a safe read normalization: no historical document
+    is mutated.  It fixes the old ``process -> prefill`` behavior where a
+    request could say ``processed`` even though staff cancelled the invoice
+    dialog or invoice creation failed.
+    """
+    links = await _registration_invoice_links(rows)
+    normalized = []
+    for source in rows:
+        row = dict(source)
+        request_id = row.get("id")
+        invoice = links.get(request_id)
+        raw_status = row.get("status") or "pending"
+        if invoice:
+            row["invoice_id"] = invoice.get("id")
+            row["invoice_status"] = invoice.get("status") or "pending"
+            # Archived is a user-controlled terminal view and must stay
+            # archived even when an invoice was created afterwards.
+            if raw_status not in {"archived", "rejected"}:
+                row["status"] = "processed"
+        elif raw_status == "processed":
+            # Do not expose a stale processed state for an orphaned historical
+            # request.  Leave archived/rejected untouched below.
+            row.pop("invoice_id", None)
+            row.pop("invoice_status", None)
+            row["status"] = "pending"
+        elif raw_status in {"pending", "archived", "rejected"}:
+            row["status"] = raw_status
+        if (
+            raw_status == "archived"
+            and row.get("archived_from") == "processed"
+            and not invoice
+        ):
+            # Restoring a legacy processed-without-invoice archive must return
+            # to Pending, not attempt the forbidden direct processed state.
+            row["archived_from"] = "pending"
+        normalized.append(row)
+    return normalized
 
 
 def _academy_name() -> str:
@@ -522,11 +631,17 @@ async def count_pending_registration_requests(
     current_user: dict = Depends(get_current_user),
 ):
     """Lightweight count of pending requests for the sidebar badge."""
-    query: dict = {"status": "pending"}
+    # Historical rows may still say "processed" even though the old
+    # prefill-only flow never produced an invoice.  Include both candidate
+    # states, then apply the same authoritative read normalization as the list
+    # endpoint.  This deliberately performs no data migration.
+    query: dict = {"status": {"$in": ["pending", "processed"]}}
     effective_branch = resolve_branch_filter(current_user, branch_filter)
     if effective_branch:
         query["branch_id"] = effective_branch
-    count = await db.registration_requests.count_documents(query)
+    rows = await db.registration_requests.find(query, {"_id": 0}).to_list(2000)
+    normalized = await _normalize_registration_request_rows(rows)
+    count = sum(1 for row in normalized if row.get("status") == "pending")
     return {"count": count}
 
 
@@ -552,13 +667,24 @@ async def list_registration_requests(
         # history tab.
         query["id"] = {"$in": list(followed_evidence)}
     elif status and status != "all":
-        query["status"] = status
+        if status in {"pending", "processed"}:
+            # The status filter is applied after read normalization so an old
+            # processed-without-invoice row appears in Pending.
+            query["status"] = {"$in": ["pending", "processed"]}
+        else:
+            query["status"] = status
     elif status == "all":
         # "الكل" tab shows active requests only; archived ones live in their own tab
-        query["status"] = {"$ne": "archived"}
+        # and historical processed-without-invoice rows are normalized below.
+        query["status"] = {"$in": ["pending", "processed", "rejected"]}
 
     _search_registration_requests(query, search)
     requests = await db.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    requests = await _normalize_registration_request_rows(requests)
+    if status and status != "all" and status != "followed_up":
+        requests = [request for request in requests if request.get("status") == status]
+    elif status == "all":
+        requests = [request for request in requests if request.get("status") != "archived"]
     if followed_evidence:
         for request in requests:
             _attach_followed_evidence(request, followed_evidence)
@@ -577,13 +703,26 @@ async def update_registration_request(
 
     req = await db.registration_requests.find_one(
         {"id": req_id}, {"_id": 0, "id": 1, "branch_id": 1, "customer_phone": 1,
-                         "status": 1, "archived_from": 1}
+                         "status": 1, "archived_from": 1, "invoice_id": 1}
     )
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     scope = require_branch_scope(current_user)
     if scope and req.get("branch_id") != scope:
         raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الطلب")
+
+    if payload.status == "processed":
+        if req.get("status") == "archived":
+            raise HTTPException(
+                status_code=409,
+                detail="الطلب مؤرشف؛ أعده من الأرشيف أولاً",
+            )
+        linked = await _registration_invoice_links([req])
+        if req_id not in linked:
+            raise HTTPException(
+                status_code=409,
+                detail="لا يمكن إنهاء الطلب قبل إنشاء فاتورة مرتبطة به",
+            )
 
     update: dict = {"status": payload.status}
     if payload.status == "archived":

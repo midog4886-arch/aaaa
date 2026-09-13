@@ -84,6 +84,10 @@ class InvoiceCreate(BaseModel):
     customer_address: Optional[str] = ""
     branch_id: Optional[str] = None
     is_renewal: Optional[bool] = False
+    # Explicit relationship for public registration requests.  This is the
+    # authoritative conversion signal; opening/prefilling the invoice form is
+    # not a state transition.
+    registration_request_id: Optional[str] = None
 
 class Invoice(BaseModel):
     id: str
@@ -115,7 +119,105 @@ class Invoice(BaseModel):
     tax_number: str = COMPANY_TAX_NUMBER
     commercial_reg: str = COMPANY_COMMERCIAL_REG
     registration_form_id: Optional[str] = None
+    registration_request_id: Optional[str] = None
     is_checked: Optional[bool] = False
+
+
+REGISTRATION_INVOICE_INVALID_STATUSES = {
+    "cancelled", "canceled", "failed", "error", "void",
+}
+
+
+async def _active_registration_invoice(request_doc: dict):
+    """Return a non-cancelled invoice linked to a public request, if any."""
+    request_id = request_doc.get("id")
+    invoice_ids = [request_doc.get("invoice_id")] if request_doc.get("invoice_id") else []
+    candidates = []
+    for invoice_id in invoice_ids:
+        invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+        if invoice:
+            candidates.append(invoice)
+    if request_id:
+        request_invoices = await db.invoices.find(
+            {"registration_request_id": request_id}, {"_id": 0}
+        ).to_list(100)
+        candidates.extend(request_invoices)
+    request_branch = request_doc.get("branch_id")
+    for invoice in candidates:
+        if invoice.get("status") not in REGISTRATION_INVOICE_INVALID_STATUSES:
+            if request_branch and invoice.get("branch_id") != request_branch:
+                continue
+            return invoice
+    return None
+
+
+async def _load_registration_request_for_invoice(
+    request_id: Optional[str], current_user: dict
+):
+    """Validate a request link before creating an invoice.
+
+    This keeps branch authorization and duplicate conversion checks on the
+    server.  A cancelled prior invoice is intentionally retryable; an active
+    pending/paid invoice is not.
+    """
+    if not request_id:
+        return None
+    request_doc = await db.registration_requests.find_one(
+        {"id": request_id}, {"_id": 0}
+    )
+    if not request_doc:
+        raise HTTPException(status_code=404, detail="Registration request not found")
+    scope = require_branch_scope(current_user)
+    if scope and request_doc.get("branch_id") != scope:
+        raise HTTPException(status_code=403, detail="No access to this registration request")
+    if request_doc.get("status") == "rejected":
+        raise HTTPException(status_code=409, detail="Registration request is rejected")
+    existing = await _active_registration_invoice(request_doc)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Registration request already has invoice {existing.get('id')}",
+        )
+    return request_doc
+
+
+def _registration_request_cas_query(request_doc: dict) -> dict:
+    """Build a compare-and-set filter from the request read before creation.
+
+    The request is deliberately not marked "in progress": a transient
+    failure must never strand it behind a lock.  The final update instead
+    succeeds only while both the original status and original invoice link
+    are unchanged.
+    """
+    query = {"id": request_doc["id"]}
+    for field in ("branch_id", "status", "invoice_id"):
+        if field in request_doc:
+            query[field] = request_doc[field]
+        else:
+            query[field] = {"$exists": False}
+    return query
+
+
+async def _rollback_unpaid_registration_invoice(invoice_id: str):
+    """Best-effort removal of an invoice whose request CAS lost.
+
+    The invoice is still pending here.  If deletion itself is unavailable,
+    cancelling it prevents its invoice-side request link from looking like a
+    successful conversion during read-time normalization.
+    """
+    try:
+        result = await db.invoices.delete_one({"id": invoice_id, "status": "pending"})
+        if getattr(result, "deleted_count", 0):
+            return
+    except Exception:
+        logger.exception("Could not delete losing registration invoice %s", invoice_id)
+    try:
+        await db.invoices.update_one(
+            {"id": invoice_id, "status": "pending"},
+            {"$set": {"status": "cancelled"}},
+        )
+    except Exception:
+        logger.exception("Could not cancel losing registration invoice %s", invoice_id)
 
 # ============ ROUTES ============
 
@@ -262,6 +364,9 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     # Fail-closed: non-admins must have a branch (otherwise the invoice would
     # be created with branch_id=None and visible to all branch-less users).
     require_branch_scope(current_user)
+    registration_request = await _load_registration_request_for_invoice(
+        invoice.registration_request_id, current_user
+    )
 
     # A subscription (activity) invoice must be linked to a member record —
     # otherwise the membership card can never be printed and attendance /
@@ -323,6 +428,16 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         branch_id = member["branch_id"]
     else:
         branch_id = current_user.get("branch_id")
+
+    if (
+        registration_request
+        and registration_request.get("branch_id")
+        and branch_id != registration_request.get("branch_id")
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Invoice branch does not match the registration request",
+        )
 
     # Generate invoice number – unique per branch (each branch owns a block)
     seq_start = await get_branch_seq_start(branch_id, "invoice")
@@ -468,10 +583,48 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "supervisor_name": supervisor_name,
         "tax_number": COMPANY_TAX_NUMBER,
         "commercial_reg": COMPANY_COMMERCIAL_REG,
-        "additional_members": additional_members_info if additional_members_info else None
+        "additional_members": additional_members_info if additional_members_info else None,
+        "registration_request_id": invoice.registration_request_id,
     }
     
     await db.invoices.insert_one(invoice_doc)
+
+    # Only a successfully inserted invoice may convert the request.  Keep
+    # archived requests archived (they remain an archive-history decision),
+    # while pending/legacy processed-without-invoice requests become
+    # processed.  If the link cannot be written, remove this still-unpaid
+    # invoice rather than leaving an orphan that could falsely imply success.
+    if registration_request:
+        link_update = {
+            "$set": {
+                "invoice_id": invoice_id,
+                "invoice_status": "pending",
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        }
+        if registration_request.get("status") != "archived":
+            link_update["$set"]["status"] = "processed"
+        cas_query = _registration_request_cas_query(registration_request)
+        try:
+            link_result = await db.registration_requests.update_one(
+                cas_query,
+                link_update,
+            )
+        except Exception:
+            # Do not leave an invoice-side relationship that would make
+            # read-time normalization report a conversion when the request
+            # side could not be linked.
+            await _rollback_unpaid_registration_invoice(invoice_id)
+            raise
+        matched = getattr(link_result, "matched_count", None)
+        if matched is None:
+            matched = getattr(link_result, "modified_count", 0)
+        if not matched:
+            await _rollback_unpaid_registration_invoice(invoice_id)
+            raise HTTPException(
+                status_code=409,
+                detail="Registration request changed before invoice conversion; please retry",
+            )
 
     # Marketer referral: record a one-time commission on the member's first invoice
     try:

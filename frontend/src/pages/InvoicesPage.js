@@ -176,7 +176,7 @@ export const InvoicesPage = () => {
     addActivityToInvoice, validateCoupon, removeCoupon, clearScopedCoupon, updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule,
     updateItemLevel, handleAcceptFullLevel, handleRejectFullLevel, initLevelSelector, selectLevelActivity, selectLevelTime,
     goBackLevelSelector, resetLevelSelector, unlockFeeEdit, handleCreateInvoice, openEditDialog, closeCreateDialog,
-    openCreateDialog
+    openCreateDialog, setRegistrationRequestId
   } = invoiceForm;
 
   const { savingPdf, sharingWhatsApp, handleSaveAsPdfOnly, handleSaveAsPdf, handleShareWhatsApp, handleSendWhatsApp, handlePrint, handlePrintRegistrationForm } = viewHandlers;
@@ -243,6 +243,7 @@ export const InvoicesPage = () => {
     try { data = JSON.parse(raw); } catch (e) { return; }
     if (!data) return;
     setSelectedMember(null);
+    setRegistrationRequestId(data.request_id || '');
     setCustomerNameAr(data.customer_name || '');
     setCustomerPhone(data.customer_phone || '');
     // Prefill the quick-add member form with the visitor's data and open it
@@ -259,7 +260,7 @@ export const InvoicesPage = () => {
     if (data.branch_id) setPrefillBranchId(data.branch_id);
     if (data.notes) setNotes(data.notes);
     if (data.expected_start_date) {
-      setItems((prev) => prev.map(item => item.is_product ? item : { ...item, start_date: data.expected_start_date }));
+      setInvoiceItems((prev) => prev.map(item => item.is_product ? item : { ...item, start_date: data.expected_start_date }));
     }
     if (data.marketer_id) setPrefillMarketerId(data.marketer_id);
     if (data.marketer_discount_percent) setMarketerDiscountPercent(Number(data.marketer_discount_percent) || 0);

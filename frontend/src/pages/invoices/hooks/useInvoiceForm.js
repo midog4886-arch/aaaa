@@ -63,7 +63,8 @@ const draftHasContent = (d) => {
     || !!(d.notes && d.notes.trim())
     || !!(d.customerPhone && d.customerPhone.trim())
     || !!(d.customerAddress && d.customerAddress.trim())
-    || !!(d.couponCode && d.couponCode.trim());
+    || !!(d.couponCode && d.couponCode.trim())
+    || !!d.registrationRequestId;
 };
 
 const clearInvoiceDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch (_) {} };
@@ -103,6 +104,10 @@ export const useInvoiceForm = ({
   const [customerNameAr, setCustomerNameAr] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  // Set only when this form was opened from a public registration request.
+  // The backend uses this explicit relationship to convert the request only
+  // after invoice creation succeeds.
+  const [registrationRequestId, setRegistrationRequestId] = useState('');
 
   // Auto-save the NEW-invoice form so it is not lost if the dialog is closed
   // mid-entry (edit mode is never persisted — it has a server-side source).
@@ -113,6 +118,7 @@ export const useInvoiceForm = ({
       couponCode, appliedCoupon, couponDiscount,
       marketerDiscountPercent, marketerName, itemType,
       additionalMembers, customerNameAr, customerPhone, customerAddress,
+      registrationRequestId,
       savedAt: Date.now(),
     };
     if (draftHasContent(draft)) {
@@ -120,7 +126,7 @@ export const useInvoiceForm = ({
     }
   }, [isCreateDialogOpen, isEditMode, selectedMember, invoiceItems, discount, notes, paymentMethod,
     couponCode, appliedCoupon, couponDiscount, marketerDiscountPercent, marketerName, itemType,
-    additionalMembers, customerNameAr, customerPhone, customerAddress]);
+    additionalMembers, customerNameAr, customerPhone, customerAddress, registrationRequestId]);
 
   // Mirrors LevelsPage identity rule: for "<activity> - <slot>" names the
   // prefix IS the activity — built-in only on an EXACT sport-name match,
@@ -436,6 +442,7 @@ export const useInvoiceForm = ({
           discount: totalDiscount, discount_code: appliedCoupon?.code || null,
           notes, payment_method: paymentMethod, customer_name_ar: customerNameAr, customer_phone: customerPhone, customer_address: customerAddress, branch_id: selectedBranchId
         };
+        if (registrationRequestId) createPayload.registration_request_id = registrationRequestId;
         if (splitEnabled) {
           const split = {};
           ['cash', 'card', 'transfer'].forEach(k => { const v = parseFloat(paymentSplit[k]); if (v > 0) split[k] = v; });
@@ -456,7 +463,10 @@ export const useInvoiceForm = ({
       if (!isEditMode) clearInvoiceDraft();
       loadData();
       closeCreateDialog();
-    } catch (error) { toast.error(t('error')); } finally { setSaving(false); }
+    } catch (error) {
+      const detail = error?.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : t('error'));
+    } finally { setSaving(false); }
   };
 
   const openEditDialog = (invoice) => {
@@ -482,6 +492,7 @@ export const useInvoiceForm = ({
     setSelectedMember(null); setInvoiceItems([]); setDiscount(0); setNotes(''); setPaymentMethod('card');
     setSplitEnabled(false); setPaymentSplit({ cash: '', card: '', transfer: '' });
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress(''); setIsEditMode(false); setEditingInvoiceId(null);
+    setRegistrationRequestId('');
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setMarketerDiscountPercent(0); setMarketerName(''); setItemType('activity'); setFeeEditUnlocked(false);
     setAdditionalMembers([]); setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
   };
@@ -511,6 +522,7 @@ export const useInvoiceForm = ({
     setCustomerNameAr(d.customerNameAr || '');
     setCustomerPhone(d.customerPhone || '');
     setCustomerAddress(d.customerAddress || '');
+    setRegistrationRequestId(d.registrationRequestId || '');
     setIsEditMode(false); setEditingInvoiceId(null);
   };
 
@@ -544,6 +556,7 @@ export const useInvoiceForm = ({
     additionalMembers, setAdditionalMembers, additionalMemberNewForm, setAdditionalMemberNewForm,
     levelCapacityWarnings, setLevelCapacityWarnings, levelSelectorState, setLevelSelectorState,
     customerNameAr, setCustomerNameAr, customerPhone, setCustomerPhone, customerAddress, setCustomerAddress,
+    registrationRequestId, setRegistrationRequestId,
     MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, getGroupedLevelsForDays, parseActivityForLevel,
     subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total,
     handleMemberSelect, addProductToInvoice, addActivityToInvoice, validateCoupon, removeCoupon, clearScopedCoupon,

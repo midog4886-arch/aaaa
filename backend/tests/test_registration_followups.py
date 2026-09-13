@@ -191,6 +191,14 @@ def test_staff_stop_endpoint_returns_updated_request_and_guards_branch(database)
 
 def test_explicit_staff_contact_survives_later_request_processing(database):
     database.registration_requests.rows.append(request_doc())
+    # A request may only transition to processed after an actual linked
+    # invoice exists; contacting evidence itself remains independent.
+    database["invoices"].rows.append({
+        "id": "invoice-r1",
+        "registration_request_id": "r1",
+        "status": "pending",
+        "branch_id": "b1",
+    })
     run(routes.stop_registration_followup(
         "r1",
         routes.RegistrationFollowupStop(reason="contacted"),
@@ -205,6 +213,18 @@ def test_explicit_staff_contact_survives_later_request_processing(database):
     assert row["status"] == "processed"
     assert row["followup_stop_reason"] == "contacted"
     assert row["followup_staff_contacted_at"]
+
+
+def test_direct_processed_transition_requires_invoice(database):
+    database.registration_requests.rows.append(request_doc())
+    with pytest.raises(HTTPException) as error:
+        run(routes.update_registration_request(
+            "r1",
+            routes.RegistrationRequestUpdate(status="processed"),
+            {"is_admin": False, "branch_id": "b1"},
+        ))
+    assert error.value.status_code == 409
+    assert database.registration_requests.rows[0]["status"] == "pending"
 
 
 def test_first_is_due_at_24_hours_not_immediately(database, monkeypatch):
@@ -481,3 +501,92 @@ def test_registration_request_list_masks_phone_without_existing_phone_permission
     ))
     assert rows[0]["customer_phone"] == "050•••••67"
     assert rows[0]["customer_phone_masked"] is True
+
+
+def test_contacted_request_stays_pending_and_keeps_followup_evidence(database):
+    database.registration_requests.rows.append(request_doc(
+        followup_stop_reason="contacted",
+        followup_stopped_at="2026-01-02T08:00:00+00:00",
+    ))
+    rows = run(routes.list_registration_requests(
+        status="pending",
+        current_user={"is_admin": True},
+    ))
+    assert rows[0]["status"] == "pending"
+    followed = run(routes.list_registration_requests(
+        status="followed_up",
+        current_user={"is_admin": True},
+    ))
+    assert followed[0]["followup_staff_contacted"] is True
+
+
+def test_historical_processed_without_invoice_is_read_as_pending_without_mutation(database):
+    database.registration_requests.rows.append(request_doc(status="processed"))
+    rows = run(routes.list_registration_requests(
+        status="pending",
+        current_user={"is_admin": True},
+    ))
+    assert rows[0]["status"] == "pending"
+    assert "invoice_id" not in rows[0]
+    assert database.registration_requests.rows[0]["status"] == "processed"
+    assert run(routes.count_pending_registration_requests(
+        current_user={"is_admin": True},
+    ))["count"] == 1
+
+
+def test_successful_linked_invoice_is_processed_without_payment(database):
+    database.registration_requests.rows.append(request_doc())
+    database["invoices"].rows.append({
+        "id": "invoice-r1",
+        "registration_request_id": "r1",
+        "status": "pending",
+        "branch_id": "b1",
+    })
+    rows = run(routes.list_registration_requests(
+        status="processed",
+        current_user={"is_admin": True},
+    ))
+    assert rows[0]["status"] == "processed"
+    assert rows[0]["invoice_id"] == "invoice-r1"
+    assert run(routes.list_registration_requests(
+        status="pending",
+        current_user={"is_admin": True},
+    )) == []
+
+
+@pytest.mark.parametrize("invoice_status", ["cancelled", "failed"])
+def test_cancelled_or_failed_invoice_leaves_request_pending(database, invoice_status):
+    database.registration_requests.rows.append(request_doc(
+        status="processed",
+        invoice_id="invoice-r1",
+    ))
+    database["invoices"].rows.append({
+        "id": "invoice-r1",
+        "registration_request_id": "r1",
+        "status": invoice_status,
+        "branch_id": "b1",
+    })
+    rows = run(routes.list_registration_requests(
+        status="pending",
+        current_user={"is_admin": True},
+    ))
+    assert rows[0]["status"] == "pending"
+    assert "invoice_id" not in rows[0]
+    assert database.registration_requests.rows[0]["status"] == "processed"
+
+
+def test_archived_request_stays_archived_during_read_normalization(database):
+    database.registration_requests.rows.append(request_doc(
+        status="archived",
+        archived_from="processed",
+    ))
+    rows = run(routes.list_registration_requests(
+        status="archived",
+        current_user={"is_admin": True},
+    ))
+    assert rows[0]["status"] == "archived"
+    assert rows[0]["archived_from"] == "pending"
+    assert run(routes.list_registration_requests(
+        status="pending",
+        current_user={"is_admin": True},
+    )) == []

@@ -38,10 +38,13 @@ activity, preferred days/time, notes).
   intercept the public route.
 
 ## Process flow
-- Supervisor "process" action writes a `prefill_registration` payload to `sessionStorage`,
-  marks the request `processed` (so it leaves the pending queue), then navigates to
-  `/admin/invoices`. InvoicesPage reads + clears the sessionStorage on mount and opens the
-  registration-form dialog prefilled with name/phone/notes.
+- Contacting a registrant and opening the invoice form are not conversion. Requests remain
+  pending until an actual linked invoice is created; payment is not required.
+  **Why:** The user explicitly wants contacted leads to remain in the waiting queue until
+  invoiced. Historical processed flags may only reflect navigation, not conversion.
+  **How to apply:** Preserve follow-up evidence independently, keep request identity through
+  invoice draft restoration, and never re-enroll old leads into automated follow-ups when
+  correcting their displayed pending status. Archives remain a separate explicit choice.
 
 ## Branding on the public page (logo + academy name)
 - **Logo:** `<img src="/api/tenant/branding/logo?slug=<tenant>">` with `onError` → `/logo-new.png`.

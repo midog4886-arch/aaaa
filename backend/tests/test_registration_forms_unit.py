@@ -49,12 +49,20 @@ def run(coro):
 # ── fakes ────────────────────────────────────────────────────────────────────
 
 def _matches(doc, query):
-    """Minimal query matcher: exact-equality on scalar keys; operator dicts
-    ($exists/$gte/$ne/$in) are treated as 'match anything' since the handlers
-    only rely on them to page over data, not to gate our assertions."""
+    """Small Mongo matcher for the fields exercised by these unit handlers."""
     for k, v in query.items():
+        if k == "$or":
+            if not any(_matches(doc, branch) for branch in v):
+                return False
+            continue
         if isinstance(v, dict):
-            # operator expressions ($exists, $gte, $ne, $in ...) — ignore
+            if "$exists" in v and ((k in doc) != bool(v["$exists"])):
+                return False
+            if "$in" in v and doc.get(k) not in v["$in"]:
+                return False
+            if "$ne" in v and doc.get(k) == v["$ne"]:
+                return False
+            # Range/regex operators are not needed by these handlers.
             continue
         if doc.get(k) != v:
             return False
@@ -169,6 +177,43 @@ class _FakeDB:
 
     def __getitem__(self, name):
         return self.cols.setdefault(name, _FakeCollection())
+
+
+class _RaceRegistrationCollection(_FakeCollection):
+    """Return two identical snapshots before allowing either CAS write."""
+
+    def __init__(self):
+        super().__init__()
+        self._snapshots = 0
+        self.intervening_status = None
+
+    async def find_one(self, query, proj=None):
+        snapshot = await super().find_one(query, proj)
+        if query.get("id") == "request-race":
+            self._snapshots += 1
+            if self._snapshots <= 2:
+                await asyncio.sleep(0)
+        return snapshot
+
+    async def update_one(self, query, update, upsert=False):
+        if self.intervening_status and query.get("id") == "request-race":
+            self.docs["request-race"]["status"] = self.intervening_status
+            self.intervening_status = None
+        target = next(
+            (doc for doc in self.docs.values() if _matches(doc, query)),
+            None,
+        )
+        if target is None:
+            class R0:
+                matched_count = 0
+                modified_count = 0
+            return R0()
+        target.update(update.get("$set", {}))
+
+        class R:
+            matched_count = 1
+            modified_count = 1
+        return R()
 
 
 # ── shared fixtures ────────────────────────────────────────────────────────
@@ -389,6 +434,131 @@ def test_create_invoice_falls_back_to_username_without_user_doc(inv):
     other = dict(ADMIN, user_id="ghost", id="ghost", username="frontdesk")
     out = run(inv_mod.create_invoice(model, current_user=other))
     assert out.supervisor_name == "frontdesk"
+
+
+def test_create_invoice_links_registration_request_after_insert(inv, monkeypatch):
+    inv_mod, fdb = inv
+    async def _seq_start():
+        return 30001
+    monkeypatch.setattr(inv_mod, "get_branch_seq_start", lambda *_args: _seq_start())
+    run(fdb.registration_requests.insert_one({
+        "id": "request-1",
+        "branch_id": "B1",
+        "status": "pending",
+    }))
+    model = inv_mod.InvoiceCreate(
+        items=[inv_mod.InvoiceItem(
+            activity_name="Ball", fee=100.0, period="", is_product=True,
+            product_id="p1", quantity=1)],
+        payment_method="cash",
+        branch_id="B1",
+        registration_request_id="request-1",
+    )
+    out = run(inv_mod.create_invoice(model, current_user=ADMIN))
+    stored_request = run(fdb.registration_requests.find_one({"id": "request-1"}))
+    stored_invoice = run(fdb.invoices.find_one({"id": out.id}))
+    assert stored_request["status"] == "processed"
+    assert stored_request["invoice_id"] == out.id
+    assert stored_invoice["registration_request_id"] == "request-1"
+    assert stored_invoice["status"] == "pending"
+
+    with pytest.raises(HTTPException) as exc:
+        run(inv_mod.create_invoice(model, current_user=ADMIN))
+    assert exc.value.status_code == 409
+
+
+def test_concurrent_registration_invoice_creates_use_one_cas_winner(inv, monkeypatch):
+    inv_mod, fdb = inv
+    async def _seq_start():
+        return 30001
+    monkeypatch.setattr(inv_mod, "get_branch_seq_start", lambda *_args: _seq_start())
+    fdb.cols["registration_requests"] = _RaceRegistrationCollection()
+    run(fdb.registration_requests.insert_one({
+        "id": "request-race",
+        "branch_id": "B1",
+        "status": "pending",
+    }))
+    model = inv_mod.InvoiceCreate(
+        items=[inv_mod.InvoiceItem(
+            activity_name="Ball", fee=100.0, period="", is_product=True,
+            product_id="p1", quantity=1)],
+        payment_method="cash",
+        branch_id="B1",
+        registration_request_id="request-race",
+    )
+
+    async def _create_both():
+        return await asyncio.gather(
+            inv_mod.create_invoice(model, current_user=ADMIN),
+            inv_mod.create_invoice(model, current_user=ADMIN),
+            return_exceptions=True,
+        )
+
+    results = run(_create_both())
+    successes = [result for result in results if not isinstance(result, HTTPException)]
+    failures = [result for result in results if isinstance(result, HTTPException)]
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert failures[0].status_code == 409
+    stored_request = run(fdb.registration_requests.find_one({"id": "request-race"}))
+    assert stored_request["status"] == "processed"
+    assert len(fdb.invoices.docs) == 1
+    assert fdb.invoices.docs[next(iter(fdb.invoices.docs))]["id"] == stored_request["invoice_id"]
+
+
+@pytest.mark.parametrize("intervening_status", ["archived", "rejected"])
+def test_registration_invoice_cas_does_not_overwrite_terminal_race(
+    inv, monkeypatch, intervening_status
+):
+    inv_mod, fdb = inv
+    async def _seq_start():
+        return 30001
+    monkeypatch.setattr(inv_mod, "get_branch_seq_start", lambda *_args: _seq_start())
+    requests = _RaceRegistrationCollection()
+    fdb.cols["registration_requests"] = requests
+    run(requests.insert_one({
+        "id": "request-race",
+        "branch_id": "B1",
+        "status": "pending",
+    }))
+    requests.intervening_status = intervening_status
+    model = inv_mod.InvoiceCreate(
+        items=[inv_mod.InvoiceItem(
+            activity_name="Ball", fee=100.0, period="", is_product=True,
+            product_id="p1", quantity=1)],
+        payment_method="cash",
+        branch_id="B1",
+        registration_request_id="request-race",
+    )
+    with pytest.raises(HTTPException) as exc:
+        run(inv_mod.create_invoice(model, current_user=ADMIN))
+    assert exc.value.status_code == 409
+    stored_request = run(requests.find_one({"id": "request-race"}))
+    assert stored_request["status"] == intervening_status
+    assert "invoice_id" not in stored_request
+    assert fdb.invoices.docs == {}
+
+
+def test_failed_invoice_validation_leaves_registration_request_pending(inv):
+    inv_mod, fdb = inv
+    run(fdb.registration_requests.insert_one({
+        "id": "request-failed",
+        "branch_id": None,
+        "status": "pending",
+    }))
+    model = inv_mod.InvoiceCreate(
+        items=[inv_mod.InvoiceItem(
+            activity_name="Swimming", fee=100.0, period="", is_product=False,
+        )],
+        payment_method="cash",
+        registration_request_id="request-failed",
+    )
+    with pytest.raises(HTTPException) as exc:
+        run(inv_mod.create_invoice(model, current_user=ADMIN))
+    assert exc.value.status_code == 422
+    stored_request = run(fdb.registration_requests.find_one({"id": "request-failed"}))
+    assert stored_request["status"] == "pending"
+    assert run(fdb.invoices.find_one({"registration_request_id": "request-failed"})) is None
 
 
 # ── CONVERT form -> invoice ──────────────────────────────────────────────────
