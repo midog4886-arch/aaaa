@@ -430,6 +430,19 @@ def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
     return parsed.replace(tzinfo=parsed.tzinfo or timezone.utc)
 
 
+def _is_overdue(row: dict, now: Optional[datetime] = None) -> bool:
+    """Return whether a non-terminal follow-up is past its exact due time."""
+    if row.get("status") in TERMINAL_STATUSES:
+        return False
+    due = _parse_timestamp(row.get("followup_due_at"))
+    if due is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None or current.utcoffset() is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return due < current
+
+
 def _is_due(row: dict, now: Optional[datetime] = None) -> bool:
     if row.get("status") in TERMINAL_STATUSES:
         return False
@@ -459,7 +472,18 @@ async def _enrich_invoice_status(rows: list[dict]) -> list[dict]:
     if invoice_ids:
         invoices = await db.invoices.find(
             {"id": {"$in": invoice_ids}},
-            {"_id": 0, "id": 1, "branch_id": 1, "status": 1, "invoice_number": 1},
+            {
+                "_id": 0,
+                "id": 1,
+                "branch_id": 1,
+                "status": 1,
+                "invoice_number": 1,
+                "total": 1,
+                "total_amount": 1,
+                "grand_total": 1,
+                "final_total": 1,
+                "amount": 1,
+            },
         ).to_list(len(invoice_ids))
     by_id = {}
     for invoice in invoices:
@@ -496,6 +520,16 @@ async def _enrich_invoice_status(rows: list[dict]) -> list[dict]:
         invoice_status = str(invoice.get("status") or "").lower()
         row["invoice_status"] = invoice_status or None
         row["invoice_number"] = invoice.get("invoice_number")
+        for amount_key in (
+            "total",
+            "total_amount",
+            "grand_total",
+            "final_total",
+            "amount",
+        ):
+            if invoice.get(amount_key) is not None:
+                row["invoice_total"] = invoice.get(amount_key)
+                break
         if invoice_status in INVOICE_INVALID_STATUSES | INVOICE_DELETED_STATUSES:
             row["status"] = "interested"
             row["invoice_link_error"] = (
@@ -562,8 +596,33 @@ def _matches_search(row: dict, search: Optional[str]) -> bool:
     return bool(normalized and normalized == row.get("phone"))
 
 
-def _sort_key(row: dict):
-    return _parse_timestamp(row.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc)
+def _sort_key(row: dict, now: Optional[datetime] = None):
+    """Prioritize actionable work before applying the response page bound.
+
+    An overdue follow-up is more urgent than a never-contacted inquiry.  A
+    terminal record is deliberately treated as ordinary even if legacy data
+    contains an old due date or no contact timestamp.
+    """
+    if _is_overdue(row, now):
+        priority = 0
+    elif (
+        row.get("status") not in TERMINAL_STATUSES
+        and not row.get("last_contact_at")
+    ):
+        priority = 1
+    else:
+        priority = 2
+    created = _parse_timestamp(row.get("created_at"))
+    created_timestamp = created.timestamp() if created else 0
+    return (priority, -created_timestamp)
+
+
+def _numeric_amount(value) -> float:
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return amount if amount == amount else 0.0
 
 
 @router.get("")
@@ -572,6 +631,9 @@ async def list_campaign_inquiries(
     status: Optional[str] = None,
     due_only: bool = False,
     search: Optional[str] = None,
+    campaign_exact: Optional[str] = None,
+    campaign: Optional[str] = None,
+    campaign_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
     await _require_campaign_access(current_user)
@@ -581,22 +643,28 @@ async def list_campaign_inquiries(
     # capped at the public page size.  The response still bounds ``items`` to
     # keep a single CRM response manageable.
     stored_rows = await db.campaign_inquiries.find(query, {"_id": 0}).to_list(None)
-    rows = [
+    branch_rows = [
         _clean_row(row)
         for row in stored_rows
         if not row.get("archived_at") and not row.get("archived")
-        and _matches_search(row, search)
     ]
+    available_campaigns = sorted({
+        str(row.get("campaign") or "").strip()
+        for row in branch_rows
+        if str(row.get("campaign") or "").strip()
+    }, key=str.casefold)
+    rows = [row for row in branch_rows if _matches_search(row, search)]
     rows = await _enrich_invoice_status(rows)
-    rows.sort(key=_sort_key, reverse=True)
-
-    if status and status != "all":
-        _validate_status(status)
-        filtered = [row for row in rows if row.get("status") == status]
-    else:
-        filtered = rows
-    if due_only:
-        filtered = [row for row in filtered if _is_due(row)]
+    selected_campaign = (
+        str(
+            campaign_exact
+            if campaign_exact is not None
+            else campaign if campaign is not None else campaign_filter or ""
+        ).strip()
+    )
+    if selected_campaign:
+        rows = [row for row in rows if row.get("campaign") == selected_campaign]
+    rows.sort(key=_sort_key)
 
     counts = {key: 0 for key in (
         "total",
@@ -618,11 +686,36 @@ async def list_campaign_inquiries(
         if _is_due(row):
             counts["due"] += 1
 
+    paid_rows = [row for row in rows if row.get("status") == "paid"]
+    paid_amount = sum(_numeric_amount(row.get("invoice_total")) for row in paid_rows)
+    paid_stats = {
+        "count": len(paid_rows),
+        "amount": paid_amount,
+    }
+
+    if status and status != "all":
+        _validate_status(status)
+        filtered = [row for row in rows if row.get("status") == status]
+    else:
+        filtered = rows
+    if due_only:
+        filtered = [row for row in filtered if _is_due(row)]
+
     bounded = filtered[:MAX_LIST_ITEMS]
     sanitized = await _sanitize_rows(bounded, current_user)
     return {
         "items": sanitized,
         "counts": counts,
+        "campaigns": available_campaigns,
+        "selected_campaign": selected_campaign or None,
+        "paid_stats": paid_stats,
+        # Keep the aggregate shape explicit for clients that want to render a
+        # compact campaign summary without interpreting status counts.
+        "stats": {
+            "total": len(rows),
+            "paid_count": paid_stats["count"],
+            "paid_amount": paid_stats["amount"],
+        },
         "total": len(filtered),
         "returned": len(sanitized),
         "has_more": len(filtered) > len(sanitized),

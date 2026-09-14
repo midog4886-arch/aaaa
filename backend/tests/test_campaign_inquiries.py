@@ -528,3 +528,96 @@ def test_concurrent_imports_converge_without_overwriting(crm):
     assert sorted([first["created"], second["created"]]) == [0, 1]
     assert len(fake_db.campaign_inquiries.docs) == 1
     assert fake_db.campaign_inquiries.docs[0]["campaign"] in {"first", "second"}
+
+
+def test_priority_sorting_happens_before_500_item_bound(crm):
+    module, fake_db = crm
+    fake_db.campaign_inquiries.docs.extend(
+        [
+            {
+                "id": "ordinary",
+                "branch_id": "B1",
+                "phone": "966501234500",
+                "status": "new",
+                "created_at": "2026-01-04T00:00:00+00:00",
+                "last_contact_at": "2026-01-04T01:00:00+00:00",
+            },
+            {
+                "id": "uncontacted",
+                "branch_id": "B1",
+                "phone": "966501234501",
+                "status": "new",
+                "created_at": "2026-01-03T00:00:00+00:00",
+            },
+            {
+                "id": "overdue",
+                "branch_id": "B1",
+                "phone": "966501234502",
+                "status": "new",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "followup_due_at": "2020-01-01T00:00:00+00:00",
+            },
+            {
+                "id": "terminal",
+                "branch_id": "B1",
+                "phone": "966501234503",
+                "status": "do_not_contact",
+                "created_at": "2026-01-05T00:00:00+00:00",
+                "followup_due_at": "2020-01-01T00:00:00+00:00",
+            },
+        ]
+    )
+    listed = run(module.list_campaign_inquiries(current_user=ADMIN))
+    assert [item["id"] for item in listed["items"]] == [
+        "overdue",
+        "uncontacted",
+        "terminal",
+        "ordinary",
+    ]
+
+
+def test_campaign_filter_options_and_paid_stats_are_branch_scoped(crm):
+    module, fake_db = crm
+    fake_db.invoices.docs.append({
+        "id": "paid-b1",
+        "branch_id": "B1",
+        "status": "paid",
+        "total": 125,
+    })
+    fake_db.campaign_inquiries.docs.extend(
+        [
+            {
+                "id": "campaign-a",
+                "branch_id": "B1",
+                "phone": "966501234510",
+                "campaign": "Campaign A",
+                "status": "new",
+            },
+            {
+                "id": "campaign-b",
+                "branch_id": "B1",
+                "phone": "966501234511",
+                "campaign": "Campaign B",
+                "status": "paid",
+                "invoice_id": "paid-b1",
+            },
+            {
+                "id": "other-branch",
+                "branch_id": "B2",
+                "phone": "966501234512",
+                "campaign": "Secret B2",
+                "status": "new",
+            },
+        ]
+    )
+    selected = run(module.list_campaign_inquiries(
+        branch_filter="B1",
+        campaign_exact="Campaign B",
+        current_user=ADMIN,
+    ))
+    assert selected["campaigns"] == ["Campaign A", "Campaign B"]
+    assert selected["selected_campaign"] == "Campaign B"
+    assert [item["id"] for item in selected["items"]] == ["campaign-b"]
+    assert selected["counts"]["total"] == 1
+    assert selected["paid_stats"] == {"count": 1, "amount": 125.0}
+    assert "Secret B2" not in selected["campaigns"]

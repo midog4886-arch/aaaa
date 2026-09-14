@@ -13,6 +13,7 @@ jest.mock('lucide-react', () => {
   const I = () => <span />;
   return { Archive:I, CalendarClock:I, ChevronDown:I, ClipboardPlus:I, MessageCircle:I, Pencil:I, Phone:I, Plus:I, Search:I, Users:I };
 });
+
 jest.mock('../services/api', () => ({ branchesAPI: { getAll: jest.fn() }, campaignInquiriesAPI: { getAll: jest.fn(), create: jest.fn(), preview: jest.fn(), import: jest.fn(), update: jest.fn(), delete: jest.fn() } }));
 
 const inquiry = { id: 'i1', branch_id: 'b1', name: 'ليان', phone: '966501234567', source: 'social_ad', status: 'new', notes: '' };
@@ -78,5 +79,47 @@ test('contact logging saves the selected next follow-up explicitly', async () =>
   fireEvent.click(screen.getByText('حفظ تسجيل التواصل'));
   await waitFor(() => expect(campaignInquiriesAPI.update).toHaveBeenCalledWith('i1', expect.objectContaining({
     last_contact_at: expect.any(String), followup_due_at: expect.any(String),
+  })));
+});
+
+test('uses the phone as the title only when phone permission is available', async () => {
+  campaignInquiriesAPI.getAll.mockResolvedValue({
+    data: { items: [{ ...inquiry, name: '' }], counts: {} },
+  });
+  render(<CampaignInquiriesPage />);
+  expect(await screen.findByRole('heading', { name: '966501234567' })).toBeTruthy();
+  expect(screen.getByText('المصدر: إعلان سوشيال ميديا')).toBeTruthy();
+  expect(screen.getByText('لم تتم متابعته بعد')).toBeTruthy();
+});
+
+test('quick contact outcomes open the editor and do not save until confirmed', async () => {
+  campaignInquiriesAPI.update.mockResolvedValue({ data: inquiry });
+  render(<CampaignInquiriesPage />);
+  await screen.findByText('ليان');
+  fireEvent.click(screen.getByText('لم يرد'));
+  expect(campaignInquiriesAPI.update).not.toHaveBeenCalled();
+  expect(await screen.findByText('حفظ تسجيل التواصل')).toBeTruthy();
+  fireEvent.click(screen.getByText('حفظ تسجيل التواصل'));
+  await waitFor(() => expect(campaignInquiriesAPI.update).toHaveBeenCalledWith('i1', expect.objectContaining({
+    status: 'waiting',
+    last_contact_at: expect.any(String),
+    followup_due_at: expect.any(String),
+  })));
+});
+
+test('campaign options and requests use the exact backend filter', async () => {
+  campaignInquiriesAPI.getAll.mockResolvedValue({
+    data: {
+      items: [inquiry],
+      counts: { total: 1 },
+      campaigns: ['Spring', 'Summer'],
+      paid_stats: { count: 0, amount: 0 },
+    },
+  });
+  render(<CampaignInquiriesPage />);
+  await screen.findByText('ليان');
+  fireEvent.change(screen.getByRole('combobox', { name: 'الحملة' }), { target: { value: 'Spring' } });
+  await waitFor(() => expect(campaignInquiriesAPI.getAll).toHaveBeenLastCalledWith(expect.objectContaining({
+    campaign_exact: 'Spring',
   })));
 });
