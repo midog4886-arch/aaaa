@@ -81,3 +81,4 @@
 - [Registration follow-up safety](registration-followup-safety.md) — new requests only; phone-wide contact limits with branch-isolated content; resolve early outbound echoes before resuming automation.
 - [Multipart list compatibility](multipart-list-compat.md) — production FastAPI rejects Optional file lists; use a plain list with an empty default and test multipart parsing.
 - [Manual inquiry boundaries](manual-inquiry-boundary.md) — ad inquiry imports do not authorize automated outreach; opening WhatsApp is not proof of contact.
+- [Invoice notice branding](invoice-notice-branding.md) — delayed receipt workers need full tenant branding; preserve clickable links and paid total in a single media message.

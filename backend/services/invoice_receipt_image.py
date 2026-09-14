@@ -24,6 +24,9 @@ MUTED = "#5d6678"
 ACCENT = "#176b5b"
 PALE = "#edf7f4"
 RULE = "#d9e2e8"
+DEFAULT_COMPANY_NAME = "شركة اداء الابطال العالمية للرياضة"
+DEFAULT_TAX_NUMBER = "312655637900003"
+DEFAULT_COMMERCIAL_REG = "7043630230"
 
 # isolated, final, initial, medial Arabic presentation forms.  DejaVu Sans
 # contains these glyphs.  None means that the letter cannot join on that side.
@@ -228,10 +231,57 @@ def render_invoice_receipt_image(invoice: dict, branch: dict | None = None) -> b
     measure = ImageDraw.Draw(scratch)
     usable = WIDTH - 2 * MARGIN
 
+    tenant_slug = str(
+        invoice.get("tenant_slug") or branch.get("tenant_slug") or "default"
+    ).strip().lower()
+    company_name = (
+        invoice.get("company_name")
+        or branch.get("company_name")
+        or branch.get("tenant_name")
+        or (DEFAULT_COMPANY_NAME if tenant_slug == "default" else "—")
+    )
+    if (
+        tenant_slug != "default"
+        and company_name == DEFAULT_COMPANY_NAME
+    ):
+        company_name = (
+            branch.get("company_name")
+            or branch.get("tenant_name")
+            or "—"
+        )
+        if company_name == DEFAULT_COMPANY_NAME:
+            company_name = "—"
     branch_name = (branch.get("name_ar") or branch.get("name")
                    or invoice.get("branch_name") or "")
-    tax_number = (branch.get("tax_number") or branch.get("vat_number")
-                  or invoice.get("tax_number") or "")
+    # Issued invoice branding wins over mutable branch settings.  This keeps
+    # an old receipt faithful to the saved invoice even after settings change.
+    allow_default_branding = tenant_slug == "default"
+    tax_values = (
+        invoice.get("tax_number"),
+        branch.get("tax_number"),
+        branch.get("vat_number"),
+    )
+    commercial_values = (invoice.get("commercial_reg"), branch.get("commercial_reg"))
+    if allow_default_branding:
+        tax_number = next((value for value in tax_values if value), DEFAULT_TAX_NUMBER)
+        commercial_reg = next(
+            (value for value in commercial_values if value), DEFAULT_COMMERCIAL_REG
+        )
+    else:
+        tax_number = next(
+            (
+                value for value in tax_values
+                if value and str(value) != DEFAULT_TAX_NUMBER
+            ),
+            "—",
+        )
+        commercial_reg = next(
+            (
+                value for value in commercial_values
+                if value and str(value) != DEFAULT_COMMERCIAL_REG
+            ),
+            "—",
+        )
     customer = (invoice.get("customer_name_ar") or invoice.get("customer_name")
                 or invoice.get("member_name") or "—")
 
@@ -251,6 +301,8 @@ def render_invoice_receipt_image(invoice: dict, branch: dict | None = None) -> b
         meta.append(("طريقة الدفع", "Payment method", (payment_ar, payment_en)))
     if invoice.get("customer_phone"):
         meta.append(("الجوال", "Phone", invoice["customer_phone"]))
+    if invoice.get("member_code"):
+        meta.append(("رقم العضوية", "Member code", invoice["member_code"]))
     if invoice.get("customer_address"):
         meta.append(("العنوان", "Address", invoice["customer_address"]))
 
@@ -277,6 +329,21 @@ def render_invoice_receipt_image(invoice: dict, branch: dict | None = None) -> b
         if item.get("training_time") or item.get("training_time_hour"):
             details.append(("وقت التدريب", "Training time",
                             item.get("training_time") or item.get("training_time_hour")))
+        training_days = item.get("training_days")
+        if isinstance(training_days, (list, tuple, set)):
+            training_days = "، ".join(
+                str(day) for day in training_days if day not in (None, "")
+            )
+        if training_days:
+            details.append(("أيام التدريب", "Training days", training_days))
+        day_times = item.get("day_times")
+        if isinstance(day_times, dict) and day_times:
+            day_times_text = "، ".join(
+                f"{day}: {time}" for day, time in day_times.items()
+                if day not in (None, "") and time not in (None, "")
+            )
+            if day_times_text:
+                details.append(("وقت كل يوم", "Daily times", day_times_text))
         detail_rows = []
         for ar_label, en_label, detail_value in details:
             value_lines = _wrap(measure, detail_value, small, usable - 210) or ["—"]
@@ -335,7 +402,10 @@ def render_invoice_receipt_image(invoice: dict, branch: dict | None = None) -> b
                            max(70, len(amount_lines) * 35)))
     meta_height = sum(line_count * 36 + 30
                       for _, _, _, line_count in meta_rows)
-    heading_height = 210 + (44 if branch_name else 0) + (66 if tax_number else 0)
+    heading_height = (
+        210 + (44 if company_name else 0) + (44 if branch_name else 0)
+        + (66 if tax_number else 0) + (34 if commercial_reg else 0)
+    )
     height = (MARGIN + heading_height + meta_height + 62
               + sum(row["height"] + 16 for row in item_rows)
               + sum(row_height for _, _, _, row_height in total_rows) + 115)
@@ -374,6 +444,9 @@ def render_invoice_receipt_image(invoice: dict, branch: dict | None = None) -> b
     rtl(WIDTH - MARGIN - 24, y + 75, f"الحالة: {status_ar}", small, MUTED)
     ltr(MARGIN + 24, y + 75, f"Status: {status_en}", small, MUTED)
     y += 162
+    if company_name:
+        rtl(WIDTH - MARGIN, y, company_name, bold)
+        y += 44
     if branch_name:
         rtl(WIDTH - MARGIN, y, branch_name, bold)
         y += 44
@@ -382,6 +455,11 @@ def render_invoice_receipt_image(invoice: dict, branch: dict | None = None) -> b
         ltr(MARGIN, y, "Tax number", small, MUTED)
         ltr(MARGIN, y + 31, tax_number, small)
         y += 66
+    if commercial_reg:
+        rtl(WIDTH - MARGIN, y, "السجل التجاري", small, MUTED)
+        ltr(MARGIN, y, "Commercial registration", small, MUTED)
+        ltr(MARGIN, y + 28, commercial_reg, small)
+        y += 34
     draw.line((MARGIN, y + 8, WIDTH - MARGIN, y + 8), fill=RULE, width=2)
     y += 28
     for ar_label, en_label, lines, line_count in meta_rows:

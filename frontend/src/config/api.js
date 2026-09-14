@@ -30,6 +30,14 @@ export const getRememberedMemberPhone = () => {
   } catch { return ''; }
 };
 
+export const getRememberedMemberPhoneForTenant = (tenantSlug) => {
+  try {
+    const slug = String(tenantSlug || '').trim().toLowerCase();
+    if (!slug) return '';
+    return localStorage.getItem(`member_login_phone:${slug}`) || '';
+  } catch { return ''; }
+};
+
 export const setRememberedMemberPhone = (phone) => {
   try { if (phone) localStorage.setItem(rememberedPhoneKey(), phone); } catch {}
 };

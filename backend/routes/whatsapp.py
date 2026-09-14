@@ -25,7 +25,13 @@ from utils.auth import (
     require_branch_scope,
     resolve_branch_filter,
 )
-from utils.tenant import get_current_tenant_slug, set_current_tenant, reset_current_tenant
+from utils.tenant import (
+    DEFAULT_TENANT_SLUG,
+    get_current_tenant,
+    get_current_tenant_slug,
+    set_current_tenant,
+    reset_current_tenant,
+)
 from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
 from services import whatsapp_bulk_jobs
@@ -1323,84 +1329,177 @@ class InvoiceReceiptDeliveryUnknown(RuntimeError):
 
 
 async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
-    """Send Whatsflow receipts as a private image with caption; retain other providers."""
+    """Send one invoice notice using the branch's configured provider.
+
+    Whatsflow intentionally receives one receipt image with a caption.  WAHA
+    retains its text transport, while Meta continues to use the approved
+    branch template (the expanded text is only its template body parameter).
+    """
     try:
         branch_id = invoice.get("branch_id")
         if not branch_id:
             return False
-        phone = invoice.get("customer_phone") or ""
-        if not phone and invoice.get("member_id"):
+        member = None
+        # Always resolve the linked member by ID *and branch*, even when the
+        # invoice already has a phone.  The phone is a delivery snapshot; it
+        # is not a safe substitute for the member relationship/code.
+        if invoice.get("member_id"):
             member = await _db["members"].find_one(
                 {"id": invoice["member_id"], "branch_id": branch_id},
-                {"_id": 0, "phone": 1},
+                {"_id": 0, "phone": 1, "member_code": 1, "name_ar": 1, "name": 1},
             )
+        phone = invoice.get("customer_phone") or ""
+        if not phone and member:
             phone = (member or {}).get("phone") or ""
         phone = _format_cloud_phone(phone)
         config = await _get_branch_cloud_config(branch_id)
         provider = _branch_provider(config)
         if not (phone and config and config.get("enabled")):
             return False
-        customer = invoice.get("customer_name_ar") or invoice.get("customer_name") or ""
-        invoice_number = invoice.get("invoice_number") or invoice.get("id") or ""
-        item_lines = []
-        item_lines_en = []
-        for item in (invoice.get("items") or [])[:12]:
-            name = item.get("activity_name") or item.get("name") or "بند"
-            quantity = item.get("quantity", 1) or 1
-            fee = item.get("fee", 0) or 0
-            quantity_text = f" × {quantity}" if quantity != 1 else ""
-            item_lines.append(f"• {name}{quantity_text}: {fee} ر.س")
-            item_lines_en.append(f"• {name}{quantity_text}: SAR {fee}")
-        items_text = "\n".join(item_lines) or "• تفاصيل الفاتورة محفوظة في حسابك"
-        items_text_en = "\n".join(item_lines_en) or "• Invoice details are saved in your account"
-        if len(invoice.get("items") or []) > 12:
-            items_text += "\n• بنود إضافية موجودة في الفاتورة"
-            items_text_en += "\n• Additional items are included in the invoice"
-        discount_line = (
-            f"\nالخصم: {invoice.get('discount', 0)} ر.س"
-            if (invoice.get("discount", 0) or 0) > 0 else ""
+        from services.invoice_whatsapp import (
+            DEFAULT_COMPANY_NAME,
+            DEFAULT_COMMERCIAL_REG,
+            DEFAULT_TAX_NUMBER,
+            CaptionLinkError,
+            build_invoice_text,
+            build_whatsflow_caption,
         )
-        discount_line_en = (
-            f"\nDiscount: SAR {invoice.get('discount', 0)}"
-            if (invoice.get("discount", 0) or 0) > 0 else ""
+
+        branch = await _db["branches"].find_one({"id": branch_id}, {"_id": 0}) or {}
+        tenant = get_current_tenant() or {}
+        tenant_slug = str(
+            tenant.get("slug")
+            or invoice.get("tenant_slug")
+            or get_current_tenant_slug()
+            or DEFAULT_TENANT_SLUG
+        ).strip().lower()
+        # Background workers receive a deliberately small tenant projection.
+        # Hydrate the exact tenant from the control plane for branding instead
+        # of falling back to another academy's defaults.
+        needs_branding_hydration = (
+            tenant_slug != DEFAULT_TENANT_SLUG
+            or bool(
+                tenant
+                and not all(
+                    tenant.get(field)
+                    for field in ("name", "tax_number", "commercial_reg")
+                )
+            )
         )
-        message = (
-            f"تم استلام دفعتك بنجاح ✅\n"
-            f"العميل: {customer}\n"
-            f"رقم الفاتورة: {invoice_number}\n\n"
-            f"البنود:\n{items_text}\n\n"
-            f"المجموع الفرعي: {invoice.get('subtotal', 0)} ر.س"
-            f"{discount_line}\n"
-            f"ضريبة القيمة المضافة: {invoice.get('vat_amount', 0)} ر.س\n"
-            f"الإجمالي المدفوع: {invoice.get('total', 0)} ر.س"
+        if needs_branding_hydration:
+            try:
+                from control_db import get_tenant_by_slug
+
+                full_tenant = await get_tenant_by_slug(tenant_slug)
+            except Exception:
+                logger.exception(
+                    "Could not hydrate tenant branding for invoice tenant=%s",
+                    tenant_slug,
+                )
+                if tenant_slug != DEFAULT_TENANT_SLUG:
+                    return False
+                full_tenant = None
+            if not full_tenant:
+                logger.error(
+                    "Missing tenant branding record for invoice tenant=%s",
+                    tenant_slug,
+                )
+                if tenant_slug != DEFAULT_TENANT_SLUG:
+                    return False
+            else:
+                tenant = {**tenant, **full_tenant}
+        tenant = {**tenant, "slug": tenant_slug}
+        image_branch = (
+            {**branch, "tenant_slug": tenant_slug}
+            if tenant_slug != DEFAULT_TENANT_SLUG
+            else branch
         )
-        message = _append_english_section(
-            message,
-            f"Your payment has been received successfully ✅\n"
-            f"Customer: {customer}\n"
-            f"Invoice number: {invoice_number}\n\n"
-            f"Items:\n{items_text_en}\n\n"
-            f"Subtotal: SAR {invoice.get('subtotal', 0)}"
-            f"{discount_line_en}\n"
-            f"VAT: SAR {invoice.get('vat_amount', 0)}\n"
-            f"Total paid: SAR {invoice.get('total', 0)}",
+        branch_company = branch.get("company_name")
+        if (
+            tenant.get("name")
+            and branch_company in (None, "", DEFAULT_COMPANY_NAME)
+        ):
+            image_branch = {**image_branch, "company_name": tenant.get("name")}
+        # Preserve the issued invoice snapshot, only filling a missing member
+        # code/name from the branch-authorized linked member for this notice.
+        # Item schedules/dates are never read from the live member activities.
+        render_invoice = invoice
+        if member and (
+            member.get("member_code")
+            and member.get("member_code") != invoice.get("member_code")
+        ):
+            render_invoice = {
+                **invoice,
+                "member_code": member.get("member_code"),
+            }
+        if member and not render_invoice.get("member_name") and member.get("name_ar"):
+            if render_invoice is invoice:
+                render_invoice = {**invoice}
+            render_invoice["member_name"] = member.get("name_ar") or member.get("name")
+        # Invoice creation historically stored platform defaults.  When a
+        # tenant has since configured its own saved branding, use it for those
+        # default-valued records while preserving an explicitly issued custom
+        # value on older invoices.
+        tenant_branding = {}
+        custom_tax_number = branch.get("tax_number") or tenant.get("tax_number")
+        if custom_tax_number == DEFAULT_TAX_NUMBER:
+            custom_tax_number = tenant.get("tax_number") or None
+        custom_commercial_reg = (
+            branch.get("commercial_reg") or tenant.get("commercial_reg")
         )
+        if custom_commercial_reg == DEFAULT_COMMERCIAL_REG:
+            custom_commercial_reg = tenant.get("commercial_reg") or None
+        if custom_tax_number and invoice.get("tax_number") in (
+            None, "", DEFAULT_TAX_NUMBER
+        ):
+            tenant_branding["tax_number"] = custom_tax_number
+        if custom_commercial_reg and invoice.get("commercial_reg") in (
+            None, "", DEFAULT_COMMERCIAL_REG
+        ):
+            tenant_branding["commercial_reg"] = custom_commercial_reg
+        if tenant_slug != DEFAULT_TENANT_SLUG:
+            if (
+                render_invoice.get("company_name") in (None, "", DEFAULT_COMPANY_NAME)
+            ):
+                tenant_branding["company_name"] = (
+                    (
+                        branch.get("company_name")
+                        if branch.get("company_name") != DEFAULT_COMPANY_NAME
+                        else None
+                    )
+                    or tenant.get("name")
+                    or "—"
+                )
+            if render_invoice.get("tax_number") in (None, "", DEFAULT_TAX_NUMBER):
+                tenant_branding["tax_number"] = custom_tax_number or "—"
+            if render_invoice.get("commercial_reg") in (None, "", DEFAULT_COMMERCIAL_REG):
+                tenant_branding["commercial_reg"] = custom_commercial_reg or "—"
+            tenant_branding["tenant_slug"] = tenant_slug
+        if tenant_branding:
+            if render_invoice is invoice:
+                render_invoice = {**invoice}
+            render_invoice.update(tenant_branding)
+        message = build_invoice_text(render_invoice, branch, tenant)
         if provider == "whatsflow":
             from services.invoice_receipt_image import render_invoice_receipt_image
 
-            branch = await _db["branches"].find_one({"id": branch_id}, {"_id": 0})
-            image = await asyncio.to_thread(render_invoice_receipt_image, invoice, branch)
+            try:
+                caption = build_whatsflow_caption(render_invoice, branch, tenant)
+            except CaptionLinkError:
+                logger.exception(
+                    "Invoice Whatsflow caption required content did not fit "
+                    "for invoice=%s tenant=%s",
+                    invoice.get("id") or invoice.get("invoice_number"),
+                    tenant_slug,
+                )
+                return False
+            image = await asyncio.to_thread(
+                render_invoice_receipt_image, render_invoice, image_branch
+            )
             # One media message, not a text followed by a separate attachment.
-            # Keep the full item list in the image rather than exceed caption limits.
-            caption = (
-                f"تم استلام دفعتك بنجاح ✅\n"
-                f"رقم الفاتورة: {invoice_number}\n"
-                f"الإجمالي المدفوع: {invoice.get('total', 0)} ر.س\n\n"
-                f"{BILINGUAL_ENGLISH_MARKER}\n"
-                f"Your payment has been received successfully ✅\n"
-                f"Invoice number: {invoice_number}\n"
-                f"Total paid: SAR {invoice.get('total', 0)}"
-            )[:1000]
+            # The formatter keeps all app/portal/branch URLs intact and trims
+            # only detail lines when the provider's 1,024-character caption
+            # limit requires it.  Full details remain in the image.
             try:
                 success, _, error = await _send_whatsflow_media_result(
                     phone, "image", "image/png", caption,

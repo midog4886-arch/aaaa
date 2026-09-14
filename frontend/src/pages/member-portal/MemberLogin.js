@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -7,7 +7,13 @@ import { Input } from '../../components/ui/input';
 import { Phone, LogIn, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
-import API_URL, { getTenantSlug, getRememberedMemberPhone, setRememberedMemberPhone, clearRememberedMemberPhone } from '../../config/api';
+import API_URL, {
+  getTenantSlug,
+  getRememberedMemberPhone,
+  getRememberedMemberPhoneForTenant,
+  setRememberedMemberPhone,
+  clearRememberedMemberPhone,
+} from '../../config/api';
 import { getAcademyLogoUrl, getAcademyName, loadBranding, useBrandColor } from '../../services/branding';
 
 const DEFAULT_LOGO = "/logo-new.png";
@@ -133,7 +139,18 @@ const SplashScreen = ({ onComplete, logo, academyName }) => {
 
 const MemberLogin = () => {
   const navigate = useNavigate();
-  const rememberedPhone = getRememberedMemberPhone();
+  const location = useLocation();
+  const requestedTenant = (() => {
+    const value = new URLSearchParams(location.search).get('tenant') || '';
+    const clean = value.trim().toLowerCase();
+    return /^[a-z0-9_-]{1,64}$/.test(clean) ? clean : '';
+  })();
+  // Do not fall back to the legacy unscoped phone when a tenant link is
+  // explicit.  That phone may belong to another academy and would bypass the
+  // isolation performed by the query-parameter effect below.
+  const rememberedPhone = requestedTenant
+    ? getRememberedMemberPhoneForTenant(requestedTenant)
+    : getRememberedMemberPhone();
   const [phone, setPhone] = useState(rememberedPhone);
   const [loading, setLoading] = useState(false);
   // When we already have the member's phone (from the academy picker or a
@@ -145,6 +162,29 @@ const MemberLogin = () => {
   const [academyName, setAcademyName] = useState(getAcademyName());
   const primary = useBrandColor();
   const autoTriedRef = useRef(false);
+
+  // Invoice/WhatsApp links can carry the tenant because the public app is
+  // shared by academies.  Set it before any remembered-phone auto-login so a
+  // link opened while another academy is cached cannot authenticate against
+  // the wrong tenant.
+  useEffect(() => {
+    const tenant = new URLSearchParams(location.search).get('tenant');
+    if (!tenant) return;
+    try {
+      const clean = tenant.trim().toLowerCase();
+      if (/^[a-z0-9_-]{1,64}$/.test(clean)) {
+        const previous = localStorage.getItem('tenant_slug');
+        if (previous && previous !== clean) {
+          localStorage.removeItem('member_token');
+          localStorage.removeItem('member_data');
+          localStorage.removeItem('member_language');
+          localStorage.removeItem('member_dashboard_cache_v1');
+        }
+        localStorage.setItem('tenant_slug', clean);
+        localStorage.setItem('academy_confirmed', '1');
+      }
+    } catch (e) {}
+  }, [location.search]);
 
   useEffect(() => {
     const onUpdate = () => {
@@ -238,7 +278,9 @@ const MemberLogin = () => {
     if (autoTriedRef.current) return;
     autoTriedRef.current = true;
     if (localStorage.getItem('member_token')) return;
-    const remembered = getRememberedMemberPhone();
+    const remembered = requestedTenant
+      ? getRememberedMemberPhoneForTenant(requestedTenant)
+      : getRememberedMemberPhone();
     if (!remembered) return;
     setFormVisible(true);
     doLogin(remembered, { silent: true });
