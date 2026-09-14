@@ -99,6 +99,12 @@ INDEXES = {
         ([("member_id", 1)], {}),
         ([("branch_id", 1)], {}),
     ],
+    "campaign_inquiries": [
+        ([("id", 1)], {"unique": True}),
+        ([("branch_id", 1), ("phone", 1)], {"unique": True}),
+        ([("branch_id", 1), ("created_at", -1)], {}),
+        ([("branch_id", 1), ("status", 1), ("followup_due_at", 1)], {}),
+    ],
     "activity_notes": [
         ([("branch_id", 1), ("created_at", -1)], {}),
         ([("created_at", -1)], {}),

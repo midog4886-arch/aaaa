@@ -80,3 +80,4 @@
 - [Rented venue booking invariants](rented-venue-booking-invariants.md) — every level schedule/activation mutation must revalidate its rented booking; active references lock booking identity and timing.
 - [Registration follow-up safety](registration-followup-safety.md) — new requests only; phone-wide contact limits with branch-isolated content; resolve early outbound echoes before resuming automation.
 - [Multipart list compatibility](multipart-list-compat.md) — production FastAPI rejects Optional file lists; use a plain list with an empty default and test multipart parsing.
+- [Manual inquiry boundaries](manual-inquiry-boundary.md) — ad inquiry imports do not authorize automated outreach; opening WhatsApp is not proof of contact.

@@ -227,6 +227,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       icon: Radio,
       items: [
         { to: '/admin/whatsapp', icon: MessageCircle, label: 'messages', permission: 'messages', feature: 'messages' },
+        { to: '/admin/campaign-inquiries', icon: Inbox, label: 'campaign_inquiries', permission: 'messages' },
         { to: '/admin/whatsapp-bulk', icon: MessageCircle, label: 'whatsapp_bulk', permission: 'messages', feature: 'whatsapp_module' },
         { to: '/admin/advertisements', icon: Megaphone, label: 'advertisements', permission: 'advertisements', feature: 'advertisements' },
         { to: '/admin/daily-videos', icon: Video, label: 'daily_videos', permission: 'daily-videos' },

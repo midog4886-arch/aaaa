@@ -372,6 +372,17 @@ export const registrationRequestsAPI = {
   delete: (id) => axios.delete(`${API}/registration-requests/${id}`),
 };
 
+// Campaign inquiries are intentionally a staff-led workflow.  This client only
+// creates records and opens individual WhatsApp chats; it never sends messages.
+export const campaignInquiriesAPI = {
+  getAll: (params = {}) => axios.get(`${API}/campaign-inquiries`, { params }),
+  create: (data) => axios.post(`${API}/campaign-inquiries`, data),
+  preview: (data) => axios.post(`${API}/campaign-inquiries/preview`, data),
+  import: (data) => axios.post(`${API}/campaign-inquiries/import`, data),
+  update: (id, data) => axios.patch(`${API}/campaign-inquiries/${id}`, data),
+  delete: (id) => axios.delete(`${API}/campaign-inquiries/${id}`),
+};
+
 // Marketers (Affiliates) API
 export const marketersAPI = {
   getAll: (params = {}) => axios.get(`${API}/marketers`, { params }),

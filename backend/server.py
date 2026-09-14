@@ -119,6 +119,7 @@ from routes.levels import router as levels_router
 from routes.branches import router as branches_router
 from routes.activities import router as activities_router
 from routes.registration_requests import router as registration_requests_router
+from routes.campaign_inquiries import router as campaign_inquiries_router
 from routes.marketers import router as marketers_router
 from routes.coaches import router as coaches_router
 from routes.member_portal import router as member_portal_router
@@ -198,6 +199,7 @@ api_router.include_router(levels_router)
 api_router.include_router(branches_router)
 api_router.include_router(activities_router)
 api_router.include_router(registration_requests_router)
+api_router.include_router(campaign_inquiries_router)
 api_router.include_router(marketers_router)
 api_router.include_router(coaches_router)
 api_router.include_router(members_router)

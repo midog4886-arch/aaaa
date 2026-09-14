@@ -53,6 +53,7 @@ const MembersPage = lazy(() => import('./pages/MembersPage'));
 const ActivitiesPage = lazy(() => import('./pages/ActivitiesPage'));
 const PublicRegistrationPage = lazy(() => import('./pages/PublicRegistrationPage'));
 const RegistrationRequestsPage = lazy(() => import('./pages/RegistrationRequestsPage'));
+const CampaignInquiriesPage = lazy(() => import('./pages/CampaignInquiriesPage'));
 const LevelsPage = lazy(() => import('./pages/LevelsPage'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
@@ -370,6 +371,14 @@ function AppRoutes() {
             <RegistrationRequestsPage />
           </ProtectedRoute>
         } 
+      />
+      <Route
+        path="/admin/campaign-inquiries"
+        element={
+          <ProtectedRoute permission="messages">
+            <CampaignInquiriesPage />
+          </ProtectedRoute>
+        }
       />
       <Route 
         path="/admin/marketers" 
