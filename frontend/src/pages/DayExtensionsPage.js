@@ -11,6 +11,7 @@ import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Textarea } from '../components/ui/textarea';
 import api, { membersAPI, branchesAPI, activitiesAPI, whatsappAPI } from '../services/api';
+import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import {
   CalendarOff, Plus, Trash2, Play, Clock, User, Users,
@@ -30,9 +31,67 @@ const REASON_COLORS = {
   other: 'bg-gray-100 text-gray-800'
 };
 
+// The WhatsApp helper owns country-code normalization. Keep the additional
+// validation here so masked, incomplete, or malformed values can never become
+// a manual-chat link (especially for users without the phone permission).
+const getManualWhatsAppUrl = (phone, canViewPhones, message) => {
+  if (!canViewPhones || !phone || /[•*xX]/.test(String(phone))) return '';
+  if (typeof whatsappChatUrl !== 'function') return '';
+  const rawPhone = String(phone).trim();
+  const rawDigits = rawPhone.replace(/\D/g, '');
+  const explicitInternational = rawPhone.startsWith('+') || rawDigits.startsWith('00');
+  const url = whatsappChatUrl(phone, message);
+  if (typeof url !== 'string') return '';
+  const match = url.match(/^https:\/\/wa\.me\/(\d+)(?:\?|$)/);
+  if (!match || match[1].length < 10 || match[1].length > 15) return '';
+  // Stored academy phones are Saudi local numbers (or already normalized);
+  // other country codes are accepted only when explicitly marked international.
+  if (!explicitInternational && !/^9665\d{8}$/.test(match[1])) return '';
+  return url;
+};
+
+// Keep browser-opened notices in lockstep with the automatic closure queue's
+// personalization. The queue appends this English evidence section too.
+const personalizeClosureMessage = (template, member) => {
+  const detail = ((member?.details || [{}])[0]) || {};
+  const values = {
+    name: member?.name || '',
+    days: detail.missed_sessions || '',
+    new_end: detail.new_end || '',
+    old_end: detail.old_end || '',
+    activity: detail.activity || ''
+  };
+  let message = template || '';
+  Object.entries(values).forEach(([key, value]) => {
+    message = message.split(`{${key}}`).join(String(value));
+  });
+  if (!message.includes('— English —')) {
+    const lines = [
+      '— English —',
+      'Subscription extension notice',
+      `Member: ${values.name}`
+    ];
+    (member?.details || []).forEach(item => {
+      lines.push(
+        `Activity: ${item.activity || '—'}`,
+        `Sessions to compensate: ${item.missed_sessions || 0}`,
+        `Previous end date: ${item.old_end || '—'}`,
+        `New end date: ${item.new_end || '—'}`
+      );
+    });
+    message += `\n\n${lines.join('\n')}`;
+  }
+  return message;
+};
+
 export default function DayExtensionsPage() {
   const { language } = useLanguage();
-  const { selectedBranchId: globalBranchId } = useAuth();
+  const {
+    selectedBranchId: globalBranchId,
+    isAdmin,
+    user
+  } = useAuth();
+  const canViewPhones = isAdmin || user?.is_admin === true || (user?.permissions || []).includes('member-phones');
   const t = (ar, en) => language === 'ar' ? ar : en;
 
   const [closures, setClosures] = useState([]);
@@ -69,6 +128,7 @@ export default function DayExtensionsPage() {
   const [previewResult, setPreviewResult] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [waMessage, setWaMessage] = useState('');
+  const [whatsappMode, setWhatsappMode] = useState('automatic');
   const [sendingWa, setSendingWa] = useState(false);
   const [waJobs, setWaJobs] = useState([]);
   const [waJobsPollVersion, setWaJobsPollVersion] = useState(0);
@@ -201,6 +261,7 @@ export default function DayExtensionsPage() {
     setExcludedMemberIds([]);
     setShowSkippedList(false);
     setWaMessage(buildDefaultMessage(closure));
+    setWhatsappMode('automatic');
     setShowPreviewDialog(true);
     setPreviewing(true);
     try {
@@ -234,8 +295,8 @@ export default function DayExtensionsPage() {
       return;
     }
     if (!window.confirm(t(
-      `ستتم إضافة ${recipientCount} رسالة إلى قائمة الفرع بفاصل دقيقة واحدة على الأقل. الإضافة لا تعني أن الرسائل أُرسلت بعد. هل تريد المتابعة؟`,
-      `Queue ${recipientCount} message(s) in the branch campaign lane at least one minute apart? Queued does not mean sent.`
+      `ستتم إضافة ${recipientCount} رسالة إلى قائمة الإرسال التلقائي للفرع بفاصل ثلاث دقائق على الأقل. هذا ليس فتح واتساب يدويًا. الإضافة لا تعني أن الرسائل أُرسلت بعد. هل تريد المتابعة؟`,
+      `Queue ${recipientCount} message(s) automatically at least three minutes apart? This does not open WhatsApp manually. Queued does not mean sent.`
     ))) return;
     setSendingWa(true);
     try {
@@ -758,6 +819,47 @@ export default function DayExtensionsPage() {
                     </p>
                   </div>
 
+                  <div className="rounded-lg border bg-muted/20 p-3 space-y-2" data-testid="closure-whatsapp-mode">
+                    <Label className="text-sm font-medium">
+                      {t('طريقة فتح/إرسال واتساب', 'WhatsApp delivery mode')}
+                    </Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant={whatsappMode === 'automatic' ? 'default' : 'outline'}
+                        className="w-full justify-center"
+                        onClick={() => setWhatsappMode('automatic')}
+                      >
+                        <Send className="w-4 h-4 me-1" />
+                        {t('إرسال تلقائي عبر القائمة', 'Automatic queue')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={whatsappMode === 'manual' ? 'default' : 'outline'}
+                        className={`w-full justify-center ${whatsappMode === 'manual' ? 'bg-green-600 hover:bg-green-700' : 'border-green-500 text-green-700'}`}
+                        onClick={() => setWhatsappMode('manual')}
+                      >
+                        <MessageCircle className="w-4 h-4 me-1" />
+                        {t('فتح يدوي لكل عضو', 'Open chats manually')}
+                      </Button>
+                    </div>
+                    {whatsappMode === 'manual' ? (
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          'يفتح كل زر محادثة واحدة فقط برسالة مخصصة. الفتح لا يعني أن الرسالة أُرسلت أو تم تسليمها.',
+                          'Each button opens one chat with its personalized message. Opening a chat does not mean the message was sent or delivered.'
+                        )}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {t(
+                          'سيستخدم الإرسال التلقائي قائمة الفرع الموقوتة. الإضافة للقائمة لا تعني الإرسال أو التسليم.',
+                          'Automatic sending uses the paced branch queue. Queueing does not mean the message was sent or delivered.'
+                        )}
+                      </p>
+                    )}
+                  </div>
+
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <Label className="text-sm font-medium">{t('قائمة المشتركين', 'Members List')}</Label>
@@ -797,7 +899,69 @@ export default function DayExtensionsPage() {
                                   </p>
                                 ) : null}
                               </div>
-                              <span className="text-xs text-muted-foreground mx-2" dir="ltr">{m.phone || t('بدون جوال', 'no phone')}</span>
+                               <div className="flex items-center gap-2 ms-2 flex-wrap justify-end">
+                                 <span className="text-xs text-muted-foreground" dir="ltr">
+                                   {canViewPhones || !m.phone || String(m.phone).includes('•')
+                                     ? (m.phone || t('بدون جوال', 'no phone'))
+                                     : t('رقم محمي', 'Protected phone')}
+                                 </span>
+                                 {whatsappMode === 'manual' && (() => {
+                                   const messageReady = Boolean(waMessage.trim());
+                                   const personalizedMessage = personalizeClosureMessage(waMessage, m);
+                                   const manualUrl = !isExcluded && messageReady
+                                     ? getManualWhatsAppUrl(m.phone, canViewPhones, personalizedMessage)
+                                     : '';
+                                   const reason = isExcluded
+                                     ? t('مستبعد من الإرسال', 'Excluded')
+                                     : !messageReady
+                                       ? t('أدخل نص الرسالة أولاً', 'Enter a message first')
+                                     : !canViewPhones
+                                       ? t('تحتاج صلاحية عرض أرقام الأعضاء', 'Member phone permission required')
+                                       : !m.phone
+                                         ? t('لا يوجد رقم جوال', 'No phone number')
+                                         : !manualUrl
+                                           ? t('رقم الجوال غير صالح', 'Invalid phone number')
+                                           : '';
+                                   return manualUrl ? (
+                                     <Button
+                                       asChild
+                                       size="sm"
+                                       variant="outline"
+                                       className="h-8 px-2 text-xs border-green-500 text-green-700 hover:bg-green-50"
+                                     >
+                                       <a
+                                         href={manualUrl}
+                                         target="_blank"
+                                         rel="noopener noreferrer"
+                                         title={personalizedMessage}
+                                         aria-label={t(`فتح محادثة واتساب لـ ${m.name || ''}`, `Open WhatsApp chat for ${m.name || ''}`)}
+                                         data-testid={`manual-whatsapp-${m.member_id || idx}`}
+                                       >
+                                         <MessageCircle className="w-3.5 h-3.5 me-1" />
+                                         {t('فتح واتساب', 'Open WhatsApp')}
+                                       </a>
+                                     </Button>
+                                   ) : (
+                                     <div className="flex items-center gap-1">
+                                       <Button
+                                         type="button"
+                                         size="sm"
+                                         variant="outline"
+                                         className="h-8 px-2 text-xs"
+                                         disabled
+                                         title={reason}
+                                         aria-label={reason}
+                                       >
+                                         <MessageCircle className="w-3.5 h-3.5 me-1" />
+                                         {t('فتح واتساب', 'Open WhatsApp')}
+                                       </Button>
+                                       <span className="text-[10px] text-muted-foreground max-w-[120px]">
+                                         {reason}
+                                       </span>
+                                     </div>
+                                   );
+                                 })()}
+                               </div>
                               {isExcluded ? (
                                 <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-primary" onClick={toggleExclude}>
                                   {t('استعادة', 'Restore')}
@@ -854,14 +1018,23 @@ export default function DayExtensionsPage() {
                 <Button variant="outline" onClick={() => setShowPreviewDialog(false)} disabled={sendingWa || applying}>
                   {t('إغلاق', 'Close')}
                 </Button>
-                <Button
-                  onClick={handleSendWhatsAppFromPreview}
-                  disabled={previewing || sendingWa || !previewResult || !(previewResult.extended_members || []).some(m => m.phone)}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {sendingWa ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Send className="w-4 h-4 me-1" />}
-                  {t('إرسال واتساب للجميع', 'Send WhatsApp to All')}
-                </Button>
+                {whatsappMode === 'automatic' ? (
+                  <Button
+                    onClick={handleSendWhatsAppFromPreview}
+                    disabled={previewing || sendingWa || !previewResult || !(previewResult.extended_members || []).some(m => m.phone)}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {sendingWa ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Send className="w-4 h-4 me-1" />}
+                    {t('إرسال واتساب للجميع', 'Send WhatsApp to All')}
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center sm:text-end flex-1">
+                    {t(
+                      'استخدم زر "فتح واتساب" بجانب كل عضو لإرسال الرسالة يدوياً.',
+                      'Use the “Open WhatsApp” button beside each member to send manually.'
+                    )}
+                  </p>
+                )}
                 {!previewClosure?.applied && (
                   <Button
                     onClick={handleConfirmApplyFromPreview}
