@@ -1,9 +1,8 @@
-"""Manual campaign-inquiry CRM routes.
+"""Campaign-inquiry CRM routes.
 
-This module deliberately only records manual follow-up work.  It does not
-send messages, enqueue provider work, or participate in any campaign
-scheduler.  Inquiry records live in their own tenant-proxy collection so the
-manual CRM can never change the public registration-request queue.
+The CRM/import paths remain manual-only.  Explicit automation preview and
+confirmation paths delegate to the separate campaign-inquiry automation
+service; imports never enroll contacts or enqueue provider work.
 """
 
 from datetime import datetime, timezone
@@ -23,6 +22,7 @@ from utils.auth import (
     require_permission,
 )
 from utils.phone import normalize_phone
+from services import campaign_inquiry_automation
 
 
 router = APIRouter(prefix="/campaign-inquiries", tags=["CampaignInquiries"])
@@ -108,6 +108,27 @@ class CampaignInquiryUpdate(BaseModel):
     followup_due_at: Optional[str] = None
     last_contact_at: Optional[str] = None
     invoice_id: Optional[str] = Field(default=None, max_length=200)
+
+
+class CampaignAutomationPreview(BaseModel):
+    branch_id: str = Field(..., min_length=1, max_length=100)
+    inquiry_ids: list[str] = Field(..., min_length=1, max_length=100)
+    mode: str = Field(..., pattern="^(direct|followup)$")
+    message: str = Field(default="", max_length=2000)
+    first_message: str = Field(default="", max_length=2000)
+    second_message: str = Field(default="", max_length=2000)
+
+
+class CampaignAutomationConfirm(BaseModel):
+    branch_id: str = Field(..., min_length=1, max_length=100)
+    preview_id: str = Field(..., min_length=1, max_length=200)
+
+
+class CampaignAutomationSettingsPatch(BaseModel):
+    branch_id: str = Field(..., min_length=1, max_length=100)
+    paused: Optional[bool] = None
+    start_hour: Optional[int] = Field(default=None, ge=0, le=23)
+    end_hour: Optional[int] = Field(default=None, ge=1, le=24)
 
 
 def _now() -> str:
@@ -722,6 +743,204 @@ async def list_campaign_inquiries(
     }
 
 
+def _ensure_automation_service():
+    """Bind the service to the route's tenant-local DB (also test doubles)."""
+    if campaign_inquiry_automation._db is db:
+        return
+    async def branch_config(branch_id):
+        return await db["whatsapp_branch_configs"].find_one(
+            {"branch_id": branch_id}, {"_id": 0}
+        )
+
+    campaign_inquiry_automation.configure(db, branch_config)
+
+
+async def _require_automation_access(current_user: dict):
+    await _require_campaign_access(current_user)
+
+
+async def _require_automation_branch(branch_id: str, current_user: dict) -> str:
+    return await _branch_for_write(branch_id, current_user)
+
+
+@router.get("/automation/settings")
+async def get_campaign_automation_settings(
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Return branch availability and the bounded Riyadh sending window."""
+    await _require_automation_access(current_user)
+    branch_id = await _require_automation_branch(branch_id, current_user)
+    _ensure_automation_service()
+    return await campaign_inquiry_automation.get_settings(branch_id)
+
+
+@router.patch("/automation/settings")
+async def patch_campaign_automation_settings(
+    payload: CampaignAutomationSettingsPatch,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_automation_access(current_user)
+    branch_id = await _require_automation_branch(payload.branch_id, current_user)
+    _ensure_automation_service()
+    try:
+        return await campaign_inquiry_automation.update_settings(
+            branch_id,
+            paused=payload.paused,
+            start_hour=payload.start_hour,
+            end_hour=payload.end_hour,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/automation/status")
+async def get_campaign_automation_status(
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_automation_access(current_user)
+    branch_id = await _require_automation_branch(branch_id, current_user)
+    _ensure_automation_service()
+    rows = await db.campaign_inquiries.find(
+        {"branch_id": branch_id}, {"_id": 0}
+    ).to_list(None)
+    job_items = await db.whatsapp_campaign_job_items.find(
+        {"branch_id": branch_id}, {"_id": 0}
+    ).to_list(None)
+    jobs = {}
+    for item in job_items:
+        inquiry_id = (item.get("source_metadata") or {}).get("inquiry_id")
+        if inquiry_id:
+            previous = jobs.get(inquiry_id)
+            sequence = int((item.get("source_metadata") or {}).get("sequence") or 0)
+            old_sequence = int(
+                ((previous or {}).get("source_metadata") or {}).get("sequence") or 0
+            )
+            if previous is None or sequence >= old_sequence:
+                jobs[inquiry_id] = item
+    job_ids = {
+        item.get("job_id")
+        for item in jobs.values()
+        if item.get("job_id")
+    }
+    if job_ids:
+        job_rows = await db.whatsapp_campaign_jobs.find(
+            {"branch_id": branch_id}, {"_id": 0}
+        ).to_list(None)
+        jobs_by_id = {row.get("id"): row for row in job_rows}
+    else:
+        jobs_by_id = {}
+    items = []
+    for row in rows:
+        inquiry_id = row.get("id")
+        item = jobs.get(inquiry_id) or {}
+        parent = jobs_by_id.get(item.get("job_id")) or {}
+        item_status = item.get("status")
+        delivery = (
+            item.get("delivery_status")
+            or item.get("receipt_status")
+            or (
+                "accepted"
+                if item_status == "sent"
+                else "unknown"
+                if item_status == "unknown"
+                else item_status
+            )
+        )
+        items.append(
+            {
+                "inquiry_id": inquiry_id,
+                "status": row.get("automation_status") or "not_enrolled",
+                "stop_reason": row.get("automation_stop_reason"),
+                "next_due_at": row.get("automation_next_due_at"),
+                "job_status": item_status or parent.get("status"),
+                "delivery_status": delivery,
+            }
+        )
+    return {
+        "items": items,
+        "settings": await campaign_inquiry_automation.get_settings(branch_id),
+    }
+
+
+@router.post("/automation/preview")
+async def preview_campaign_automation(
+    payload: CampaignAutomationPreview,
+    current_user: dict = Depends(get_current_user),
+):
+    """Preview only the explicitly selected inquiry IDs; never writes inquiries."""
+    await _require_automation_access(current_user)
+    await _require_phone_access(current_user)
+    branch_id = await _require_automation_branch(payload.branch_id, current_user)
+    _ensure_automation_service()
+    try:
+        return await campaign_inquiry_automation.preview(
+            branch_id,
+            payload.inquiry_ids,
+            mode=payload.mode,
+            message=payload.message,
+            first_message=payload.first_message,
+            second_message=payload.second_message,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/automation/confirm")
+async def confirm_campaign_automation(
+    payload: CampaignAutomationConfirm,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_automation_access(current_user)
+    await _require_phone_access(current_user)
+    branch_id = await _require_automation_branch(payload.branch_id, current_user)
+    _ensure_automation_service()
+    try:
+        return await campaign_inquiry_automation.confirm(branch_id, payload.preview_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except TimeoutError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.post("/{inquiry_id}/automation/stop")
+async def stop_campaign_inquiry_automation(
+    inquiry_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    await _require_automation_access(current_user)
+    row, branch_id = await _load_inquiry(inquiry_id, current_user)
+    _ensure_automation_service()
+    await campaign_inquiry_automation.stop_phone(
+        branch_id, row.get("phone") or "", "manual_stop"
+    )
+    # Keep a person-level stop explicit even for a legacy/ineligible row with
+    # no currently queued sequence.
+    await db.campaign_inquiries.update_one(
+        {"id": inquiry_id, "branch_id": branch_id},
+        {
+            "$set": {
+                "automation_status": "stopped",
+                "automation_stop_reason": "manual_stop",
+                "automation_next_due_at": None,
+                "updated_at": _now(),
+            }
+        },
+    )
+    updated = await db.campaign_inquiries.find_one(
+        {"id": inquiry_id, "branch_id": branch_id}, {"_id": 0}
+    )
+    return {
+        "inquiry_id": inquiry_id,
+        "status": (updated or {}).get("automation_status") or "stopped",
+        "stop_reason": (updated or {}).get("automation_stop_reason") or "manual_stop",
+        "next_due_at": (updated or {}).get("automation_next_due_at"),
+    }
+
+
 @router.post("/preview")
 async def preview_campaign_inquiries(
     payload: CampaignInquiryPreview,
@@ -997,6 +1216,20 @@ async def update_campaign_inquiry(
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Campaign inquiry not found")
+    if "status" in changes:
+        _ensure_automation_service()
+        await campaign_inquiry_automation.note_crm_status(
+            branch_id, updated.get("phone") or "", changes["status"]
+        )
+        updated = await db.campaign_inquiries.find_one(
+            {"id": inquiry_id, "branch_id": branch_id}, {"_id": 0}
+        ) or updated
+    if {"phone", "name"} & set(changes):
+        _ensure_automation_service()
+        await campaign_inquiry_automation.note_identity_edit(branch_id, inquiry_id)
+        updated = await db.campaign_inquiries.find_one(
+            {"id": inquiry_id, "branch_id": branch_id}, {"_id": 0}
+        ) or updated
     updated_rows = await _enrich_invoice_status([updated])
     return (await _sanitize_rows(updated_rows, current_user))[0]
 
@@ -1015,4 +1248,8 @@ async def archive_campaign_inquiry(
     )
     if getattr(result, "matched_count", 1) == 0:
         raise HTTPException(status_code=404, detail="Campaign inquiry not found")
+    _ensure_automation_service()
+    await campaign_inquiry_automation.stop_inquiry(
+        branch_id, inquiry_id, "archived"
+    )
     return {"id": inquiry_id, "archived": True, "archived_at": archived_at}

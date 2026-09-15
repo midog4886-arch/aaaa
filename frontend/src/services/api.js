@@ -372,8 +372,9 @@ export const registrationRequestsAPI = {
   delete: (id) => axios.delete(`${API}/registration-requests/${id}`),
 };
 
-// Campaign inquiries are intentionally a staff-led workflow.  This client only
-// creates records and opens individual WhatsApp chats; it never sends messages.
+// Campaign inquiries support both staff-led WhatsApp preparation and the
+// branch-scoped automation workflow.  The latter always requires a preview
+// followed by an explicit confirmation in the UI.
 export const campaignInquiriesAPI = {
   getAll: (params = {}) => axios.get(`${API}/campaign-inquiries`, { params }),
   create: (data) => axios.post(`${API}/campaign-inquiries`, data),
@@ -381,6 +382,16 @@ export const campaignInquiriesAPI = {
   import: (data) => axios.post(`${API}/campaign-inquiries/import`, data),
   update: (id, data) => axios.patch(`${API}/campaign-inquiries/${id}`, data),
   delete: (id) => axios.delete(`${API}/campaign-inquiries/${id}`),
+  getAutomationSettings: (branchId) => axios.get(`${API}/campaign-inquiries/automation/settings`, {
+    params: { branch_id: branchId },
+  }),
+  updateAutomationSettings: (data) => axios.patch(`${API}/campaign-inquiries/automation/settings`, data),
+  getAutomationStatus: (branchId) => axios.get(`${API}/campaign-inquiries/automation/status`, {
+    params: { branch_id: branchId },
+  }),
+  previewAutomation: (data) => axios.post(`${API}/campaign-inquiries/automation/preview`, data),
+  confirmAutomation: (data) => axios.post(`${API}/campaign-inquiries/automation/confirm`, data),
+  stopAutomation: (id) => axios.post(`${API}/campaign-inquiries/${id}/automation/stop`, {}),
 };
 
 // Marketers (Affiliates) API

@@ -90,7 +90,11 @@ def _load_real_app_sync():
 
 async def _run_real_app_startup():
     try:
-        await _wait_for_app()
+        # Request handlers have a bounded wait, but startup must not silently
+        # abandon scheduler initialization when a cold import takes >30s.
+        # The loader signals this event on both successful and failed imports.
+        while not _app_ready.is_set():
+            await asyncio.sleep(0.2)
         if _real_app is None:
             logger.warning("Real app not loaded; cannot run startup hooks")
             return

@@ -36,6 +36,7 @@ from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
 from services import whatsapp_bulk_jobs
 from services import campaign_inbox, registration_followups
+from services import campaign_inquiry_automation
 from utils.phone import normalize_phone, phone_lookup_values
 
 logger = logging.getLogger("whatsapp")
@@ -352,17 +353,38 @@ _class_reminder_started = False
 def set_database(db):
     global _db
     _db = db
+    campaign_inquiry_automation.configure(db, _get_branch_cloud_config)
     whatsapp_bulk_jobs.configure(
         db, get_config=_get_branch_cloud_config,
         validate_config=_validate_bulk_job_config,
         reserve_quota=_reserve_waha_campaign_quota,
         release_quota=_release_waha_campaign_quota,
         send=_dispatch_bulk_job_item,
-        authorize_dispatch=registration_followups.authorize_dispatch,
-        recheck_dispatch=registration_followups.recheck_dispatch,
-        completed=registration_followups.completed,
+        authorize_dispatch=_authorize_bulk_dispatch,
+        recheck_dispatch=_recheck_bulk_dispatch,
+        completed=_completed_bulk_dispatch,
     )
     registration_followups.configure(db, _get_branch_cloud_config)
+
+
+async def _authorize_bulk_dispatch(item: dict):
+    """Route queue safety callbacks without creating a second send path."""
+    if item.get("communication_kind") == campaign_inquiry_automation.KIND:
+        return await campaign_inquiry_automation.authorize_dispatch(item)
+    return await registration_followups.authorize_dispatch(item)
+
+
+async def _recheck_bulk_dispatch(item: dict):
+    if item.get("communication_kind") == campaign_inquiry_automation.KIND:
+        return await campaign_inquiry_automation.recheck_dispatch(item)
+    return await registration_followups.recheck_dispatch(item)
+
+
+async def _completed_bulk_dispatch(item: dict, status: str):
+    if item.get("communication_kind") == campaign_inquiry_automation.KIND:
+        await campaign_inquiry_automation.completed(item, status)
+        return
+    await registration_followups.completed(item, status)
 
 
 def _format_phone(phone: str) -> str:
@@ -2555,6 +2577,7 @@ def start_scheduler():
     # reminders/notices retain their existing delivery paths and are not gated.
     whatsapp_bulk_jobs.start_worker()
     registration_followups.start_worker()
+    campaign_inquiry_automation.start_worker()
     if not _admin_alert_started:
         asyncio.ensure_future(_admin_alert_loop())
     if not _invoice_payment_outbox_started:
@@ -3358,6 +3381,9 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                 await registration_followups.note_customer_message(
                     config["branch_id"], phone, body
                 )
+                await campaign_inquiry_automation.note_customer_message(
+                    config["branch_id"], phone, body
+                )
                 await _db["whatsapp_cloud_conversations"].update_one(
                     {"id": conversation_id},
                     {
@@ -3464,6 +3490,9 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
             await registration_followups.note_outbound(
                 config["branch_id"], phone, message_id, "waha"
             )
+            await campaign_inquiry_automation.note_outbound(
+                config["branch_id"], phone, message_id, "waha"
+            )
             return {"received": True}
         await _db["whatsapp_cloud_messages"].create_index(
             [("branch_id", 1), ("provider", 1), ("waha_message_id", 1)],
@@ -3487,6 +3516,9 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         except DuplicateKeyError:
             return {"received": True}
         await registration_followups.note_customer_message(
+            config["branch_id"], phone, body
+        )
+        await campaign_inquiry_automation.note_customer_message(
             config["branch_id"], phone, body
         )
         await _db["whatsapp_cloud_conversations"].update_one({"id": conversation_id}, {"$set": {
@@ -4103,6 +4135,12 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 await registration_followups.note_outbound(
                     config["branch_id"], phone, message_id, "whatsflow"
                 )
+            # An ambiguous provider echo is retained as automation evidence;
+            # only the already-classified human path can stop inquiry work.
+            if echo_class == "human":
+                await campaign_inquiry_automation.note_outbound(
+                    config["branch_id"], phone, message_id, "whatsflow"
+                )
             if echo_class == "human":
                 await _reconcile_whatsflow_phone_reply_unread(
                     conversation_id, config["branch_id"], event_at
@@ -4129,6 +4167,9 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             )
             return {"received": True}
         await registration_followups.note_customer_message(
+            config["branch_id"], phone, body
+        )
+        await campaign_inquiry_automation.note_customer_message(
             config["branch_id"], phone, body
         )
         await _db["whatsapp_cloud_conversations"].update_one(
@@ -4590,6 +4631,9 @@ async def reply_to_cloud_inbox_thread(
         await registration_followups.stop_phone(
             branch_id, conversation.get("phone") or "", "staff_contacted"
         )
+        await campaign_inquiry_automation.stop_phone(
+            branch_id, conversation.get("phone") or "", "staff_contacted"
+        )
         success, provider_message_id, error = await _send_session_provider_result(
             conversation.get("phone") or "", body, config or {}, automated=False
         )
@@ -4654,6 +4698,9 @@ async def reply_to_cloud_inbox_thread(
         )
 
     await registration_followups.stop_phone(
+        branch_id, conversation.get("phone") or "", "staff_contacted"
+    )
+    await campaign_inquiry_automation.stop_phone(
         branch_id, conversation.get("phone") or "", "staff_contacted"
     )
     success, meta_message_id, error = await _send_meta_cloud_message_result(
@@ -4786,6 +4833,9 @@ async def send_cloud_inbox_media(
         # Explicit staff contact stops registration follow-up before touching
         # the provider, preserving the existing webhook-echo race guard.
         await registration_followups.stop_phone(
+            branch_id, conversation.get("phone") or "", "staff_contacted"
+        )
+        await campaign_inquiry_automation.stop_phone(
             branch_id, conversation.get("phone") or "", "staff_contacted"
         )
         (
@@ -6036,6 +6086,16 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
             success, provider_message_id, _error = await _send_meta_media_template_result(
                 item["phone"], caption, media_id, media_type, filename, config
             )
+    # Whatsflow's authenticated outgoing echo is correlated by its provider
+    # message ID.  A successful transport response without that identity is an
+    # uncertain outcome, never a proven send that may advance a sequence.
+    if (
+        provider == "whatsflow"
+        and item.get("communication_kind") == campaign_inquiry_automation.KIND
+        and success
+        and not provider_message_id
+    ):
+        raise RuntimeError("uncertain_provider_outcome:missing_message_id")
     try:
         if isinstance(provider_message_id, str) and provider_message_id:
             await _db["whatsapp_campaign_job_items"].update_one(
@@ -6324,6 +6384,9 @@ async def test_branch_cloud_config(
     await registration_followups.stop_phone(
         branch_id, wa_phone, "staff_contacted"
     )
+    await campaign_inquiry_automation.stop_phone(
+        branch_id, wa_phone, "staff_contacted"
+    )
     if await _send_meta_cloud_message(wa_phone, message, config):
         return {"success": True}
     raise HTTPException(status_code=502, detail="Meta WhatsApp test failed")
@@ -6338,6 +6401,9 @@ async def send_test(data: SendTestRequest, current_user: dict = Depends(get_curr
     if not wa_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number")
     await registration_followups.stop_phone(
+        data.branch_id, wa_phone, "staff_contacted"
+    )
+    await campaign_inquiry_automation.stop_phone(
         data.branch_id, wa_phone, "staff_contacted"
     )
     if data.branch_id:

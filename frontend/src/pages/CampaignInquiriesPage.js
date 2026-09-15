@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import { Archive, CalendarClock, ChevronDown, ClipboardPlus, MessageCircle, Pencil, Phone, Plus, Search, Users } from 'lucide-react';
+import { CampaignAutomationPanel } from '../components/CampaignAutomationPanel';
 
 const STATUSES = [
   ['new', 'جديد'], ['waiting', 'بانتظار الرد'], ['interested', 'مهتم'], ['visit', 'موعد زيارة'],
@@ -80,9 +81,73 @@ export const CampaignInquiriesPage = () => {
   const loadSeq = useRef(0);
   const previewSeq = useRef(0);
   const [busy, setBusy] = useState(false);
+  const [automationSettings, setAutomationSettings] = useState(null);
+  const [automationStatus, setAutomationStatus] = useState({});
+  const [automationStatusError, setAutomationStatusError] = useState('');
+  const [selectedAutomationIds, setSelectedAutomationIds] = useState([]);
+  const automationLoadSeq = useRef(0);
+  const canUseAutomationApi = typeof campaignInquiriesAPI.getAutomationSettings === 'function'
+    && typeof campaignInquiriesAPI.getAutomationStatus === 'function';
+  const canManageAutomation = Boolean(
+    canViewPhones
+    && (isAdmin || (user?.permissions || []).includes('messages')),
+  );
 
   useEffect(() => { branchesAPI.getAll().then(r => setBranches(r.data || [])).catch(() => toast.error('تعذّر تحميل الفروع')); }, []);
   useEffect(() => { if (!isAdmin) setBranch(allowedBranch); }, [isAdmin, allowedBranch]);
+  const refreshAutomationStatus = useCallback(async branchSnapshot => {
+    if (!branchSnapshot || branchSnapshot === 'all' || typeof campaignInquiriesAPI.getAutomationStatus !== 'function') return;
+    const token = ++automationLoadSeq.current;
+    try {
+      const response = await campaignInquiriesAPI.getAutomationStatus(branchSnapshot);
+      if (token !== automationLoadSeq.current || branchSnapshot !== branch) return;
+      const next = {};
+      (response.data?.items || []).forEach(item => {
+        if (item?.inquiry_id !== undefined && item?.inquiry_id !== null) next[item.inquiry_id] = item;
+      });
+      setAutomationStatus(next);
+      setAutomationStatusError('');
+      if (response.data?.settings) setAutomationSettings(response.data.settings);
+    } catch {
+      if (token === automationLoadSeq.current && branchSnapshot === branch) {
+        setAutomationStatus({});
+        setAutomationStatusError('تعذّر تحديث حالات الإرسال الآلي؛ أعد المحاولة لاحقاً.');
+      }
+    }
+  }, [branch]);
+  useEffect(() => {
+    const branchSnapshot = branch;
+    automationLoadSeq.current += 1;
+    setAutomationSettings(null);
+    setAutomationStatus({});
+    setAutomationStatusError('');
+    setSelectedAutomationIds([]);
+    if (branchSnapshot === 'all' || !canManageAutomation || typeof campaignInquiriesAPI.getAutomationSettings !== 'function') return undefined;
+    let active = true;
+    campaignInquiriesAPI.getAutomationSettings(branchSnapshot)
+      .then(response => {
+        if (active && branchSnapshot === branch) setAutomationSettings(response.data || null);
+      })
+      .catch(() => {
+        if (active && branchSnapshot === branch) toast.error('تعذّر تحميل إعدادات الإرسال الآلي لهذا الفرع');
+      });
+    refreshAutomationStatus(branchSnapshot);
+    return () => { active = false; };
+  }, [branch, canManageAutomation, refreshAutomationStatus]);
+  // Statuses are refreshed after a filter change as well as on initial fetch.
+  // Polling is intentionally slow and only runs for the selected branch.
+  useEffect(() => {
+    if (!canUseAutomationApi || !canManageAutomation || branch === 'all') return undefined;
+    refreshAutomationStatus(branch);
+    const interval = setInterval(() => refreshAutomationStatus(branch), 45000);
+    return () => clearInterval(interval);
+  }, [branch, filters.status, filters.due, filters.search, filters.campaign, canUseAutomationApi, canManageAutomation, refreshAutomationStatus]);
+  useEffect(() => {
+    // Filter/branch changes invalidate both the inquiry selection and any
+    // import or automation preview tied to the previous result set.
+    setSelectedAutomationIds([]);
+    resetPreview();
+  }, [branch, filters.status, filters.due, filters.search, filters.campaign]);
   const load = useCallback(async () => {
     const token = ++loadSeq.current; setLoading(true); setError('');
     try {
@@ -134,7 +199,7 @@ export const CampaignInquiriesPage = () => {
   const importPhones = async () => {
     if (!preview?.valid_count || preview.branch !== branch || preview.phones !== bulkData.phones || busy) return toast.error('حدّث المعاينة قبل الاستيراد');
     setBusy(true);
-    try { const r = await campaignInquiriesAPI.import({ branch_id: branch, ...bulkData }); toast.success(`تمت إضافة ${r.data?.created || 0} استفسار`); setBulk(false); setBulkData({ phones: '', source: 'social_ad', campaign: '', activity: '' }); resetPreview(); load(); }
+     try { const r = await campaignInquiriesAPI.import({ branch_id: branch, ...bulkData }); toast.success(`تمت إضافة ${r.data?.created || 0} استفسار`); setBulk(false); setSelectedAutomationIds([]); setBulkData({ phones: '', source: 'social_ad', campaign: '', activity: '' }); resetPreview(); load(); }
     catch { toast.error('تعذّر الاستيراد'); } finally { setBusy(false); }
   };
   const archive = async (item) => {
@@ -154,14 +219,14 @@ export const CampaignInquiriesPage = () => {
 
   return <Layout><main className="p-4 md:p-6 max-w-6xl mx-auto" dir="rtl">
     <header className="flex flex-wrap items-start justify-between gap-3 mb-5">
-      <div><div className="flex items-center gap-2"><Users className="w-6 h-6 text-emerald-600" /><h1 className="text-xl font-bold">متابعة استفسارات الحملات</h1></div><p className="text-xs text-muted-foreground mt-1">متابعة شخصية لاستفسارات الإعلانات — لا توجد رسائل أو جدولة تلقائية.</p></div>
-      {canViewPhones && <div className="flex gap-2"><Button variant="outline" onClick={() => { setBulk(true); resetPreview(); }}><ClipboardPlus className="w-4 h-4 ml-1" /> لصق أرقام</Button><Button onClick={() => setForm(emptyForm(activeBranch))}><Plus className="w-4 h-4 ml-1" /> إضافة استفسار</Button></div>}
+      <div><div className="flex items-center gap-2"><Users className="w-6 h-6 text-emerald-600" /><h1 className="text-xl font-bold">متابعة استفسارات الحملات</h1></div><p className="text-xs text-muted-foreground mt-1">متابعة شخصية لاستفسارات الإعلانات، مع إرسال آلي اختياري ومحدد بالفرع عند توفره.</p></div>
+      {canViewPhones && <div className="flex gap-2"><Button variant="outline" onClick={() => { setBulk(true); setSelectedAutomationIds([]); resetPreview(); }}><ClipboardPlus className="w-4 h-4 ml-1" /> لصق أرقام</Button><Button onClick={() => { setSelectedAutomationIds([]); setForm(emptyForm(activeBranch)); }}><Plus className="w-4 h-4 ml-1" /> إضافة استفسار</Button></div>}
     </header>
     <section className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mb-5">
       {[['total','الكل'],['new','جديد'],['waiting','بانتظار رد'],['interested','مهتم'],['visit','زيارة'],['invoiced','تمت الفاتورة'],['paid','مدفوع'],['due','مستحق اليوم']].map(([key,label]) => <button key={key} onClick={() => key === 'due' ? setFilters(f => ({ ...f, due: !f.due })) : setFilters(f => ({ ...f, status: key === 'total' ? 'all' : key, due: false }))} className={`text-right rounded-lg border p-3 transition-colors ${((key === 'due' && filters.due) || filters.status === key) ? 'border-emerald-400 bg-emerald-50' : 'bg-card hover:border-emerald-200'}`}><span className="block text-lg font-bold">{counts[key] || 0}</span><span className="text-[11px] text-muted-foreground">{label}</span></button>)}
     </section>
     <Card className="mb-4"><CardContent className="p-3 flex flex-wrap gap-2">
-       <select value={branch} onChange={e => { setBranch(e.target.value); setFilters(f => ({ ...f, campaign: '' })); resetPreview(); setForm(null); setBulk(false); setContact(null); }} className="h-9 rounded-md border px-2 text-sm" disabled={!isAdmin && branches.length <= 1}>{isAdmin && <option value="all">كل الفروع</option>}{branches.map(b => <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>)}</select>
+       <select value={branch} onChange={e => { setBranch(e.target.value); setFilters(f => ({ ...f, campaign: '' })); resetPreview(); setSelectedAutomationIds([]); setForm(null); setBulk(false); setContact(null); }} className="h-9 rounded-md border px-2 text-sm" disabled={!isAdmin && branches.length <= 1}>{isAdmin && <option value="all">كل الفروع</option>}{branches.map(b => <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>)}</select>
       <select value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))} className="h-9 rounded-md border px-2 text-sm"><option value="all">كل الحالات</option>{STATUSES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
        <select aria-label="الحملة" value={filters.campaign} onChange={e => setFilters(f => ({ ...f, campaign: e.target.value }))} className="h-9 rounded-md border px-2 text-sm"><option value="">كل الحملات</option>{campaigns.map(name => <option key={name} value={name}>{name}</option>)}</select>
       <label className="flex items-center gap-1 text-xs px-2"><input type="checkbox" checked={filters.due} onChange={e => setFilters(f => ({ ...f, due: e.target.checked }))} /> مستحق اليوم (السعودية)</label>
@@ -171,9 +236,25 @@ export const CampaignInquiriesPage = () => {
        <span>المدفوع: <strong className="text-foreground">{paidStats.count}</strong></span>
        {paidStats.amount > 0 && <span>قيمة المدفوع: <strong className="text-foreground">{paidStats.amount.toLocaleString('ar-SA')} ر.س</strong></span>}
      </div>
-    {!canViewPhones && <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">صلاحية عرض أرقام الأعضاء غير متاحة لديك؛ تم إخفاء إجراءات الهاتف وواتساب.</div>}
-    {loading ? <div className="space-y-3">{[1,2,3].map(n => <div key={n} className="h-28 rounded-lg bg-muted animate-pulse" />)}</div> : error ? <div className="text-center py-16"><p className="text-destructive mb-3">{error}</p><Button variant="outline" onClick={load}>إعادة المحاولة</Button></div> : !items.length ? <div className="text-center py-16 text-muted-foreground"><Users className="mx-auto mb-3 opacity-40" /><p>لا توجد استفسارات ضمن هذه الفلاتر.</p><p className="text-xs mt-1">أضفها يدوياً أو الصق أرقام حملة بعد معاينتها.</p></div> :
-       <div className="space-y-3">{items.map(item => <Card key={item.id}><CardContent className="p-4 flex flex-wrap justify-between gap-4"><div className="min-w-0 flex-1"><div className="flex gap-2 items-center flex-wrap"><h2 className="font-semibold">{item.name || (canViewPhones ? (item.phone || 'بدون اسم') : 'بدون اسم')}</h2><Status status={item.status} />{isAdmin && <span className="text-[11px] bg-muted px-2 py-0.5 rounded">{branchName(item.branch_id)}</span>}</div><div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">{canViewPhones && <span dir="ltr"><Phone className="inline w-3 h-3 ml-1" />{item.phone}</span>}{item.source && <span>المصدر: {sourceLabel(item.source)}</span>}{item.campaign && <span>الحملة: {item.campaign}</span>}{item.activity && <span>النشاط: {item.activity}</span>}{item.assigned_to && <span>المسؤول: {item.assigned_to}</span>}{(item.invoice_number || item.invoice_id) && <span>فاتورة: {item.invoice_number || item.invoice_id}</span>}<span title={displayDate(item.followup_due_at)} aria-label={displayDate(item.followup_due_at)}><CalendarClock className="inline w-3 h-3 ml-1" />المتابعة: {dueLabel(item.followup_due_at)}</span></div>{item.invoice_link_error && <p className="mt-2 text-xs text-destructive">مشكلة ربط الفاتورة: {item.invoice_link_error}</p>}{item.notes && <p className="mt-2 text-xs bg-muted/60 rounded p-2 whitespace-pre-wrap">{item.notes}</p>}{item.last_contact_at ? <p className="mt-2 text-[11px] text-muted-foreground">آخر تواصل مسجل: {displayDate(item.last_contact_at)}</p> : <p className="mt-2 text-[11px] text-muted-foreground">لم تتم متابعته بعد</p>}</div><div className="flex flex-wrap content-start gap-2">{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => setComposer({ item, template: 'first', text: TEMPLATES.first.replace('{name}', item.name || '') })}><MessageCircle className="w-3.5 h-3.5 ml-1" /> تجهيز واتساب</Button>}{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => startContact(item)}>تسجيل تواصل</Button>}{canOpenChat(item) && <div className="flex flex-wrap gap-1 w-full" aria-label="نتائج التواصل">{QUICK_OUTCOMES.map(([statusValue, label]) => <Button key={statusValue} size="sm" variant="ghost" onClick={() => startContact(item, statusValue)}>{label}</Button>)}</div>}<Button size="sm" variant="outline" onClick={() => setForm({ ...item, followup_due_at: datetimeInput(item.followup_due_at), invoice_id: item.invoice_number || item.invoice_id || '' })}><Pencil className="w-3.5 h-3.5 ml-1" /> تعديل</Button><Button size="sm" variant="ghost" className="text-destructive" onClick={() => archive(item)}><Archive className="w-3.5 h-3.5" /></Button></div></CardContent></Card>)}</div>}
+     {!canViewPhones && <div className="mb-4 rounded-md bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">صلاحية عرض أرقام الأعضاء غير متاحة لديك؛ تم إخفاء إجراءات الهاتف وواتساب.</div>}
+      {loading ? <div className="space-y-3">{[1,2,3].map(n => <div key={n} className="h-28 rounded-lg bg-muted animate-pulse" />)}</div> : error ? <div className="text-center py-16"><p className="text-destructive mb-3">{error}</p><Button variant="outline" onClick={load}>إعادة المحاولة</Button></div> :
+       <CampaignAutomationPanel
+         api={campaignInquiriesAPI}
+         branch={branch}
+         items={items}
+         settings={automationSettings}
+         statusMap={automationStatus}
+         statusError={automationStatusError}
+         canAutomate={canManageAutomation}
+         selectedIds={selectedAutomationIds}
+         onSelectedIdsChange={setSelectedAutomationIds}
+         onSettingsChange={setAutomationSettings}
+         onRefresh={() => refreshAutomationStatus(branch)}
+         emptyContent={<div className="text-center py-16 text-muted-foreground"><Users className="mx-auto mb-3 opacity-40" /><p>لا توجد استفسارات ضمن هذه الفلاتر.</p><p className="text-xs mt-1">أضفها يدوياً أو الصق أرقام حملة بعد معاينتها.</p></div>}
+         filterKey={`${branch}|${filters.status}|${filters.due}|${filters.search}|${filters.campaign}|${form?.id || ''}|${bulk ? 'bulk' : ''}`}
+       >
+           {({ item, selectionControl, directButton, stopButton, statusSummary }) => <Card key={item.id}><CardContent className="p-4 flex flex-wrap justify-between gap-4"><div className="min-w-0 flex-1"><div className="flex gap-2 items-center flex-wrap"><h2 className="font-semibold">{item.name || (canViewPhones ? (item.phone || 'بدون اسم') : 'بدون اسم')}</h2><Status status={item.status} />{isAdmin && <span className="text-[11px] bg-muted px-2 py-0.5 rounded">{branchName(item.branch_id)}</span>}</div><div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">{canViewPhones && <span dir="ltr"><Phone className="inline w-3 h-3 ml-1" />{item.phone}</span>}{item.source && <span>المصدر: {sourceLabel(item.source)}</span>}{item.campaign && <span>الحملة: {item.campaign}</span>}{item.activity && <span>النشاط: {item.activity}</span>}{item.assigned_to && <span>المسؤول: {item.assigned_to}</span>}{(item.invoice_number || item.invoice_id) && <span>فاتورة: {item.invoice_number || item.invoice_id}</span>}<span title={displayDate(item.followup_due_at)} aria-label={displayDate(item.followup_due_at)}><CalendarClock className="inline w-3 h-3 ml-1" />المتابعة: {dueLabel(item.followup_due_at)}</span></div>{item.invoice_link_error && <p className="mt-2 text-xs text-destructive">مشكلة ربط الفاتورة: {item.invoice_link_error}</p>}{item.notes && <p className="mt-2 text-xs bg-muted/60 rounded p-2 whitespace-pre-wrap">{item.notes}</p>}{item.last_contact_at ? <p className="mt-2 text-[11px] text-muted-foreground">آخر تواصل مسجل: {displayDate(item.last_contact_at)}</p> : <p className="mt-2 text-[11px] text-muted-foreground">لم تتم متابعته بعد</p>}{statusSummary}</div><div className="flex flex-wrap content-start gap-2">{selectionControl}{directButton}{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => setComposer({ item, template: 'first', text: TEMPLATES.first.replace('{name}', item.name || '') })}><MessageCircle className="w-3.5 h-3.5 ml-1" /> تجهيز واتساب</Button>}{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => startContact(item)}>تسجيل تواصل</Button>}{canOpenChat(item) && <div className="flex flex-wrap gap-1 w-full" aria-label="نتائج التواصل">{QUICK_OUTCOMES.map(([statusValue, label]) => <Button key={statusValue} size="sm" variant="ghost" onClick={() => startContact(item, statusValue)}>{label}</Button>)}</div>}{stopButton}<Button size="sm" variant="outline" onClick={() => { setSelectedAutomationIds([]); setForm({ ...item, followup_due_at: datetimeInput(item.followup_due_at), invoice_id: item.invoice_number || item.invoice_id || '' }); }}><Pencil className="w-3.5 h-3.5 ml-1" /> تعديل</Button><Button size="sm" variant="ghost" className="text-destructive" onClick={() => archive(item)}><Archive className="w-3.5 h-3.5" /></Button></div></CardContent></Card>}
+       </CampaignAutomationPanel>}
     {form && <InquiryForm value={form} setValue={setForm} branches={branches} isAdmin={isAdmin} canViewPhones={canViewPhones} onChange={setField} onSubmit={saveForm} busy={busy} onClose={() => setForm(null)} />}
     {contact && <ContactForm value={contact} setValue={setContact} onChange={setField} onSubmit={saveContact} busy={busy} onClose={() => setContact(null)} />}
     {composer && <Composer value={composer} setValue={setComposer} onOpen={openWhatsApp} onClose={() => setComposer(null)} />}

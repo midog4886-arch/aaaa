@@ -104,6 +104,16 @@ INDEXES = {
         ([("branch_id", 1), ("phone", 1)], {"unique": True}),
         ([("branch_id", 1), ("created_at", -1)], {}),
         ([("branch_id", 1), ("status", 1), ("followup_due_at", 1)], {}),
+        ([("branch_id", 1), ("automation_status", 1), ("automation_next_due_at", 1)], {}),
+        ([("branch_id", 1), ("phone", 1), ("automation_enrolled", 1)], {}),
+        ([("branch_id", 1), ("automation_claim_id", 1)], {"sparse": True}),
+    ],
+    "campaign_inquiry_automation_settings": [
+        ([("tenant_slug", 1), ("branch_id", 1)], {"unique": True}),
+    ],
+    "campaign_inquiry_automation_previews": [
+        ([("tenant_slug", 1), ("preview_id", 1)], {"unique": True}),
+        ([("tenant_slug", 1), ("branch_id", 1), ("expires_at", 1)], {}),
     ],
     "activity_notes": [
         ([("branch_id", 1), ("created_at", -1)], {}),
