@@ -138,6 +138,7 @@ def db(monkeypatch):
         "whatsapp_campaign_job_items": Collection(),
         "whatsapp_invoice_payment_outbox": Collection(),
         "whatsapp_automated_outbound": Collection(),
+        "whatsapp_cloud_outbound_failures": Collection(),
     }
     monkeypatch.setattr(mod, "_db", database)
     async def tenant(slug):
@@ -410,11 +411,24 @@ def test_inflight_whatsflow_automation_echo_is_conservative(db):
         "provider": "whatsflow",
         "phone": "966500000001",
         "status": "unknown",
+        "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
     assert asyncio.run(mod._classify_whatsflow_echo(
         "a", "966500000001", "untracked-echo"
     )) == "ambiguous_automation"
+
+
+def test_stale_whatsflow_unknown_send_does_not_block_human_echo(db):
+    db["whatsapp_automated_outbound"].rows.append({
+        "id": "old-unknown", "branch_id": "a", "provider": "whatsflow",
+        "phone": "966500000001", "status": "unknown",
+        "created_at": "2020-01-01T00:00:00+00:00",
+    })
+
+    assert asyncio.run(mod._classify_whatsflow_echo(
+        "a", "966500000001", "later-human-echo"
+    )) == "human"
 
 
 def test_automation_evidence_persistence_fails_closed(db, monkeypatch):
@@ -452,6 +466,20 @@ def test_campaign_echo_does_not_clear_unread(db):
     deliver()
 
     assert db["whatsapp_cloud_conversations"].rows[0]["unread_count"] == 2
+
+
+def test_failed_receipt_before_whatsflow_echo_is_preserved(db):
+    asyncio.run(mod._remember_unmatched_outbound_failure(
+        "a", "whatsflow", "message-1", "failed"
+    ))
+
+    deliver()
+
+    message = db["whatsapp_cloud_messages"].rows[0]
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    assert message["status"] == "failed"
+    assert message["human_reply"] is True
+    assert conversation.get("needs_reply") is not False
 
 
 def test_whatsflow_read_receipt_does_not_clear_unread(db):

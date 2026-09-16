@@ -606,7 +606,7 @@ def _provider_message_id(response) -> Optional[str]:
 
 
 async def _start_whatsflow_automation_evidence(phone: str, config: dict):
-    """Record an automated send before the provider call can echo it."""
+    """Record an automated session-provider send before it can echo it."""
     if _db is None or not config.get("branch_id"):
         raise RuntimeError("whatsflow_automation_evidence_unavailable")
     evidence_id = str(uuid.uuid4())
@@ -615,7 +615,7 @@ async def _start_whatsflow_automation_evidence(phone: str, config: dict):
         await _db["whatsapp_automated_outbound"].insert_one({
             "id": evidence_id,
             "branch_id": config["branch_id"],
-            "provider": "whatsflow",
+            "provider": _branch_provider(config),
             "phone": normalize_phone(phone),
             "status": "in_flight",
             "created_at": now.isoformat(),
@@ -701,7 +701,29 @@ async def _send_session_provider_result(
             digits, message, delay=0, link_preview=False
         )
         return ok, _provider_message_id(response), error
-    return await _send_waha_message_result(phone, message, config)
+    if not automated:
+        return await _send_waha_message_result(phone, message, config)
+    # WAHA also emits linked-phone echoes.  Persist exact evidence before
+    # dispatch so an automated reminder/campaign can never be mistaken for a
+    # staff reply merely because its echo arrived first.
+    digits = "".join(filter(str.isdigit, phone or ""))
+    evidence_id = await _start_whatsflow_automation_evidence(digits, config)
+    try:
+        ok, message_id, error = await _send_waha_message_result(
+            phone, message, config
+        )
+    except Exception as exc:
+        await _finish_whatsflow_automation_evidence(
+            evidence_id, status="unknown", error=type(exc).__name__
+        )
+        raise
+    await _finish_whatsflow_automation_evidence(
+        evidence_id,
+        status="sent" if ok and message_id else "unknown",
+        provider_message_id=message_id,
+        error=error,
+    )
+    return ok, message_id, error
 
 
 def _campaign_quota_id(branch_id: str) -> str:
@@ -3160,6 +3182,212 @@ async def _record_branch_test_message(branch_id, phone, body, config, message_id
     )
 
 
+async def _note_cloud_inbound_needs_reply(
+    conversation_id: str, branch_id: str, inbound_at: str
+):
+    """Record an inbound as awaiting a person, unless a later person replied.
+
+    This is deliberately independent of ``unread_count``.  A delayed webhook
+    for an old customer message must not reopen a conversation after a newer
+    reply, while an inbound arriving after a reply must always reopen it.
+    """
+    await _db["whatsapp_cloud_conversations"].update_one(
+        {
+            "id": conversation_id,
+            "branch_id": branch_id,
+            "$or": [
+                {"last_human_reply_at": {"$exists": False}},
+                {"last_human_reply_at": {"$lte": inbound_at}},
+            ],
+        },
+        {"$set": {"needs_reply": True}},
+    )
+
+
+async def _note_cloud_human_reply(
+    conversation_id: str, branch_id: str, reply_at: str,
+    provider_message_id: Optional[str] = None,
+):
+    """Resolve only an inbound older than a successful human response.
+
+    The two guarded writes are safe if an inbound webhook races this method:
+    either this write sees that inbound and leaves the conversation open, or
+    the inbound sees this reply and opens it again.  Automated messages never
+    call this helper.
+    """
+    conversations = _db["whatsapp_cloud_conversations"]
+    await conversations.update_one(
+        {
+            "id": conversation_id,
+            "branch_id": branch_id,
+            "$or": [
+                {"last_human_reply_at": {"$exists": False}},
+                {"last_human_reply_at": {"$lt": reply_at}},
+            ],
+        },
+        {"$set": {
+            "last_human_reply_at": reply_at,
+            **(
+                {"last_human_reply_message_id": provider_message_id}
+                if provider_message_id else {}
+            ),
+        }},
+    )
+    await conversations.update_one(
+        {
+            "id": conversation_id,
+            "branch_id": branch_id,
+            "$or": [
+                {"last_inbound_at": {"$exists": False}},
+                {"last_inbound_at": {"$lt": reply_at}},
+            ],
+        },
+        {"$set": {"needs_reply": False}},
+    )
+
+
+async def _reopen_failed_human_reply(
+    branch_id: str, provider: str, provider_message_id: str,
+):
+    """Undo a latest human-reply resolution on a definitive failed receipt."""
+    messages = _db["whatsapp_cloud_messages"]
+    message_id_field = (
+        "meta_message_id" if provider == "meta_cloud"
+        else "waha_message_id" if provider == "waha"
+        else "provider_message_id"
+    )
+    message = await messages.find_one(
+        {
+            "branch_id": branch_id, "provider": provider,
+            message_id_field: provider_message_id, "human_reply": True,
+        },
+        {"_id": 0, "conversation_id": 1},
+    )
+    if not message or not message.get("conversation_id"):
+        return
+    conversation_id = message["conversation_id"]
+    conversations = _db["whatsapp_cloud_conversations"]
+    conversation = await conversations.find_one(
+        {
+            "id": conversation_id, "branch_id": branch_id,
+            "last_human_reply_message_id": provider_message_id,
+        },
+        {"_id": 0},
+    )
+    if not conversation:
+        return
+    cas_query = {
+        "id": conversation_id, "branch_id": branch_id,
+        "last_human_reply_message_id": provider_message_id,
+    }
+    # A new inbound increments the generation even where a provider timestamp
+    # is equal/invalid.  Include both durable observations in the final CAS so
+    # a failed-receipt scan can never overwrite that later inbound.
+    if conversation.get("inbound_generation") is not None:
+        cas_query["inbound_generation"] = conversation["inbound_generation"]
+    if "last_inbound_at" in conversation:
+        cas_query["last_inbound_at"] = conversation.get("last_inbound_at")
+    cursor = messages.find(
+        {"conversation_id": conversation_id, "branch_id": branch_id},
+        {
+            "_id": 0, "direction": 1, "created_at": 1, "status": 1,
+            "human_reply": 1, "echo_source": 1, "sent_by": 1, "source": 1,
+            "provider_message_id": 1, "meta_message_id": 1,
+            "waha_message_id": 1,
+        },
+    )
+    if hasattr(cursor, "sort"):
+        cursor = cursor.sort("created_at", -1)
+    if hasattr(cursor, "limit"):
+        cursor = cursor.limit(CLOUD_INBOX_LEGACY_MESSAGE_SCAN_LIMIT + 1)
+    rows = await cursor.to_list(
+        length=CLOUD_INBOX_LEGACY_MESSAGE_SCAN_LIMIT + 1
+    )
+    if len(rows) > CLOUD_INBOX_LEGACY_MESSAGE_SCAN_LIMIT:
+        # A failed latest reply must never leave a large, uninspectable thread
+        # resolved.  Leave it visibly needing attention rather than guessing.
+        await conversations.update_one(
+            cas_query,
+            {"$set": {"needs_reply": True}},
+        )
+        return
+    newest_inbound = None
+    newest_reply = None
+    for row in rows:
+        occurred_at = _parse_cloud_message_time(row.get("created_at"))
+        if not occurred_at:
+            continue
+        if row.get("direction") == "inbound":
+            newest_inbound = max(newest_inbound, occurred_at) if newest_inbound else occurred_at
+        elif (
+            row.get("direction") == "outbound"
+            and _is_successful_human_reply_message(row)
+            and (not newest_reply or occurred_at > newest_reply[0])
+        ):
+            newest_reply = (
+                occurred_at,
+                row.get(message_id_field) or row.get("provider_message_id"),
+            )
+    update = {
+        "needs_reply": bool(
+            newest_inbound
+            and (not newest_reply or newest_inbound >= newest_reply[0])
+        ),
+    }
+    if newest_reply:
+        update["last_human_reply_at"] = newest_reply[0].isoformat()
+        if newest_reply[1]:
+            update["last_human_reply_message_id"] = newest_reply[1]
+    await conversations.update_one(
+        cas_query,
+        {
+            "$set": update,
+            **(
+                {"$unset": {
+                    "last_human_reply_at": "",
+                    "last_human_reply_message_id": "",
+                }}
+                if not newest_reply else {}
+            ),
+        },
+    )
+
+
+async def _remember_unmatched_outbound_failure(
+    branch_id: str, provider: str, provider_message_id: str, status: str,
+):
+    """Keep a failed receipt that arrived before its outgoing echo."""
+    if not provider_message_id:
+        return
+    await _db["whatsapp_cloud_outbound_failures"].update_one(
+        {
+            "branch_id": branch_id,
+            "provider": provider,
+            "provider_message_id": provider_message_id,
+        },
+        {"$set": {
+            "status": status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+
+
+async def _remembered_outbound_failure(
+    branch_id: str, provider: str, provider_message_id: str,
+) -> Optional[str]:
+    receipt = await _db["whatsapp_cloud_outbound_failures"].find_one(
+        {
+            "branch_id": branch_id,
+            "provider": provider,
+            "provider_message_id": provider_message_id,
+        },
+        {"_id": 0, "status": 1},
+    )
+    status = str((receipt or {}).get("status") or "").lower()
+    return status if status in _UNSUCCESSFUL_OUTBOUND_STATUSES else None
+
+
 @router.post("/branch-provider/{branch_id}/webhook")
 async def configure_branch_provider_webhook(
     branch_id: str, request: Request, current_user: dict = Depends(get_current_user)
@@ -3394,14 +3622,17 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                             "contact_name": contacts.get(phone) or phone,
                             "last_message": body or f"[{message_type}]",
                             "last_message_at": event_at,
-                            "last_inbound_at": event_dt.isoformat() if event_dt else None,
                             "last_inbound_message_id": meta_id,
                             "last_direction": "inbound",
                         },
                         "$inc": {"unread_count": 1, "inbound_generation": 1},
+                        "$max": {"last_inbound_at": event_at},
                         "$setOnInsert": {"created_at": now},
                     },
                     upsert=True,
+                )
+                await _note_cloud_inbound_needs_reply(
+                    conversation_id, config["branch_id"], event_at
                 )
             for status in value.get("statuses") or []:
                 meta_id = str(status.get("id") or "")
@@ -3424,6 +3655,13 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                         "error": errors[0].get("title") if errors else None,
                     }},
                 )
+                if str(status_name).lower() in _UNSUCCESSFUL_OUTBOUND_STATUSES:
+                    await _remember_unmatched_outbound_failure(
+                        config["branch_id"], "meta_cloud", meta_id, status_name
+                    )
+                    await _reopen_failed_human_reply(
+                        config["branch_id"], "meta_cloud", meta_id
+                    )
                 await whatsapp_bulk_jobs.record_receipt(
                     config["branch_id"], "meta_cloud", meta_id, status_name,
                     timestamp=receipt_at,
@@ -3472,6 +3710,13 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                 await _db["whatsapp_cloud_messages"].update_one({"branch_id": config["branch_id"], "provider": "waha", "waha_message_id": message_id}, {"$set": {
                     "status": ack_status, "status_updated_at": now,
                 }})
+                if ack_status in _UNSUCCESSFUL_OUTBOUND_STATUSES:
+                    await _remember_unmatched_outbound_failure(
+                        config["branch_id"], "waha", message_id, ack_status
+                    )
+                    await _reopen_failed_human_reply(
+                        config["branch_id"], "waha", message_id
+                    )
                 await whatsapp_bulk_jobs.record_receipt(
                     config["branch_id"], "waha", message_id, ack_status,
                     timestamp=datetime.now(timezone.utc),
@@ -3493,6 +3738,96 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
             await campaign_inquiry_automation.note_outbound(
                 config["branch_id"], phone, message_id, "waha"
             )
+            # WAHA reports all linked-phone sends as ``fromMe``.  Campaigns
+            # have an exact durable item ID; without that evidence this is a
+            # human linked-phone reply.  Do not use a phone/body heuristic.
+            campaign_item = await _db["whatsapp_campaign_job_items"].find_one(
+                {
+                    "branch_id": config["branch_id"],
+                    "provider": "waha",
+                    "provider_message_id": message_id,
+                },
+                {"_id": 1},
+            )
+            automated = await _db["whatsapp_automated_outbound"].find_one(
+                {
+                    "branch_id": config["branch_id"],
+                    "provider": "waha",
+                    "provider_message_id": message_id,
+                },
+                {"_id": 1},
+            )
+            if not automated:
+                # A provider response without an ID cannot later be matched
+                # exactly.  Treat its echo as automation while that durable
+                # unknown-send evidence exists rather than incorrectly
+                # resolving a customer question.
+                automated = await _db["whatsapp_automated_outbound"].find_one(
+                    {
+                        "branch_id": config["branch_id"],
+                        "provider": "waha",
+                        "phone": normalize_phone(phone),
+                        "status": {"$in": ["in_flight", "unknown"]},
+                        "created_at": {
+                            "$gte": (
+                                datetime.now(timezone.utc)
+                                - timedelta(seconds=SESSION_ECHO_AMBIGUITY_SECONDS)
+                            ).isoformat(),
+                        },
+                    },
+                    {"_id": 1},
+                )
+            if not campaign_item and not automated:
+                # Preserve the durable form used by failed-receipt rollback and
+                # legacy needs-reply reconstruction.  A duplicate of a direct
+                # inbox send already has this marker, so it is left intact.
+                conversation_id = f"{config['branch_id']}:{phone}"
+                await _db["whatsapp_cloud_conversations"].update_one(
+                    {"id": conversation_id},
+                    {"$setOnInsert": {
+                        "id": conversation_id,
+                        "branch_id": config["branch_id"],
+                        "provider": "waha", "phone": phone,
+                        "contact_name": phone, "created_at": now,
+                        "unread_count": 0,
+                    }},
+                    upsert=True,
+                )
+                existing_echo = await _db["whatsapp_cloud_messages"].find_one(
+                    {
+                        "branch_id": config["branch_id"], "provider": "waha",
+                        "waha_message_id": message_id,
+                    },
+                    {"_id": 1},
+                )
+                if not existing_echo:
+                    failed_status = await _remembered_outbound_failure(
+                        config["branch_id"], "waha", message_id
+                    )
+                    try:
+                        await _db["whatsapp_cloud_messages"].insert_one({
+                            "id": str(uuid.uuid4()),
+                            "conversation_id": f"{config['branch_id']}:{phone}",
+                            "branch_id": config["branch_id"], "provider": "waha",
+                            "provider_message_id": message_id,
+                            "waha_message_id": message_id,
+                            "direction": "outbound", "phone": phone,
+                            "type": "text", "body": "",
+                            "status": failed_status or "sent",
+                            "created_at": now, "received_at": now,
+                            "source": "linked_phone", "human_reply": True,
+                        })
+                    except DuplicateKeyError:
+                        pass
+                if not await _remembered_outbound_failure(
+                    config["branch_id"], "waha", message_id
+                ):
+                    await _note_cloud_human_reply(
+                        conversation_id,
+                        config["branch_id"],
+                        now,
+                        message_id,
+                    )
             return {"received": True}
         await _db["whatsapp_cloud_messages"].create_index(
             [("branch_id", 1), ("provider", 1), ("waha_message_id", 1)],
@@ -3525,10 +3860,14 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
             "id": conversation_id, "branch_id": config["branch_id"], "provider": "waha", "phone": phone,
             "contact_name": message.get("pushName") or message.get("name") or phone,
             "last_message": body or f"[{kind}]", "last_message_at": now,
-            "last_inbound_at": now, "last_inbound_message_id": message_id,
+            "last_inbound_message_id": message_id,
             "last_direction": "inbound",
         }, "$inc": {"unread_count": 1, "inbound_generation": 1},
+        "$max": {"last_inbound_at": now},
         "$setOnInsert": {"created_at": now}}, upsert=True)
+        await _note_cloud_inbound_needs_reply(
+            conversation_id, config["branch_id"], now
+        )
         return {"received": True}
     finally:
         reset_current_tenant(token)
@@ -3862,6 +4201,12 @@ async def _classify_whatsflow_echo(
                 "provider": "whatsflow",
                 "phone": normalized_phone,
                 "status": {"$in": ["in_flight", "unknown"]},
+                "created_at": {
+                    "$gte": (
+                        datetime.now(timezone.utc)
+                        - timedelta(seconds=SESSION_ECHO_AMBIGUITY_SECONDS)
+                    ).isoformat(),
+                },
             },
             {"_id": 0, "status": 1},
         )
@@ -4108,6 +4453,13 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                      "provider_message_id": message_id},
                     {"$set": {"status": status, "status_updated_at": now}},
                 )
+                if status in _UNSUCCESSFUL_OUTBOUND_STATUSES:
+                    await _remember_unmatched_outbound_failure(
+                        config["branch_id"], "whatsflow", message_id, status
+                    )
+                    await _reopen_failed_human_reply(
+                        config["branch_id"], "whatsflow", message_id
+                    )
                 await whatsapp_bulk_jobs.record_receipt(
                     config["branch_id"], "whatsflow", message_id, status,
                     timestamp=datetime.now(timezone.utc),
@@ -4183,6 +4535,12 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             )
             if outbound else "inbound"
         )
+        failed_outbound_status = (
+            await _remembered_outbound_failure(
+                config["branch_id"], "whatsflow", message_id
+            )
+            if outbound else None
+        )
         messages = _db["whatsapp_cloud_messages"]
         await messages.create_index(
             [("branch_id", 1), ("provider", 1), ("provider_message_id", 1)],
@@ -4205,8 +4563,15 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                     media_message.get("fileName")
                     or media_message.get("filename")
                 ),
-                "status": "sent" if outbound else "received",
+                "status": (
+                    failed_outbound_status or "sent"
+                    if outbound else "received"
+                ),
                 "unread": not outbound,
+                **(
+                    {"human_reply": True}
+                    if outbound and echo_class == "human" else {}
+                ),
                 **(
                     {"echo_source": echo_class}
                     if outbound else {}
@@ -4241,13 +4606,16 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 )
             # An ambiguous provider echo is retained as automation evidence;
             # only the already-classified human path can stop inquiry work.
-            if echo_class == "human":
+            if echo_class == "human" and not failed_outbound_status:
                 await campaign_inquiry_automation.note_outbound(
                     config["branch_id"], phone, message_id, "whatsflow"
                 )
-            if echo_class == "human":
+            if echo_class == "human" and not failed_outbound_status:
                 await _reconcile_whatsflow_phone_reply_unread(
                     conversation_id, config["branch_id"], event_at
+                )
+                await _note_cloud_human_reply(
+                    conversation_id, config["branch_id"], event_at, message_id
                 )
             conversations = _db["whatsapp_cloud_conversations"]
             # Never use outgoing pushName: it is the branch's own profile name.
@@ -4283,12 +4651,15 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 "provider": "whatsflow", "phone": phone,
                 "contact_name": data.get("pushName") or phone,
                 "last_message": body or "[message]", "last_message_at": event_at,
-                "last_inbound_at": event_at,
                 "last_inbound_message_id": message_id,
                 "last_direction": "inbound",
             }, "$inc": {"unread_count": 1, "inbound_generation": 1},
+            "$max": {"last_inbound_at": event_at},
             "$setOnInsert": {"created_at": now}},
             upsert=True,
+        )
+        await _note_cloud_inbound_needs_reply(
+            conversation_id, config["branch_id"], event_at
         )
         return {"received": True}
     finally:
@@ -4299,44 +4670,299 @@ class CloudInboxReplyRequest(BaseModel):
     body: str
 
 
+_UNSUCCESSFUL_OUTBOUND_STATUSES = {
+    "error", "failed", "fail", "undelivered", "rejected",
+}
+CLOUD_INBOX_LEGACY_BACKFILL_LIMIT = 250
+CLOUD_INBOX_LEGACY_MESSAGE_SCAN_LIMIT = 10000
+SESSION_ECHO_AMBIGUITY_SECONDS = 300
+
+
+def _is_successful_human_reply_message(message: dict) -> bool:
+    """Return true only for durable evidence of a person answering a thread."""
+    if str(message.get("status") or "").lower() in _UNSUCCESSFUL_OUTBOUND_STATUSES:
+        return False
+    if message.get("human_reply") is True:
+        return True
+    if message.get("echo_source") == "human":
+        return True
+    # Older direct-inbox sends predate ``human_reply``.  ``sent_by`` is the
+    # durable staff identity, unlike campaign rows or a provider delivery echo.
+    return bool(
+        message.get("sent_by")
+        and message.get("source") not in {"campaign", "connection_test"}
+    )
+
+
+async def _hydrate_cloud_conversation_needs_reply(rows: list[dict]) -> bool:
+    """Set response-only needs-reply flags with one legacy message read.
+
+    New writes maintain last_inbound_at/last_human_reply_at.  For conversations
+    created before those fields existed, this uses only persisted inbound rows
+    and positively identified, successful human outbound rows.  It never
+    treats a campaign, an automated echo, or an outbound preview as a reply.
+    Historical linked-phone echoes that were never persisted cannot be safely
+    inferred. A capped legacy scan also leaves its batch unmaterialized rather
+    than making a partial-history guess.
+    """
+    if not rows:
+        return True
+    conversation_ids = list({
+        row.get("id") for row in rows if row.get("id")
+    })
+    inbound_by_conversation = {}
+    human_reply_by_conversation = {}
+    if conversation_ids:
+        cursor = _db["whatsapp_cloud_messages"].find(
+            {"conversation_id": {"$in": conversation_ids}},
+            {
+                "_id": 0, "conversation_id": 1, "direction": 1,
+                "created_at": 1, "status": 1, "human_reply": 1,
+                "echo_source": 1, "sent_by": 1, "source": 1,
+            },
+        )
+        if hasattr(cursor, "sort"):
+            cursor = cursor.sort("created_at", -1)
+        if hasattr(cursor, "limit"):
+            cursor = cursor.limit(CLOUD_INBOX_LEGACY_MESSAGE_SCAN_LIMIT + 1)
+        messages = await cursor.to_list(
+            length=CLOUD_INBOX_LEGACY_MESSAGE_SCAN_LIMIT + 1
+        )
+        if len(messages) > CLOUD_INBOX_LEGACY_MESSAGE_SCAN_LIMIT:
+            logger.warning(
+                "Cloud inbox legacy needs-reply backfill is capped; "
+                "conversation flags were not inferred"
+            )
+            return False
+        for message in messages:
+            conversation_id = message.get("conversation_id")
+            occurred_at = _parse_cloud_message_time(message.get("created_at"))
+            if not conversation_id or not occurred_at:
+                continue
+            if message.get("direction") == "inbound":
+                previous = inbound_by_conversation.get(conversation_id)
+                if not previous or occurred_at > previous:
+                    inbound_by_conversation[conversation_id] = occurred_at
+            elif (
+                message.get("direction") == "outbound"
+                and _is_successful_human_reply_message(message)
+            ):
+                previous = human_reply_by_conversation.get(conversation_id)
+                if not previous or occurred_at > previous:
+                    human_reply_by_conversation[conversation_id] = occurred_at
+
+    for row in rows:
+        conversation_id = row.get("id")
+        inbound_at = _parse_cloud_message_time(row.get("last_inbound_at"))
+        human_reply_at = _parse_cloud_message_time(
+            row.get("last_human_reply_at")
+        )
+        # Persisted message rows are the legacy fallback, and can also repair
+        # an old conversation projection that lacks one of the timestamps.
+        inbound_at = max(
+            (value for value in (
+                inbound_at, inbound_by_conversation.get(conversation_id)
+            ) if value),
+            default=None,
+        )
+        human_reply_at = max(
+            (value for value in (
+                human_reply_at, human_reply_by_conversation.get(conversation_id)
+            ) if value),
+            default=None,
+        )
+        # Equal timestamps are intentionally unresolved: webhook timestamps
+        # have second precision and cannot prove the reply followed the inbound.
+        row["needs_reply"] = bool(
+            inbound_at and (not human_reply_at or inbound_at >= human_reply_at)
+        )
+    return True
+
+
+async def _backfill_cloud_needs_reply(scope_query: dict):
+    """Lazily materialize a bounded page of legacy conversations.
+
+    Normal inbox polling only reads materialized flags/counts.  This bounded
+    migration is intentionally the sole historical-message read and eventually
+    drains old records without an unbounded per-poll scan.
+    """
+    conversations = _db["whatsapp_cloud_conversations"]
+    legacy_query = {
+        **scope_query,
+        "needs_reply": {"$exists": False},
+    }
+    legacy_rows = await conversations.find(
+        legacy_query, {"_id": 0}
+    ).sort("last_message_at", -1).limit(
+        CLOUD_INBOX_LEGACY_BACKFILL_LIMIT
+    ).to_list(length=CLOUD_INBOX_LEGACY_BACKFILL_LIMIT)
+    if not legacy_rows:
+        return
+    conversation_ids = [row["id"] for row in legacy_rows if row.get("id")]
+    message_aggregate = getattr(
+        _db["whatsapp_cloud_messages"], "aggregate", None
+    )
+    if message_aggregate:
+        # Mongo reduces historical rows to two timestamps per conversation;
+        # unlike a Python scan this remains bounded even for old busy threads.
+        grouped = await message_aggregate([
+            {"$match": {"conversation_id": {"$in": conversation_ids}}},
+            {"$group": {
+                "_id": "$conversation_id",
+                "last_inbound_at": {"$max": {"$cond": [
+                    {"$eq": ["$direction", "inbound"]}, "$created_at", None,
+                ]}},
+                "last_human_reply_at": {"$max": {"$cond": [
+                    {"$and": [
+                        {"$eq": ["$direction", "outbound"]},
+                        {"$not": [{"$in": [
+                            {"$toLower": {"$ifNull": ["$status", ""]}},
+                            list(_UNSUCCESSFUL_OUTBOUND_STATUSES),
+                        ]}]},
+                        {"$or": [
+                            {"$eq": ["$human_reply", True]},
+                            {"$eq": ["$echo_source", "human"]},
+                            {"$and": [
+                                {"$ne": [{"$ifNull": ["$sent_by", ""]}, ""]},
+                                {"$ne": ["$source", "campaign"]},
+                                {"$ne": ["$source", "connection_test"]},
+                            ]},
+                        ]},
+                    ]},
+                    "$created_at",
+                    None,
+                ]}},
+            }},
+        ]).to_list(length=CLOUD_INBOX_LEGACY_BACKFILL_LIMIT)
+        timestamps = {row.get("_id"): row for row in grouped}
+        for row in legacy_rows:
+            aggregate_row = timestamps.get(row.get("id")) or {}
+            inbound_at = max(
+                (
+                    value for value in (
+                        _parse_cloud_message_time(row.get("last_inbound_at")),
+                        _parse_cloud_message_time(
+                            aggregate_row.get("last_inbound_at")
+                        ),
+                    ) if value
+                ),
+                default=None,
+            )
+            human_reply_at = max(
+                (
+                    value for value in (
+                        _parse_cloud_message_time(
+                            row.get("last_human_reply_at")
+                        ),
+                        _parse_cloud_message_time(
+                            aggregate_row.get("last_human_reply_at")
+                        ),
+                    ) if value
+                ),
+                default=None,
+            )
+            row["needs_reply"] = bool(
+                inbound_at and (
+                    not human_reply_at or inbound_at >= human_reply_at
+                )
+            )
+    elif not await _hydrate_cloud_conversation_needs_reply(legacy_rows):
+        return
+    # Writes are bounded and conditional, so concurrent inbound/reply updates
+    # always win over this old-data backfill.
+    for row in legacy_rows:
+        await conversations.update_one(
+            {
+                "id": row["id"],
+                "needs_reply": {"$exists": False},
+            },
+            {"$set": {"needs_reply": row["needs_reply"]}},
+        )
+
+
+async def _scoped_cloud_unread_count(scope_query: dict) -> int:
+    """Return the full scoped unread total, never the visible-page subtotal."""
+    conversations = _db["whatsapp_cloud_conversations"]
+    aggregate = getattr(conversations, "aggregate", None)
+    if aggregate:
+        rows = await aggregate([
+            {"$match": scope_query},
+            {"$group": {
+                "_id": None,
+                "count": {"$sum": {"$ifNull": ["$unread_count", 0]}},
+            }},
+        ]).to_list(length=1)
+        return int((rows[0] if rows else {}).get("count") or 0)
+    raise RuntimeError("Cloud inbox unread aggregation is unavailable")
+
+
 @router.get("/cloud-inbox/conversations")
 async def list_cloud_inbox_conversations(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
     unread_only: bool = False,
+    needs_reply_only: bool = False,
 ):
     _require_bulk_whatsapp_access(current_user)
     # Resolve the selected branch for both views.  In particular, unread must
     # not silently turn a selected branch into a cross-branch aggregation.
     effective_branch = resolve_branch_filter(current_user, branch_filter)
-    query = {"branch_id": effective_branch} if effective_branch else {}
+    scope_query = {"branch_id": effective_branch} if effective_branch else {}
+    # The focused needs-reply view must see its bounded backfill before its
+    # materialized predicate runs.  Other polling views run it concurrently so
+    # a legacy migration never serializes the cloud/campaign reads.
+    backfill_request = None
+    if needs_reply_only:
+        await _backfill_cloud_needs_reply(scope_query)
+        backfill_request = asyncio.sleep(0)
+    else:
+        backfill_request = _backfill_cloud_needs_reply(scope_query)
+    conversations = _db["whatsapp_cloud_conversations"]
+    query = dict(scope_query)
     if unread_only:
         # Apply this predicate before Mongo's sort/limit so an old unread
         # conversation cannot be hidden behind newer read conversations.
         query["unread_count"] = {"$gt": 0}
+    if needs_reply_only:
+        query["needs_reply"] = True
 
-    # Both projections are read-only and use the request's inherited tenant
-    # context. Run them together so a slow campaign aggregation does not delay
-    # the cloud-conversation read (or vice versa).
+    # All regular polling reads are bounded.  The full scoped counts use
+    # server-side aggregation/counting, not the 200-row response page.
     cloud_rows_request = (
-        _db["whatsapp_cloud_conversations"]
+        conversations
         .find(query, {"_id": 0})
         .sort("last_message_at", -1)
         .limit(200)
         .to_list(length=200)
     )
-    if unread_only:
+    needs_reply_count_request = conversations.count_documents({
+        **scope_query, "needs_reply": True,
+    })
+    unread_count_request = _scoped_cloud_unread_count(scope_query)
+    if unread_only or needs_reply_only:
         # Campaign sends are outbound projections and always have
-        # ``unread_count == 0``.  Keep them out of this view entirely.
-        rows = await cloud_rows_request
+        # ``unread_count == 0`` and never resolve a human response. Keep them
+        # out of both focused views entirely.
+        gathered = await asyncio.gather(
+            cloud_rows_request, needs_reply_count_request, unread_count_request,
+            backfill_request,
+        )
+        rows, needs_reply_count, unread_count, _ = gathered
         campaign_rows = []
     else:
-        rows, campaign_rows = await asyncio.gather(
+        gathered = await asyncio.gather(
             cloud_rows_request,
             campaign_inbox.conversations(_db, query),
+            needs_reply_count_request,
+            unread_count_request,
+            backfill_request,
         )
+        rows, campaign_rows, needs_reply_count, unread_count, _ = gathered
+    for row in rows:
+        row["needs_reply"] = row.get("needs_reply") is True
     merged = {row["id"]: row for row in rows}
     for campaign in campaign_rows:
+        campaign["needs_reply"] = False
         existing = merged.get(campaign["id"])
         if not existing:
             merged[campaign["id"]] = campaign
@@ -4373,7 +4999,8 @@ async def list_cloud_inbox_conversations(
         row["branch_name"] = branch_names.get(branch_id) or branch_id
     return {
         "conversations": rows,
-        "unread_count": sum(int(row.get("unread_count") or 0) for row in rows),
+        "unread_count": unread_count,
+        "needs_reply_count": int(needs_reply_count or 0),
     }
 
 
@@ -4752,6 +5379,7 @@ async def reply_to_cloud_inbox_thread(
             "direction": "outbound", "phone": conversation.get("phone"), "type": "text",
             "body": body, "status": "sent", "created_at": now,
             "sent_by": current_user.get("user_id") or current_user.get("id"),
+            "human_reply": True,
         }
         try:
             await _db["whatsapp_cloud_messages"].insert_one(message)
@@ -4769,6 +5397,9 @@ async def reply_to_cloud_inbox_thread(
         await _db["whatsapp_cloud_conversations"].update_one({"id": conversation_id}, {"$set": {
             "last_message": body, "last_message_at": now, "last_direction": "outbound",
         }})
+        await _note_cloud_human_reply(
+            conversation_id, branch_id, now, provider_message_id
+        )
         return {"success": True, "message": message, "used_template": False}
     if not (
         config
@@ -4825,6 +5456,7 @@ async def reply_to_cloud_inbox_thread(
         "status": "sent",
         "created_at": now,
         "sent_by": current_user.get("user_id") or current_user.get("id"),
+        "human_reply": True,
     }
     await _db["whatsapp_cloud_messages"].insert_one(message)
     await _db["whatsapp_cloud_conversations"].update_one(
@@ -4834,6 +5466,9 @@ async def reply_to_cloud_inbox_thread(
             "last_message_at": now,
             "last_direction": "outbound",
         }},
+    )
+    await _note_cloud_human_reply(
+        conversation_id, branch_id, now, meta_message_id
     )
     return {"success": True, "message": message, "used_template": not inside_service_window}
 
@@ -4988,6 +5623,7 @@ async def send_cloud_inbox_media(
             "created_at": now,
             "sent_by": current_user.get("user_id") or current_user.get("id"),
             "source": "cloud_inbox",
+            "human_reply": True,
         }
         if provider == "waha" and provider_message_id:
             message["waha_message_id"] = provider_message_id
@@ -5037,6 +5673,9 @@ async def send_cloud_inbox_media(
                 "last_message_at": now,
                 "last_direction": "outbound",
             }},
+        )
+        await _note_cloud_human_reply(
+            conversation_id, branch_id, now, provider_message_id
         )
         return {
             "success": True,
@@ -6170,10 +6809,27 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
             await assert_fence()
             session = config.get("waha_physical_session_id") or _waha_physical_session_id(
                 item["branch_id"], config.get("waha_session_name") or "")
-            success, provider_response, error = await WAHAClient().send_media(
-                session, _waha_chat_id(wa_phone), content, mime, filename, caption,
-                image=media_type == "image")
+            # Campaign media has the same linked-phone echo race as text.
+            # Establish durable automation evidence before dispatch.
+            evidence_id = await _start_whatsflow_automation_evidence(
+                wa_phone, config
+            )
+            try:
+                success, provider_response, error = await WAHAClient().send_media(
+                    session, _waha_chat_id(wa_phone), content, mime, filename, caption,
+                    image=media_type == "image")
+            except Exception as exc:
+                await _finish_whatsflow_automation_evidence(
+                    evidence_id, status="unknown", error=type(exc).__name__
+                )
+                raise
             provider_message_id = _canonical_waha_message_id(provider_response)
+            await _finish_whatsflow_automation_evidence(
+                evidence_id,
+                status="sent" if success and provider_message_id else "unknown",
+                provider_message_id=provider_message_id,
+                error=error,
+            )
             if not success and error and not error.startswith("http_"):
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
         elif provider == "whatsflow":

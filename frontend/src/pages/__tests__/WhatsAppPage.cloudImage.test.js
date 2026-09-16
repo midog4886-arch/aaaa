@@ -167,6 +167,79 @@ test('loads unread conversations for the selected branch and keeps the branch se
   await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('branch-a', false));
 });
 
+test('loads the independent needs-reply filter with the optional API argument and its count', async () => {
+  const needsReplyConversation = {
+    ...conversation,
+    needs_reply: true,
+  };
+  whatsappAPI.getCloudInboxConversations
+    .mockResolvedValueOnce({
+      data: { conversations: [conversation], unread_count: 0, needs_reply_count: 1 },
+    })
+    .mockResolvedValueOnce({
+      data: { conversations: [needsReplyConversation], unread_count: 0, needs_reply_count: 1 },
+    });
+  const user = await renderCloudInbox();
+
+  expect(screen.getByRole('button', { name: /تحتاج ردًا.*1/ })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /تحتاج ردًا/ }));
+
+  await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith(
+    'branch-a',
+    false,
+    true,
+  ));
+  expect(screen.getAllByText(/تحتاج ردًا/).length).toBeGreaterThan(1);
+});
+
+test('marking an unread thread read retains the needs-reply count and filter', async () => {
+  const unreadNeedsReplyConversation = {
+    ...conversation,
+    unread_count: 2,
+    needs_reply: true,
+  };
+  const needsReplyConversation = {
+    ...conversation,
+    needs_reply: true,
+  };
+  whatsappAPI.getCloudInboxConversations
+    .mockResolvedValueOnce({
+      data: { conversations: [conversation], unread_count: 0, needs_reply_count: 1 },
+    })
+    .mockResolvedValueOnce({
+      data: { conversations: [unreadNeedsReplyConversation], unread_count: 2, needs_reply_count: 1 },
+    })
+    // Authoritative post-open refresh: reading does not clear needs_reply.
+    .mockResolvedValueOnce({
+      data: { conversations: [], unread_count: 0, needs_reply_count: 1 },
+    })
+    .mockResolvedValueOnce({
+      data: { conversations: [], unread_count: 0, needs_reply_count: 1 },
+    })
+    .mockResolvedValueOnce({
+      data: { conversations: [needsReplyConversation], unread_count: 0, needs_reply_count: 1 },
+    });
+  whatsappAPI.getCloudInboxThread.mockResolvedValueOnce({
+    data: { conversation: unreadNeedsReplyConversation, messages: [] },
+  });
+  const user = await renderCloudInbox();
+
+  await user.click(screen.getByRole('button', { name: /غير مقروءة/ }));
+  await screen.findByText('أحمد');
+  await user.click(screen.getByRole('button', { name: /أحمد/ }));
+  await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3));
+  await user.click(screen.getByRole('button', { name: /رجوع/ }));
+
+  expect(await screen.findByRole('button', { name: /تحتاج ردًا.*1/ })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /تحتاج ردًا/ }));
+  await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith(
+    'branch-a',
+    false,
+    true,
+  ));
+  expect(screen.getByText('أحمد')).toBeInTheDocument();
+});
+
 test('opening an unread thread refreshes the selected branch unread list and count after it is marked read', async () => {
   const unreadConversation = {
     ...conversation,

@@ -249,7 +249,8 @@ export default function WhatsAppPage() {
   const [cloudConversations, setCloudConversations] = useState([]);
   const [cloudUnreadCount, setCloudUnreadCount] = useState(0);
   const [cloudCurrentUnreadCount, setCloudCurrentUnreadCount] = useState(0);
-  const [cloudInboxView, setCloudInboxView] = useState('current');
+  const [cloudNeedsReplyCount, setCloudNeedsReplyCount] = useState(0);
+  const [cloudInboxView, setCloudInboxView] = useState('all');
   const [cloudBranchFilter, setCloudBranchFilter] = useState(
     selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all'
   );
@@ -463,13 +464,15 @@ export default function WhatsAppPage() {
   const loadCloudConversations = async (
     branchFilter = cloudBranchFilterRef.current,
     unreadOnly = cloudInboxViewRef.current === 'unread',
+    needsReplyOnly = cloudInboxViewRef.current === 'needs_reply',
   ) => {
     const isUnreadView = Boolean(unreadOnly);
+    const isNeedsReplyView = Boolean(needsReplyOnly);
     // Unread is still scoped to the branch selected in this inbox.  "all" is
     // an explicit admin choice, not an implicit aggregation for the unread
     // tab.
     const branchKey = branchFilter && branchFilter !== 'all' ? branchFilter : 'all';
-    const viewKey = isUnreadView ? 'unread' : 'current';
+    const viewKey = isNeedsReplyView ? 'needs_reply' : (isUnreadView ? 'unread' : 'all');
     const requestKey = `${cloudAuthScope}:${viewKey}:${branchKey}`;
     const requestId = ++cloudInboxRequestRef.current;
     setLoadingCloudInbox(true);
@@ -478,7 +481,7 @@ export default function WhatsAppPage() {
     const isCurrentRequest = () => (
       requestId === cloudInboxRequestRef.current
       && cloudAuthScope === cloudBranchesScopeRef.current
-      && viewKey === (cloudInboxViewRef.current === 'unread' ? 'unread' : 'current')
+      && viewKey === cloudInboxViewRef.current
       && branchKey === (
         cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
           ? cloudBranchFilterRef.current
@@ -488,7 +491,9 @@ export default function WhatsAppPage() {
 
     try {
       if (!request) {
-        const inboxRequest = whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView);
+        const inboxRequest = isNeedsReplyView
+          ? whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView, true)
+          : whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView);
         const branchesRequest = branches.length
           ? Promise.resolve(branches)
           : loadCloudBranches();
@@ -511,12 +516,13 @@ export default function WhatsAppPage() {
       if (!isCurrentRequest()) return;
       setCloudConversations(inboxResponse.data?.conversations || []);
       const unreadCount = inboxResponse.data?.unread_count || 0;
+      setCloudNeedsReplyCount(inboxResponse.data?.needs_reply_count || 0);
       if (isUnreadView) {
         setCloudUnreadCount(unreadCount);
       } else {
         setCloudCurrentUnreadCount(unreadCount);
-        // Both views are branch-scoped now, so the tab badge can stay
-        // authoritative when the selected branch changes in the normal view.
+        // Every inbox filter is branch-scoped, so the unread badge can stay
+        // authoritative when the selected branch changes outside that filter.
         setCloudUnreadCount(unreadCount);
       }
     } catch {
@@ -528,8 +534,8 @@ export default function WhatsAppPage() {
     }
   };
 
-  const getCloudThreadRequest = (conversationId, branchKey, authScope) => {
-    const requestKey = `${authScope}:${branchKey}:${conversationId}`;
+  const getCloudThreadRequest = (conversationId, branchKey, authScope, viewKey) => {
+    const requestKey = `${authScope}:${viewKey}:${branchKey}:${conversationId}`;
     let request = cloudThreadRequestsRef.current.get(requestKey);
     if (!request) {
       request = whatsappAPI.getCloudInboxThread(conversationId);
@@ -550,8 +556,8 @@ export default function WhatsAppPage() {
     return request;
   };
 
-  const getCloudMediaRequest = (messageId, branchKey, authScope) => {
-    const requestKey = `${authScope}:${branchKey}:${messageId}`;
+  const getCloudMediaRequest = (messageId, branchKey, authScope, viewKey) => {
+    const requestKey = `${authScope}:${viewKey}:${branchKey}:${messageId}`;
     let request = cloudMediaRequestsRef.current.get(requestKey);
     if (!request) {
       request = whatsappAPI.getCloudInboxMedia(messageId);
@@ -579,7 +585,8 @@ export default function WhatsAppPage() {
     const requestId = ++cloudThreadRequestRef.current;
     const authScope = cloudAuthScope;
     const unreadView = cloudInboxViewRef.current === 'unread';
-    const viewKey = unreadView ? 'unread' : 'current';
+    const needsReplyView = cloudInboxViewRef.current === 'needs_reply';
+    const viewKey = needsReplyView ? 'needs_reply' : (unreadView ? 'unread' : 'all');
     const branchKey = cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
       ? cloudBranchFilterRef.current
       : 'all';
@@ -598,7 +605,7 @@ export default function WhatsAppPage() {
       requestId === cloudThreadRequestRef.current
       && authScope === cloudBranchesScopeRef.current
       && selectedCloudThreadRef.current === conversationId
-      && viewKey === (cloudInboxViewRef.current === 'unread' ? 'unread' : 'current')
+      && viewKey === cloudInboxViewRef.current
       && branchKey === (
         cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
           ? cloudBranchFilterRef.current
@@ -607,7 +614,7 @@ export default function WhatsAppPage() {
     );
 
     try {
-      const response = await getCloudThreadRequest(conversationId, branchKey, authScope);
+      const response = await getCloudThreadRequest(conversationId, branchKey, authScope, viewKey);
       if (!isCurrentRequest()) return;
 
       setCloudThread(response.data?.conversation || null);
@@ -618,7 +625,7 @@ export default function WhatsAppPage() {
       setCloudMediaUrls({});
       const mediaMessages = messages.filter(message => message.media_id);
       mediaMessages.forEach(message => {
-        getCloudMediaRequest(message.id, branchKey, authScope)
+        getCloudMediaRequest(message.id, branchKey, authScope, viewKey)
           .then(mediaResponse => {
             if (!isCurrentRequest()) return;
             const url = URL.createObjectURL(mediaResponse.data);
@@ -639,7 +646,7 @@ export default function WhatsAppPage() {
       // since the previous poll, so refresh the count in that case.
       const threadUnreadCount = Number(response.data?.conversation?.unread_count || 0);
       if (refreshInbox || !polling || threadUnreadCount > 0) {
-        await loadCloudConversations(branchKey, unreadView);
+        await loadCloudConversations(branchKey, unreadView, needsReplyView);
       }
     } catch {
       if (isCurrentRequest()) {
@@ -704,6 +711,9 @@ export default function WhatsAppPage() {
     setSendingCloudReply(true);
     try {
       const response = await whatsappAPI.replyCloudInbox(conversationId, cloudReply.trim());
+      if (!response.data?.success) {
+        throw new Error(t('لم يؤكد الخادم الإرسال', 'The server did not confirm the send'));
+      }
       setCloudReply('');
       if (selectedCloudThreadRef.current === conversationId) {
         await openCloudThread(conversationId, { refreshInbox: true });
@@ -879,6 +889,7 @@ export default function WhatsAppPage() {
     loadCloudConversations(
       cloudBranchFilterRef.current,
       cloudInboxViewRef.current === 'unread',
+      cloudInboxViewRef.current === 'needs_reply',
     );
     const interval = setInterval(() => {
       if (selectedCloudThreadRef.current) {
@@ -2948,7 +2959,7 @@ export default function WhatsAppPage() {
         {activeTab === 'cloud_inbox' && (
           <div className="space-y-4 max-w-5xl">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
                 {selectedCloudThread && (
                   <Button
                     variant="outline"
@@ -2970,15 +2981,16 @@ export default function WhatsAppPage() {
                 )}
                 {!selectedCloudThread && (
                   <>
-                    <div role="tablist" className="flex items-center gap-1 rounded-lg border p-1">
+                    <div role="tablist" className="flex flex-wrap items-center gap-1 rounded-lg border p-1">
                       <Button
                         type="button"
-                        aria-pressed={cloudInboxView === 'current'}
-                        variant={cloudInboxView === 'current' ? 'default' : 'ghost'}
+                        aria-label={t('الكل — الفرع الحالي', 'All — current branch')}
+                        aria-pressed={cloudInboxView === 'all'}
+                        variant={cloudInboxView === 'all' ? 'default' : 'ghost'}
                         size="sm"
-                        onClick={() => setCloudInboxView('current')}
+                        onClick={() => setCloudInboxView('all')}
                       >
-                        {t('الفرع الحالي', 'Current branch')}
+                        {t('الكل', 'All')}
                       </Button>
                       <Button
                         type="button"
@@ -2991,6 +3003,20 @@ export default function WhatsAppPage() {
                         {cloudUnreadCount > 0 && (
                           <Badge variant="destructive" className="text-xs px-1.5 py-0.5 ms-1">
                             {cloudUnreadCount}
+                          </Badge>
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        aria-pressed={cloudInboxView === 'needs_reply'}
+                        variant={cloudInboxView === 'needs_reply' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setCloudInboxView('needs_reply')}
+                      >
+                        {t('تحتاج ردًا', 'Needs reply')}
+                        {cloudNeedsReplyCount > 0 && (
+                          <Badge variant="secondary" className="text-xs px-1.5 py-0.5 ms-1">
+                            {cloudNeedsReplyCount}
                           </Badge>
                         )}
                       </Button>
@@ -3024,17 +3050,33 @@ export default function WhatsAppPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <MessageCircle className="w-5 h-5 text-green-600" />
-                    {cloudInboxView === 'unread'
-                      ? t('المحادثات غير المقروءة', 'Unread conversations')
-                      : t('محادثات واتساب الفروع', 'Branch WhatsApp conversations')}
-                    {(cloudInboxView === 'unread' ? cloudUnreadCount : cloudCurrentUnreadCount) > 0 && (
-                      <Badge variant="destructive">
-                        {cloudInboxView === 'unread' ? cloudUnreadCount : cloudCurrentUnreadCount}
-                      </Badge>
-                    )}
+                      {cloudInboxView === 'unread'
+                        ? t('المحادثات غير المقروءة', 'Unread conversations')
+                        : cloudInboxView === 'needs_reply'
+                          ? t('محادثات تحتاج ردًا', 'Conversations needing a reply')
+                          : t('محادثات واتساب الفروع', 'Branch WhatsApp conversations')}
+                      {(cloudInboxView === 'unread'
+                        ? cloudUnreadCount
+                        : cloudInboxView === 'needs_reply'
+                          ? cloudNeedsReplyCount
+                          : cloudCurrentUnreadCount) > 0 && (
+                        <Badge variant={cloudInboxView === 'needs_reply' ? 'secondary' : 'destructive'}>
+                          {cloudInboxView === 'unread'
+                            ? cloudUnreadCount
+                            : cloudInboxView === 'needs_reply'
+                              ? cloudNeedsReplyCount
+                              : cloudCurrentUnreadCount}
+                        </Badge>
+                      )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  <p className="mb-4 text-xs text-muted-foreground">
+                    {t(
+                      'فتح المحادثة يحدّث حالة القراءة فقط؛ «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
+                      'Opening a conversation updates read status only; “Needs reply” tracks inbound messages that have not received a reply.'
+                    )}
+                  </p>
                   {loadingCloudInbox && !cloudConversations.length ? (
                     <div className="py-12 text-center"><Loader2 className="w-7 h-7 animate-spin mx-auto" /></div>
                   ) : cloudConversations.length === 0 ? (
@@ -3068,6 +3110,11 @@ export default function WhatsAppPage() {
                                     <Building2 className="w-3 h-3" />{conversation.branch_name}
                                   </Badge>
                                   <Badge variant="outline" className="text-[10px]">{conversation.provider === 'waha' ? 'WAHA' : conversation.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
+                                   {conversation.needs_reply && (
+                                     <Badge variant="secondary" className="text-[10px]">
+                                       {t('تحتاج ردًا', 'Needs reply')}
+                                     </Badge>
+                                   )}
                                 </div>
                                 <span
                                   role="button"

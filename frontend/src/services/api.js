@@ -880,12 +880,13 @@ export const whatsappAPI = {
       responseType: 'blob'
     }),
   getMetaWebhookInfo: () => axios.get(`${API}/whatsapp/meta-webhook-info`),
-  getCloudInboxConversations: (branchFilter = 'all', unreadOnly = false) => {
+  getCloudInboxConversations: (branchFilter = 'all', unreadOnly = false, needsReplyOnly = false) => {
     const query = new URLSearchParams();
     if (branchFilter) {
       query.set('branch_filter', branchFilter);
     }
     if (unreadOnly) query.set('unread_only', 'true');
+    if (needsReplyOnly) query.set('needs_reply_only', 'true');
     const params = query.toString() ? `?${query.toString()}` : '';
     return axios.get(`${API}/whatsapp/cloud-inbox/conversations${params}`);
   },

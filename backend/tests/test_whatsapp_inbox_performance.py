@@ -21,8 +21,20 @@ def _matches(row, query):
             if row.get(key) not in value["$in"]:
                 return False
             continue
+        if isinstance(value, dict) and "$exists" in value:
+            if (key in row) != value["$exists"]:
+                return False
+            continue
         if isinstance(value, dict) and "$gt" in value:
             if not (row.get(key) is not None and row.get(key) > value["$gt"]):
+                return False
+            continue
+        if isinstance(value, dict) and "$lt" in value:
+            if not (row.get(key) is not None and row.get(key) < value["$lt"]):
+                return False
+            continue
+        if isinstance(value, dict) and "$lte" in value:
+            if not (row.get(key) is not None and row.get(key) <= value["$lte"]):
                 return False
             continue
         if row.get(key) != value:
@@ -62,6 +74,64 @@ class _Collection:
             if _matches(row, query):
                 return copy.deepcopy(row)
         return None
+
+    async def count_documents(self, query):
+        return sum(_matches(row, query) for row in self.rows)
+
+    async def update_one(self, query, update, upsert=False):
+        for row in self.rows:
+            if _matches(row, query):
+                row.update(copy.deepcopy(update.get("$set", {})))
+                for key, value in update.get("$max", {}).items():
+                    if key not in row or row[key] < value:
+                        row[key] = copy.deepcopy(value)
+                return type("Result", (), {
+                    "matched_count": 1, "modified_count": 1,
+                })()
+        return type("Result", (), {
+            "matched_count": 0, "modified_count": 0,
+        })()
+
+    def aggregate(self, pipeline):
+        match = pipeline[0].get("$match", {})
+        group = pipeline[-1].get("$group", {})
+        if "last_inbound_at" in group:
+            grouped = {}
+            for row in self.rows:
+                if not _matches(row, match):
+                    continue
+                result = grouped.setdefault(row["conversation_id"], {
+                    "_id": row["conversation_id"],
+                    "last_inbound_at": None,
+                    "last_human_reply_at": None,
+                })
+                created_at = row.get("created_at")
+                if row.get("direction") == "inbound" and (
+                    not result["last_inbound_at"]
+                    or created_at > result["last_inbound_at"]
+                ):
+                    result["last_inbound_at"] = created_at
+                human = (
+                    row.get("human_reply") is True
+                    or row.get("echo_source") == "human"
+                    or bool(row.get("sent_by"))
+                )
+                if (
+                    row.get("direction") == "outbound" and human
+                    and str(row.get("status") or "").lower()
+                    not in mod._UNSUCCESSFUL_OUTBOUND_STATUSES
+                    and (
+                        not result["last_human_reply_at"]
+                        or created_at > result["last_human_reply_at"]
+                    )
+                ):
+                    result["last_human_reply_at"] = created_at
+            return _Cursor(list(grouped.values()))
+        total = sum(
+            int(row.get("unread_count") or 0)
+            for row in self.rows if _matches(row, match)
+        )
+        return _Cursor([{"count": total}] if total else [])
 
     def find(self, query, projection=None):
         self.find_queries.append(copy.deepcopy(query))
@@ -205,7 +275,123 @@ def test_cloud_list_runs_cloud_and_campaign_reads_concurrently(monkeypatch):
         current_user={"is_admin": True},
     ))
 
-    assert result == {"conversations": [], "unread_count": 0}
+    assert result == {
+        "conversations": [], "unread_count": 0, "needs_reply_count": 0,
+    }
+
+
+def test_cloud_needs_reply_is_independent_of_unread_and_scoped(monkeypatch):
+    db = _Database(conversations=[
+        {
+            "id": "branch-a:resolved", "branch_id": "branch-a",
+            "phone": "966500000001", "unread_count": 8,
+            "last_message_at": "2026-03-01T10:01:00+00:00",
+            "last_inbound_at": "2026-03-01T10:00:00+00:00",
+            "last_human_reply_at": "2026-03-01T10:01:00+00:00",
+        },
+        {
+            "id": "branch-a:needs", "branch_id": "branch-a",
+            "phone": "966500000002", "unread_count": 0,
+            "last_message_at": "2026-03-01T11:00:00+00:00",
+            "last_inbound_at": "2026-03-01T11:00:00+00:00",
+        },
+        {
+            "id": "branch-b:needs", "branch_id": "branch-b",
+            "phone": "966500000003", "unread_count": 0,
+            "last_message_at": "2026-03-01T12:00:00+00:00",
+            "last_inbound_at": "2026-03-01T12:00:00+00:00",
+        },
+    ], branches=[{"id": "branch-a", "name": "Branch A"}])
+    monkeypatch.setattr(mod, "_db", db)
+
+    async def no_campaigns(_db, _query):
+        return []
+
+    monkeypatch.setattr(mod.campaign_inbox, "conversations", no_campaigns)
+    result = run(mod.list_cloud_inbox_conversations(
+        branch_filter="branch-a", needs_reply_only=True,
+        current_user={"is_admin": True},
+    ))
+
+    assert [row["id"] for row in result["conversations"]] == ["branch-a:needs"]
+    assert result["conversations"][0]["needs_reply"] is True
+    assert result["needs_reply_count"] == 1
+    assert result["unread_count"] == 8
+    # The needs count is branch-scoped rather than an unread count or a
+    # tenant-wide total.
+    assert db["whatsapp_cloud_conversations"].find_queries[0] == {
+        "branch_id": "branch-a",
+        "needs_reply": {"$exists": False},
+    }
+
+
+def test_cloud_needs_reply_legacy_messages_and_filter_precede_limit(monkeypatch):
+    db = _Database(conversations=[
+        {
+            "id": "branch-a:legacy", "branch_id": "branch-a",
+            "phone": "966500000001", "unread_count": 0,
+            "last_message_at": "2025-01-01T00:00:00+00:00",
+        },
+        *[
+            {
+                "id": f"branch-a:resolved-{index}", "branch_id": "branch-a",
+                "phone": f"96650000{index:04d}", "unread_count": 0,
+                "last_message_at": f"2026-01-{(index % 28) + 1:02d}T00:00:00+00:00",
+                "last_inbound_at": "2025-01-01T00:00:00+00:00",
+                "last_human_reply_at": "2025-01-01T00:01:00+00:00",
+            }
+            for index in range(249)
+        ],
+    ], branches=[{"id": "branch-a", "name": "Branch A"}])
+    db["whatsapp_cloud_messages"].rows.extend([
+        {
+            "id": "legacy-inbound", "conversation_id": "branch-a:legacy",
+            "direction": "inbound", "created_at": "2025-01-01T00:00:00+00:00",
+        },
+        {
+            "id": "legacy-human", "conversation_id": "branch-a:legacy",
+            "direction": "outbound", "human_reply": True, "status": "sent",
+            "created_at": "2025-01-01T00:01:00+00:00",
+        },
+        {
+            "id": "legacy-new-inbound", "conversation_id": "branch-a:legacy",
+            "direction": "inbound", "created_at": "2025-01-01T00:02:00+00:00",
+        },
+        {
+            "id": "legacy-failed", "conversation_id": "branch-a:legacy",
+            "direction": "outbound", "human_reply": True, "status": "failed",
+            "created_at": "2025-01-01T00:03:00+00:00",
+        },
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+
+    result = run(mod.list_cloud_inbox_conversations(
+        branch_filter="branch-a", needs_reply_only=True,
+        current_user={"is_admin": True},
+    ))
+
+    assert [row["id"] for row in result["conversations"]] == ["branch-a:legacy"]
+    assert result["needs_reply_count"] == 1
+
+
+def test_delayed_human_or_inbound_event_cannot_hide_newer_inbound(monkeypatch):
+    db = _Database(conversations=[{
+        "id": "branch-a:race", "branch_id": "branch-a",
+        "last_inbound_at": "2026-03-01T10:02:00+00:00",
+        "needs_reply": True,
+    }])
+    monkeypatch.setattr(mod, "_db", db)
+
+    run(mod._note_cloud_human_reply(
+        "branch-a:race", "branch-a", "2026-03-01T10:00:00+00:00", "old-reply"
+    ))
+    run(mod._note_cloud_inbound_needs_reply(
+        "branch-a:race", "branch-a", "2026-03-01T09:00:00+00:00"
+    ))
+
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    assert conversation["last_inbound_at"] == "2026-03-01T10:02:00+00:00"
+    assert conversation["needs_reply"] is True
 
 
 def test_cloud_unread_filter_respects_selected_branch_before_limit_and_skips_campaign_projection(monkeypatch):

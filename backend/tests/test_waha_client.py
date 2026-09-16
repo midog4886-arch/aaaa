@@ -2,7 +2,9 @@ import asyncio
 import hashlib
 import hmac
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from services.waha import WAHAClient
 from routes import whatsapp as whatsapp_mod
@@ -53,9 +55,38 @@ class _Collection:
 
     async def find_one(self, query, projection=None):
         for row in self.rows:
-            if all(row.get(key) == expected for key, expected in query.items()):
+            if self._matches(row, query):
                 return dict(row)
         return None
+
+    @staticmethod
+    def _matches(row, query):
+        for key, expected in query.items():
+            if key == "$or":
+                if not any(_Collection._matches(row, part) for part in expected):
+                    return False
+                continue
+            if isinstance(expected, dict):
+                if "$exists" in expected and (key in row) != expected["$exists"]:
+                    return False
+                if "$lt" in expected and not (
+                    key in row and row[key] < expected["$lt"]
+                ):
+                    return False
+                if "$lte" in expected and not (
+                    key in row and row[key] <= expected["$lte"]
+                ):
+                    return False
+                if "$gte" in expected and not (
+                    key in row and row[key] >= expected["$gte"]
+                ):
+                    return False
+                if "$in" in expected and row.get(key) not in expected["$in"]:
+                    return False
+                continue
+            if row.get(key) != expected:
+                return False
+        return True
 
     async def insert_one(self, row):
         if row.get("waha_message_id") and any(
@@ -73,7 +104,7 @@ class _Collection:
     async def update_one(self, query, update, upsert=False):
         stored = None
         for row in self.rows:
-            if all(row.get(key) == expected for key, expected in query.items()):
+            if self._matches(row, query):
                 stored = row
                 break
         if stored is None:
@@ -204,6 +235,71 @@ def test_waha_webhook_accepts_string_text_and_deduplicates(monkeypatch):
     conversations = db["whatsapp_cloud_conversations"].rows
     assert len(conversations) == 1
     assert conversations[0]["unread_count"] == 1
+
+
+def test_waha_automation_echo_race_is_bounded_and_never_resolves_as_human(monkeypatch):
+    secret = "webhook-secret"
+    monkeypatch.setenv("WAHA_WEBHOOK_SECRET", secret)
+    physical = whatsapp_mod._waha_physical_session_id(
+        "branch-a", "academy-a", "tenant-a"
+    )
+    db = _DB([{
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_session_name": "academy-a", "waha_physical_session_id": physical,
+    }])
+    db["whatsapp_automated_outbound"].rows.append({
+        "branch_id": "branch-a", "provider": "waha",
+        "phone": "966501234567", "status": "in_flight",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    monkeypatch.setattr(
+        whatsapp_mod, "_with_webhook_tenant", AsyncMock(return_value="tenant")
+    )
+    monkeypatch.setattr(whatsapp_mod, "reset_current_tenant", lambda _: None)
+    monkeypatch.setattr(
+        whatsapp_mod.registration_followups, "note_outbound", AsyncMock()
+    )
+    monkeypatch.setattr(
+        whatsapp_mod.campaign_inquiry_automation, "note_outbound", AsyncMock()
+    )
+    envelope = {
+        "event": "message", "session": physical,
+        "payload": {
+            "id": "automation-echo", "fromMe": True,
+            "from": "966501234567@c.us", "text": "reminder",
+        },
+    }
+    raw = json.dumps(envelope).encode()
+
+    class Request:
+        headers = {
+            "x-webhook-hmac": hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        }
+
+        async def body(self):
+            return raw
+
+    assert run(whatsapp_mod.receive_waha_webhook("tenant-a", Request())) == {
+        "received": True
+    }
+    assert not db["whatsapp_cloud_conversations"].rows
+
+    # An unknown response from a much older send is not permanent ambiguity;
+    # a later linked-phone human reply is retained and can resolve a thread.
+    db["whatsapp_automated_outbound"].rows[0].update({
+        "status": "unknown", "created_at": "2020-01-01T00:00:00+00:00",
+    })
+    envelope["payload"]["id"] = "human-echo"
+    raw = json.dumps(envelope).encode()
+    Request.headers = {
+        "x-webhook-hmac": hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    }
+    assert run(whatsapp_mod.receive_waha_webhook("tenant-a", Request())) == {
+        "received": True
+    }
+    assert db["whatsapp_cloud_conversations"].rows[0]["needs_reply"] is False
+    assert db["whatsapp_cloud_messages"].rows[0]["human_reply"] is True
 
 
 def test_physical_session_is_tenant_and_branch_isolated():
