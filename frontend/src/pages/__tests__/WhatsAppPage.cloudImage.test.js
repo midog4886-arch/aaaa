@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const mockNavigate = jest.fn();
@@ -65,6 +65,12 @@ const conversation = {
   unread_count: 0,
 };
 
+const deferred = () => {
+  let resolve;
+  const promise = new Promise(res => { resolve = res; });
+  return { promise, resolve };
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   membersAPI.lookupByPhone.mockResolvedValue({ data: { members: [] } });
@@ -126,12 +132,14 @@ async function renderCloudInbox() {
   return user;
 }
 
-test('does not refetch the inbox or branches when opening a read-only thread', async () => {
+test('refreshes the current branch inbox after opening a read-only thread and preserves it', async () => {
   await renderOpenCloudThread();
 
-  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(1);
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(2);
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenNthCalledWith(2, 'branch-a', false);
   expect(branchesAPI.getAll).toHaveBeenCalledTimes(1);
   expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(1);
+  expect(screen.getByPlaceholderText(/اكتب الرد/)).toBeInTheDocument();
 });
 
 test('loads unread conversations for the selected branch and keeps the branch selector visible', async () => {
@@ -186,6 +194,85 @@ test('opening an unread thread refreshes the selected branch unread list and cou
   expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('branch-a', true);
   await user.click(screen.getByRole('button', { name: /رجوع/ }));
   expect(await screen.findByText('لا توجد محادثات واتساب واردة بعد')).toBeInTheDocument();
+});
+
+test('keeps an unread conversation until the authoritative refresh removes it', async () => {
+  const unreadConversation = {
+    ...conversation,
+    unread_count: 2,
+  };
+  const unreadRefresh = deferred();
+  whatsappAPI.getCloudInboxConversations
+    .mockResolvedValueOnce({
+      data: { conversations: [conversation], unread_count: 0 },
+    })
+    .mockResolvedValueOnce({
+      data: { conversations: [unreadConversation], unread_count: 2 },
+    })
+    .mockReturnValueOnce(unreadRefresh.promise);
+  whatsappAPI.getCloudInboxThread.mockResolvedValueOnce({
+    data: { conversation: unreadConversation, messages: [] },
+  });
+  const user = await renderCloudInbox();
+
+  await user.click(screen.getByRole('button', { name: /غير مقروءة/ }));
+  await screen.findByText('أحمد');
+  await user.click(screen.getByRole('button', { name: /أحمد/ }));
+  await screen.findByTestId('input-cloud-image');
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3);
+
+  await user.click(screen.getByRole('button', { name: /رجوع/ }));
+  expect(screen.getByText('أحمد')).toBeInTheDocument();
+
+  await act(async () => {
+    unreadRefresh.resolve({
+      data: { conversations: [], unread_count: 0 },
+    });
+  });
+  expect(await screen.findByText('لا توجد محادثات واتساب واردة بعد')).toBeInTheDocument();
+});
+
+test('ignores an old branch inbox response after the branch changes again', async () => {
+  branchesAPI.getAll.mockResolvedValue({
+    data: [
+      { id: 'branch-a', name: 'الفرع الرئيسي' },
+      { id: 'branch-b', name: 'الفرع الثاني' },
+    ],
+  });
+  const branchBRefresh = deferred();
+  const branchBConversation = {
+    ...conversation,
+    id: 'branch-b:966501234568',
+    branch_id: 'branch-b',
+    branch_name: 'الفرع الثاني',
+    contact_name: 'سارة',
+  };
+  whatsappAPI.getCloudInboxConversations
+    .mockResolvedValueOnce({
+      data: { conversations: [conversation], unread_count: 0 },
+    })
+    .mockReturnValueOnce(branchBRefresh.promise)
+    .mockResolvedValueOnce({
+      data: { conversations: [conversation], unread_count: 0 },
+    });
+  const user = await renderCloudInbox();
+
+  await user.click(screen.getByRole('combobox'));
+  await user.click(screen.getByRole('option', { name: 'الفرع الثاني' }));
+  await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(2));
+
+  await user.click(screen.getByRole('combobox'));
+  await user.click(screen.getByRole('option', { name: 'الفرع الرئيسي' }));
+  await screen.findByText('أحمد');
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3);
+
+  await act(async () => {
+    branchBRefresh.resolve({
+      data: { conversations: [branchBConversation], unread_count: 0 },
+    });
+  });
+  expect(screen.queryByText('سارة')).not.toBeInTheDocument();
+  expect(screen.getByText('أحمد')).toBeInTheDocument();
 });
 
 test('uses the backend match flag for orange cloud phone styling without a render lookup', async () => {

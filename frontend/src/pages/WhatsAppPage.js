@@ -571,7 +571,10 @@ export default function WhatsAppPage() {
     return request;
   };
 
-  const openCloudThread = async (conversationId, { refreshInbox = false } = {}) => {
+  const openCloudThread = async (
+    conversationId,
+    { refreshInbox = false, polling = false } = {},
+  ) => {
     const requestId = ++cloudThreadRequestRef.current;
     const authScope = cloudAuthScope;
     const unreadView = cloudInboxViewRef.current === 'unread';
@@ -580,9 +583,6 @@ export default function WhatsAppPage() {
       ? cloudBranchFilterRef.current
       : 'all';
     const previousThread = selectedCloudThreadRef.current;
-    const selectedConversation = cloudConversations.find(
-      conversation => conversation.id === conversationId
-    );
     selectedCloudThreadRef.current = conversationId;
     setSelectedCloudThread(conversationId);
     setLoadingCloudInbox(true);
@@ -626,23 +626,18 @@ export default function WhatsAppPage() {
           })
           .catch(() => {});
       });
-      if (unreadView) {
-        // The detail endpoint marks the conversation read. Remove it
-        // optimistically so the unread view responds immediately, then let
-        // the authoritative list refresh reconcile the count.
-        setCloudConversations(previous => previous.filter(
-          conversation => conversation.id !== conversationId
-        ));
-        setCloudUnreadCount(previous => Math.max(
-          0,
-          previous - Number(selectedConversation?.unread_count || 0)
-        ));
-      }
-      // Opening a thread is read-only and must not refetch the inbox/branch
-      // list in the normal view. The unread view refreshes after a read so
-      // its list/count remain authoritative; writes opt into this refresh in
-      // either view.
-      if (refreshInbox || unreadView) {
+      // The detail GET marks inbound messages read. Reconcile the selected
+      // branch's list/count only after that request succeeds so the badge and
+      // both inbox views reflect the server's authoritative state. Do not
+      // optimistically remove an unread conversation: a stale list response
+      // must remain visible until the authoritative refresh arrives.
+      //
+      // Polls refresh the open detail as well, but should not issue another
+      // inbox request every ten seconds after the thread is already read.
+      // A non-zero count in the pre-mark response means a new unread arrived
+      // since the previous poll, so refresh the count in that case.
+      const threadUnreadCount = Number(response.data?.conversation?.unread_count || 0);
+      if (refreshInbox || !polling || threadUnreadCount > 0) {
         await loadCloudConversations(branchKey, unreadView);
       }
     } catch {
@@ -885,7 +880,9 @@ export default function WhatsAppPage() {
       cloudInboxViewRef.current === 'unread',
     );
     const interval = setInterval(() => {
-      if (selectedCloudThreadRef.current) openCloudThread(selectedCloudThreadRef.current);
+      if (selectedCloudThreadRef.current) {
+        openCloudThread(selectedCloudThreadRef.current, { polling: true });
+      }
       else loadCloudConversations();
     }, 10000);
     return () => clearInterval(interval);
