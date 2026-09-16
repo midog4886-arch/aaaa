@@ -3693,6 +3693,87 @@ async def _mark_cloud_inbound_read(
     return False
 
 
+async def _mark_whatsflow_inbound_message_read(
+    branch_id: str, provider_message_id: str
+) -> bool:
+    """Mark one authenticated Whatsflow inbound message read.
+
+    Evolution API's ``MESSAGES_UPDATE`` event identifies the changed message
+    with ``keyId`` and ``fromMe``.  The aggregate unread count is maintained
+    separately by this inbox, so only a transition of the exact stored inbound
+    row may decrement it.  In particular, this must not be implemented as a
+    chat-wide or timestamp-based clear: another inbound message can arrive
+    before or after either atomic update.  The pre-transition aggregate
+    identity is required for the decrement, so a concurrent thread read leaves
+    a mismatched count untouched.
+    """
+    if not branch_id or not provider_message_id:
+        return False
+
+    messages = _db["whatsapp_cloud_messages"]
+    conversations = _db["whatsapp_cloud_conversations"]
+    query = {
+        "branch_id": branch_id,
+        "provider": "whatsflow",
+        "provider_message_id": provider_message_id,
+        "direction": "inbound",
+        "unread": True,
+    }
+    row = await messages.find_one(query, {"_id": 0, "conversation_id": 1})
+    if not row or not row.get("conversation_id"):
+        return False
+    snapshot = await conversations.find_one(
+        {"id": row["conversation_id"], "branch_id": branch_id},
+        {
+            "_id": 0,
+            "unread_count": 1,
+            "last_inbound_message_id": 1,
+            "inbound_generation": 1,
+        },
+    )
+    if not snapshot:
+        return False
+    try:
+        snapshot_count = int(snapshot.get("unread_count") or 0)
+    except (TypeError, ValueError):
+        snapshot_count = 0
+    snapshot_message_id = snapshot.get("last_inbound_message_id")
+    snapshot_generation = snapshot.get("inbound_generation")
+
+    # The unread predicate makes duplicate delivery idempotent and ensures
+    # that a thread read race cannot decrement the aggregate twice.
+    result = await messages.update_one(
+        query,
+        {"$set": {"unread": False}},
+    )
+    if not getattr(result, "modified_count", 0):
+        return False
+
+    # The aggregate may be concurrently cleared by a thread read.  Requiring
+    # the complete pre-transition identity (including the count) makes this
+    # operation own only the count snapshot it observed.  On any mismatch,
+    # leave the count alone: a later inbound event must never be hidden by a
+    # blanket retry or a chat-wide decrement.
+    if (
+        snapshot_count < 1
+        or snapshot_message_id in (None, "")
+        or snapshot_generation is None
+    ):
+        return True
+    counter_query = {
+        "id": row["conversation_id"],
+        "branch_id": branch_id,
+        "unread_count": snapshot_count,
+        "last_inbound_message_id": snapshot_message_id,
+        "inbound_generation": snapshot_generation,
+    }
+    await conversations.update_one(
+        counter_query,
+        {"$inc": {"unread_count": -1}},
+    )
+    return True
+
+
 async def _classify_whatsflow_echo(
     branch_id: str, phone: str, provider_message_id: str
 ) -> str:
@@ -4011,19 +4092,42 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             )
             return {"received": True}
         key = data.get("key") if isinstance(data.get("key"), dict) else {}
-        message_id = str(key.get("id") or data.get("id") or "")
+        # Evolution API 2.3.7 emits MESSAGES_UPDATE data as the flattened
+        # ``message`` object (keyId/remoteJid/fromMe/status), while some
+        # compatible gateways retain the nested key shape used by upserts.
+        # Accept both shapes, but never infer an ID or direction.
+        message_id = str(
+            key.get("id") or data.get("keyId") or data.get("id") or ""
+        )
         if event == "messages.update":
             update_data = data.get("update") if isinstance(data.get("update"), dict) else {}
             status = str(data.get("status") or update_data.get("status") or "unknown").lower()
-            await _db["whatsapp_cloud_messages"].update_one(
-                {"branch_id": config["branch_id"], "provider": "whatsflow",
-                 "provider_message_id": message_id},
-                {"$set": {"status": status, "status_updated_at": now}},
-            )
-            await whatsapp_bulk_jobs.record_receipt(
-                config["branch_id"], "whatsflow", message_id, status,
-                timestamp=datetime.now(timezone.utc),
-            )
+            if message_id:
+                await _db["whatsapp_cloud_messages"].update_one(
+                    {"branch_id": config["branch_id"], "provider": "whatsflow",
+                     "provider_message_id": message_id},
+                    {"$set": {"status": status, "status_updated_at": now}},
+                )
+                await whatsapp_bulk_jobs.record_receipt(
+                    config["branch_id"], "whatsflow", message_id, status,
+                    timestamp=datetime.now(timezone.utc),
+                )
+
+                # A READ for fromMe=true is the customer reading our
+                # outbound message.  It must never affect inbox unread state.
+                # Evolution API 2.3.7 documents the inverse path in its
+                # messages.update handler: fromMe=false + READ is the linked
+                # phone reading an inbound message.  Scope the operation to
+                # that exact stored inbound provider ID.
+                from_me = (
+                    key.get("fromMe")
+                    if "fromMe" in key
+                    else data.get("fromMe")
+                )
+                if status == "read" and from_me is False:
+                    await _mark_whatsflow_inbound_message_read(
+                        config["branch_id"], message_id
+                    )
             return {"received": True}
         if event != "messages.upsert":
             return {"received": True}

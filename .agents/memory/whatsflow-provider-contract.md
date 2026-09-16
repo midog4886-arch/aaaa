@@ -51,6 +51,12 @@ Do not promise phone-read synchronization merely by subscribing to chat updates.
 
 **How to apply:** Confirm the actual provider payload contains a trustworthy read boundary before clearing local unread counts. A generic chat update or an outbound delivery receipt is not proof that staff read incoming messages. Hosted-provider changes are outside this application's deployment.
 
+Evolution 2.3.7 has a separate incoming-read path in `MESSAGES_UPDATE`: explicit `fromMe=false`, `status=READ`, and `keyId` identify an incoming message read on the linked device. This is not the empty chat-update path.
+
+**Why:** Upstream source forwards the flattened message update and separately uses incoming READ to update its stored incoming messages. Outgoing READ means the customer read our message, not staff read theirs. Hosted event delivery still needs real-world confirmation.
+
+**How to apply:** Only clear proven incoming message identities within their tenant/branch. Preserve concurrent arrivals with aggregate identity/count checks. Exact-ID handling does not backfill historical reads or safely prove every older message was read; do not advertise historical synchronization.
+
 Renewal WhatsApp reminders are grouped by normalized phone and branch across each send batch, including different selected expiry dates and shared family numbers.
 
 **Why:** The user explicitly wants multiple expired activities for one number in a single message rather than separate activity/member messages.

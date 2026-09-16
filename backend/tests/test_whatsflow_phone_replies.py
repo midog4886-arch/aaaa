@@ -474,6 +474,162 @@ def test_whatsflow_read_receipt_does_not_clear_unread(db):
     assert db["whatsapp_cloud_conversations"].rows[0]["unread_count"] == 2
 
 
+def _read_update(provider_message_id, *, from_me=False):
+    envelope = {
+        "event": "messages.update", "instance": "instance-a",
+        "data": {
+            # Evolution API 2.3.7 sends MESSAGES_UPDATE in this flattened
+            # shape: keyId/fromMe/status.
+            "keyId": provider_message_id,
+            "fromMe": from_me,
+            "status": "READ",
+        },
+    }
+
+    class Request:
+        headers = {"x-webhook-secret": "test-secret"}
+
+        async def body(self):
+            return json.dumps(envelope).encode()
+
+    return asyncio.run(mod.receive_whatsflow_webhook("tenant-a", "a", Request()))
+
+
+def test_phone_read_marks_exact_inbound_id_and_preserves_other_messages(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 2
+    db["whatsapp_cloud_messages"].rows.extend([
+        {
+            "id": "stored-old", "conversation_id": conversation["id"],
+            "branch_id": "a", "provider": "whatsflow",
+            "provider_message_id": "inbound-old", "direction": "inbound",
+            "unread": True,
+        },
+        {
+            "id": "stored-new", "conversation_id": conversation["id"],
+            "branch_id": "a", "provider": "whatsflow",
+            "provider_message_id": "inbound-new", "direction": "inbound",
+            "unread": True,
+        },
+        {
+            "id": "stored-outbound", "conversation_id": conversation["id"],
+            "branch_id": "a", "provider": "whatsflow",
+            "provider_message_id": "outbound-read", "direction": "outbound",
+            "unread": False,
+        },
+    ])
+
+    _read_update("inbound-old")
+    by_provider_id = {
+        row.get("provider_message_id"): row
+        for row in db["whatsapp_cloud_messages"].rows
+    }
+    assert by_provider_id["inbound-old"]["unread"] is False
+    assert by_provider_id["inbound-new"]["unread"] is True
+    assert conversation["unread_count"] == 1
+
+    # Duplicate delivery is a no-op, while a READ for our outbound message
+    # remains only a delivery receipt and cannot clear the inbox.
+    _read_update("inbound-old")
+    _read_update("outbound-read", from_me=True)
+    assert conversation["unread_count"] == 1
+    assert by_provider_id["outbound-read"]["unread"] is False
+
+
+def test_phone_read_race_with_new_inbound_decrements_only_transitioned_row(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 1
+    old = {
+        "id": "stored-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow",
+        "provider_message_id": "inbound-old", "direction": "inbound",
+        "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.append(old)
+    messages = db["whatsapp_cloud_messages"]
+    original_update = messages.update_one
+
+    async def update_and_arrive(query, update, upsert=False):
+        result = await original_update(query, update, upsert=upsert)
+        if query.get("unread") is True and result.modified_count:
+            messages.rows.append({
+                "id": "arrived-after-read", "conversation_id": conversation["id"],
+                "branch_id": "a", "provider": "whatsflow",
+                "provider_message_id": "inbound-new", "direction": "inbound",
+                "unread": True,
+            })
+            conversation["unread_count"] += 1
+            conversation["last_inbound_message_id"] = "inbound-new"
+            conversation["inbound_generation"] = (
+                conversation.get("inbound_generation") or 0
+            ) + 1
+        return result
+
+    messages.update_one = update_and_arrive
+    asyncio.run(mod._mark_whatsflow_inbound_message_read("a", "inbound-old"))
+
+    assert old["unread"] is False
+    assert messages.rows[-1]["unread"] is True
+    # The identity changed between the row transition and counter update, so
+    # the helper conservatively leaves the aggregate untouched rather than
+    # hiding the newly arrived unread message.
+    assert conversation["unread_count"] == 2
+
+
+def test_phone_read_does_not_hide_new_inbound_after_thread_clear(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation.update({
+        "unread_count": 1,
+        "last_inbound_message_id": "seed-inbound",
+        "inbound_generation": 1,
+    })
+    old = {
+        "id": "stored-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow",
+        "provider_message_id": "inbound-old", "direction": "inbound",
+        "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.append(old)
+    messages = db["whatsapp_cloud_messages"]
+    conversations = db["whatsapp_cloud_conversations"]
+    original_update = messages.update_one
+
+    async def update_then_thread_clear(query, update, upsert=False):
+        result = await original_update(query, update, upsert=upsert)
+        if query.get("unread") is True and result.modified_count:
+            # Simulate _mark_cloud_inbound_read's successful identity CAS,
+            # followed by a new webhook arrival before the phone-read helper's
+            # counter update.
+            await conversations.update_one(
+                {
+                    "id": conversation["id"], "branch_id": "a",
+                    "unread_count": 1,
+                    "last_inbound_message_id": "seed-inbound",
+                    "inbound_generation": 1,
+                },
+                {"$set": {"unread_count": 0}},
+            )
+            messages.rows.append({
+                "id": "arrived-after-thread-clear",
+                "conversation_id": conversation["id"], "branch_id": "a",
+                "provider": "whatsflow", "provider_message_id": "inbound-new",
+                "direction": "inbound", "unread": True,
+            })
+            conversation.update({
+                "unread_count": 1,
+                "last_inbound_message_id": "inbound-new",
+                "inbound_generation": 2,
+            })
+        return result
+
+    messages.update_one = update_then_thread_clear
+    asyncio.run(mod._mark_whatsflow_inbound_message_read("a", "inbound-old"))
+
+    assert old["unread"] is False
+    assert messages.rows[-1]["unread"] is True
+    assert conversation["unread_count"] == 1
+
+
 def test_incoming_still_increments_unread(db):
     deliver(outbound=False)
     assert db["whatsapp_cloud_conversations"].rows[0]["unread_count"] == 3
