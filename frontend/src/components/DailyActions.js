@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, ArrowUpRight, CalendarClock, ChevronRight, ClipboardCheck, MessageSquareText, RefreshCcw, ShieldAlert, UserRoundX, X } from 'lucide-react';
 import { dashboardAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -85,12 +86,12 @@ export default function DailyActions() {
           })}
         </div>
       )}
-      {openGroup && <div role="dialog" aria-modal="true" aria-labelledby="daily-actions-dialog-title" className="fixed inset-0 z-50 bg-black/35 flex items-end md:items-center justify-center p-3" onMouseDown={() => setOpenGroup(null)}>
-        <Card className="w-full max-w-2xl max-h-[80dvh] overflow-auto" onMouseDown={event => event.stopPropagation()}><CardContent className="p-0">
-          <div className="sticky top-0 bg-card border-b px-5 py-4 flex items-center justify-between"><div><h3 id="daily-actions-dialog-title" className="font-bold">{label(openGroup.key)[0]}</h3><p className="text-xs text-muted-foreground">{label(openGroup.key)[1]}</p></div><Button variant="ghost" size="icon" onClick={() => setOpenGroup(null)} aria-label={language === 'ar' ? 'إغلاق' : 'Close'}><X className="w-4 h-4" /></Button></div>
-          <div className="p-3 space-y-2">{openGroup.items?.length ? openGroup.items.map(item => <div key={item.id} className="border rounded-lg p-3 flex gap-3 items-center justify-between"><div><strong className="text-sm">{item.title}</strong><span className="block text-xs text-muted-foreground mt-1">{item.detail}</span>{openGroup.key === 'failures' && ['payment', 'failed_payment', 'billing_payment'].includes(item.kind) && <span className="block text-xs text-amber-700 mt-1">{language === 'ar' ? 'حدث فوترة على مستوى الأكاديمية' : 'Academy-wide billing event'}</span>}</div><Button size="sm" variant="outline" onClick={() => go(item)}>{language === 'ar' ? 'فتح' : 'Open'}<ArrowUpRight className="w-3 h-3 ml-1" /></Button></div>) : <p className="p-5 text-sm text-muted-foreground">{language === 'ar' ? 'لا توجد عناصر لعرضها.' : 'There are no items to show.'}</p>}{openGroup.has_more && <p className="px-2 py-2 text-xs text-muted-foreground">{language === 'ar' ? 'هذه قائمة مختصرة من العناصر المطابقة.' : 'This is a shortened list of matching items.'}</p>}</div>
+      {openGroup && createPortal(<div role="dialog" aria-modal="true" aria-labelledby="daily-actions-dialog-title" dir={language === 'ar' ? 'rtl' : 'ltr'} className="fixed inset-0 z-50 bg-black/35 flex items-end md:items-center justify-center p-3" onMouseDown={() => setOpenGroup(null)}>
+        <Card className="w-full max-w-2xl max-h-[80dvh] flex flex-col overflow-hidden" onMouseDown={event => event.stopPropagation()}><CardContent className="p-0 flex flex-col min-h-0">
+          <div className="shrink-0 bg-card border-b px-5 py-4 flex items-center justify-between"><div><h3 id="daily-actions-dialog-title" className="font-bold">{label(openGroup.key)[0]}</h3><p className="text-xs text-muted-foreground">{label(openGroup.key)[1]}</p></div><Button variant="ghost" size="icon" onClick={() => setOpenGroup(null)} aria-label={language === 'ar' ? 'إغلاق' : 'Close'}><X className="w-4 h-4" /></Button></div>
+          <div className="p-3 space-y-2 min-h-0 overflow-y-auto overscroll-contain" tabIndex={0} aria-label={label(openGroup.key)[0]}>{openGroup.items?.length ? openGroup.items.map(item => <div key={item.id} className="border rounded-lg p-3 flex gap-3 items-center justify-between"><div><strong className="text-sm">{item.title}</strong><span className="block text-xs text-muted-foreground mt-1">{item.detail}</span>{openGroup.key === 'failures' && ['payment', 'failed_payment', 'billing_payment'].includes(item.kind) && <span className="block text-xs text-amber-700 mt-1">{language === 'ar' ? 'حدث فوترة على مستوى الأكاديمية' : 'Academy-wide billing event'}</span>}</div><Button size="sm" variant="outline" onClick={() => go(item)}>{language === 'ar' ? 'فتح' : 'Open'}<ArrowUpRight className="w-3 h-3 ml-1" /></Button></div>) : <p className="p-5 text-sm text-muted-foreground">{language === 'ar' ? 'لا توجد عناصر لعرضها.' : 'There are no items to show.'}</p>}{openGroup.has_more && <p className="px-2 py-2 text-xs text-muted-foreground">{language === 'ar' ? 'هذه قائمة مختصرة من العناصر المطابقة.' : 'This is a shortened list of matching items.'}</p>}</div>
         </CardContent></Card>
-      </div>}
+      </div>, document.body)}
     </section>
   );
 }

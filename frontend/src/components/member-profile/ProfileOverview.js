@@ -18,16 +18,24 @@ export default function ProfileOverview({ member, attendance, canViewFinancial, 
     }).catch(() => { if (generation === request.current) setSummaryError(true); });
     return () => { request.current += 1; };
   }, [member.id, scopeKey, canViewFinancial]);
-  const latestByActivity = Object.values((member.activities || []).reduce((acc, item) => {
-    if (!acc[item.activity_id] || new Date(item.end_date || 0) > new Date(acc[item.activity_id].end_date || 0)) acc[item.activity_id] = item;
+  const latestByActivity = items => Object.values(items.reduce((acc, item) => {
+    const key = item.activity_id || item.activity_name;
+    if (!acc[key] || new Date(item.end_date || 0) > new Date(acc[key].end_date || 0)) acc[key] = item;
     return acc;
   }, {}));
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).reduce((acc, part) => ({ ...acc, [part.type]: part.value }), {});
   const todayRiyadh = `${parts.year}-${parts.month}-${parts.day}`;
-  const active = latestByActivity.filter(item => item.status === 'active' && (!item.start_date || item.start_date <= todayRiyadh) && (!item.end_date || item.end_date >= todayRiyadh));
+  const day = value => String(value || '').slice(0, 10);
+  const available = (member.activities || []).filter(item => item.status === 'active' && (!item.end_date || day(item.end_date) >= todayRiyadh));
+  const active = latestByActivity(available.filter(item => !item.start_date || day(item.start_date) <= todayRiyadh));
+  const upcoming = latestByActivity(available.filter(item => day(item.start_date) > todayRiyadh)).sort((a, b) => day(a.start_date).localeCompare(day(b.start_date)));
   const nextEnd = active.sort((a, b) => new Date(a.end_date || '9999-12-31') - new Date(b.end_date || '9999-12-31'))[0];
+  const subscriptionLabel = [
+    active.length ? `${active.length} ${copy('نشط', 'active', language)}` : '',
+    upcoming.length ? `${upcoming.length} ${copy('قادم — لم يبدأ بعد', 'upcoming — not started yet', language)}` : '',
+  ].filter(Boolean).join(' · ') || copy('لا يوجد اشتراك نشط', 'No active subscription', language);
   const quick = [
-    { key: 'activities', icon: Activity, label: copy('الاشتراكات', 'Subscriptions', language), value: active.length ? `${active.length} ${copy('نشط', 'active', language)}` : copy('لا يوجد اشتراك نشط', 'No active subscription', language) },
+    { key: 'activities', icon: Activity, label: copy('الاشتراكات', 'Subscriptions', language), value: subscriptionLabel },
     { key: 'attendance', icon: CalendarDays, label: copy('الحضور', 'Attendance', language), value: canViewAttendance ? (attendance?.summary ? `${attendance.summary.present_count ?? attendance.summary.attendance_count ?? 0} ${copy('حضور', 'present', language)}` : '—') : copy('غير متاح', 'Not available', language), allowed: canViewAttendance },
     { key: 'invoices', icon: Receipt, label: copy('الفواتير المدفوعة المرتبطة', 'Linked paid invoices', language), value: canViewFinancial ? (summary?.paid_invoice_count == null ? '—' : `${summary.paid_invoice_count} ${copy('فاتورة', 'invoices', language)}`) : copy('غير متاح', 'Not available', language), allowed: canViewFinancial },
   ];
@@ -35,9 +43,17 @@ export default function ProfileOverview({ member, attendance, canViewFinancial, 
     <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{copy('لقطة العضو', 'Member snapshot', language)}</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <div><p className="text-sm text-muted-foreground">{copy('أقرب انتهاء', 'Next expiry', language)}</p><p className="font-semibold">{nextEnd ? date(nextEnd.end_date, language) : copy('لا يوجد', 'None', language)}</p></div>
-        <div><p className="text-sm text-muted-foreground">{copy('الجدول الحالي', 'Current schedule', language)}</p><p className="font-semibold">{active.map(a => a.schedule || a.activity_name).filter(Boolean).join(' · ') || '—'}</p></div>
+        <div><p className="text-sm text-muted-foreground">{nextEnd || !upcoming.length ? copy('أقرب انتهاء', 'Next expiry', language) : copy('بداية الاشتراك القادم', 'Next subscription starts', language)}</p><p className="font-semibold">{nextEnd ? date(nextEnd.end_date, language) : upcoming.length ? date(upcoming[0].start_date, language) : copy('لا يوجد', 'None', language)}</p></div>
+        <div><p className="text-sm text-muted-foreground">{active.length || !upcoming.length ? copy('الجدول الحالي', 'Current schedule', language) : copy('الجدول القادم', 'Upcoming schedule', language)}</p><p className="font-semibold">{(active.length ? active : upcoming).map(a => a.schedule || a.activity_name).filter(Boolean).join(' · ') || '—'}</p></div>
       </div>
+      {upcoming.length > 0 && <div className="mt-4 space-y-2 border-t border-primary/20 pt-3">
+        <p className="text-sm font-semibold">{copy('الاشتراكات القادمة — لم تبدأ بعد', 'Upcoming subscriptions — not started yet', language)}</p>
+        {upcoming.map((item, index) => <div key={`${item.activity_id}-${index}`} className="text-sm">
+          <p className="font-semibold">{item.activity_name}</p>
+          <p className="text-muted-foreground">{copy('البداية', 'Starts', language)}: {date(item.start_date, language)} · {copy('النهاية', 'Ends', language)}: {date(item.end_date, language)}</p>
+          {item.schedule && <p>{item.schedule}</p>}
+        </div>)}
+      </div>}
     </section>
     <div className="grid gap-3 sm:grid-cols-3">
       {quick.map(({ key, icon: Icon, label, value, allowed = true }) => <button key={key} type="button" disabled={!allowed} onClick={() => allowed && onTab(key)} className="rounded-xl border bg-card p-4 text-start transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-65">
