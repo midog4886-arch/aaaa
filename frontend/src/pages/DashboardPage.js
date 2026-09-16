@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import WelcomeOnboardingDialog from '../components/WelcomeOnboardingDialog';
+import DailyActions from '../components/DailyActions';
 
 const DEFAULT_WIDGETS = [
   { id: 'stats', visible: true },
@@ -348,6 +349,7 @@ export const DashboardPage = () => {
     <Layout title={t('dashboard')}>
       <WelcomeOnboardingDialog />
       <div className="space-y-6 animate-fade-in" data-testid="dashboard-page">
+        <DailyActions />
         {/* Dashboard Controls */}
         <div className="flex items-center justify-between gap-2">
           <Button

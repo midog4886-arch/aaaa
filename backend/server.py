@@ -252,6 +252,9 @@ api_router.include_router(data_export_router)
 from routes.global_search import router as global_search_router
 api_router.include_router(global_search_router)
 
+from routes.dashboard_actions import router as dashboard_actions_router
+api_router.include_router(dashboard_actions_router)
+
 app.include_router(super_admin_router)
 
 # Set database for loyalty router

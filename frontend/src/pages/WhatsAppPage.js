@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
+import ChatMessageViewport from '../components/ChatMessageViewport';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -3136,7 +3137,7 @@ export default function WhatsAppPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4">
-                  <div className="space-y-3 max-h-[520px] overflow-y-auto mb-4 p-2 bg-muted/20 rounded-lg">
+                  <ChatMessageViewport key={selectedCloudThread} className="max-h-[520px] overflow-y-auto mb-4 p-2 bg-muted/20 rounded-lg">
                     {cloudMessages.map(message => {
                       const outbound = message.direction === 'outbound';
                       const statusText = {
@@ -3207,7 +3208,7 @@ export default function WhatsAppPage() {
                         </div>
                       );
                     })}
-                  </div>
+                  </ChatMessageViewport>
                    {cloudImage && (
                      <div className="mb-3 rounded-lg border border-green-200 bg-green-50/60 p-3">
                        <div className="flex items-start gap-3">

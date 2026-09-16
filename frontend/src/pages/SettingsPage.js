@@ -718,7 +718,12 @@ export const SettingsPage = () => {
           </Card>
         )}
         {isAdmin && (
-          <Card data-testid="billing-card">
+          <Card id="billing" data-testid="billing-card" ref={node => {
+            if (node && !node.dataset.anchorVisited && window.location.hash === '#billing') {
+              node.dataset.anchorVisited = 'true';
+              node.scrollIntoView({ block: 'start' });
+            }
+          }}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-primary" />

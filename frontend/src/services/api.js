@@ -296,6 +296,7 @@ export const reportsAPI = {
 // Dashboard API
 export const dashboardAPI = {
   getStats: (params = {}) => axios.get(`${API}/dashboard/stats`, { params }),
+  getActions: (params = {}) => axios.get(`${API}/dashboard/actions`, { params }),
   getSettings: () => axios.get(`${API}/dashboard/settings`),
   saveSettings: (data) => axios.put(`${API}/dashboard/settings`, data),
 };
