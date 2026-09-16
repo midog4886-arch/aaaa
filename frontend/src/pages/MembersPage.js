@@ -11,6 +11,8 @@ import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import { fetchOriginalActivityDates, applyOriginalDates } from './invoices/cardDates';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
+import ProfileOverview from '../components/member-profile/ProfileOverview';
+import ProfileFeed from '../components/member-profile/ProfileFeed';
  
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -68,6 +70,9 @@ export const MembersPage = () => {
   const canAddActivity = isAdmin || (user?.permissions || []).includes('members-add-activity');
   const canRenewActivity = isAdmin || (user?.permissions || []).includes('renewals') || (user?.permissions || []).includes('members-add-activity');
   const canDeleteAttendance = isAdmin || (user?.permissions || []).includes('attendance-delete');
+  const canViewProfileMessages = isAdmin || (user?.permissions || []).includes('messages');
+  const canViewOverviewFinancials = isAdmin || (user?.permissions || []).includes('invoices-view');
+  const canViewOverviewAttendance = isAdmin || (user?.permissions || []).includes('attendance-view');
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [members, setMembers] = useState([]);
@@ -231,7 +236,7 @@ export const MembersPage = () => {
   const [expandedQuotaIdx, setExpandedQuotaIdx] = useState(new Set());
   const [expandedOldDatesIdx, setExpandedOldDatesIdx] = useState(new Set());
   const [registeringDate, setRegisteringDate] = useState(null);
-  const [viewTab, setViewTab] = useState('info'); // info, activities, invoices, history, attendance, reminders, freeze
+  const [viewTab, setViewTab] = useState('overview'); // compact case-file summary is the opening state
   const [memberReminders, setMemberReminders] = useState([]);
   const [memberRemindersLoading, setMemberRemindersLoading] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState(null);
@@ -459,6 +464,18 @@ export const MembersPage = () => {
   useEffect(() => {
     loadData();
   }, [selectedBranchId]);
+
+  useEffect(() => {
+    // A branch/auth transition must discard the complete case file, not only
+    // lazy feed contents, before a newly scoped member can be displayed.
+    viewReqGenRef.current++;
+    activeViewMemberIdRef.current = null;
+    setIsViewDialogOpen(false);
+    setSelectedMember(null);
+    setMemberInvoices([]);
+    setMemberAttendance(null);
+    setMemberProductPurchases([]);
+  }, [selectedBranchId, user?.id]);
 
   // When the global search (or any link) sends ?focus=<member_id>, open the
   // member's view dialog directly once members are loaded.
@@ -1253,7 +1270,7 @@ export const MembersPage = () => {
     }
   };
 
-  const openViewDialog = async (member, initialTab = 'info') => {
+  const openViewDialog = async (member, initialTab = 'overview') => {
     // Request-generation guard: opening member (A) then quickly member (B)
     // must never let A's late responses overwrite B's displayed data.
     // Every open bumps the generation; closing the dialog bumps it too, so
@@ -3044,7 +3061,7 @@ export const MembersPage = () => {
             }
           }
         }}>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
                 <MemberAvatar photo={selectedMember?.photo} name={language === 'ar' ? (selectedMember?.name_ar || selectedMember?.name) : (selectedMember?.name || selectedMember?.name_ar)} size="md" className="w-10 h-10" />
@@ -3101,7 +3118,10 @@ export const MembersPage = () => {
             {selectedMember && (
               <div className="space-y-6">
                 {/* Tabs */}
-                <div className="flex gap-2 border-b">
+                <div className="flex gap-2 overflow-x-auto border-b pb-px [-webkit-overflow-scrolling:touch]">
+                  <button onClick={() => setViewTab('overview')} className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+                    <Eye className="w-4 h-4 inline me-1" />{language === 'ar' ? 'نظرة عامة' : 'Overview'}
+                  </button>
                   <button
                     onClick={() => setViewTab('info')}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -3246,7 +3266,23 @@ export const MembersPage = () => {
                     <Snowflake className="w-4 h-4 inline me-1" />
                     {language === 'ar' ? 'التجميد' : 'Freeze'}
                   </button>
+                  <button onClick={() => setViewTab('timeline')} className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'timeline' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+                    <Clock className="w-4 h-4 inline me-1" />{language === 'ar' ? 'الخط الزمني' : 'Timeline'}
+                  </button>
+                  {canViewProfileMessages && <button onClick={() => setViewTab('messages')} className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'messages' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+                    <Bell className="w-4 h-4 inline me-1" />{language === 'ar' ? 'رسائل وطلبات' : 'Messages & requests'}
+                  </button>}
                 </div>
+
+                {viewTab === 'overview' && <ProfileOverview key={`overview-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} member={selectedMember} attendance={memberAttendance} canViewFinancial={canViewOverviewFinancials} canViewAttendance={canViewOverviewAttendance} language={language} onTab={setViewTab} scopeKey={`${selectedBranchId}-${user?.id || ''}`} />}
+                {viewTab === 'timeline' && <ProfileFeed key={`history-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} memberId={selectedMember.id} kind="history" language={language} scopeKey={`${selectedBranchId}-${user?.id || ''}`} onTab={setViewTab} />}
+                {viewTab === 'messages' && canViewProfileMessages && <div className="space-y-4">
+                  <ProfileFeed key={`messages-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} memberId={selectedMember.id} kind="messages" language={language} scopeKey={`${selectedBranchId}-${user?.id || ''}`} />
+                  <div className="border-t pt-3 text-sm text-muted-foreground">
+                    {language === 'ar' ? 'لعرض المحادثة الكاملة وإدارة الطلبات، افتح صفحة التواصل.' : 'Open the communications page to view a full conversation and manage requests.'}
+                    <Button type="button" variant="link" className="px-2" onClick={() => navigate('/admin/whatsapp')}>{language === 'ar' ? 'فتح التواصل' : 'Open communications'}</Button>
+                  </div>
+                </div>}
 
                 {/* Tab Content: Info */}
                 {viewTab === 'info' && (

@@ -158,6 +158,11 @@ export const membersAPI = {
   getDailyNewCards: (date, search) => axios.get(`${API}/members/daily-new-cards`, { params: { ...(date ? { date } : {}), ...(search ? { search } : {}) } }),
   markPrinted: (memberIds) => axios.post(`${API}/members/mark-printed`, { member_ids: memberIds }),
   getSubscriptionAudit: (memberId) => axios.get(`${API}/members/${memberId}/subscription-audit`),
+  getProfileHistory: (memberId, params = {}) =>
+    axios.get(`${API}/members/${memberId}/profile-history`, { params }),
+  getProfileMessages: (memberId, params = {}) =>
+    axios.get(`${API}/members/${memberId}/profile-messages`, { params }),
+  getProfileSummary: (memberId) => axios.get(`${API}/members/${memberId}/profile-summary`),
 };
 
 // Social Publisher API

@@ -15,3 +15,9 @@ Member phone numbers are gated by the `member-phones` permission (admins always 
 - Frontend (`MembersPage.js`): `canViewPhones` gates the WhatsApp buttons (a masked number makes `wa.me` links broken), display itself just renders whatever the backend sends.
 - Exports (`/export/members*` in server.py) are already admin-only (`_require_export_admin_token`), so no masking needed there — non-admins can't reach them.
 - Internal logic (WhatsApp reminders, invoices) reads phones directly from DB, NOT through these masked GET responses, so masking does not break them.
+
+**Derived-content rule:** Phone-change requests need redaction beyond their structured old/new values.
+
+**Why:** Request producers also copy the phone values into human-readable message bodies; removing only structured fields leaves an indirect permission bypass.
+
+**How to apply:** For callers without `member-phones`, use a generic safe presentation of phone-change requests, including subject/body/reason. Review derived summaries and timeline payloads, not only member documents.
