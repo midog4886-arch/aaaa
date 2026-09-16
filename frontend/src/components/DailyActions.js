@@ -16,6 +16,28 @@ const COPY = {
 };
 
 const iconFor = key => ({ expiring: CalendarClock, absence: UserRoundX, registrations: ClipboardCheck, conversations: MessageSquareText, failures: ShieldAlert })[key] || AlertCircle;
+// Requests are retained only while active. This prevents StrictMode and a
+// quick unmount/remount from duplicating a scoped read without persisting any
+// user or branch data beyond the request itself.
+const inFlightActionRequests = new Map();
+
+const getActionsRequest = (identity, params) => {
+  let request = inFlightActionRequests.get(identity);
+  if (!request) {
+    request = Promise.resolve().then(() => dashboardAPI.getActions(params));
+    inFlightActionRequests.set(identity, request);
+    request.then(
+      () => {
+        if (inFlightActionRequests.get(identity) === request) inFlightActionRequests.delete(identity);
+      },
+      () => {
+        if (inFlightActionRequests.get(identity) === request) inFlightActionRequests.delete(identity);
+      },
+    );
+  }
+  return request;
+};
+
 export const pageFor = (key, item) => {
   if (key === 'expiring') return '/admin/renewals';
   if (item?.kind === 'payment' || item?.kind === 'failed_payment' || item?.kind === 'billing_payment') return '/admin/settings#billing';
@@ -40,8 +62,7 @@ export default function DailyActions() {
     const request = ++requestRef.current;
     setState(previous => ({ ...previous, loading: true, error: false }));
     const params = branchKey === 'all' ? {} : { branch_filter: branchKey };
-    Promise.resolve()
-      .then(() => dashboardAPI.getActions(params))
+    getActionsRequest(identity, params)
       .then(res => {
         if (request !== requestRef.current) return;
         const data = res?.data || {};
@@ -50,7 +71,7 @@ export default function DailyActions() {
       .catch(() => {
         if (request === requestRef.current) setState(previous => ({ ...previous, loading: false, error: true }));
       });
-  }, [branchKey]);
+  }, [branchKey, identity]);
 
   useEffect(() => { load(); }, [load, identity]);
   useEffect(() => { setOpenGroup(null); }, [identity]);

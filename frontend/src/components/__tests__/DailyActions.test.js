@@ -50,6 +50,22 @@ test('does not let a late former-branch response replace the current branch', as
   await waitFor(() => expect(screen.getByRole('button', { name: /Renewals due: 7/ })).toBeInTheDocument());
 });
 
+test('dedupes an in-flight request across a quick remount for the same auth and branch', async () => {
+  let resolve;
+  dashboardAPI.getActions.mockImplementation(() => new Promise(nextResolve => { resolve = nextResolve; }));
+
+  const firstView = render(<DailyActions />);
+  await waitFor(() => expect(dashboardAPI.getActions).toHaveBeenCalledTimes(1));
+  firstView.unmount();
+  render(<DailyActions />);
+
+  expect(dashboardAPI.getActions).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolve(response([expiring]));
+  });
+  expect(await screen.findByRole('button', { name: /Renewals due: 2/ })).toBeInTheDocument();
+});
+
 test('keeps partial and all group errors visible instead of treating them as zero work', async () => {
   dashboardAPI.getActions.mockResolvedValueOnce(response([
     expiring,

@@ -24,6 +24,7 @@ _cache_lock = threading.RLock()
 _store: dict = {}  # key -> (expires_at_ts, value)
 _swr_inflight: set = set()  # keys currently being refreshed in background
 _swr_tasks: set = set()  # strong refs so background refresh tasks aren't GC'd
+_swr_loads: dict = {}  # key -> foreground load task (one loader per cold key)
 
 
 def cache_get(key: str) -> Optional[Any]:
@@ -66,7 +67,7 @@ def invalidate_dashboard_caches() -> None:
     or adding a member show up immediately instead of after the fresh TTL."""
     from utils.tenant import get_current_tenant_slug
     slug = get_current_tenant_slug()
-    for prefix in ("todaysum:", "dashstats:", "expiring:"):
+    for prefix in ("todaysum:", "dashstats:", "expiring:", "dashactions:"):
         cache_invalidate(f"{prefix}{slug}:")
 
 
@@ -75,6 +76,7 @@ async def cache_swr(
     loader: Callable[[], Awaitable[Any]],
     fresh_ttl: int = 60,
     stale_ttl: int = 600,
+    should_cache: Optional[Callable[[Any], bool]] = None,
 ) -> Any:
     """Stale-while-revalidate cache.
 
@@ -82,7 +84,12 @@ async def cache_swr(
     - Cache hit older than `fresh_ttl` but younger than `stale_ttl`: return the
       stale value immediately AND refresh it in a background task (deduped per
       key), so the next caller gets fresh data without anyone paying the wait.
-    - Miss (or older than `stale_ttl`): await `loader()` and cache the result.
+    - Miss (or older than `stale_ttl`): await one shared `loader()` task and
+      cache the result. Concurrent cold callers therefore do not stampede a
+      slow database query.
+    - `should_cache`, when supplied, can reject a successful loader result
+      (for example a partial response containing an error group). Rejected
+      values are returned but never cached.
 
     The background task inherits the caller's contextvars (tenant context), so
     tenant-scoped DB proxies keep working inside `loader`.
@@ -95,15 +102,46 @@ async def cache_swr(
         if expires_at >= now and isinstance(wrapped, tuple) and len(wrapped) == 2:
             fetched_at, value = wrapped
             if now - fetched_at >= fresh_ttl:
-                _swr_spawn_refresh(key, loader, stale_ttl)
+                _swr_spawn_refresh(key, loader, stale_ttl, should_cache)
             return value
-    value = await loader()
     with _cache_lock:
-        _store[key] = (time.time() + stale_ttl, (time.time(), value))
+        load_task = _swr_loads.get(key)
+        if load_task is None:
+            load_task = asyncio.ensure_future(
+                _swr_load_and_store(key, loader, stale_ttl, should_cache)
+            )
+            _swr_loads[key] = load_task
+            load_task.add_done_callback(
+                lambda completed, cache_key=key: _swr_forget_load(cache_key, completed)
+            )
+    return await asyncio.shield(load_task)
+
+
+def _swr_forget_load(key: str, completed) -> None:
+    with _cache_lock:
+        if _swr_loads.get(key) is completed:
+            _swr_loads.pop(key, None)
+
+
+async def _swr_load_and_store(
+    key: str,
+    loader: Callable[[], Awaitable[Any]],
+    stale_ttl: int,
+    should_cache: Optional[Callable[[Any], bool]],
+) -> Any:
+    value = await loader()
+    if should_cache is None or should_cache(value):
+        with _cache_lock:
+            _store[key] = (time.time() + stale_ttl, (time.time(), value))
     return value
 
 
-def _swr_spawn_refresh(key: str, loader: Callable[[], Awaitable[Any]], stale_ttl: int) -> None:
+def _swr_spawn_refresh(
+    key: str,
+    loader: Callable[[], Awaitable[Any]],
+    stale_ttl: int,
+    should_cache: Optional[Callable[[Any], bool]] = None,
+) -> None:
     with _cache_lock:
         if key in _swr_inflight:
             return
@@ -112,8 +150,9 @@ def _swr_spawn_refresh(key: str, loader: Callable[[], Awaitable[Any]], stale_ttl
     async def _run():
         try:
             value = await loader()
-            with _cache_lock:
-                _store[key] = (time.time() + stale_ttl, (time.time(), value))
+            if should_cache is None or should_cache(value):
+                with _cache_lock:
+                    _store[key] = (time.time() + stale_ttl, (time.time(), value))
         except Exception:
             pass  # keep serving the stale value; next expiry forces a real load
         finally:

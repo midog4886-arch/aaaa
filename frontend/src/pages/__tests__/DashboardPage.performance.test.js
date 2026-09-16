@@ -1,10 +1,11 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 jest.mock('../../services/api', () => ({
   dashboardAPI: {
     getSettings: jest.fn(),
     getStats: jest.fn(),
+    getActions: jest.fn(),
   },
   reportsAPI: {
     getExpiringSubscriptions: jest.fn(),
@@ -85,8 +86,12 @@ const {
 
 const deferred = () => {
   let resolve;
-  const promise = new Promise(nextResolve => { resolve = nextResolve; });
-  return { promise, resolve };
+  let reject;
+  const promise = new Promise((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
 };
 
 const makeBranchRequests = () => ({
@@ -108,6 +113,7 @@ beforeEach(() => {
   };
 
   dashboardAPI.getSettings.mockResolvedValue({ data: { widgets: [] } });
+  dashboardAPI.getActions.mockResolvedValue({ data: { groups: [] } });
   dashboardAPI.getStats.mockImplementation((params = {}) => (
     pending[params.branch_filter || 'all'].stats.promise
   ));
@@ -163,4 +169,47 @@ test('dedupes an in-flight branch bundle and ignores an older branch response', 
 
   await waitFor(() => expect(screen.getByText('Branch A expiring')).toBeInTheDocument());
   expect(screen.queryByText('Branch B expiring')).not.toBeInTheDocument();
+});
+
+test('shows Daily Actions before the dashboard reads settle', async () => {
+  dashboardAPI.getActions.mockResolvedValue({
+    data: {
+      groups: [{ key: 'expiring', count: 3, status: 'ready', items: [], has_more: false }],
+    },
+  });
+  const DashboardPage = require('../DashboardPage').default;
+
+  render(<DashboardPage />);
+
+  expect(await screen.findByRole('button', { name: /Renewals due: 3/ })).toBeInTheDocument();
+  expect(dashboardAPI.getStats).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("Loading today's attendance…")).toBeInTheDocument();
+});
+
+test('renders stats when ready while attendance stays independent and shows its error', async () => {
+  const DashboardPage = require('../DashboardPage').default;
+  const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
+  render(<DashboardPage />);
+
+  // Wait for the effect to subscribe to this deferred request before settling
+  // it. Resolving during the initial render can predate that subscription.
+  await waitFor(() => expect(dashboardAPI.getStats).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    pending['branch-a'].stats.resolve({ data: { members_count: 12 } });
+    await Promise.resolve();
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Show Numbers' }));
+  fireEvent.change(screen.getByPlaceholderText('Enter password'), { target: { value: '242456' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+  expect(await screen.findByText('12')).toBeInTheDocument();
+  expect(screen.getByText("Loading today's attendance…")).toBeInTheDocument();
+
+  await act(async () => {
+    pending['branch-a'].attendance.reject(new Error('offline'));
+    await Promise.resolve();
+  });
+  expect(await screen.findByText("Today's attendance could not be loaded.")).toBeInTheDocument();
+  expect(screen.queryByText('No attendance recorded yet today')).not.toBeInTheDocument();
+  expect(consoleError).toHaveBeenCalledWith('Failed to load today attendance:', expect.any(Error));
+  consoleError.mockRestore();
 });

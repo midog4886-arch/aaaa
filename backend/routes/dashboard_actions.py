@@ -1,5 +1,7 @@
 """Permission-scoped, read-only actionable dashboard data."""
 import asyncio
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -8,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from .common import db, get_current_user
 from utils.auth import resolve_branch_filter
+from utils.cache import cache_swr
 from utils.tenant import DEFAULT_TENANT_SLUG, get_current_tenant_slug
 
 
@@ -48,6 +51,11 @@ async def _all_rows(collection, query: dict, projection: dict, *, sort=None) -> 
     if sort:
         cursor = cursor.sort(*sort)
     return await cursor.to_list(None)
+
+
+async def _aggregate_rows(collection, pipeline: list) -> list:
+    """Materialize a small aggregation result, never its matching source rows."""
+    return await collection.aggregate(pipeline).to_list(None)
 
 
 def _member_is_current(member: dict) -> bool:
@@ -109,7 +117,8 @@ async def _expiring_group(branch_id: Optional[str], today: str) -> dict:
             }},
         },
         {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "branch_id": 1,
-         "status": 1, "activities": 1},
+         "status": 1, "activities.activity_id": 1, "activities.activity_name": 1,
+         "activities.status": 1, "activities.end_date": 1},
     )
     member_ids = [member.get("id") for member in members if member.get("id")]
     if not member_ids:
@@ -125,7 +134,9 @@ async def _expiring_group(branch_id: Optional[str], today: str) -> dict:
                 {"items.member_id": {"$in": member_ids}},
             ],
         },
-        {"_id": 0, "id": 1, "member_id": 1, "branch_id": 1, "items": 1},
+        {"_id": 0, "member_id": 1, "branch_id": 1, "items.member_id": 1,
+         "items.activity_id": 1, "items.activity_name": 1, "items.start_date": 1,
+         "items.end_date": 1, "items.is_product": 1},
     )
     paid_items_by_member = {member_id: [] for member_id in member_ids}
     for invoice in paid_invoices:
@@ -167,39 +178,44 @@ async def _expiring_group(branch_id: Optional[str], today: str) -> dict:
 async def _absence_group(branch_id: Optional[str], today: str) -> dict:
     start = (datetime.strptime(today, "%Y-%m-%d").date() - timedelta(days=29)).isoformat()
     scope = {"branch_id": branch_id} if branch_id else {}
-    records_task = _all_rows(
-        db.attendance,
-        {**scope, "status": "absent", "date": {"$gte": start, "$lte": today}},
-        {"_id": 0, "id": 1, "member_id": 1, "member_name": 1, "branch_id": 1,
-         "date": 1, "status": 1},
-    )
-    members_task = _all_rows(
-        db.members, scope,
+    # Group in Mongo first. Reading every member (and every absence row) made
+    # this group dominate the actions request for larger academies. The result
+    # retains the exact 30-day count and latest absence for qualifying members.
+    absence_rows = await _aggregate_rows(db.attendance, [
+        {"$match": {
+            **scope, "status": "absent", "date": {"$gte": start, "$lte": today},
+        }},
+        {"$group": {
+            "_id": "$member_id",
+            "count": {"$sum": 1},
+            "latest": {"$max": "$date"},
+            "member_name": {"$first": "$member_name"},
+            "branch_id": {"$first": "$branch_id"},
+        }},
+        {"$match": {"count": {"$gte": 3}}},
+    ])
+    member_ids = [row.get("_id") for row in absence_rows if row.get("_id")]
+    if not member_ids:
+        return _ready_group("absence", [])
+    members = await _all_rows(
+        db.members, {**scope, "id": {"$in": member_ids}},
         {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "status": 1, "branch_id": 1},
     )
-    records, members = await asyncio.gather(records_task, members_task)
     current_members = {m.get("id"): m for m in members if m.get("id") and _member_is_current(m)}
-    absent_by_member = {}
-    for record in records:
-        if str(record.get("status") or "").lower() != "absent":
-            continue
-        member_id = record.get("member_id")
+    items = []
+    for row in absence_rows:
+        member_id = row.get("_id")
         if member_id not in current_members:
             continue
-        absent_by_member.setdefault(member_id, []).append(record)
-    items = []
-    for member_id, rows in absent_by_member.items():
-        if len(rows) < 3:
-            continue
         member = current_members[member_id]
-        latest = max(str(r.get("date") or "") for r in rows)
+        latest = str(row.get("latest") or "")
         items.append({
             "id": "absence:{}".format(member_id),
-            "title": member.get("name_ar") or member.get("name") or rows[0].get("member_name") or "عضو",
-            "detail": "{} غيابات مسجلة خلال 30 يوماً، آخرها {}".format(len(rows), latest),
+            "title": member.get("name_ar") or member.get("name") or row.get("member_name") or "عضو",
+            "detail": "{} غيابات مسجلة خلال 30 يوماً، آخرها {}".format(row.get("count"), latest),
             "kind": "attendance",
             "entity_id": _optional_string(member_id),
-            "branch_id": _optional_string(member.get("branch_id") or rows[0].get("branch_id")),
+            "branch_id": _optional_string(member.get("branch_id") or row.get("branch_id")),
             "_sort": latest,
         })
     items.sort(key=lambda row: (row["_sort"], row["title"]), reverse=True)
@@ -216,7 +232,8 @@ async def _registrations_group(branch_id: Optional[str]) -> dict:
     scope = {"branch_id": branch_id} if branch_id else {}
     rows = await _all_rows(
         db.registration_requests, {**scope, "status": {"$in": ["pending", "processed"]}},
-        {"_id": 0},
+        {"_id": 0, "id": 1, "branch_id": 1, "status": 1, "customer_name": 1,
+         "created_at": 1, "invoice_id": 1, "archived_from": 1},
     )
     rows = await _normalize_registration_request_rows(rows)
     items = []
@@ -523,6 +540,33 @@ async def _safe_group(key: str, loader) -> dict:
         }
 
 
+def _actions_cache_key(
+    tenant_slug: str,
+    branch_id: Optional[str],
+    user_id,
+    permissions: Optional[set],
+    today: str,
+) -> str:
+    """Keep dashboard responses isolated by every authorization dimension."""
+    scope = {
+        "branch_id": branch_id,
+        "date": today,
+        "permissions": "admin" if permissions is None else sorted(permissions),
+        "user_id": str(user_id or ""),
+    }
+    digest = hashlib.sha256(
+        json.dumps(scope, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return "dashactions:{}:{}".format(
+        tenant_slug, digest,
+    )
+
+
+def _actions_cacheable(response: dict) -> bool:
+    """A partial error must be retried, not served until the stale deadline."""
+    return all(group.get("status") == "ready" for group in response.get("groups", []))
+
+
 @router.get("/actions")
 async def get_dashboard_actions(
     branch_filter: Optional[str] = None,
@@ -543,6 +587,7 @@ async def get_dashboard_actions(
     riyadh_now = datetime.now(RIYADH_TZ)
     today = riyadh_now.date().isoformat()
     allowed = lambda permission: permissions is None or permission in permissions
+    tenant_slug = get_current_tenant_slug() or DEFAULT_TENANT_SLUG
 
     jobs = []
     # Permission keys exactly match the protected UI routes: Renewals,
@@ -562,9 +607,24 @@ async def get_dashboard_actions(
             branch_id, permissions is None
         )))
 
-    groups = await asyncio.gather(*[_safe_group(key, loader) for key, loader in jobs])
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "date": today,
-        "groups": groups,
-    }
+    async def _load():
+        groups = await asyncio.gather(*[_safe_group(key, loader) for key, loader in jobs])
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "date": today,
+            "groups": groups,
+        }
+
+    return await cache_swr(
+        _actions_cache_key(
+            tenant_slug,
+            branch_id,
+            current_user.get("user_id") or current_user.get("id"),
+            permissions,
+            today,
+        ),
+        _load,
+        fresh_ttl=15,
+        stale_ttl=60,
+        should_cache=_actions_cacheable,
+    )

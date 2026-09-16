@@ -75,7 +75,8 @@ export const DashboardPage = () => {
   const [discounts, setDiscounts] = useState([]);
   const [recentChampions, setRecentChampions] = useState([]);
   const [todayAttendance, setTodayAttendance] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [statsStatus, setStatsStatus] = useState('loading');
+  const [todayAttendanceStatus, setTodayAttendanceStatus] = useState('loading');
   
   const [statsUnlocked, setStatsUnlocked] = useState(false);
   const [showPasswordInput, setShowPasswordInput] = useState(false);
@@ -91,7 +92,7 @@ export const DashboardPage = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   // Dashboard reads are scoped to the active branch. Keep only in-flight
   // requests here (never a persistent cache), so StrictMode/effect retries do
-  // not send the same branch's five independent reads twice.
+  // not send the same branch's independent reads twice.
   const branchLoadRequestsRef = useRef(new Map());
   const branchLoadGenerationRef = useRef(0);
   const selectedBranchKeyRef = useRef(null);
@@ -160,63 +161,76 @@ export const DashboardPage = () => {
   const loadData = async () => {
     const branchKey = selectedBranchKey;
     const requestGeneration = ++branchLoadGenerationRef.current;
-    setLoading(true);
+    const isCurrentRequest = () => (
+      requestGeneration === branchLoadGenerationRef.current
+      && requestKey === selectedBranchKeyRef.current
+    );
 
-    let request = branchLoadRequestsRef.current.get(requestKey);
+    // Clear branch-specific values immediately. A previous branch's values
+    // must not be presented as the current branch while the new reads run.
+    setStats(null);
+    setStatsStatus('loading');
+    setExpiring([]);
+    setDiscounts([]);
+    setRecentChampions([]);
+    setTodayAttendance(null);
+    setTodayAttendanceStatus('loading');
 
-    try {
-      if (!request) {
-        const branchParams = branchKey !== 'all' ? { branch_filter: branchKey } : {};
-        request = Promise.all([
-          dashboardAPI.getStats(branchParams),
-          reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
-          discountsAPI.getAll(branchParams),
-          tournamentsAPI.getRecentMedalists({ limit: 5, ...branchParams }).catch(() => ({ data: [] })),
-          attendanceAPI.getTodaySummary(branchParams).catch(() => ({ data: null })),
-        ]);
-        branchLoadRequestsRef.current.set(requestKey, request);
-        // Remove only this promise. A newer request for the same branch cannot
-        // be accidentally removed if the old one settles later.
-        request.then(
-          () => {
-            if (branchLoadRequestsRef.current.get(requestKey) === request) {
-              branchLoadRequestsRef.current.delete(requestKey);
-            }
-          },
-          () => {
-            if (branchLoadRequestsRef.current.get(requestKey) === request) {
-              branchLoadRequestsRef.current.delete(requestKey);
-            }
-          },
-        );
-      }
-      const [statsRes, expiringRes, discountsRes, championsRes, todayRes] = await request;
-      // A branch switch can leave the old request in flight. Its result must
-      // never overwrite the newly selected branch's dashboard.
-      if (
-        requestGeneration !== branchLoadGenerationRef.current
-        || requestKey !== selectedBranchKeyRef.current
-      ) return;
-      setStats(statsRes.data);
-      setExpiring(expiringRes.data);
-      setDiscounts(discountsRes.data);
-      setRecentChampions(championsRes.data || []);
-      setTodayAttendance(todayRes.data);
-    } catch (error) {
-      if (
-        requestGeneration === branchLoadGenerationRef.current
-        && requestKey === selectedBranchKeyRef.current
-      ) {
-        console.error('Failed to load dashboard data:', error);
-      }
-    } finally {
-      if (
-        requestGeneration === branchLoadGenerationRef.current
-        && requestKey === selectedBranchKeyRef.current
-      ) {
-        setLoading(false);
-      }
+    let requests = branchLoadRequestsRef.current.get(requestKey);
+    if (!requests) {
+      const branchParams = branchKey !== 'all' ? { branch_filter: branchKey } : {};
+      requests = {
+        stats: dashboardAPI.getStats(branchParams),
+        expiring: reportsAPI.getExpiringSubscriptions(7, selectedBranchId),
+        discounts: discountsAPI.getAll(branchParams),
+        champions: tournamentsAPI.getRecentMedalists({ limit: 5, ...branchParams }),
+        attendance: attendanceAPI.getTodaySummary(branchParams),
+      };
+      branchLoadRequestsRef.current.set(requestKey, requests);
+      // This is cleanup only, not a rendering gate. Each request below updates
+      // its widget as soon as its own response arrives.
+      Promise.allSettled(Object.values(requests)).then(() => {
+        if (branchLoadRequestsRef.current.get(requestKey) === requests) {
+          branchLoadRequestsRef.current.delete(requestKey);
+        }
+      });
     }
+
+    requests.stats
+      .then(res => {
+        if (isCurrentRequest()) {
+          setStats(res.data);
+          setStatsStatus('ready');
+        }
+      })
+      .catch(error => {
+        if (isCurrentRequest()) {
+          console.error('Failed to load dashboard stats:', error);
+          setStatsStatus('error');
+        }
+      });
+    requests.attendance
+      .then(res => {
+        if (isCurrentRequest()) {
+          setTodayAttendance(res.data);
+          setTodayAttendanceStatus('ready');
+        }
+      })
+      .catch(error => {
+        if (isCurrentRequest()) {
+          console.error('Failed to load today attendance:', error);
+          setTodayAttendanceStatus('error');
+        }
+      });
+    requests.expiring
+      .then(res => { if (isCurrentRequest()) setExpiring(res.data); })
+      .catch(error => { if (isCurrentRequest()) console.error('Failed to load expiring subscriptions:', error); });
+    requests.discounts
+      .then(res => { if (isCurrentRequest()) setDiscounts(res.data); })
+      .catch(error => { if (isCurrentRequest()) console.error('Failed to load discounts:', error); });
+    requests.champions
+      .then(res => { if (isCurrentRequest()) setRecentChampions(res.data || []); })
+      .catch(error => { if (isCurrentRequest()) console.error('Failed to load recent champions:', error); });
   };
 
   const formatCurrency = (amount) => {
@@ -334,16 +348,6 @@ export const DashboardPage = () => {
     'الجمباز': '#8B5CF6',
     'Gymnastics': '#8B5CF6',
   };
-
-  if (loading) {
-    return (
-      <Layout title={t('dashboard')}>
-        <div className="flex items-center justify-center h-64">
-          <div className="spinner" />
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout title={t('dashboard')}>
@@ -463,25 +467,25 @@ export const DashboardPage = () => {
             <div key="stats" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'members' ? 'ring-2 ring-primary' : ''}`} data-testid="stat-members" onClick={() => toggleDetail('members')}>
                 <div className="stat-card-icon bg-primary/10"><Users className="w-6 h-6 text-primary" /></div>
-                <div className="stat-card-value text-primary">{statsUnlocked ? (stats?.members_count || 0) : hiddenValue}</div>
+                <div className="stat-card-value text-primary">{statsUnlocked ? (statsStatus === 'loading' ? '…' : statsStatus === 'error' ? '—' : (stats?.members_count || 0)) : hiddenValue}</div>
                 <div className="stat-card-label">{t('total_members')}</div>
                 <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
               </Card>
               <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'subscriptions' ? 'ring-2 ring-green-500' : ''}`} data-testid="stat-subscriptions" onClick={() => toggleDetail('subscriptions')}>
                 <div className="stat-card-icon bg-green-500/10"><Activity className="w-6 h-6 text-green-500" /></div>
-                <div className="stat-card-value text-green-500">{statsUnlocked ? (stats?.active_subscriptions || 0) : hiddenValue}</div>
+                <div className="stat-card-value text-green-500">{statsUnlocked ? (statsStatus === 'loading' ? '…' : statsStatus === 'error' ? '—' : (stats?.active_subscriptions || 0)) : hiddenValue}</div>
                 <div className="stat-card-label">{t('active_subscriptions')}</div>
                 <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
               </Card>
               <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'revenue' ? 'ring-2 ring-blue-500' : ''}`} data-testid="stat-revenue" onClick={() => toggleDetail('revenue')}>
                 <div className="stat-card-icon bg-blue-500/10"><Banknote className="w-6 h-6 text-blue-500" /></div>
-                <div className="stat-card-value text-blue-500">{statsUnlocked ? formatCurrency(stats?.month_revenue) : hiddenValue}</div>
+                <div className="stat-card-value text-blue-500">{statsUnlocked ? (statsStatus === 'loading' ? '…' : statsStatus === 'error' ? '—' : formatCurrency(stats?.month_revenue)) : hiddenValue}</div>
                 <div className="stat-card-label">{t('monthly_revenue')}</div>
                 <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
               </Card>
               <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'expiring' ? 'ring-2 ring-amber-500' : ''}`} data-testid="stat-expiring" onClick={() => toggleDetail('expiring')}>
                 <div className="stat-card-icon bg-amber-500/10"><AlertTriangle className="w-6 h-6 text-amber-500" /></div>
-                <div className="stat-card-value text-amber-500">{statsUnlocked ? (stats?.expiring_count || 0) : hiddenValue}</div>
+                <div className="stat-card-value text-amber-500">{statsUnlocked ? (statsStatus === 'loading' ? '…' : statsStatus === 'error' ? '—' : (stats?.expiring_count || 0)) : hiddenValue}</div>
                 <div className="stat-card-label">{t('expiring_soon')}</div>
                 <div className="text-xs text-muted-foreground mt-1">{language === 'ar' ? 'اضغط للتفاصيل' : 'Click for details'}</div>
               </Card>
@@ -493,7 +497,7 @@ export const DashboardPage = () => {
               </Card>
               <Card className={`stat-card hover-scale cursor-pointer transition-all ${activeDetail === 'pendingForms' ? 'ring-2 ring-teal-500' : ''}`} data-testid="stat-pending-forms" onClick={() => toggleDetail('pendingForms')}>
                 <div className="stat-card-icon bg-teal-500/10"><ClipboardList className="w-6 h-6 text-teal-500" /></div>
-                <div className="stat-card-value text-teal-500">{statsUnlocked ? formatCurrency(stats?.pending_forms_total) : hiddenValue}</div>
+                <div className="stat-card-value text-teal-500">{statsUnlocked ? (statsStatus === 'loading' ? '…' : statsStatus === 'error' ? '—' : formatCurrency(stats?.pending_forms_total)) : hiddenValue}</div>
                 <div className="stat-card-label">{language === 'ar' ? 'استمارات غير مفوترة' : 'Pending Forms'}</div>
                 <div className="text-xs text-muted-foreground mt-1">{statsUnlocked ? `${stats?.pending_forms_count || 0} ${language === 'ar' ? 'استمارة' : 'forms'}` : ''}</div>
               </Card>
@@ -913,21 +917,31 @@ export const DashboardPage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
-                  <div className="text-2xl font-bold text-green-600">{todayAttendance?.present_count || 0}</div>
-                  <div className="text-xs text-muted-foreground">{language === 'ar' ? 'حاضر' : 'Present'}</div>
+              {todayAttendanceStatus === 'loading' ? (
+                <div className="py-8 text-center text-sm text-muted-foreground" role="status">
+                  {language === 'ar' ? 'جارٍ تحميل حضور اليوم…' : "Loading today's attendance…"}
                 </div>
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-center">
-                  <div className="text-2xl font-bold text-blue-600">{todayAttendance?.expected_count || 0}</div>
-                  <div className="text-xs text-muted-foreground">{language === 'ar' ? 'متوقع' : 'Expected'}</div>
+              ) : todayAttendanceStatus === 'error' ? (
+                <div className="py-8 text-center text-sm text-destructive" role="alert">
+                  {language === 'ar' ? 'تعذر تحميل حضور اليوم.' : "Today's attendance could not be loaded."}
                 </div>
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
-                  <div className="text-2xl font-bold text-amber-600">{todayAttendance?.absent_count || 0}</div>
-                  <div className="text-xs text-muted-foreground">{language === 'ar' ? 'غائب' : 'Absent'}</div>
-                </div>
-              </div>
-              {todayAttendance?.present?.length > 0 ? (
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center">
+                      <div className="text-2xl font-bold text-green-600">{todayAttendance?.present_count || 0}</div>
+                      <div className="text-xs text-muted-foreground">{language === 'ar' ? 'حاضر' : 'Present'}</div>
+                    </div>
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                      <div className="text-2xl font-bold text-blue-600">{todayAttendance?.expected_count || 0}</div>
+                      <div className="text-xs text-muted-foreground">{language === 'ar' ? 'متوقع' : 'Expected'}</div>
+                    </div>
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
+                      <div className="text-2xl font-bold text-amber-600">{todayAttendance?.absent_count || 0}</div>
+                      <div className="text-xs text-muted-foreground">{language === 'ar' ? 'غائب' : 'Absent'}</div>
+                    </div>
+                  </div>
+                  {todayAttendance?.present?.length > 0 ? (
                 <div className="space-y-2 max-h-[260px] overflow-y-auto">
                   {todayAttendance.present.slice(0, 6).map((r, idx) => (
                     <div key={r.member_id || idx} className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
@@ -954,6 +968,8 @@ export const DashboardPage = () => {
                   <UserX className="empty-state-icon" />
                   <p>{language === 'ar' ? 'لم يسجل أحد الحضور اليوم بعد' : 'No attendance recorded yet today'}</p>
                 </div>
+              )}
+                </>
               )}
             </CardContent>
           </Card>
