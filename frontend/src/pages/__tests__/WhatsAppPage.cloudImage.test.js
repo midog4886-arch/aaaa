@@ -52,6 +52,7 @@ jest.mock('sonner', () => ({
 
 const { branchesAPI, membersAPI, whatsappAPI } = require('../../services/api');
 const { toast } = require('sonner');
+let objectUrlCounter = 0;
 
 const conversation = {
   id: 'branch-a:966501234567',
@@ -73,6 +74,9 @@ const deferred = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  objectUrlCounter = 0;
+  URL.createObjectURL = jest.fn(() => `blob:cloud-media-${++objectUrlCounter}`);
+  URL.revokeObjectURL = jest.fn();
   membersAPI.lookupByPhone.mockResolvedValue({ data: { members: [] } });
   whatsappAPI.getStatus.mockResolvedValue({
     data: { connected: true, qr: null, connecting: false },
@@ -505,4 +509,107 @@ test('shows a clear toast and does not navigate when the cloud phone has no memb
     'لم يتم العثور على عضو بهذا الرقم',
   ));
   expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+const inboundAttachment = overrides => ({
+  id: 'incoming-media-1',
+  media_id: 'provider-media-1',
+  type: 'document',
+  direction: 'inbound',
+  status: 'received',
+  created_at: '2026-01-01T12:00:00Z',
+  ...overrides,
+});
+
+test('uses the response PDF filename on an incoming document download link', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment()] },
+  });
+  whatsappAPI.getCloudInboxMedia.mockResolvedValue({
+    data: new Blob(['pdf'], { type: 'application/pdf' }),
+    headers: { 'content-disposition': 'attachment; filename="training-plan.pdf"' },
+  });
+
+  await renderOpenCloudThread();
+
+  const link = await screen.findByRole('link', { name: 'تحميل الملف' });
+  expect(link).toHaveAttribute('href', 'blob:cloud-media-1');
+  expect(link).toHaveAttribute('download', 'training-plan.pdf');
+});
+
+test('shows a failed incoming attachment and retries only that attachment', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment({ file_name: 'receipt.pdf' })] },
+  });
+  whatsappAPI.getCloudInboxMedia
+    .mockRejectedValueOnce(new Error('media unavailable'))
+    .mockResolvedValueOnce({
+      data: new Blob(['pdf'], { type: 'application/pdf' }),
+    });
+  const user = await renderOpenCloudThread();
+
+  const retry = await screen.findByTestId('retry-cloud-media-incoming-media-1');
+  expect(screen.getByText('تعذر تحميل المرفق')).toBeInTheDocument();
+  await user.click(retry);
+
+  expect(await screen.findByRole('link', { name: 'تحميل الملف' })).toHaveAttribute(
+    'download',
+    'receipt.pdf',
+  );
+  expect(whatsappAPI.getCloudInboxMedia).toHaveBeenCalledTimes(2);
+});
+
+test('renders incoming audio controls with a download fallback', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation,
+      messages: [inboundAttachment({ id: 'incoming-audio-1', type: 'audio', filename: 'voice.ogg' })],
+    },
+  });
+  whatsappAPI.getCloudInboxMedia.mockResolvedValue({
+    data: new Blob(['audio'], { type: 'audio/ogg' }),
+  });
+
+  await renderOpenCloudThread();
+
+  expect(await screen.findByRole('link', { name: 'تحميل المقطع الصوتي' }))
+    .toHaveAttribute('download', 'voice.ogg');
+  expect(document.querySelector('audio[controls]')).toBeInTheDocument();
+});
+
+test('keeps fetched incoming media URLs across a current-thread refresh and revokes them on exit', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment({ filename: 'keep.pdf' })] },
+  });
+  whatsappAPI.getCloudInboxMedia.mockResolvedValue({
+    data: new Blob(['pdf'], { type: 'application/pdf' }),
+  });
+  const user = await renderOpenCloudThread();
+  await screen.findByRole('link', { name: 'تحميل الملف' });
+
+  const refresh = screen.getByRole('button', { name: 'تحديث المحادثات' });
+  await waitFor(() => expect(refresh).not.toBeDisabled());
+  await user.click(refresh);
+  await waitFor(() => expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(2));
+  expect(whatsappAPI.getCloudInboxMedia).toHaveBeenCalledTimes(1);
+
+  await user.click(screen.getByRole('button', { name: 'رجوع' }));
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:cloud-media-1');
+});
+
+test('discards a late incoming media response after leaving its thread', async () => {
+  const lateMedia = deferred();
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment()] },
+  });
+  whatsappAPI.getCloudInboxMedia.mockReturnValue(lateMedia.promise);
+  const user = await renderOpenCloudThread();
+  await waitFor(() => expect(whatsappAPI.getCloudInboxMedia).toHaveBeenCalledTimes(1));
+
+  await user.click(screen.getByRole('button', { name: 'رجوع' }));
+  await act(async () => {
+    lateMedia.resolve({ data: new Blob(['pdf'], { type: 'application/pdf' }) });
+  });
+
+  expect(URL.createObjectURL).not.toHaveBeenCalled();
 });

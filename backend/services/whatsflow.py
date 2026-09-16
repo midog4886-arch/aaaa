@@ -1,6 +1,7 @@
 """Focused client for the Whatsflow HTTP API."""
 import base64
 import binascii
+import re
 from typing import Any, Optional
 from urllib.parse import quote
 
@@ -8,6 +9,11 @@ import httpx
 
 
 class WhatsflowClient:
+    MAX_MEDIA_BYTES = 20 * 1024 * 1024
+    _MIME_TYPE_RE = re.compile(
+        r"^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
+    )
+
     def __init__(
         self,
         instance: str,
@@ -99,6 +105,58 @@ class WhatsflowClient:
                 "fileName": filename,
             },
         )
+
+    @classmethod
+    def _decode_provider_media(cls, data: Any) -> tuple[bool, Any, Optional[str]]:
+        """Validate Evolution's decrypted-media response before returning bytes."""
+        if not isinstance(data, dict):
+            return False, None, "invalid_media_response"
+        encoded = data.get("base64")
+        if not isinstance(encoded, str) or not encoded:
+            return False, None, "invalid_media_response"
+        # Reject oversized base64 before decoding so a provider response cannot
+        # allocate an unbounded byte buffer in the API process.
+        max_encoded = ((cls.MAX_MEDIA_BYTES + 2) // 3) * 4
+        if len(encoded) > max_encoded:
+            return False, None, "media_too_large"
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error):
+            return False, None, "invalid_media_base64"
+        if not content or len(content) > cls.MAX_MEDIA_BYTES:
+            return False, None, "media_too_large" if len(content) > cls.MAX_MEDIA_BYTES else "invalid_media_response"
+
+        # Do not reflect an arbitrary provider string into Content-Type.
+        mime_type = str(data.get("mimetype") or "").split(";", 1)[0].strip().lower()
+        if not cls._MIME_TYPE_RE.fullmatch(mime_type):
+            return False, None, "invalid_media_mime"
+        return True, {
+            "content": content,
+            "mime_type": mime_type,
+            "filename": str(data.get("fileName") or data.get("filename") or ""),
+            "media_type": str(data.get("mediaType") or ""),
+        }, None
+
+    async def get_base64_from_media_message(self, provider_message_id: str):
+        """Ask Evolution to decrypt a message it has stored.
+
+        WhatsApp CDN media URLs carry encrypted blobs.  This endpoint is the
+        provider-supported retrieval path and deliberately never follows those
+        URLs directly.
+        """
+        if not provider_message_id:
+            return False, None, "missing_message_id"
+        ok, data, error = await self._request(
+            "POST",
+            f"/chat/getBase64FromMediaMessage/{self._instance_path()}",
+            json={
+                "message": {"key": {"id": provider_message_id}},
+                "convertToMp4": False,
+            },
+        )
+        if not ok:
+            return False, None, error
+        return self._decode_provider_media(data)
 
     async def set_webhook(self, url: str, secret: str):
         return await self._request(

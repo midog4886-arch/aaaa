@@ -624,6 +624,115 @@ def test_cloud_inbox_image_unknown_provider_failure_is_explicit_and_cleans_media
     assert db["whatsapp_cloud_messages"].rows == []
 
 
+def test_whatsflow_audio_media_uses_decrypt_api_not_encrypted_cdn(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "audio-1", "branch_id": "branch-a", "provider": "whatsflow",
+        "provider_message_id": "provider-audio-1", "type": "audio",
+        "media_id": "provider-audio-1",
+        "media_url": "https://mmg.whatsapp.net/encrypted-blob",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    requested = []
+
+    class Client:
+        configured = True
+
+        async def get_base64_from_media_message(self, provider_message_id):
+            requested.append(provider_message_id)
+            return True, {
+                "content": b"OggSdecrypted voice",
+                "mime_type": "audio/ogg",
+                "filename": "voice.ogg",
+            }, None
+
+    monkeypatch.setattr(whatsapp_mod, "_whatsflow_client", lambda _config: Client())
+    response = run(whatsapp_mod.get_cloud_inbox_media(
+        "audio-1", current_user={"is_admin": True},
+    ))
+
+    async def read_stream():
+        return b"".join([chunk async for chunk in response.body_iterator])
+
+    assert run(read_stream()) == b"OggSdecrypted voice"
+    assert response.media_type == "audio/ogg"
+    assert response.headers["content-disposition"].startswith("inline;")
+    assert requested == ["provider-audio-1"]
+
+
+def test_old_whatsflow_message_placeholder_can_be_retrieved_by_provider_id(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "old-voice", "branch_id": "branch-a", "provider": "whatsflow",
+        "whatsflow_message_id": "legacy-provider-id", "type": "text",
+        "body": "[message]",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+
+    class Client:
+        configured = True
+
+        async def get_base64_from_media_message(self, provider_message_id):
+            assert provider_message_id == "legacy-provider-id"
+            return True, {
+                "content": b"%PDF-decrypted",
+                "mime_type": "application/pdf",
+                "filename": "../../عرض.pdf",
+            }, None
+
+    monkeypatch.setattr(whatsapp_mod, "_whatsflow_client", lambda _config: Client())
+    response = run(whatsapp_mod.get_cloud_inbox_media(
+        "old-voice", current_user={"is_admin": True},
+    ))
+    assert response.media_type == "application/pdf"
+    assert response.headers["content-disposition"].startswith("attachment;")
+    assert "../" not in response.headers["content-disposition"]
+    assert "filename*=UTF-8''" in response.headers["content-disposition"]
+
+
+def test_whatsflow_media_provider_failure_and_branch_denial_are_safe(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_messages"].rows.extend([
+        {
+            "id": "provider-failure", "branch_id": "branch-a", "provider": "whatsflow",
+            "provider_message_id": "missing-upstream", "type": "document",
+            "media_id": "missing-upstream",
+        },
+        {
+            "id": "branch-denied", "branch_id": "branch-b", "provider": "whatsflow",
+            "provider_message_id": "private-provider-id", "type": "document",
+            "media_id": "private-provider-id",
+        },
+    ])
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    called = []
+
+    class Client:
+        configured = True
+
+        async def get_base64_from_media_message(self, provider_message_id):
+            called.append(provider_message_id)
+            return False, None, "http_404"
+
+    monkeypatch.setattr(whatsapp_mod, "_whatsflow_client", lambda _config: Client())
+    with pytest.raises(Exception) as failure:
+        run(whatsapp_mod.get_cloud_inbox_media(
+            "provider-failure", current_user={"is_admin": True},
+        ))
+    assert getattr(failure.value, "status_code", None) == 502
+    assert "http_404" not in str(failure.value.detail)
+
+    with pytest.raises(Exception) as denied:
+        run(whatsapp_mod.get_cloud_inbox_media(
+            "branch-denied",
+            current_user={
+                "is_admin": False, "permissions": ["messages"], "branch_id": "branch-a",
+            },
+        ))
+    assert getattr(denied.value, "status_code", None) == 403
+    assert called == ["missing-upstream"]
+
+
 def test_meta_webhook_routes_multi_phone_batch_to_each_branch(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
     db = _DB()

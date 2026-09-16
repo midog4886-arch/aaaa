@@ -38,6 +38,63 @@ const cloudPhoneClassName = (isRegisteredMember) => (
     : 'text-muted-foreground hover:text-muted-foreground hover:underline cursor-pointer'
 );
 
+const filenameFromContentDisposition = headers => {
+  const disposition = headers?.['content-disposition']
+    || headers?.['Content-Disposition']
+    || headers?.get?.('content-disposition')
+    || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1].replace(/^["']|["']$/g, ''));
+    } catch (_) {
+      // A malformed filename must not prevent the attachment from downloading.
+    }
+  }
+  return disposition.match(/filename="?([^";]+)"?/i)?.[1] || '';
+};
+
+const extensionForMedia = (message, blob) => {
+  const mime = String(message?.mime_type || message?.mime || blob?.type || '')
+    .split(';')[0]
+    .toLowerCase();
+  const extensions = {
+    'application/pdf': 'pdf',
+    'application/zip': 'zip',
+    'application/json': 'json',
+    'text/plain': 'txt',
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'm4a',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/webm': 'webm',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  };
+  if (extensions[mime]) return extensions[mime];
+  if (message?.type === 'audio') return 'audio';
+  if (message?.type === 'video') return 'mp4';
+  if (message?.type === 'image') return 'jpg';
+  return 'bin';
+};
+
+const cloudAttachmentFilename = (message, response) => {
+  const supplied = message?.filename || message?.file_name
+    || filenameFromContentDisposition(response?.headers);
+  const fallback = `attachment-${String(message?.id || 'file')}`;
+  const filename = String(supplied || fallback)
+    .replace(/[\\/:*?"<>|\u0000-\u001F]/g, '-')
+    .replace(/^\.+$/, fallback)
+    .slice(0, 160);
+  return /\.[a-z0-9]{1,10}$/i.test(filename)
+    ? filename
+    : `${filename || fallback}.${extensionForMedia(message, response?.data)}`;
+};
+
 const ChangeRequestCard = ({ msg, language, onApply, onReject, disabled }) => {
   const cr = msg.change_request || {};
   const fieldKey = cr.field;
@@ -286,6 +343,14 @@ export default function WhatsAppPage() {
   const sendingCloudReplyRef = useRef(false);
   const [cloudMediaUrls, setCloudMediaUrls] = useState({});
   const cloudMediaUrlsRef = useRef({});
+  const [cloudMediaErrors, setCloudMediaErrors] = useState({});
+  const cloudMediaErrorsRef = useRef({});
+  cloudMediaErrorsRef.current = cloudMediaErrors;
+  const [cloudMediaFilenames, setCloudMediaFilenames] = useState({});
+  // Object URLs are intentionally cached only for the currently open
+  // conversation and auth/branch scope. A 10-second detail poll must not
+  // recreate them, otherwise it interrupts active audio playback.
+  const cloudMediaScopeRef = useRef(null);
   const [cloudImage, setCloudImage] = useState(null);
   const [cloudImagePreviewUrl, setCloudImagePreviewUrl] = useState('');
   const [cloudImageCaption, setCloudImageCaption] = useState('');
@@ -578,6 +643,83 @@ export default function WhatsAppPage() {
     return request;
   };
 
+  const clearCloudMedia = (nextScope = null, updateState = true) => {
+    Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
+    cloudMediaUrlsRef.current = {};
+    cloudMediaScopeRef.current = nextScope;
+    if (updateState) {
+      setCloudMediaUrls({});
+      cloudMediaErrorsRef.current = {};
+      setCloudMediaErrors({});
+      setCloudMediaFilenames({});
+    }
+  };
+
+  const loadCloudMedia = (
+    message,
+    branchKey,
+    authScope,
+    viewKey,
+    conversationId,
+    forceRetry = false,
+  ) => {
+    const scope = `${authScope}:${branchKey}:${conversationId}`;
+    const isCurrentMediaScope = () => {
+      const currentBranchKey = cloudBranchFilterRef.current
+        && cloudBranchFilterRef.current !== 'all'
+        ? cloudBranchFilterRef.current
+        : 'all';
+      return cloudMediaScopeRef.current === scope
+        && authScope === cloudBranchesScopeRef.current
+        && branchKey === currentBranchKey
+        && selectedCloudThreadRef.current === conversationId;
+    };
+    if (
+      !message?.media_id
+      || !isCurrentMediaScope()
+      || cloudMediaUrlsRef.current[message.id]
+      || (!forceRetry && cloudMediaErrorsRef.current[message.id]?.kind === 'fetch')
+    ) return;
+
+    getCloudMediaRequest(message.id, branchKey, authScope, viewKey)
+      .then(mediaResponse => {
+        // Do not create a URL for a response that arrived after a thread,
+        // branch, or account change. This also prevents a late URL leak.
+        if (
+          !isCurrentMediaScope()
+          || cloudMediaUrlsRef.current[message.id]
+        ) return;
+        const url = URL.createObjectURL(mediaResponse.data);
+        // The scope could only change on another task, but keep this guard
+        // beside URL creation so a future asynchronous refactor stays safe.
+        if (!isCurrentMediaScope()) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        cloudMediaUrlsRef.current = { ...cloudMediaUrlsRef.current, [message.id]: url };
+        setCloudMediaUrls(previous => ({ ...previous, [message.id]: url }));
+        setCloudMediaFilenames(previous => ({
+          ...previous,
+          [message.id]: cloudAttachmentFilename(message, mediaResponse),
+        }));
+        if (cloudMediaErrorsRef.current[message.id]) {
+          const remaining = { ...cloudMediaErrorsRef.current };
+          delete remaining[message.id];
+          cloudMediaErrorsRef.current = remaining;
+          setCloudMediaErrors(remaining);
+        }
+      })
+      .catch(() => {
+        if (!isCurrentMediaScope()) return;
+        const errors = {
+          ...cloudMediaErrorsRef.current,
+          [message.id]: { kind: 'fetch' },
+        };
+        cloudMediaErrorsRef.current = errors;
+        setCloudMediaErrors(errors);
+      });
+  };
+
   const openCloudThread = async (
     conversationId,
     { refreshInbox = false, polling = false } = {},
@@ -590,10 +732,14 @@ export default function WhatsAppPage() {
     const branchKey = cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
       ? cloudBranchFilterRef.current
       : 'all';
+    const mediaScope = `${authScope}:${branchKey}:${conversationId}`;
     const previousThread = selectedCloudThreadRef.current;
     selectedCloudThreadRef.current = conversationId;
     setSelectedCloudThread(conversationId);
     setLoadingCloudInbox(true);
+    if (cloudMediaScopeRef.current !== mediaScope) {
+      clearCloudMedia(mediaScope);
+    }
     if (previousThread && previousThread !== conversationId) {
       clearCloudImage();
       setCloudImageCaption('');
@@ -620,19 +766,9 @@ export default function WhatsAppPage() {
       setCloudThread(response.data?.conversation || null);
       const messages = response.data?.messages || [];
       setCloudMessages(messages);
-      Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
-      cloudMediaUrlsRef.current = {};
-      setCloudMediaUrls({});
       const mediaMessages = messages.filter(message => message.media_id);
       mediaMessages.forEach(message => {
-        getCloudMediaRequest(message.id, branchKey, authScope, viewKey)
-          .then(mediaResponse => {
-            if (!isCurrentRequest()) return;
-            const url = URL.createObjectURL(mediaResponse.data);
-            cloudMediaUrlsRef.current = { ...cloudMediaUrlsRef.current, [message.id]: url };
-            setCloudMediaUrls(previous => ({ ...previous, [message.id]: url }));
-          })
-          .catch(() => {});
+        loadCloudMedia(message, branchKey, authScope, viewKey, conversationId);
       });
       // The detail GET marks inbound messages read. Reconcile the selected
       // branch's list/count only after that request succeeds so the badge and
@@ -901,8 +1037,18 @@ export default function WhatsAppPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, cloudBranchFilter, cloudInboxView, cloudAuthScope]);
 
+  useEffect(() => {
+    const mediaScope = cloudMediaScopeRef.current;
+    if (mediaScope && !mediaScope.startsWith(`${cloudAuthScope}:`)) {
+      clearCloudMedia();
+    }
+    // Media URLs may contain data from another signed-in account, so discard
+    // them immediately when the authentication scope changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cloudAuthScope]);
+
   useEffect(() => () => {
-    Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
+    clearCloudMedia(null, false);
     if (cloudImagePreviewUrlRef.current && typeof URL !== 'undefined') {
       URL.revokeObjectURL(cloudImagePreviewUrlRef.current);
     }
@@ -2969,6 +3115,7 @@ export default function WhatsAppPage() {
                        setCloudImageCaption('');
                        selectedCloudThreadRef.current = null;
                        cloudThreadRequestRef.current += 1;
+                        clearCloudMedia();
                       setSelectedCloudThread(null);
                       setCloudThread(null);
                       setCloudMessages([]);
@@ -3040,6 +3187,7 @@ export default function WhatsAppPage() {
                 size="sm"
                 onClick={() => selectedCloudThread ? openCloudThread(selectedCloudThread) : loadCloudConversations()}
                 disabled={loadingCloudInbox}
+                aria-label={t('تحديث المحادثات', 'Refresh conversations')}
               >
                 <RefreshCcw className={`w-4 h-4 ${loadingCloudInbox ? 'animate-spin' : ''}`} />
               </Button>
@@ -3216,7 +3364,40 @@ export default function WhatsAppPage() {
                           )}
                           {message.media_id && (
                             <div className="mt-2">
-                              {!cloudMediaUrls[message.id] ? (
+                              {!cloudMediaUrls[message.id] && cloudMediaErrors[message.id]?.kind === 'fetch' ? (
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-red-600">
+                                  <span>{t('تعذر تحميل المرفق', 'Could not load attachment')}</span>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 px-2"
+                                    data-testid={`retry-cloud-media-${message.id}`}
+                                    onClick={() => {
+                                      const remaining = { ...cloudMediaErrorsRef.current };
+                                      delete remaining[message.id];
+                                      cloudMediaErrorsRef.current = remaining;
+                                      setCloudMediaErrors(remaining);
+                                      const branchKey = cloudBranchFilterRef.current
+                                        && cloudBranchFilterRef.current !== 'all'
+                                        ? cloudBranchFilterRef.current
+                                        : 'all';
+                                      const viewKey = cloudInboxViewRef.current;
+                                      loadCloudMedia(
+                                        message,
+                                        branchKey,
+                                        cloudAuthScope,
+                                        viewKey,
+                                        selectedCloudThreadRef.current,
+                                        true,
+                                      );
+                                    }}
+                                  >
+                                    <RefreshCcw className="w-3 h-3 me-1" />
+                                    {t('إعادة المحاولة', 'Retry')}
+                                  </Button>
+                                </div>
+                              ) : !cloudMediaUrls[message.id] ? (
                                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                                   <Loader2 className="w-3 h-3 animate-spin" />
                                   {t('جاري تحميل المرفق…', 'Loading attachment…')}
@@ -3230,13 +3411,40 @@ export default function WhatsAppPage() {
                                   />
                                 </a>
                               ) : message.type === 'audio' ? (
-                                <audio src={cloudMediaUrls[message.id]} controls className="max-w-full" />
+                                <div className="space-y-1">
+                                  <audio
+                                    src={cloudMediaUrls[message.id]}
+                                    controls
+                                    className="max-w-full"
+                                    onError={() => {
+                                      const errors = {
+                                        ...cloudMediaErrorsRef.current,
+                                        [message.id]: { kind: 'audio' },
+                                      };
+                                      cloudMediaErrorsRef.current = errors;
+                                      setCloudMediaErrors(errors);
+                                    }}
+                                  />
+                                  {cloudMediaErrors[message.id]?.kind === 'audio' && (
+                                    <p className="text-xs text-red-600">
+                                      {t('تعذر تشغيل المقطع الصوتي في المتصفح. نزّله للاستماع إليه.', 'This audio cannot be played in the browser. Download it to listen.')}
+                                    </p>
+                                  )}
+                                  <a
+                                    href={cloudMediaUrls[message.id]}
+                                    download={cloudMediaFilenames[message.id] || cloudAttachmentFilename(message)}
+                                    className="inline-flex items-center gap-2 text-xs text-primary underline"
+                                  >
+                                    <Paperclip className="w-3.5 h-3.5" />
+                                    {t('تحميل المقطع الصوتي', 'Download audio')}
+                                  </a>
+                                </div>
                               ) : message.type === 'video' ? (
                                 <video src={cloudMediaUrls[message.id]} controls className="max-w-full max-h-72 rounded-lg" />
                               ) : (
                                 <a
                                   href={cloudMediaUrls[message.id]}
-                                  download
+                                  download={cloudMediaFilenames[message.id] || cloudAttachmentFilename(message)}
                                   className="inline-flex items-center gap-2 text-sm text-primary underline"
                                 >
                                   <Paperclip className="w-4 h-4" />

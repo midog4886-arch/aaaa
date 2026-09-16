@@ -68,3 +68,9 @@ Class reminders should be one daily agenda per normalized phone and branch, sent
 **Why:** The user requested a combined reminder for today's activities instead of separate notifications. Later sessions must retain their own displayed times and must not trigger another reminder.
 
 **How to apply:** Include only valid subscriptions and the personal schedule for the target date, preserve shared-family member labels, and retain daily deduplication and legacy reminder protection. The five-minute catch-up window still applies.
+
+WhatsApp CDN URLs in Whatsflow webhooks are encrypted media, not directly usable files.
+
+**Why:** A successful HTTP download can still yield ciphertext that cannot open as a PDF or play as audio. Evolution 2.3.7 provides provider-side decryption using its stored message ID.
+
+**How to apply:** Retrieve media through the provider's getBase64FromMediaMessage endpoint, validate the decoded content, and never fall back to serving raw CDN bytes as a successful file. Historical retrieval depends on the provider retaining the original message. Voice playback is distinct from recording/sending voice.

@@ -12,7 +12,7 @@ from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
 from typing import Optional, List
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query, UploadFile, File, Form
@@ -550,6 +550,52 @@ def _whatsflow_client(config: dict) -> WhatsflowClient:
     encrypted = config.get("whatsflow_api_key_encrypted") or ""
     api_key = _decrypt_access_token(encrypted) if encrypted else ""
     return WhatsflowClient(config.get("whatsflow_instance") or "", api_key)
+
+
+def _normalize_whatsflow_message(message: dict) -> dict:
+    """Unwrap non-private Evolution message containers.
+
+    Evolution nests captioned documents and disappearing messages one level
+    down.  View-once containers are intentionally not traversed: retrieving
+    their media later would defeat the sender's privacy choice.
+    """
+    current = message if isinstance(message, dict) else {}
+    for _ in range(4):
+        if any(key in current for key in (
+            "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
+        )):
+            return current
+        nested = None
+        for container in ("ephemeralMessage", "documentWithCaptionMessage"):
+            value = current.get(container)
+            if isinstance(value, dict) and isinstance(value.get("message"), dict):
+                nested = value["message"]
+                break
+        if nested is None:
+            return current
+        current = nested
+    return current
+
+
+def _whatsflow_media_headers(filename: str, mime_type: str) -> dict:
+    """Build an RFC 5987 disposition without reflecting unsafe filenames."""
+    name = Path(str(filename or "attachment").replace("\\", "/")).name
+    name = "".join(char for char in name if char.isprintable() and char not in "\r\n")
+    name = name.strip()[:180] or "attachment"
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip("._") or "attachment"
+    disposition = "inline" if (
+        mime_type.startswith(("audio/", "video/"))
+        or mime_type in {"image/jpeg", "image/png", "image/gif", "image/webp"}
+    ) else "attachment"
+    return {
+        "Cache-Control": "private, max-age=300",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "sandbox; default-src 'none'",
+        "Content-Disposition": (
+            f"{disposition}; filename=\"{ascii_name}\"; "
+            f"filename*=UTF-8''{quote(name, safe='')}"
+        ),
+    }
 
 
 def _whatsflow_webhook_secret(tenant_slug: str, branch_id: str) -> str:
@@ -4504,7 +4550,9 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
         phone = "".join(filter(str.isdigit, remote_jid))
         if not phone or not message_id:
             return {"received": True}
-        message = data.get("message") if isinstance(data.get("message"), dict) else {}
+        message = _normalize_whatsflow_message(
+            data.get("message") if isinstance(data.get("message"), dict) else {}
+        )
         image_message = (
             message.get("imageMessage")
             if isinstance(message.get("imageMessage"), dict)
@@ -4515,10 +4563,22 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             if isinstance(message.get("documentMessage"), dict)
             else {}
         )
-        media_message = image_message or document_message
+        audio_message = (
+            message.get("audioMessage")
+            if isinstance(message.get("audioMessage"), dict)
+            else {}
+        )
+        video_message = (
+            message.get("videoMessage")
+            if isinstance(message.get("videoMessage"), dict)
+            else {}
+        )
+        media_message = image_message or document_message or audio_message or video_message
         media_type = (
             "image" if image_message
             else "document" if document_message
+            else "audio" if audio_message
+            else "video" if video_message
             else None
         )
         body = (
@@ -4556,7 +4616,10 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 "provider_message_id": message_id,
                 "direction": "outbound" if outbound else "inbound",
                 "phone": phone, "type": media_type or "text", "body": body,
-                "media_id": media_message.get("url"),
+                # Evolution's media URL is an encrypted WhatsApp CDN blob.
+                # Keep the provider message ID so the supported decrypt API can
+                # retrieve media even when no URL is included in the webhook.
+                "media_id": media_message.get("url") or (message_id if media_type else None),
                 "media_url": media_message.get("url"),
                 "mime_type": media_message.get("mimetype"),
                 "filename": (
@@ -5199,10 +5262,24 @@ async def get_cloud_inbox_media(
     message = await _db["whatsapp_cloud_messages"].find_one(
         {"id": message_id}, {"_id": 0}
     )
+    # Older Whatsflow voice notes were saved before media type normalization as
+    # text with an empty/[message] body.  The UI will not request these by
+    # itself, but an explicit media request may use the durable provider ID.
+    legacy_whatsflow_media = (
+        message
+        and message.get("provider") == "whatsflow"
+        and (
+            message.get("provider_message_id")
+            or message.get("whatsflow_message_id")
+        )
+        and message.get("type") == "text"
+        and str(message.get("body") or "") in {"", "[message]"}
+    )
     if not message or not (
         message.get("media_storage_id")
         or message.get("media_id")
         or message.get("media_url")
+        or legacy_whatsflow_media
     ):
         raise HTTPException(status_code=404, detail="Media not found")
     _assert_branch_access(current_user, message.get("branch_id"))
@@ -5215,45 +5292,35 @@ async def get_cloud_inbox_media(
             media_type=mime_type,
             headers={"Cache-Control": "private, max-age=300"},
         )
-    config = await _get_branch_cloud_config(message.get("branch_id"))
     if message.get("provider") == "whatsflow":
-        media_url = str(message.get("media_url") or "")
-        parsed = urlparse(media_url)
-        hostname = (parsed.hostname or "").lower()
-        allowed_host = (
-            hostname == "connect.whats-flow.net"
-            or hostname.endswith(".whatsapp.net")
-            or hostname.endswith(".fbcdn.net")
+        # Never GET the URL stored in a Whatsflow webhook.  It is a WhatsApp
+        # encrypted-media CDN URL, not a usable file.  Evolution decrypts it
+        # only through getBase64FromMediaMessage using its stored message.
+        provider_message_id = str(
+            message.get("provider_message_id")
+            or message.get("whatsflow_message_id")
+            or ""
         )
-        if parsed.scheme != "https" or not allowed_host:
-            raise HTTPException(status_code=502, detail="Unexpected Whatsflow media host")
-        headers = {}
-        if hostname == "connect.whats-flow.net":
-            client = _whatsflow_client(config or {})
-            if not client.configured:
-                raise HTTPException(status_code=400, detail="Whatsflow is not configured")
-            headers["apikey"] = client.api_key
-        try:
-            async with httpx.AsyncClient(timeout=45.0, follow_redirects=False) as client:
-                media_response = await client.get(media_url, headers=headers)
-            if media_response.status_code >= 300:
-                raise HTTPException(status_code=502, detail="Could not download Whatsflow media")
-            content = media_response.content
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(status_code=502, detail="Could not download Whatsflow media")
-        if len(content) > 20 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Media exceeds 20 MB")
+        if not provider_message_id:
+            raise HTTPException(status_code=404, detail="Whatsflow media message is unavailable")
+        config = await _get_branch_cloud_config(message.get("branch_id"))
+        client = _whatsflow_client(config or {})
+        if not client.configured:
+            raise HTTPException(status_code=400, detail="Whatsflow is not configured")
+        ok, media, error = await client.get_base64_from_media_message(provider_message_id)
+        if not ok or not isinstance(media, dict):
+            if error == "media_too_large":
+                raise HTTPException(status_code=413, detail="Media exceeds 20 MB")
+            raise HTTPException(status_code=502, detail="Could not retrieve Whatsflow media")
         return StreamingResponse(
-            iter([content]),
-            media_type=(
-                message.get("mime_type")
-                or media_response.headers.get("content-type")
-                or "application/octet-stream"
+            iter([media["content"]]),
+            media_type=media["mime_type"],
+            headers=_whatsflow_media_headers(
+                media.get("filename") or message.get("filename") or "attachment",
+                media["mime_type"],
             ),
-            headers={"Cache-Control": "private, max-age=300"},
         )
+    config = await _get_branch_cloud_config(message.get("branch_id"))
     if message.get("provider") == "waha":
         media_url = str(message.get("media_url") or "")
         waha = WAHAClient()
