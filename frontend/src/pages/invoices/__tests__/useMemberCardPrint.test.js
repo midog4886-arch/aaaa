@@ -1,18 +1,12 @@
 import { act, renderHook } from '@testing-library/react';
 import { toast } from 'sonner';
 import { useMemberCardPrint } from '../hooks/useMemberCardPrint';
-import { getMemberQRValue } from '../../../utils/memberQR';
-import { openPermanentMemberCardPrint } from '../../../utils/permanentMemberCard';
+import { openStickerPrint } from '../StickerPrintDialog';
 import { membersAPI } from '../../../services/api';
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
-jest.mock('../../../services/branding', () => ({
-  getAcademyLogoUrl: () => '/academy-logo.png',
-  getAcademyName: () => 'Test Academy',
-}));
-jest.mock('../../../utils/memberQR', () => ({ getMemberQRValue: jest.fn((code) => `stable:${code}`) }));
-jest.mock('../../../utils/permanentMemberCard', () => ({
-  openPermanentMemberCardPrint: jest.fn(),
+jest.mock('../StickerPrintDialog', () => ({
+  openStickerPrint: jest.fn(),
 }));
 jest.mock('../../../services/api', () => ({
   membersAPI: { getById: jest.fn() },
@@ -30,14 +24,14 @@ const MEMBER = {
   }],
 };
 
-describe('invoice permanent member-card print flow', () => {
+describe('invoice subscription-card print flow', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     membersAPI.getById.mockReset();
-    openPermanentMemberCardPrint.mockReturnValue({ closed: false });
+    openStickerPrint.mockReturnValue({ closed: false });
   });
 
-  test('does not derive invoice dates or auto-print when opening an invoice card dialog', async () => {
+  test('prepares the old landscape subscription details without auto-printing', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch');
     const { result } = renderHook(() => useMemberCardPrint({ members: [MEMBER], language: 'ar' }));
 
@@ -52,31 +46,35 @@ describe('invoice permanent member-card print flow', () => {
     }));
 
     expect(result.current.showCardPrintDialog).toBe(true);
-    expect(result.current.cardPrintMember).toBe(MEMBER);
-    expect(openPermanentMemberCardPrint).not.toHaveBeenCalled();
+    expect(result.current.cardPrintMember).toEqual(expect.objectContaining({
+      id: MEMBER.id,
+      member_code: MEMBER.member_code,
+      activities: [expect.objectContaining({
+        start_date: '2031-01-01',
+        end_date: '2031-02-01',
+        schedule: 'Tuesday 8pm',
+      })],
+    }));
+    expect(openStickerPrint).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 
-  test('prints only after explicit request with the established QR identity value', async () => {
+  test('prints only after explicit request using the linked member identity', async () => {
     const { result } = renderHook(() => useMemberCardPrint({ members: [MEMBER], language: 'en' }));
 
     await act(async () => result.current.handleOpenCardPrint({ member_id: MEMBER.id, items: [] }));
     act(() => result.current.handleStickerPrint());
 
-    expect(getMemberQRValue).toHaveBeenCalledWith('GC-100');
-    expect(openPermanentMemberCardPrint).toHaveBeenCalledWith(expect.objectContaining({
-      member: MEMBER,
-      qrValue: 'stable:GC-100',
-      logoUrl: '/academy-logo.png',
-      academyName: 'Test Academy',
-      language: 'en',
+    expect(openStickerPrint).toHaveBeenCalledWith(expect.objectContaining({
+      id: MEMBER.id,
+      member_code: 'GC-100',
     }));
     expect(result.current.showCardPrintDialog).toBe(false);
   });
 
   test('keeps the dialog open and reports an error if the print popup is blocked', async () => {
-    openPermanentMemberCardPrint.mockReturnValue(null);
+    openStickerPrint.mockReturnValue(null);
     const { result } = renderHook(() => useMemberCardPrint({ members: [MEMBER], language: 'ar' }));
 
     await act(async () => result.current.handleOpenCardPrint({ member_id: MEMBER.id, items: [] }));
@@ -107,8 +105,14 @@ describe('invoice permanent member-card print flow', () => {
       name_ar: MEMBER.name_ar,
       member_code: MEMBER.member_code,
     }));
-    expect(result.current.regFormCardData).toBe(MEMBER);
-    expect(openPermanentMemberCardPrint).not.toHaveBeenCalled();
+    expect(result.current.regFormCardData.activities).toEqual([
+      expect.objectContaining({
+        start_date: '2031-01-01',
+        end_date: '2031-02-01',
+        schedule: 'Wednesday',
+      }),
+    ]);
+    expect(openStickerPrint).not.toHaveBeenCalled();
   });
 
   test('fetches the exact missing linked member instead of matching a shared phone number', async () => {
@@ -125,7 +129,11 @@ describe('invoice permanent member-card print flow', () => {
     }));
 
     expect(membersAPI.getById).toHaveBeenCalledWith('member-linked');
-    expect(result.current.regFormCardData).toBe(linkedMember);
+    expect(result.current.regFormCardData).toEqual(expect.objectContaining({
+      id: linkedMember.id,
+      member_code: linkedMember.member_code,
+      phone: linkedMember.phone,
+    }));
     expect(result.current.regFormCardData.member_code).toBe('GC-LINKED');
   });
 

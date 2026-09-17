@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { getAcademyLogoUrl, getAcademyName } from '../../../services/branding';
 import { membersAPI } from '../../../services/api';
-import { getMemberQRValue } from '../../../utils/memberQR';
-import { openPermanentMemberCardPrint } from '../../../utils/permanentMemberCard';
-
-const DEFAULT_ACADEMY_NAME = 'شركة اداء الابطال العالمية للرياضة';
+import { openStickerPrint } from '../StickerPrintDialog';
 
 export const useMemberCardPrint = ({ members, branches = [], language }) => {
   const [showCardPrintDialog, setShowCardPrintDialog] = useState(false);
@@ -36,23 +32,21 @@ export const useMemberCardPrint = ({ members, branches = [], language }) => {
     }
   };
 
-  const printPermanentCard = (cardMember) => {
+  const printSubscriptionCard = (cardMember) => {
     if (!cardMember?.member_code) {
       toast.error(language === 'ar' ? 'رقم العضوية غير متوفر للطباعة' : 'Membership number is unavailable for printing');
       return false;
     }
 
     const branch = branches.find((item) => String(item.id) === String(cardMember.branch_id));
-    const popup = openPermanentMemberCardPrint({
-      member: cardMember,
-      qrValue: getMemberQRValue(cardMember.member_code),
-      logoUrl: getAcademyLogoUrl(),
-      academyName: getAcademyName() || DEFAULT_ACADEMY_NAME,
-      // Resolve strictly from this member's branch. Never substitute the
-      // invoice customer's/member's phone or a different branch's contact.
-      branchName: cardMember.branch_name || branch?.name_ar || branch?.name || '',
-      branchPhone: cardMember.branch_phone || branch?.phone || '',
-      language: language === 'en' ? 'en' : 'ar',
+    // Contact information remains scoped strictly to the linked member's
+    // branch; invoice/customer phone values are never used as branch contact.
+    const popup = openStickerPrint({
+      ...cardMember,
+      branch_name: cardMember.branch_name || branch?.name_ar || branch?.name || '',
+      branch_phone: cardMember.branch_phone || branch?.phone || '',
+      show_terms_on_logo: true,
+      strict_branch_contact: true,
     });
     if (!popup) {
       toast.error(language === 'ar' ? 'تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.' : 'Print window was blocked. Allow pop-ups and try again.');
@@ -68,16 +62,67 @@ export const useMemberCardPrint = ({ members, branches = [], language }) => {
       toast.error(noIssuedCodeMessage);
       return;
     }
-    setCardPrintMember(member);
+    const today = new Date().toISOString().split('T')[0];
+    const allWindows = (invoice?.items || [])
+      .filter((item) => !item.is_product)
+      .map((item) => {
+        let startDate = item.start_date || '';
+        let endDate = item.end_date || '';
+        if ((!startDate || !endDate) && item.period) {
+          const [periodStart, periodEnd] = item.period.split(' - ');
+          startDate = startDate || periodStart?.trim() || '';
+          endDate = endDate || periodEnd?.trim() || '';
+        }
+        return {
+          activity_id: item.activity_id || '',
+          activity_name: item.activity_name || '',
+          start_date: startDate,
+          end_date: endDate,
+          schedule: item.schedule || '',
+          status: !endDate || endDate >= today ? 'active' : 'expired',
+          level_name: item.level_name || '',
+        };
+      });
+    // Keep one relevant purchased window per activity: current first, then the
+    // earliest upcoming period, then the most recently ended period.
+    const byActivity = {};
+    allWindows.forEach((window) => {
+      const key = window.activity_id || window.activity_name || '';
+      const rank = (candidate) => {
+        if (!candidate.end_date) return [2, ''];
+        const coversToday = (!candidate.start_date || candidate.start_date <= today)
+          && candidate.end_date >= today;
+        if (coversToday) return [0, candidate.start_date || ''];
+        if (candidate.start_date && candidate.start_date > today) return [1, candidate.start_date];
+        return [2, candidate.end_date];
+      };
+      const previous = byActivity[key];
+      if (!previous) {
+        byActivity[key] = window;
+        return;
+      }
+      const [candidateRank, candidateDate] = rank(window);
+      const [previousRank, previousDate] = rank(previous);
+      if (
+        candidateRank < previousRank
+        || (candidateRank === previousRank
+          && ((candidateRank === 1 && candidateDate < previousDate)
+            || (candidateRank !== 1 && candidateDate > previousDate)))
+      ) {
+        byActivity[key] = window;
+      }
+    });
+    const activities = Object.values(byActivity);
+    setCardPrintMember({ ...member, activities });
     setShowCardPrintDialog(true);
   };
 
   const handleStickerPrint = () => {
-    if (printPermanentCard(cardPrintMember)) setShowCardPrintDialog(false);
+    if (printSubscriptionCard(cardPrintMember)) setShowCardPrintDialog(false);
   };
 
   const handleRegFormStickerPrint = () => {
-    if (printPermanentCard(regFormCardData)) setShowRegFormCardPrintDialog(false);
+    if (printSubscriptionCard(regFormCardData)) setShowRegFormCardPrintDialog(false);
   };
 
   const handlePrintRegFormCard = async (form) => {
@@ -87,7 +132,19 @@ export const useMemberCardPrint = ({ members, branches = [], language }) => {
       toast.error(noIssuedCodeMessage);
       return;
     }
-    setRegFormCardData(member);
+    const today = new Date().toISOString().split('T')[0];
+    const activities = (form?.items || [])
+      .filter((item) => !item.is_product)
+      .map((item) => ({
+        activity_id: item.activity_id || '',
+        activity_name: item.activity_name || '',
+        start_date: item.start_date || '',
+        end_date: item.end_date || '',
+        schedule: item.schedule || '',
+        status: !item.end_date || item.end_date >= today ? 'active' : 'expired',
+        level_name: item.level_name || '',
+      }));
+    setRegFormCardData({ ...member, activities });
     setShowRegFormCardPrintDialog(true);
   };
 

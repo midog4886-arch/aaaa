@@ -32,7 +32,7 @@
 - [Member status consistency](member-status-consistency.md) — expired = end_date passed (not session count); freeze/closure extends end_date; badge+count+filter must all use all-expired rule, never per-activity .some().
 - [Reports activity filter](reports-activity-filter.md) — activity_id on report endpoints may be a dead param (financial was); now split on commas → $in; group options use Levels-page keyword convention.
 - [Renewal activity switch](renewal-activity-switch.md) — renewal dialogs can change activity/level/days; switch replaces the SAME subdoc (old id in URL, new in payload); coupon + schedule must follow the new values.
-- [Permanent member card](member-card-dates.md) — reusable card without member photo or subscription dates/schedule; preserve QR identity and make reprinting optional.
+- [Daily-only permanent card](member-card-dates.md) — permanent redesign belongs only to daily membership cards; invoice and other entry points retain previous designs.
 - [Member portal schedule source](member-portal-schedule-source.md) — portal /my-schedule reads invoices+registration_forms, NOT member.activities where admins edit الموعد; must merge activities as authoritative or schedule page is empty/stale.
 - [Auth user object shape](auth-user-object-shape.md) — /auth/login returns a hand-picked user dict, /auth/me the full doc; any field used for authz/UI (e.g. permissions) must be in BOTH or it is undefined until refresh. Permission keys live in 3 synced places.
 - [Prepaid auto-activation](prepaid-auto-activation.md) — roll forward ONLY when item start > profile end (new period); "item end > profile end" bulk-destroys off-schedule drift (happened once, restored from backup).

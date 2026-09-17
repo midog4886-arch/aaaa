@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MemberQRCard from '../MemberQRCard';
 
 jest.mock('html2canvas', () => jest.fn());
@@ -10,19 +10,6 @@ jest.mock('../../../services/branding', () => ({
   useBrandColor: () => '',
 }));
 jest.mock('../../../utils/memberQR', () => ({ getMemberQRValue: (code) => `stable:${code}` }));
-jest.mock('../../../utils/permanentMemberCard', () => ({
-  openPermanentMemberCardPrint: jest.fn(),
-  getPermanentMemberCardDetails: (member = {}) => ({
-    activityNames: [...new Set((member.activities || member.active_activities || [])
-      .map((activity) => typeof activity === 'string'
-        ? activity
-        : activity.activity_name || activity.name_ar || activity.name || '')
-      .map((name) => name.trim())
-      .filter(Boolean))],
-    guardianPhone: member.guardian_phone || member.parent_phone || member.phone || '',
-  }),
-}));
-
 jest.mock('../../../components/ui/card', () => {
   const React = require('react');
   return {
@@ -44,7 +31,7 @@ jest.mock('lucide-react', () => {
   const Icon = () => <span />;
   return {
     Download: Icon, Printer: Icon, Loader2: Icon, QrCode: Icon, Share2: Icon,
-    Smartphone: Icon, Calendar: Icon, Clock: Icon, CheckCircle: Icon, Phone: Icon,
+    Smartphone: Icon, Calendar: Icon, Clock: Icon, CheckCircle: Icon, ShieldCheck: Icon, Phone: Icon,
   };
 });
 jest.mock('../MemberLayout', () => {
@@ -74,22 +61,41 @@ jest.mock('../MemberLayout', () => {
   };
 });
 
-describe('MemberQRCard digital permanent card', () => {
-  test('captures only permanent identity data; photo and subscriptions remain outside cardRef', async () => {
+describe('MemberQRCard previous membership card design', () => {
+  test('saveable card includes the member photo and active-status presentation', async () => {
     render(<MemberQRCard />);
 
     const digitalCard = await screen.findByTestId('digital-membership-card');
     await waitFor(() => expect(screen.getByText('Sunday 6pm')).toBeInTheDocument());
 
     expect(within(digitalCard).getByText('عضو الاختبار')).toBeInTheDocument();
-    expect(within(digitalCard).getByText('#GC-100')).toBeInTheDocument();
+    expect(within(digitalCard).getAllByText('#GC-100')).toHaveLength(2);
     expect(within(digitalCard).getByTestId('qr-code')).toHaveAttribute('data-value', 'stable:GC-100');
-    expect(within(digitalCard).getByText('السباحة')).toBeInTheDocument();
     expect(within(digitalCard).getByText('0501234567')).toBeInTheDocument();
+    expect(within(digitalCard).getByText(/عضو ساري/)).toBeInTheDocument();
     expect(within(digitalCard).queryByText('Sunday 6pm')).not.toBeInTheDocument();
     expect(within(digitalCard).queryByText('2030-01-01')).not.toBeInTheDocument();
     expect(within(digitalCard).queryByText('2030-02-01')).not.toBeInTheDocument();
-    expect(within(digitalCard).queryByRole('img', { name: /عضو الاختبار/i })).not.toBeInTheDocument();
-    expect(digitalCard.querySelector('img[src="/member-photo.jpg"]')).toBeNull();
+    expect(within(digitalCard).getByRole('img', { name: /عضو الاختبار/i })).toHaveAttribute('src', '/member-photo.jpg');
+  });
+
+  test('prints the previous landscape card with subscription dates and schedule', async () => {
+    const write = jest.fn();
+    const close = jest.fn();
+    const open = jest.spyOn(window, 'open').mockReturnValue({ document: { write, close } });
+
+    render(<MemberQRCard />);
+    await screen.findByTestId('digital-membership-card');
+    fireEvent.click(screen.getByRole('button', { name: /طباعة الملصقات/ }));
+
+    expect(open).toHaveBeenCalled();
+    const html = write.mock.calls[0][0];
+    expect(html).toContain('width:90mm;height:60mm');
+    expect(html).toContain('2030-01-01');
+    expect(html).toContain('2030-02-01');
+    expect(html).toContain('Sunday 6pm');
+    expect(html).toContain('stable%3AGC-100');
+    expect(close).toHaveBeenCalled();
+    open.mockRestore();
   });
 });
