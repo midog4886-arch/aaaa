@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 
 const mockNavigate = jest.fn();
+let mockUser = { is_admin: true };
 
 jest.mock('../../services/api', () => ({
   whatsappAPI: {
@@ -13,6 +14,8 @@ jest.mock('../../services/api', () => ({
     getCloudInboxConversations: jest.fn(),
     getCloudInboxThread: jest.fn(),
     getCloudInboxMedia: jest.fn(),
+    retryCloudInboxMediaArchive: jest.fn(),
+    deleteCloudInboxMediaArchive: jest.fn(),
     replyCloudInbox: jest.fn(),
     sendCloudInboxMedia: jest.fn(),
     sendCloudInboxVoice: jest.fn(),
@@ -33,7 +36,7 @@ jest.mock('../../contexts/LanguageContext', () => ({
 
 jest.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { is_admin: true },
+    user: mockUser,
     selectedBranchId: 'branch-a',
   }),
 }));
@@ -76,6 +79,7 @@ const deferred = () => {
 beforeEach(() => {
   jest.clearAllMocks();
   objectUrlCounter = 0;
+  mockUser = { is_admin: true };
   URL.createObjectURL = jest.fn(() => `blob:cloud-media-${++objectUrlCounter}`);
   URL.revokeObjectURL = jest.fn();
   membersAPI.lookupByPhone.mockResolvedValue({ data: { members: [] } });
@@ -114,6 +118,8 @@ beforeEach(() => {
   whatsappAPI.getCloudInboxMedia.mockResolvedValue({
     data: new Blob(['image'], { type: 'image/png' }),
   });
+  whatsappAPI.retryCloudInboxMediaArchive.mockResolvedValue({ data: { success: true } });
+  whatsappAPI.deleteCloudInboxMediaArchive.mockResolvedValue({ data: { success: true } });
   branchesAPI.getAll.mockResolvedValue({ data: [] });
 });
 
@@ -688,4 +694,250 @@ test('discards a late incoming media response after leaving its thread', async (
   });
 
   expect(URL.createObjectURL).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['archived', 'محفوظ بالنظام'],
+  ['pending', 'جارٍ الحفظ'],
+  ['failed', 'تعذر الحفظ'],
+  ['unavailable', 'لم يعد متاحًا لدى المزوّد'],
+  ['unsupported', 'غير مدعوم'],
+  ['deleted', 'حُذف المرفق'],
+])('shows the %s attachment archive status', async (archive_status, label) => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment({ archive_status })] },
+  });
+
+  await renderOpenCloudThread();
+
+  expect(await screen.findByTestId('cloud-archive-status-incoming-media-1')).toHaveTextContent(label);
+});
+
+test('retries attachment archiving without resending a message and refreshes only the current thread', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation,
+      messages: [inboundAttachment({ archive_status: 'failed', archive_error: 'Temporary provider error' })],
+    },
+  });
+  const user = await renderOpenCloudThread();
+
+  await user.click(await screen.findByTestId('retry-cloud-archive-incoming-media-1'));
+
+  await waitFor(() => expect(whatsappAPI.retryCloudInboxMediaArchive)
+    .toHaveBeenCalledWith('incoming-media-1'));
+  expect(whatsappAPI.replyCloudInbox).not.toHaveBeenCalled();
+  expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(2);
+});
+
+test('does not delete an archived attachment when confirmation is cancelled', async () => {
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment({ archive_status: 'archived' })] },
+  });
+  const user = await renderOpenCloudThread();
+
+  await user.click(await screen.findByTestId('delete-cloud-archive-incoming-media-1'));
+
+  expect(whatsappAPI.deleteCloudInboxMediaArchive).not.toHaveBeenCalled();
+  confirm.mockRestore();
+});
+
+test('deletes only the saved copy, revokes its cached URL, and renders a tombstone', async () => {
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment({ archive_status: 'archived' })] },
+  });
+  const user = await renderOpenCloudThread();
+  await screen.findByRole('link', { name: 'تحميل الملف' });
+
+  await user.click(screen.getByTestId('delete-cloud-archive-incoming-media-1'));
+
+  await waitFor(() => expect(whatsappAPI.deleteCloudInboxMediaArchive)
+    .toHaveBeenCalledWith('incoming-media-1'));
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:cloud-media-1');
+  expect(await screen.findByTestId('cloud-archive-tombstone-incoming-media-1')).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'تحميل الملف' })).not.toBeInTheDocument();
+  confirm.mockRestore();
+});
+
+test('does not expose saved-copy deletion to non-admin users', async () => {
+  mockUser = { is_admin: false };
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment({ archive_status: 'archived' })] },
+  });
+
+  await renderOpenCloudThread();
+
+  expect(screen.queryByTestId('delete-cloud-archive-incoming-media-1')).not.toBeInTheDocument();
+});
+
+test('ignores a stale archive delete response after switching conversations', async () => {
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true);
+  const deleteRequest = deferred();
+  const secondConversation = {
+    ...conversation,
+    id: 'branch-a:966501234568',
+    phone: '966501234568',
+    contact_name: 'سارة',
+  };
+  const secondMessage = inboundAttachment({
+    id: 'incoming-media-2',
+    media_id: 'provider-media-2',
+    archive_status: 'archived',
+  });
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({
+    data: { conversations: [conversation, secondConversation], unread_count: 0 },
+  });
+  whatsappAPI.getCloudInboxThread
+    .mockResolvedValueOnce({
+      data: { conversation, messages: [inboundAttachment({ archive_status: 'archived' })] },
+    })
+    .mockResolvedValueOnce({
+      data: { conversation: secondConversation, messages: [secondMessage] },
+    });
+  whatsappAPI.deleteCloudInboxMediaArchive.mockReturnValue(deleteRequest.promise);
+  const user = await renderOpenCloudThread();
+
+  await user.click(await screen.findByTestId('delete-cloud-archive-incoming-media-1'));
+  await user.click(screen.getByRole('button', { name: /رجوع/ }));
+  await user.click(await screen.findByRole('button', { name: /سارة/ }));
+  await screen.findByTestId('delete-cloud-archive-incoming-media-2');
+
+  await act(async () => {
+    deleteRequest.resolve({ data: { success: true } });
+  });
+  expect(screen.queryByTestId('cloud-archive-tombstone-incoming-media-2')).not.toBeInTheDocument();
+  expect(screen.getByTestId('delete-cloud-archive-incoming-media-2')).toBeInTheDocument();
+  confirm.mockRestore();
+});
+
+const campaignMessage = overrides => ({
+  id: 'campaign-message-1',
+  source: 'campaign',
+  direction: 'outbound',
+  type: 'text',
+  body: 'عرض الاشتراك',
+  status: 'pending',
+  created_at: '2026-01-01T12:00:00Z',
+  ...overrides,
+});
+
+test('shows queued campaign previews and bubbles without treating them as sent', async () => {
+  const queuedConversation = {
+    ...conversation,
+    last_direction: 'outbound',
+    last_source: 'campaign',
+    last_status: 'pending',
+    last_queue_status: 'queued',
+    last_queued_at: '2026-01-02T08:30:00Z',
+    last_timestamp_kind: 'queued_at',
+    last_message: 'عرض الاشتراك',
+  };
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({
+    data: { conversations: [queuedConversation], unread_count: 0 },
+  });
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation: queuedConversation, messages: [campaignMessage({
+      queued_at: '2026-01-02T08:30:00Z', timestamp_kind: 'queued',
+    })] },
+  });
+
+  const user = await renderCloudInbox();
+  expect(screen.getByTestId(`campaign-conversation-preview-${conversation.id}`))
+    .toHaveTextContent('حملة · بانتظار الإرسال');
+  expect(screen.getByTestId(`campaign-conversation-preview-${conversation.id}`))
+    .not.toHaveTextContent('أنت:');
+  expect(screen.getByTestId(`campaign-conversation-time-${conversation.id}`))
+    .toHaveTextContent('وقت الإضافة للطابور');
+
+  await user.click(screen.getByRole('button', { name: /أحمد/ }));
+  expect(await screen.findByTestId('campaign-message-status-campaign-message-1'))
+    .toHaveTextContent('بانتظار الإرسال');
+  expect(screen.getByTestId('campaign-message-time-campaign-message-1'))
+    .toHaveTextContent('وقت الإضافة للطابور');
+});
+
+test('labels provider-accepted campaign sends without claiming delivery', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation,
+      messages: [campaignMessage({ status: 'sent', sent_at: '2026-01-02T09:00:00Z' })],
+    },
+  });
+
+  await renderOpenCloudThread();
+
+  expect(screen.getByTestId('campaign-message-status-campaign-message-1'))
+    .toHaveTextContent('مرسلة (لم يتأكد وصولها)');
+  expect(screen.getByTestId('campaign-message-status-campaign-message-1'))
+    .toHaveAttribute('title', expect.stringContaining('قبل المزوّد الرسالة'));
+  expect(screen.getByTestId('campaign-message-time-campaign-message-1'))
+    .toHaveTextContent('وقت الإرسال');
+  expect(screen.queryByText('وصلت')).not.toBeInTheDocument();
+});
+
+test.each([
+  ['delivered', 'delivered_at', '2026-01-02T10:00:00Z', 'وصلت', 'وقت الوصول'],
+  ['read', 'read_at', '2026-01-02T10:05:00Z', 'قُرئت', 'وقت القراءة'],
+])('renders campaign %s receipts only when their receipt timestamp is supplied', async (
+  status,
+  timestampField,
+  timestamp,
+  statusLabel,
+  timeLabel,
+) => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation,
+      messages: [campaignMessage({ status, [timestampField]: timestamp })],
+    },
+  });
+
+  await renderOpenCloudThread();
+
+  expect(screen.getByTestId('campaign-message-status-campaign-message-1')).toHaveTextContent(statusLabel);
+  expect(screen.getByTestId('campaign-message-time-campaign-message-1')).toHaveTextContent(timeLabel);
+});
+
+test('keeps unknown and failed campaign outcomes distinct and does not invent a send time', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation,
+      messages: [
+        campaignMessage({ id: 'campaign-unknown', status: 'unknown' }),
+        campaignMessage({ id: 'campaign-failed', status: 'failed' }),
+      ],
+    },
+  });
+
+  await renderOpenCloudThread();
+
+  expect(screen.getByTestId('campaign-message-status-campaign-unknown')).toHaveTextContent('لم يتأكد الإرسال');
+  expect(screen.getByTestId('campaign-message-status-campaign-failed')).toHaveTextContent('فشلت');
+  expect(screen.queryByTestId('campaign-message-time-campaign-unknown')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('campaign-message-time-campaign-failed')).not.toBeInTheDocument();
+});
+
+test('uses latest campaign metadata for a mixed conversation preview and never falls back to created time', async () => {
+  const projectedCampaignLatest = {
+    ...conversation,
+    last_direction: 'outbound',
+    last_source: 'campaign',
+    last_status: 'unknown',
+    last_queue_status: 'dispatching',
+    last_timestamp_kind: null,
+    last_message: 'رسالة حملة حديثة',
+    // This legacy display timestamp must not be represented as a send receipt.
+    last_message_at: '2026-01-02T11:00:00Z',
+  };
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({
+    data: { conversations: [projectedCampaignLatest], unread_count: 0 },
+  });
+
+  await renderCloudInbox();
+
+  expect(screen.getByTestId(`campaign-conversation-preview-${conversation.id}`))
+    .toHaveTextContent('حملة · لم يتأكد الإرسال · رسالة حملة حديثة');
+  expect(screen.queryByTestId(`campaign-conversation-time-${conversation.id}`)).not.toBeInTheDocument();
 });

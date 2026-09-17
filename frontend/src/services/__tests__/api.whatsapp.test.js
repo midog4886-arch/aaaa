@@ -3,6 +3,7 @@ jest.mock('axios', () => ({
   default: {
     get: jest.fn(),
       post: jest.fn(),
+      delete: jest.fn(),
     interceptors: {
       request: { use: jest.fn() },
     },
@@ -48,5 +49,17 @@ test('sends cloud inbox voice as the documented multipart audio field', () => {
     '/api/whatsapp/cloud-inbox/conversations/branch-a%3A9665/voice',
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+});
+
+test('uses the dedicated archive retry and deletion endpoints', () => {
+  whatsappAPI.retryCloudInboxMediaArchive('message/a');
+  whatsappAPI.deleteCloudInboxMediaArchive('message/a');
+
+  expect(axios.post).toHaveBeenCalledWith(
+    '/api/whatsapp/cloud-inbox/media/message%2Fa/archive-retry',
+  );
+  expect(axios.delete).toHaveBeenCalledWith(
+    '/api/whatsapp/cloud-inbox/media/message%2Fa/archive',
   );
 });

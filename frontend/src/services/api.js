@@ -894,6 +894,10 @@ export const whatsappAPI = {
     axios.get(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}`),
   getCloudInboxMedia: (messageId) =>
     axios.get(`${API}/whatsapp/cloud-inbox/media/${encodeURIComponent(messageId)}`, { responseType: 'blob' }),
+  retryCloudInboxMediaArchive: (messageId) =>
+    axios.post(`${API}/whatsapp/cloud-inbox/media/${encodeURIComponent(messageId)}/archive-retry`),
+  deleteCloudInboxMediaArchive: (messageId) =>
+    axios.delete(`${API}/whatsapp/cloud-inbox/media/${encodeURIComponent(messageId)}/archive`),
   replyCloudInbox: (conversationId, body) =>
     axios.post(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/reply`, { body }),
   sendCloudInboxMedia: (conversationId, formData) =>

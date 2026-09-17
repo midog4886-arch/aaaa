@@ -192,6 +192,107 @@ const cloudAttachmentFilename = (message, response) => {
     : `${filename || fallback}.${extensionForMedia(message, response?.data)}`;
 };
 
+const cloudAttachmentArchiveStatus = (message) => {
+  // Older outbound photo/voice records can have a local storage id from before
+  // archive_status was introduced. They remain saved unless explicitly deleted.
+  if (message?.archive_status === 'deleted') return 'deleted';
+  if (message?.archive_status) return message.archive_status;
+  return message?.media_storage_id ? 'archived' : null;
+};
+
+// Campaign records are projections of the campaign queue, not provider chat
+// receipts. Keep this deliberately separate from ordinary outbound messages:
+// a provider accepting a message is not evidence that it was delivered/read.
+const campaignStatusKey = (value) => (
+  ['pending', 'sent', 'delivered', 'read', 'failed', 'unknown', 'cancelled'].includes(value)
+    ? value
+    : 'unknown'
+);
+
+const isCampaignMessage = (message) => message?.source === 'campaign';
+const isCampaignConversation = (conversation) => conversation?.last_source === 'campaign';
+
+const campaignStatusLabel = (status, t) => ({
+  pending: t('بانتظار الإرسال', 'Awaiting send'),
+  sent: t('مرسلة (لم يتأكد وصولها)', 'Sent (delivery not confirmed)'),
+  delivered: t('وصلت', 'Delivered'),
+  read: t('قُرئت', 'Read'),
+  failed: t('فشلت', 'Failed'),
+  unknown: t('لم يتأكد الإرسال', 'Send not confirmed'),
+  cancelled: t('أُلغيت', 'Cancelled'),
+})[campaignStatusKey(status)];
+
+const campaignTimestampLabel = (kind, t) => ({
+  queued: t('وقت الإضافة للطابور', 'Queued at'),
+  sent: t('وقت الإرسال', 'Sent at'),
+  delivered: t('وقت الوصول', 'Delivered at'),
+  read: t('وقت القراءة', 'Read at'),
+  failed: t('وقت الفشل', 'Failed at'),
+  cancelled: t('وقت الإلغاء', 'Cancelled at'),
+})[kind];
+
+const campaignMessageTimestamp = (message) => {
+  const status = campaignStatusKey(message?.status);
+  const timestamps = {
+    pending: ['queued', message?.queued_at],
+    sent: ['sent', message?.sent_at],
+    delivered: ['delivered', message?.delivered_at],
+    read: ['read', message?.read_at],
+  };
+  // A terminal receipt gets its own receipt time when the provider supplied
+  // one. Otherwise timestamp_kind may still describe an explicit earlier
+  // queue/send event; it must never be replaced by created_at.
+  if (timestamps[status]?.[1]) {
+    return { kind: timestamps[status][0], value: timestamps[status][1] };
+  }
+  const timestampKind = String(message?.timestamp_kind || '').replace(/_at$/, '');
+  const valuesByKind = {
+    queued: message?.queued_at,
+    sent: message?.sent_at,
+    delivered: message?.delivered_at,
+    read: message?.read_at,
+    failed: message?.failed_at,
+    cancelled: message?.cancelled_at,
+  };
+  return valuesByKind[timestampKind]
+    ? { kind: timestampKind, value: valuesByKind[timestampKind] }
+    : null;
+};
+
+const campaignConversationTimestamp = (conversation) => {
+  const kind = String(conversation?.last_timestamp_kind || '').replace(/_at$/, '');
+  const timestampByKind = {
+    queued: conversation?.last_queued_at,
+    sent: conversation?.last_sent_at,
+    delivered: conversation?.last_delivered_at,
+    read: conversation?.last_read_at,
+    failed: conversation?.last_failed_at,
+    cancelled: conversation?.last_cancelled_at,
+  };
+  if (timestampByKind[kind]) return { kind, value: timestampByKind[kind] };
+
+  // Older projections may not include timestamp_kind. The dedicated queue and
+  // send fields are still explicit evidence; never fall back to created_at or
+  // last_message_at and present it as a delivery receipt.
+  const status = campaignStatusKey(conversation?.last_status);
+  if (status === 'pending' && conversation?.last_queued_at) {
+    return { kind: 'queued', value: conversation.last_queued_at };
+  }
+  if (status === 'sent' && conversation?.last_sent_at) {
+    return { kind: 'sent', value: conversation.last_sent_at };
+  }
+  return null;
+};
+
+const formatCloudTimestamp = (value, isRTL) => (
+  value
+    ? new Date(value).toLocaleString(isRTL ? 'ar-SA' : 'en-US', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    })
+    : ''
+);
+
 const ChangeRequestCard = ({ msg, language, onApply, onReject, disabled }) => {
   const cr = msg.change_request || {};
   const fieldKey = cr.field;
@@ -444,6 +545,11 @@ export default function WhatsAppPage() {
   const cloudMediaErrorsRef = useRef({});
   cloudMediaErrorsRef.current = cloudMediaErrors;
   const [cloudMediaFilenames, setCloudMediaFilenames] = useState({});
+  // A delete can race with an already-running media GET. Keep this separate
+  // from object URL state so a late response can never resurrect a tombstone.
+  const cloudDeletedMediaIdsRef = useRef(new Set());
+  const [cloudArchiveActions, setCloudArchiveActions] = useState({});
+  const cloudArchiveActionRequestsRef = useRef(new Map());
   // Object URLs are intentionally cached only for the currently open
   // conversation and auth/branch scope. A 10-second detail poll must not
   // recreate them, otherwise it interrupts active audio playback.
@@ -743,6 +849,7 @@ export default function WhatsAppPage() {
   const clearCloudMedia = (nextScope = null, updateState = true) => {
     Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
     cloudMediaUrlsRef.current = {};
+    cloudDeletedMediaIdsRef.current = new Set();
     cloudMediaScopeRef.current = nextScope;
     if (updateState) {
       setCloudMediaUrls({});
@@ -750,6 +857,33 @@ export default function WhatsAppPage() {
       setCloudMediaErrors({});
       setCloudMediaFilenames({});
     }
+  };
+
+  const clearCloudMediaFailure = (messageId) => {
+    if (!cloudMediaErrorsRef.current[messageId]) return;
+    const remaining = { ...cloudMediaErrorsRef.current };
+    delete remaining[messageId];
+    cloudMediaErrorsRef.current = remaining;
+    setCloudMediaErrors(remaining);
+  };
+
+  const removeCloudMediaForMessage = (messageId) => {
+    const url = cloudMediaUrlsRef.current[messageId];
+    if (url) URL.revokeObjectURL(url);
+
+    const urls = { ...cloudMediaUrlsRef.current };
+    const errors = { ...cloudMediaErrorsRef.current };
+    delete urls[messageId];
+    delete errors[messageId];
+    cloudMediaUrlsRef.current = urls;
+    cloudMediaErrorsRef.current = errors;
+    setCloudMediaUrls(urls);
+    setCloudMediaErrors(errors);
+    setCloudMediaFilenames(previous => {
+      const next = { ...previous };
+      delete next[messageId];
+      return next;
+    });
   };
 
   const loadCloudMedia = (
@@ -772,8 +906,10 @@ export default function WhatsAppPage() {
         && selectedCloudThreadRef.current === conversationId;
     };
     if (
-      !message?.media_id
+      (!message?.media_id && !message?.media_storage_id)
       || !isCurrentMediaScope()
+      || message.archive_status === 'deleted'
+      || cloudDeletedMediaIdsRef.current.has(message.id)
       || cloudMediaUrlsRef.current[message.id]
       || (!forceRetry && cloudMediaErrorsRef.current[message.id]?.kind === 'fetch')
     ) return;
@@ -784,6 +920,7 @@ export default function WhatsAppPage() {
         // branch, or account change. This also prevents a late URL leak.
         if (
           !isCurrentMediaScope()
+          || cloudDeletedMediaIdsRef.current.has(message.id)
           || cloudMediaUrlsRef.current[message.id]
         ) return;
         const url = URL.createObjectURL(mediaResponse.data);
@@ -870,7 +1007,7 @@ export default function WhatsAppPage() {
       setCloudThread(response.data?.conversation || null);
       const messages = response.data?.messages || [];
       setCloudMessages(messages);
-      const mediaMessages = messages.filter(message => message.media_id);
+      const mediaMessages = messages.filter(message => message.media_id || message.media_storage_id);
       mediaMessages.forEach(message => {
         loadCloudMedia(message, branchKey, authScope, viewKey, conversationId);
       });
@@ -895,6 +1032,88 @@ export default function WhatsAppPage() {
     } finally {
       if (isCurrentRequest()) setLoadingCloudInbox(false);
     }
+  };
+
+  const runCloudArchiveAction = async (message, action) => {
+    const conversationId = selectedCloudThreadRef.current;
+    const authScope = cloudAuthScope;
+    const branchKey = cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+      ? cloudBranchFilterRef.current
+      : 'all';
+    const scope = `${authScope}:${branchKey}:${conversationId}`;
+    const actionKey = `${scope}:${message.id}`;
+    if (!conversationId || cloudArchiveActionRequestsRef.current.has(actionKey)) return;
+
+    const request = {};
+    cloudArchiveActionRequestsRef.current.set(actionKey, request);
+    setCloudArchiveActions(previous => ({ ...previous, [actionKey]: action }));
+    const isCurrentScope = () => (
+      cloudMediaScopeRef.current === scope
+      && selectedCloudThreadRef.current === conversationId
+      && cloudBranchesScopeRef.current === authScope
+      && (
+        (cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+          ? cloudBranchFilterRef.current
+          : 'all') === branchKey
+      )
+    );
+
+    try {
+      if (action === 'retry') {
+        await whatsappAPI.retryCloudInboxMediaArchive(message.id);
+        if (!isCurrentScope()) return;
+        // Only discard this attachment's failed GET state. The archive retry is
+        // not an outbound message retry and must not disturb another attachment.
+        clearCloudMediaFailure(message.id);
+        await openCloudThread(conversationId, { refreshInbox: true });
+        if (isCurrentScope()) {
+          toast.success(t('تمت إعادة محاولة حفظ المرفق', 'Attachment archiving was retried'));
+        }
+        return;
+      }
+
+      await whatsappAPI.deleteCloudInboxMediaArchive(message.id);
+      if (!isCurrentScope()) return;
+      cloudDeletedMediaIdsRef.current.add(message.id);
+      removeCloudMediaForMessage(message.id);
+      // Keep the message itself while immediately preventing its media controls
+      // from rendering. The next detail refresh remains authoritative.
+      setCloudMessages(previous => previous.map(current => (
+        current.id === message.id
+          ? { ...current, archive_status: 'deleted' }
+          : current
+      )));
+      toast.success(t('تم حذف النسخة المحفوظة من النظام', 'Saved attachment deleted from the system'));
+    } catch (error) {
+      if (isCurrentScope()) {
+        toast.error(apiErrorMessage(
+          error,
+          action === 'retry'
+            ? t('تعذرت إعادة محاولة حفظ المرفق', 'Could not retry attachment archiving')
+            : t('تعذر حذف النسخة المحفوظة', 'Could not delete saved attachment'),
+        ));
+      }
+    } finally {
+      if (cloudArchiveActionRequestsRef.current.get(actionKey) === request) {
+        cloudArchiveActionRequestsRef.current.delete(actionKey);
+        setCloudArchiveActions(previous => {
+          const next = { ...previous };
+          delete next[actionKey];
+          return next;
+        });
+      }
+    }
+  };
+
+  const handleCloudArchiveRetry = (message) => runCloudArchiveAction(message, 'retry');
+
+  const handleCloudArchiveDelete = (message) => {
+    if (!isAdmin) return;
+    if (!window.confirm(t(
+      'سيُحذف المرفق المحفوظ من النظام نهائيًا مع بقاء الرسالة. هل تريد المتابعة؟',
+      'The saved attachment will be permanently deleted while the message remains. Continue?',
+    ))) return;
+    runCloudArchiveAction(message, 'delete');
   };
 
   const openMemberProfile = (member) => {
@@ -3356,8 +3575,14 @@ export default function WhatsAppPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {cloudConversations.map(conversation => (
-                        <button
+                      {cloudConversations.map(conversation => {
+                        const campaignConversation = isCampaignConversation(conversation);
+                        const campaignStatus = campaignStatusKey(conversation.last_status);
+                        const campaignTime = campaignConversation
+                          ? campaignConversationTimestamp(conversation)
+                          : null;
+                        return (
+                          <button
                           type="button"
                           key={conversation.id}
                           onClick={() => openCloudThread(conversation.id)}
@@ -3396,21 +3621,45 @@ export default function WhatsAppPage() {
                                    t={t}
                                    compact
                                  />
-                                <p className="text-sm text-muted-foreground truncate mt-1">
-                                  {conversation.last_direction === 'outbound' ? t('أنت: ', 'You: ') : ''}
-                                  {conversation.last_message}
-                                </p>
+                                 <p
+                                   className="text-sm text-muted-foreground truncate mt-1"
+                                   data-testid={campaignConversation ? `campaign-conversation-preview-${conversation.id}` : undefined}
+                                 >
+                                   {campaignConversation ? (
+                                     <>
+                                       <span>{t('حملة', 'Campaign')} · {campaignStatusLabel(campaignStatus, t)}</span>
+                                       {conversation.last_message && <span> · {conversation.last_message}</span>}
+                                     </>
+                                   ) : (
+                                     <>
+                                       {conversation.last_direction === 'outbound' ? t('أنت: ', 'You: ') : ''}
+                                       {conversation.last_message}
+                                     </>
+                                   )}
+                                 </p>
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0">
-                              <span className="text-xs text-muted-foreground">
-                                {conversation.last_message_at ? new Date(conversation.last_message_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : ''}
-                              </span>
+                               {campaignConversation ? (
+                                 campaignTime && (
+                                   <span
+                                     className="text-xs text-muted-foreground text-end"
+                                     data-testid={`campaign-conversation-time-${conversation.id}`}
+                                   >
+                                     {campaignTimestampLabel(campaignTime.kind, t)}: {formatCloudTimestamp(campaignTime.value, isRTL)}
+                                   </span>
+                                 )
+                               ) : (
+                                 <span className="text-xs text-muted-foreground">
+                                   {formatCloudTimestamp(conversation.last_message_at, isRTL)}
+                                 </span>
+                               )}
                               {conversation.unread_count > 0 && <Badge className="bg-green-600">{conversation.unread_count}</Badge>}
                             </div>
                           </div>
-                        </button>
-                      ))}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -3448,9 +3697,18 @@ export default function WhatsAppPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4">
+                  <p className="mb-3 text-xs text-muted-foreground" data-testid="cloud-attachment-archive-note">
+                    {t(
+                      'تُحفظ المرفقات الخاصة في النظام دون انتهاء تلقائي، بحد أقصى 20 ميجابايت لكل مرفق.',
+                      'Attachments are stored privately without automatic expiry (up to 20 MB each).',
+                    )}
+                  </p>
                   <ChatMessageViewport key={selectedCloudThread} className="max-h-[520px] overflow-y-auto mb-4 p-2 bg-muted/20 rounded-lg">
                     {cloudMessages.map(message => {
                       const outbound = message.direction === 'outbound';
+                      const campaignMessage = isCampaignMessage(message);
+                      const campaignStatus = campaignStatusKey(message.status);
+                      const campaignTime = campaignMessage ? campaignMessageTimestamp(message) : null;
                       const statusText = {
                         sent: t('أُرسلت', 'Sent'),
                         delivered: t('وصلت', 'Delivered'),
@@ -3464,6 +3722,21 @@ export default function WhatsAppPage() {
                         unknown: t('نتيجة الإرسال غير مؤكدة', 'Delivery outcome unknown'),
                         cancelled: t('ملغاة', 'Cancelled')
                       }[message.status] || message.status;
+                      const archiveStatus = cloudDeletedMediaIdsRef.current.has(message.id)
+                        ? 'deleted'
+                        : cloudAttachmentArchiveStatus(message);
+                      const archiveStatusText = {
+                        archived: t('محفوظ بالنظام', 'Saved in the system'),
+                        pending: t('جارٍ الحفظ', 'Saving'),
+                        failed: t('تعذر الحفظ', 'Could not save'),
+                        unavailable: t('لم يعد متاحًا لدى المزوّد', 'No longer available from provider'),
+                        unsupported: t('غير مدعوم', 'Unsupported'),
+                        deleted: t('حُذف المرفق', 'Attachment deleted'),
+                      }[archiveStatus];
+                      const archiveActionKey = `${cloudMediaScopeRef.current}:${message.id}`;
+                      const archiveAction = cloudArchiveActions[archiveActionKey];
+                      const archiveCanRetry = archiveStatus === 'failed' || archiveStatus === 'unavailable';
+                      const tombstoned = archiveStatus === 'deleted';
                       return (
                         <div
                           key={message.id}
@@ -3471,16 +3744,96 @@ export default function WhatsAppPage() {
                             outbound
                               ? 'bg-green-100 border border-green-200 me-auto'
                               : 'bg-white border border-border ms-auto'
-                          }`}
+                          } ${campaignMessage ? 'ring-1 ring-amber-200' : ''}`}
+                          data-testid={campaignMessage ? `campaign-message-${message.id}` : undefined}
                         >
+                          {campaignMessage && (
+                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                              <Badge
+                                variant="outline"
+                                className="border-amber-300 bg-amber-50 text-amber-900 text-[10px]"
+                              >
+                                {t('رسالة حملة', 'Campaign message')}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className="text-[10px]"
+                                title={campaignStatus === 'sent'
+                                  ? t('قبل المزوّد الرسالة، لكن لا يوجد تأكيد وصول أو قراءة.', 'The provider accepted the message; delivery and read are not confirmed.')
+                                  : undefined}
+                                data-testid={`campaign-message-status-${message.id}`}
+                              >
+                                {campaignStatusLabel(campaignStatus, t)}
+                              </Badge>
+                            </div>
+                          )}
                           {message.body ? (
                             <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
                           ) : (
                             <p className="text-sm text-muted-foreground">[{message.type}]</p>
                           )}
-                          {message.media_id && (
+                          {(message.media_id || message.media_storage_id) && (
                             <div className="mt-2">
-                              {!cloudMediaUrls[message.id] && cloudMediaErrors[message.id]?.kind === 'fetch' ? (
+                              {archiveStatusText && (
+                                <div className="flex flex-wrap items-center gap-2 mb-1 text-xs">
+                                  <span
+                                    className={
+                                      archiveStatus === 'archived'
+                                        ? 'text-green-700'
+                                        : archiveStatus === 'pending' || archiveStatus === 'deleted'
+                                          ? 'text-muted-foreground'
+                                          : 'text-amber-700'
+                                    }
+                                    data-testid={`cloud-archive-status-${message.id}`}
+                                  >
+                                    {archiveStatusText}
+                                  </span>
+                                  {archiveCanRetry && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2"
+                                      disabled={Boolean(archiveAction)}
+                                      data-testid={`retry-cloud-archive-${message.id}`}
+                                      onClick={() => handleCloudArchiveRetry(message)}
+                                    >
+                                      {archiveAction === 'retry'
+                                        ? <Loader2 className="w-3 h-3 animate-spin me-1" />
+                                        : <RefreshCcw className="w-3 h-3 me-1" />}
+                                      {t('إعادة محاولة الحفظ', 'Retry saving')}
+                                    </Button>
+                                  )}
+                                  {archiveStatus === 'archived' && isAdmin && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2 border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                                      disabled={Boolean(archiveAction)}
+                                      data-testid={`delete-cloud-archive-${message.id}`}
+                                      onClick={() => handleCloudArchiveDelete(message)}
+                                    >
+                                      {archiveAction === 'delete'
+                                        ? <Loader2 className="w-3 h-3 animate-spin me-1" />
+                                        : <Trash2 className="w-3 h-3 me-1" />}
+                                      {t('حذف النسخة المحفوظة', 'Delete saved copy')}
+                                    </Button>
+                                  )}
+                                  {archiveStatus && !['archived', 'pending', 'deleted'].includes(archiveStatus)
+                                    && message.archive_error && (
+                                    <span className="text-muted-foreground break-words">{message.archive_error}</span>
+                                  )}
+                                </div>
+                              )}
+                              {tombstoned ? (
+                                <div
+                                  className="text-xs text-muted-foreground border border-dashed rounded-md px-2 py-1"
+                                  data-testid={`cloud-archive-tombstone-${message.id}`}
+                                >
+                                  {t('حُذف المرفق من النظام مع بقاء الرسالة', 'Attachment deleted from the system; message retained')}
+                                </div>
+                              ) : !cloudMediaUrls[message.id] && cloudMediaErrors[message.id]?.kind === 'fetch' ? (
                                 <div className="flex flex-wrap items-center gap-2 text-xs text-red-600">
                                   <span>{t('تعذر تحميل المرفق', 'Could not load attachment')}</span>
                                   <Button
@@ -3490,10 +3843,7 @@ export default function WhatsAppPage() {
                                     className="h-7 px-2"
                                     data-testid={`retry-cloud-media-${message.id}`}
                                     onClick={() => {
-                                      const remaining = { ...cloudMediaErrorsRef.current };
-                                      delete remaining[message.id];
-                                      cloudMediaErrorsRef.current = remaining;
-                                      setCloudMediaErrors(remaining);
+                                      clearCloudMediaFailure(message.id);
                                       const branchKey = cloudBranchFilterRef.current
                                         && cloudBranchFilterRef.current !== 'all'
                                         ? cloudBranchFilterRef.current
@@ -3570,9 +3920,20 @@ export default function WhatsAppPage() {
                             </div>
                           )}
                           <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-muted-foreground">
-                            <span>{new Date(message.created_at).toLocaleString(isRTL ? 'ar-SA' : 'en-US', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                            <span>· {statusText}</span>
-                            {message.source === 'campaign' && <span>· {t('رسالة حملة', 'Campaign message')}</span>}
+                            {campaignMessage ? (
+                              <>
+                                {campaignTime && (
+                                  <span data-testid={`campaign-message-time-${message.id}`}>
+                                    {campaignTimestampLabel(campaignTime.kind, t)}: {formatCloudTimestamp(campaignTime.value, isRTL)}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <span>{formatCloudTimestamp(message.created_at, isRTL)}</span>
+                                <span>· {statusText}</span>
+                              </>
+                            )}
                             {message.type === 'template' && <span>· {t('قالب Meta', 'Meta template')}</span>}
                             {message.error && <span className="text-red-600">· {message.error}</span>}
                           </div>

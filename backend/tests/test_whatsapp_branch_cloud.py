@@ -1076,6 +1076,154 @@ def test_whatsflow_media_provider_failure_and_branch_denial_are_safe(monkeypatch
     assert called == ["missing-upstream"]
 
 
+def test_archive_retry_and_delete_enforce_branch_admin_and_tombstone(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "archive-private", "branch_id": "branch-b", "direction": "inbound",
+        "type": "image", "media_id": "provider-image", "archive_status": "pending",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    with pytest.raises(Exception) as retry_denied:
+        run(whatsapp_mod.retry_cloud_inbox_media_archive(
+            "archive-private",
+            current_user={"is_admin": False, "permissions": ["messages"], "branch_id": "branch-a"},
+        ))
+    assert retry_denied.value.status_code == 403
+
+    with pytest.raises(Exception) as delete_denied:
+        run(whatsapp_mod.delete_cloud_inbox_media_archive(
+            "archive-private",
+            current_user={"is_admin": False, "permissions": ["messages"], "branch_id": "branch-b"},
+        ))
+    assert delete_denied.value.status_code == 403
+
+    deleted = []
+
+    async def fake_delete(_db, _tenant, branch_id, storage_id, message_id=None, **kwargs):
+        deleted.append((branch_id, storage_id, message_id, kwargs.get("cleanup_owner")))
+
+    monkeypatch.setattr(whatsapp_mod.whatsapp_media_archive, "delete", fake_delete)
+    assert run(whatsapp_mod.delete_cloud_inbox_media_archive(
+        "archive-private", current_user={"is_admin": True},
+    )) == {"success": True}
+    assert db["whatsapp_cloud_messages"].rows[0]["archive_status"] == "deleted"
+    assert deleted == [("branch-b", None, "archive-private", True)]
+    with pytest.raises(Exception) as read_deleted:
+        run(whatsapp_mod.get_cloud_inbox_media("archive-private", current_user={"is_admin": True}))
+    assert read_deleted.value.status_code == 410
+
+
+def test_archive_retry_does_not_clear_a_live_worker_lease(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "archive-busy", "branch_id": "branch-a", "direction": "inbound",
+        "type": "image", "media_id": "provider-image", "archive_status": "failed",
+        "archive_lease_until": "2999-01-01T00:00:00+00:00",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    with pytest.raises(Exception) as busy:
+        run(whatsapp_mod.retry_cloud_inbox_media_archive(
+            "archive-busy", current_user={"is_admin": True},
+        ))
+    assert busy.value.status_code == 409
+    assert db["whatsapp_cloud_messages"].rows[0]["archive_lease_until"].startswith("2999")
+
+
+def test_archived_inbound_read_never_uses_expired_or_unconfigured_provider(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "archived-local", "branch_id": "branch-a", "provider": "meta_cloud",
+        "direction": "inbound", "type": "image", "media_id": "expired-provider-id",
+        "media_storage_id": "archive-stage-private", "archive_status": "archived",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    called = []
+
+    async def local_load(branch_id, storage_id):
+        called.append((branch_id, storage_id))
+        return b"\x89PNG\r\n\x1a\nlocal", "image/png", "local.png"
+
+    async def provider_config(_branch_id):
+        raise AssertionError("provider lookup must not occur for archived media")
+
+    monkeypatch.setattr(whatsapp_mod, "_load_cloud_chat_image", local_load)
+    monkeypatch.setattr(whatsapp_mod, "_get_branch_cloud_config", provider_config)
+    response = run(whatsapp_mod.get_cloud_inbox_media(
+        "archived-local", current_user={"is_admin": True},
+    ))
+    assert response.body == b"\x89PNG\r\n\x1a\nlocal"
+    assert called == [("branch-a", "archive-stage-private")]
+
+
+def test_archive_delete_removes_unshared_legacy_direct_media_only(monkeypatch):
+    class Cursor:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def limit(self, count):
+            self.rows = self.rows[:count]
+            return self
+
+        async def to_list(self, length=None):
+            return [dict(row) for row in self.rows[:length]]
+
+    class Messages(_Collection):
+        def find(self, query, projection=None):
+            return Cursor([
+                row for row in self.rows
+                if row.get("branch_id") == query["branch_id"]
+                and row.get("media_storage_id") == query["media_storage_id"]
+            ])
+
+    db = _DB()
+    db.collections["whatsapp_cloud_messages"] = Messages([{
+        "id": "sent-image", "branch_id": "branch-a",
+        "media_storage_id": "legacy-private-copy",
+    }])
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    deleted = []
+
+    async def physical_delete(branch_id, media_id):
+        deleted.append((branch_id, media_id))
+
+    monkeypatch.setattr(whatsapp_mod, "_delete_cloud_chat_image", physical_delete)
+    run(whatsapp_mod._delete_unshared_cloud_chat_media(
+        "branch-a", "legacy-private-copy", "sent-image"))
+    assert deleted == [("branch-a", "legacy-private-copy")]
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "other-message", "branch_id": "branch-a",
+        "media_storage_id": "legacy-private-copy",
+    })
+    run(whatsapp_mod._delete_unshared_cloud_chat_media(
+        "branch-a", "legacy-private-copy", "sent-image"))
+    assert deleted == [("branch-a", "legacy-private-copy")]
+
+
+def test_media_get_rechecks_delete_tombstone_after_provider_download(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "delete-race", "branch_id": "branch-a", "direction": "inbound",
+        "provider": "waha", "type": "image", "media_id": "provider-image",
+        "media_url": "https://configured.example/media", "archive_status": "pending",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+
+    async def download(_message):
+        return b"\x89PNG\r\n\x1a\nprivate", "image/png", "race.png"
+
+    async def persist_then_delete(message, *_args):
+        # Represents the authorized delete committing while GET is waiting on
+        # archive persistence after its provider fetch.
+        message_row = db["whatsapp_cloud_messages"].rows[0]
+        message_row["archive_status"] = "deleted"
+
+    monkeypatch.setattr(whatsapp_mod, "_download_inbound_archive_media", download)
+    monkeypatch.setattr(whatsapp_mod, "_persist_fetched_inbound_archive", persist_then_delete)
+    with pytest.raises(Exception) as deleted:
+        run(whatsapp_mod.get_cloud_inbox_media("delete-race", current_user={"is_admin": True}))
+    assert deleted.value.status_code == 410
+
+
 def test_meta_webhook_routes_multi_phone_batch_to_each_branch(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
     db = _DB()

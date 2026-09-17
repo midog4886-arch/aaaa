@@ -26,6 +26,69 @@ def test_projection_preserves_status_without_marking_delivery(status):
     assert message["created_at"] == "2026-09-10T00:00:00+00:00"
 
 
+def test_pending_projection_is_queued_not_sent():
+    message = inbox.as_message(item(status="pending"))
+    assert message["source"] == "campaign"
+    assert message["queue_status"] == "pending"
+    assert message["delivery_status"] is None
+    assert message["sent_at"] == ""
+    assert message["queued_at"] == message["created_at"]
+    assert message["display_at"] == message["created_at"]
+    assert message["timestamp_kind"] == "queued"
+
+
+@pytest.mark.parametrize("status", ["dispatching", "unknown", "failed"])
+def test_non_sent_queue_states_never_get_a_sent_timestamp(status):
+    message = inbox.as_message(item(
+        status=status,
+        completed_at=datetime(2026, 9, 10, 1),
+        sent_at=datetime(2026, 9, 10, 1),
+    ))
+    assert message["sent_at"] == ""
+    assert message["status"] == ("failed" if status == "failed" else
+                                 ("pending" if status == "dispatching" else "unknown"))
+    if status == "failed":
+        assert message["failed_at"] == "2026-09-10T01:00:00+00:00"
+        assert message["timestamp_kind"] == "failed"
+
+
+def test_completed_sent_item_projects_provider_acceptance_not_delivery():
+    message = inbox.as_message(item(completed_at=datetime(2026, 9, 10, 1)))
+    assert message["status"] == "sent"
+    assert message["delivery_status"] is None
+    assert message["sent_at"] == "2026-09-10T01:00:00+00:00"
+    assert message["timestamp_kind"] == "sent"
+    assert message["display_at"] == message["sent_at"]
+    assert message["created_at"] == "2026-09-10T00:00:00+00:00"
+
+
+def test_delivery_and_read_need_the_exact_provider_id():
+    delivered = inbox.as_message(item(
+        provider_message_id="exact", delivery_status="delivered",
+        delivered_at=datetime(2026, 9, 10, 2),
+        completed_at=datetime(2026, 9, 10, 1),
+    ))
+    assert delivered["status"] == "delivered"
+    assert delivered["delivery_status"] == "delivered"
+    assert delivered["delivered_at"] == "2026-09-10T02:00:00+00:00"
+    assert delivered["timestamp_kind"] == "delivered"
+
+    read = inbox.as_message(item(
+        provider_message_id="exact", receipt_status="read",
+        read_at=datetime(2026, 9, 10, 3),
+    ))
+    assert read["status"] == "read"
+    assert read["read_at"] == "2026-09-10T03:00:00+00:00"
+    assert read["timestamp_kind"] == "read"
+
+    uncorrelated = inbox.as_message(item(
+        delivery_status="delivered", delivered_at=datetime(2026, 9, 10, 2),
+    ))
+    assert uncorrelated["status"] == "sent"
+    assert uncorrelated["delivery_status"] is None
+    assert uncorrelated["delivered_at"] == ""
+
+
 def test_projection_preserves_multiple_media_and_caption_rules():
     ref = {"media_type": "image", "mime_type": "image/png", "filename": "offer.png"}
     first = inbox.as_message(item(attachment=ref, media_index=0))
@@ -63,6 +126,22 @@ def test_old_messages_without_ids_are_not_guessed_equal_by_text():
     assert len(inbox.merge_messages([first], [second])) == 2
 
 
+def test_out_of_order_campaign_projection_does_not_regress_exact_receipt():
+    projected = inbox.as_message(item(
+        provider_message_id="external",
+        completed_at=datetime(2026, 9, 10, 1),
+    ))
+    receipt_echo = {
+        **projected, "id": "webhook", "status": "read",
+        "delivery_status": "read", "read_at": "2026-09-10T02:00:00+00:00",
+    }
+    merged = inbox.merge_messages([receipt_echo], [projected])
+    assert merged[0]["status"] == "read"
+    assert merged[0]["delivery_status"] == "read"
+    assert merged[0]["read_at"] == "2026-09-10T02:00:00+00:00"
+    assert merged[0]["timestamp_kind"] == "read"
+
+
 class Cursor:
     def __init__(self, rows):
         self.rows = rows
@@ -95,6 +174,23 @@ def test_read_only_projection_queries_scope_branch_and_phone():
     rows = asyncio.run(inbox.conversations(db, {"branch_id": "a"}))
     assert collection.pipeline[0]["$match"]["branch_id"] == "a"
     assert rows[0]["unread_count"] == 0
+    assert {
+        key: rows[0][key] for key in (
+            "last_source", "last_status", "last_queue_status",
+            "last_queued_at", "last_sent_at", "last_delivered_at",
+            "last_read_at", "last_failed_at", "last_cancelled_at",
+            "last_timestamp_kind",
+            "last_message_at",
+        )
+    } == {
+        "last_source": "campaign", "last_status": "sent",
+        "last_queue_status": "sent",
+        "last_queued_at": "2026-09-10T00:00:00+00:00",
+        "last_sent_at": "", "last_delivered_at": "", "last_read_at": "",
+        "last_failed_at": "", "last_cancelled_at": "",
+        "last_timestamp_kind": "queued",
+        "last_message_at": "2026-09-10T00:00:00+00:00",
+    }
 
 
 def test_virtual_thread_denies_foreign_branch_before_read(monkeypatch):

@@ -74,6 +74,198 @@ class DB:
         return self.data.setdefault(name, Collection())
 
 
+class ReceiptCollection(Collection):
+    """Small Mongo-like store for receipt-buffer race regression coverage."""
+    async def create_index(self, *args, **kwargs):
+        return "index"
+
+    async def update_one(self, query, update, upsert=False):
+        row = next((row for row in self.rows if _matches(row, query)), None)
+        if row:
+            row.update(update.get("$set", {}))
+            return type("Result", (), {
+                "matched_count": 1, "modified_count": 1, "upserted_id": None,
+            })()
+        if upsert:
+            row = {
+                key: value for key, value in query.items()
+                if not isinstance(value, dict)
+            }
+            row.update(update.get("$setOnInsert", {}))
+            row.update(update.get("$set", {}))
+            self.rows.append(row)
+            return type("Result", (), {
+                "matched_count": 0, "modified_count": 0, "upserted_id": "new",
+            })()
+        return type("Result", (), {
+            "matched_count": 0, "modified_count": 0, "upserted_id": None,
+        })()
+
+    async def delete_one(self, query):
+        for index, row in enumerate(self.rows):
+            if _matches(row, query):
+                self.rows.pop(index)
+                return type("Result", (), {"deleted_count": 1})()
+        return type("Result", (), {"deleted_count": 0})()
+
+
+class ReceiptDB(DB):
+    def __init__(self, item_rows=None):
+        super().__init__(item_rows=item_rows)
+        self.data["whatsapp_campaign_job_items"] = ReceiptCollection(item_rows)
+        self.data[jobs.RECEIPT_BUFFER_COLLECTION] = ReceiptCollection()
+
+
+@pytest.mark.parametrize("provider", ["meta_cloud", "waha", "whatsflow"])
+def test_receipt_before_send_response_reconciles_exact_provider_id(monkeypatch, provider):
+    db = ReceiptDB()
+    monkeypatch.setattr(jobs, "_db", db)
+    received_at = "2026-01-01T01:00:00+00:00"
+
+    # The authenticated callback wins the race with the send response. There
+    # is no item mapping yet, so only durable provider-ID evidence is kept.
+    assert run(jobs.record_receipt(
+        "branch-a", provider, "provider-id", "delivered",
+        timestamp=received_at, tenant_slug="tenant-a",
+    )) == 0
+    assert db[jobs.RECEIPT_BUFFER_COLLECTION].rows[0]["provider_message_id"] == "provider-id"
+
+    # Simulate the send response saving its exact ID after the callback.
+    db["whatsapp_campaign_job_items"].rows.append({
+        "id": "item-1", "branch_id": "branch-a", "provider": provider,
+        "provider_message_id": "provider-id", "status": "sent",
+    })
+    assert run(jobs.reconcile_receipt(
+        "branch-a", provider, "provider-id", tenant_slug="tenant-a",
+    )) == 1
+    item = db["whatsapp_campaign_job_items"].rows[0]
+    assert item["delivery_status"] == "delivered"
+    assert item["delivered_at"] == received_at
+    assert not db[jobs.RECEIPT_BUFFER_COLLECTION].rows
+
+
+def test_response_saved_between_receipt_lookup_and_buffer_write_is_not_lost(monkeypatch):
+    db = ReceiptDB()
+    monkeypatch.setattr(jobs, "_db", db)
+    buffer = db[jobs.RECEIPT_BUFFER_COLLECTION]
+    original_update = buffer.update_one
+    saved = False
+
+    async def write_receipt_then_save_response(query, update, upsert=False):
+        nonlocal saved
+        result = await original_update(query, update, upsert)
+        if upsert and not saved:
+            saved = True
+            db["whatsapp_campaign_job_items"].rows.append({
+                "id": "item-1", "branch_id": "branch-a",
+                "provider": "meta_cloud", "provider_message_id": "race-id",
+                "status": "sent",
+            })
+        return result
+
+    buffer.update_one = write_receipt_then_save_response
+    assert run(jobs.record_receipt(
+        "branch-a", "meta_cloud", "race-id", "delivered",
+        timestamp="2026-01-01T01:00:00+00:00", tenant_slug="tenant-a",
+    )) == 1
+    assert db["whatsapp_campaign_job_items"].rows[0]["delivery_status"] == "delivered"
+    assert not buffer.rows
+
+
+def test_receipt_buffer_is_tenant_branch_provider_scoped_and_waha_alias_safe(monkeypatch):
+    db = ReceiptDB()
+    monkeypatch.setattr(jobs, "_db", db)
+    run(jobs.record_receipt(
+        "branch-a", "waha", "stanza-id", "read",
+        timestamp="2026-01-01T02:00:00+00:00", tenant_slug="tenant-a",
+    ))
+    db["whatsapp_campaign_job_items"].rows.append({
+        "id": "item-1", "branch_id": "branch-a", "provider": "waha",
+        "provider_message_id": "canonical@id", "status": "sent",
+    })
+
+    # Wrong scope cannot consume the buffered receipt.
+    assert run(jobs.reconcile_receipt(
+        "branch-b", "waha", "canonical@id",
+        aliases=["stanza-id"], tenant_slug="tenant-a",
+    )) == 0
+    assert run(jobs.reconcile_receipt(
+        "branch-a", "meta_cloud", "canonical@id",
+        aliases=["stanza-id"], tenant_slug="tenant-a",
+    )) == 0
+    assert run(jobs.reconcile_receipt(
+        "branch-a", "waha", "canonical@id",
+        aliases=["stanza-id"], tenant_slug="tenant-b",
+    )) == 0
+
+    assert run(jobs.reconcile_receipt(
+        "branch-a", "waha", "canonical@id",
+        aliases=["stanza-id"], tenant_slug="tenant-a",
+    )) == 1
+    assert db["whatsapp_campaign_job_items"].rows[0]["delivery_status"] == "read"
+
+
+def test_failure_before_ack_and_late_receipts_remain_monotonic(monkeypatch):
+    db = ReceiptDB([{
+        "id": "item-1", "branch_id": "branch-a", "provider": "meta_cloud",
+        "provider_message_id": "meta-media-response-id", "status": "sent",
+    }])
+    monkeypatch.setattr(jobs, "_db", db)
+
+    run(jobs.record_receipt(
+        "branch-a", "meta_cloud", "meta-media-response-id", "failed",
+        timestamp="2026-01-01T00:00:00+00:00", error="temporary",
+        tenant_slug="tenant-a",
+    ))
+    run(jobs.record_receipt(
+        "branch-a", "meta_cloud", "meta-media-response-id", "accepted",
+        timestamp="2026-01-01T00:30:00+00:00", tenant_slug="tenant-a",
+    ))
+    run(jobs.record_receipt(
+        "branch-a", "meta_cloud", "meta-media-response-id", "read",
+        timestamp="2026-01-01T02:00:00+00:00", tenant_slug="tenant-a",
+    ))
+    run(jobs.record_receipt(
+        "branch-a", "meta_cloud", "meta-media-response-id", "delivered",
+        timestamp="2026-01-01T01:00:00+00:00", tenant_slug="tenant-a",
+    ))
+    run(jobs.record_receipt(
+        "branch-a", "meta_cloud", "meta-media-response-id", "accepted",
+        timestamp="2026-01-01T00:15:00+00:00", tenant_slug="tenant-a",
+    ))
+    item = db["whatsapp_campaign_job_items"].rows[0]
+    assert item["delivery_status"] == "read"
+    assert item["accepted_at"] == "2026-01-01T00:30:00+00:00"
+    assert item["read_at"] == "2026-01-01T02:00:00+00:00"
+    assert item["error"] is None
+
+
+def test_campaign_success_without_provider_id_is_unknown_and_not_resent(monkeypatch):
+    calls = []
+
+    async def no_id_meta_response(*args, **kwargs):
+        calls.append(args)
+        return True, None, None
+
+    async def fence():
+        return None
+
+    monkeypatch.setattr(
+        whatsapp_mod, "_send_meta_cloud_message_result", no_id_meta_response
+    )
+    with pytest.raises(RuntimeError, match="missing_message_id"):
+        run(whatsapp_mod._dispatch_bulk_job_item(
+            {
+                "id": "item-1", "branch_id": "branch-a",
+                "provider": "meta_cloud", "phone": "966500000001",
+                "message": "campaign", "media_index": 0,
+            },
+            {},
+            fence,
+        ))
+    assert len(calls) == 1
+
+
 def test_report_groups_attachment_items_and_requires_receipts_for_delivery(monkeypatch):
     db = DB(
         [{"id": "job-1", "branch_id": "branch-a", "created_at": datetime.now(timezone.utc)}],

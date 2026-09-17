@@ -85,3 +85,4 @@
 - [WhatsApp reply-state evidence](whatsapp-reply-state.md) — unread is not unanswered; human replies need durable evidence and reversed-event ordering tests.
 - [WhatsApp voice recording](whatsapp-voice-recording.md) — streaming WebM may have no duration; normalize bounded mono Opus and never auto-send or retry uncertain delivery.
 - [WhatsApp member association](whatsapp-member-association.md) — derive branch-local unique matches; include formatted-number siblings even when an exact match exists.
+- [WhatsApp media retention](whatsapp-media-retention.md) — private archive survives provider expiry; deletion tombstones win over downloads and lease losers clean only their own staging.

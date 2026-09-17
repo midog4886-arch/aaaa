@@ -36,6 +36,7 @@ from utils.tenant import (
 )
 from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient
+from services import whatsapp_media_archive
 from services import whatsapp_bulk_jobs
 from services import campaign_inbox, registration_followups
 from services import campaign_inquiry_automation
@@ -631,6 +632,39 @@ def _canonical_waha_message_id(value) -> Optional[str]:
     return str(value) if value not in (None, "") else None
 
 
+def _waha_message_id_variants(value) -> list[str]:
+    """Return literal WAHA full/stanza identifiers without constructing IDs.
+
+    WAHA responses sometimes contain both ``_serialized`` (the canonical full
+    key) and the stanza ``id``; acknowledgement events may contain only one.
+    Keeping both as explicit aliases lets receipt evidence reconcile them
+    without a phone/body heuristic.  The primary stored provider ID remains
+    the canonical value selected by ``_canonical_waha_message_id``.
+    """
+    values = []
+
+    def visit(candidate):
+        if not isinstance(candidate, dict):
+            if candidate not in (None, ""):
+                values.append(str(candidate))
+            return
+        key = candidate.get("key")
+        if isinstance(key, dict):
+            visit(key)
+        for name in ("_serialized", "id", "messageId"):
+            nested = candidate.get(name)
+            if isinstance(nested, dict):
+                visit(nested)
+            elif nested not in (None, ""):
+                values.append(str(nested))
+
+    visit(value)
+    canonical = _canonical_waha_message_id(value)
+    if canonical:
+        values.insert(0, canonical)
+    return list(dict.fromkeys(value.strip() for value in values if value.strip()))
+
+
 def _normalize_waha_ack(payload: dict) -> str:
     named = payload.get("ackName") or payload.get("status")
     if named not in (None, ""):
@@ -659,17 +693,28 @@ def _waha_chat_id(phone: str) -> str:
 
 
 async def _send_waha_message_result(phone: str, message: str, config: dict):
+    """Compatibility tuple wrapper for existing text-send callers."""
+    ok, message_id, error, _aliases = await _send_waha_message_evidence_result(
+        phone, message, config
+    )
+    return ok, message_id, error
+
+
+async def _send_waha_message_evidence_result(phone: str, message: str, config: dict):
+    """Return the normal WAHA result plus literal full/stanza ID aliases."""
     chat_id = _waha_chat_id(phone)
     session = config.get("waha_physical_session_id") or _waha_physical_session_id(
         str(config.get("branch_id") or ""), str(config.get("waha_session_name") or "")
     )
     if not chat_id or not session:
-        return False, None, "invalid_waha_config"
+        return False, None, "invalid_waha_config", []
     ok, response, error = await WAHAClient().send_text(session, chat_id, message)
     message_id = None
+    aliases = []
     if isinstance(response, dict):
         message_id = _canonical_waha_message_id(response)
-    return ok, message_id, error
+        aliases = _waha_message_id_variants(response)
+    return ok, message_id, error, aliases
 
 
 def _whatsflow_client(config: dict) -> WhatsflowClient:
@@ -721,6 +766,40 @@ def _whatsflow_media_headers(filename: str, mime_type: str) -> dict:
             f"{disposition}; filename=\"{ascii_name}\"; "
             f"filename*=UTF-8''{quote(name, safe='')}"
         ),
+    }
+
+
+def _is_inbound_attachment(message: dict) -> bool:
+    """Only ordinary inbound media is eligible; view-once never enters storage."""
+    return bool(
+        message.get("direction") == "inbound"
+        and message.get("type") in {"image", "audio", "video", "document"}
+        and (message.get("media_id") or message.get("media_url")
+             or (message.get("provider") == "whatsflow" and message.get("provider_message_id")))
+        and not message.get("view_once")
+    )
+
+
+def _provider_marks_view_once(value: object, depth: int = 0) -> bool:
+    """Read provider view-once wrappers without traversing arbitrary payloads."""
+    if not isinstance(value, dict) or depth > 4:
+        return False
+    if any(value.get(key) is True for key in ("view_once", "viewOnce", "isViewOnce")):
+        return True
+    if any(key in value for key in (
+        "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
+    )):
+        return True
+    return any(_provider_marks_view_once(value.get(key), depth + 1)
+               for key in ("message", "_data", "media", "imageMessage",
+                           "videoMessage", "audioMessage", "documentMessage"))
+
+
+def _archive_pending_fields(message: dict) -> dict:
+    if not _is_inbound_attachment(message):
+        return message
+    return {
+        **message, "archive_status": "pending", "archive_error": None,
     }
 
 
@@ -1022,7 +1101,7 @@ async def _send_meta_cloud_message_result(
                 message_id = ((response_data.get("messages") or [{}])[0]).get("id")
             except Exception:
                 message_id = None
-            return True, message_id, None
+            return True, str(message_id) if message_id not in (None, "") else None, None
         logger.error(
             "Meta WhatsApp send failed for branch %s: HTTP %s",
             config.get("branch_id"),
@@ -2778,6 +2857,7 @@ def start_scheduler():
         asyncio.ensure_future(_invoice_payment_outbox_loop())
     if not _class_reminder_started:
         asyncio.ensure_future(_class_reminder_loop())
+    start_media_archive_worker()
 
 
 @router.get("/status")
@@ -3759,7 +3839,7 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                     )
                 media = message.get(message_type) or {}
                 try:
-                    await _db["whatsapp_cloud_messages"].insert_one({
+                    await _db["whatsapp_cloud_messages"].insert_one(_archive_pending_fields({
                         "id": str(uuid.uuid4()),
                         "conversation_id": conversation_id,
                         "branch_id": config["branch_id"],
@@ -3775,7 +3855,9 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                         "created_at": event_at,
                         "received_at": now,
                         "meta_timestamp": message.get("timestamp"),
-                    })
+                        "view_once": _provider_marks_view_once(message)
+                        or _provider_marks_view_once(media),
+                    }))
                 except DuplicateKeyError:
                     continue
                 await registration_followups.note_customer_message(
@@ -3838,6 +3920,7 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                     config["branch_id"], "meta_cloud", meta_id, status_name,
                     timestamp=receipt_at,
                     error=(errors[0].get("title") if errors else None),
+                    tenant_slug=tenant_slug,
                 )
         return {"received": True}
     finally:
@@ -3892,6 +3975,8 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                 await whatsapp_bulk_jobs.record_receipt(
                     config["branch_id"], "waha", message_id, ack_status,
                     timestamp=datetime.now(timezone.utc),
+                    tenant_slug=tenant_slug,
+                    aliases=_waha_message_id_variants(payload),
                 )
             return {"received": True}
         if event not in {"message", "message.any"}:
@@ -4011,7 +4096,7 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         kind = message.get("type") or "text"
         conversation_id = f"{config['branch_id']}:{phone}"
         try:
-            await _db["whatsapp_cloud_messages"].insert_one({"id": str(uuid.uuid4()), "conversation_id": conversation_id,
+            await _db["whatsapp_cloud_messages"].insert_one(_archive_pending_fields({"id": str(uuid.uuid4()), "conversation_id": conversation_id,
                 "branch_id": config["branch_id"], "provider": "waha", "waha_message_id": message_id,
                 "direction": "inbound", "phone": phone, "type": kind, "body": body,
                 "media_id": (message.get("media") or {}).get("url") if isinstance(message.get("media"), dict) else message.get("mediaId"),
@@ -4019,7 +4104,8 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                 "mime_type": (message.get("media") or {}).get("mimetype") if isinstance(message.get("media"), dict) else message.get("mimetype") or message.get("mimeType"),
                 "filename": (message.get("media") or {}).get("filename") if isinstance(message.get("media"), dict) else None,
                 "status": "received", "unread": True,
-                "created_at": now, "received_at": now})
+                "created_at": now, "received_at": now,
+                "view_once": _provider_marks_view_once(message)}))
         except DuplicateKeyError:
             return {"received": True}
         await registration_followups.note_customer_message(
@@ -4620,6 +4706,33 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             update_data = data.get("update") if isinstance(data.get("update"), dict) else {}
             status = str(data.get("status") or update_data.get("status") or "unknown").lower()
             if message_id:
+                # Evolution provides the provider event timestamp in seconds
+                # (some compatible gateways use milliseconds).  It is receipt
+                # evidence, unlike a client/browser clock; reject only clearly
+                # future values and otherwise retain its actual ordering.
+                receipt_at = datetime.now(timezone.utc)
+                try:
+                    raw_receipt_at = (
+                        data.get("messageTimestamp")
+                        or data.get("timestamp")
+                        or update_data.get("messageTimestamp")
+                        or update_data.get("timestamp")
+                    )
+                    receipt_epoch = float(raw_receipt_at)
+                    if receipt_epoch > 1e12:
+                        receipt_epoch /= 1000
+                    candidate = datetime.fromtimestamp(
+                        receipt_epoch, timezone.utc
+                    )
+                    if candidate <= receipt_at + timedelta(minutes=5):
+                        receipt_at = candidate
+                except (ValueError, TypeError, OverflowError, OSError):
+                    pass
+                from_me = (
+                    key.get("fromMe")
+                    if "fromMe" in key
+                    else data.get("fromMe")
+                )
                 await _db["whatsapp_cloud_messages"].update_one(
                     {"branch_id": config["branch_id"], "provider": "whatsflow",
                      "provider_message_id": message_id},
@@ -4632,10 +4745,14 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                     await _reopen_failed_human_reply(
                         config["branch_id"], "whatsflow", message_id
                     )
-                await whatsapp_bulk_jobs.record_receipt(
-                    config["branch_id"], "whatsflow", message_id, status,
-                    timestamp=datetime.now(timezone.utc),
-                )
+                # A receipt for an inbound message (notably the linked device
+                # reading it) is not evidence about an outbound campaign.
+                if from_me is not False:
+                    await whatsapp_bulk_jobs.record_receipt(
+                        config["branch_id"], "whatsflow", message_id, status,
+                        timestamp=receipt_at,
+                        tenant_slug=tenant_slug,
+                    )
 
                 # A READ for fromMe=true is the customer reading our
                 # outbound message.  It must never affect inbox unread state.
@@ -4643,11 +4760,6 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                 # messages.update handler: fromMe=false + READ is the linked
                 # phone reading an inbound message.  Scope the operation to
                 # that exact stored inbound provider ID.
-                from_me = (
-                    key.get("fromMe")
-                    if "fromMe" in key
-                    else data.get("fromMe")
-                )
                 if status == "read" and from_me is False:
                     await _mark_whatsflow_inbound_message_read(
                         config["branch_id"], message_id
@@ -4676,9 +4788,9 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
         phone = "".join(filter(str.isdigit, remote_jid))
         if not phone or not message_id:
             return {"received": True}
-        message = _normalize_whatsflow_message(
-            data.get("message") if isinstance(data.get("message"), dict) else {}
-        )
+        raw_message = data.get("message") if isinstance(data.get("message"), dict) else {}
+        view_once = _provider_marks_view_once(raw_message)
+        message = _normalize_whatsflow_message(raw_message)
         image_message = (
             message.get("imageMessage")
             if isinstance(message.get("imageMessage"), dict)
@@ -4736,7 +4848,7 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             },
         )
         try:
-            await messages.insert_one({
+            await messages.insert_one(_archive_pending_fields({
                 "id": str(uuid.uuid4()), "conversation_id": conversation_id,
                 "branch_id": config["branch_id"], "provider": "whatsflow",
                 "provider_message_id": message_id,
@@ -4765,8 +4877,8 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                     {"echo_source": echo_class}
                     if outbound else {}
                 ),
-                "created_at": event_at, "received_at": now,
-            })
+                "created_at": event_at, "received_at": now, "view_once": view_once,
+            }))
         except DuplicateKeyError:
             existing = await messages.find_one(
                 {
@@ -5156,9 +5268,12 @@ async def list_cloud_inbox_conversations(
         if not existing:
             merged[campaign["id"]] = campaign
         elif campaign["last_message_at"] > campaign_inbox.iso(existing.get("last_message_at")):
-            existing.update({key: campaign[key] for key in (
-                "last_message", "last_message_at", "last_direction",
-            )})
+            # These fields describe one selected message.  Update them as a
+            # unit so a queued campaign preview cannot inherit a stale source,
+            # status, or timestamp kind from the stored conversation.
+            existing.update({
+                key: campaign[key] for key in campaign_inbox.PREVIEW_FIELDS
+            })
     rows = sorted(merged.values(), key=lambda row: campaign_inbox.iso(row.get("last_message_at")), reverse=True)[:200]
     rows = await _enrich_member_phone_matches(
         rows,
@@ -5264,6 +5379,151 @@ def _cloud_media_scope(branch_id: str, media_id: str) -> dict:
         "branch_id": branch_id,
         "media_id": media_id,
     }
+
+
+async def _download_inbound_archive_media(message: dict) -> tuple[bytes, str, str]:
+    """Provider retrieval used only by the durable archive worker.
+
+    Credentials remain in this route/provider integration and are never
+    included in archive errors.  In particular Whatsflow is always asked to
+    decrypt its stored message rather than fetching its encrypted CDN URL.
+    """
+    provider = message.get("provider")
+    branch_id = str(message.get("branch_id") or "")
+    fallback_name = message.get("filename") or "attachment"
+    if provider == "whatsflow":
+        config = await _get_branch_cloud_config(branch_id)
+        client = _whatsflow_client(config or {})
+        if not client.configured:
+            raise whatsapp_media_archive.ArchiveError("unavailable", "Whatsflow attachment is unavailable")
+        ok, media, error = await client.get_base64_from_media_message(
+            str(message.get("provider_message_id") or message.get("whatsflow_message_id") or ""))
+        if not ok or not isinstance(media, dict):
+            status = "unsupported" if error == "media_too_large" else "unavailable" if error in {
+                "http_404", "http_410", "missing_message_id"} else "failed"
+            raise whatsapp_media_archive.ArchiveError(status, "Whatsflow attachment is unavailable" if status == "unavailable" else "Attachment download failed")
+        return media["content"], media["mime_type"], media.get("filename") or fallback_name
+    if provider == "waha":
+        url = str(message.get("media_url") or "")
+        waha = WAHAClient()
+        base = urlparse(waha.base_url)
+        def host_ok(candidate: str) -> bool:
+            parsed = urlparse(candidate)
+            return bool(waha.configured and parsed.scheme in {"http", "https"}
+                        and parsed.scheme == base.scheme and parsed.hostname
+                        and parsed.hostname == base.hostname and parsed.port == base.port)
+        content = await whatsapp_media_archive.stream_download(
+            url, {"X-Api-Key": waha.api_key}, host_ok)
+        return content, str(message.get("mime_type") or ""), fallback_name
+    config = await _get_branch_cloud_config(branch_id)
+    if not config or not config.get("access_token_encrypted") or not message.get("media_id"):
+        raise whatsapp_media_archive.ArchiveError("unavailable", "Meta attachment is unavailable")
+    token = _decrypt_access_token(config["access_token_encrypted"])
+    version = (config.get("graph_api_version") or "v23.0").strip()
+    headers = {"Authorization": f"Bearer {token}"}
+    graph_url = (
+        f"https://graph.facebook.com/{quote(version, safe='.')}/"
+        f"{quote(str(message['media_id']), safe='')}"
+    )
+    metadata_raw = await whatsapp_media_archive.stream_download(
+        graph_url, headers,
+        lambda candidate: (
+            urlparse(candidate).scheme == "https"
+            and (urlparse(candidate).hostname or "").lower() == "graph.facebook.com"
+        ),
+        max_bytes=256 * 1024,
+    )
+    try:
+        metadata = json.loads(metadata_raw.decode("utf-8"))
+        url = str((metadata or {}).get("url") or "")
+    except Exception:
+        raise whatsapp_media_archive.ArchiveError("failed", "Attachment metadata is unavailable")
+    def meta_host_ok(candidate: str) -> bool:
+        parsed = urlparse(candidate)
+        hostname = (parsed.hostname or "").lower()
+        return parsed.scheme == "https" and (
+            hostname == "lookaside.fbsbx.com" or hostname.endswith(".fbcdn.net")
+            or hostname.endswith(".fbsbx.com"))
+    content = await whatsapp_media_archive.stream_download(url, headers, meta_host_ok)
+    return content, str(message.get("mime_type") or metadata.get("mime_type") or ""), fallback_name
+
+
+async def _archive_one_cloud_message(message_id: str) -> str:
+    return await whatsapp_media_archive.process_message(
+        _db, get_current_tenant_slug(), message_id, _download_inbound_archive_media)
+
+
+async def _archive_current_tenant_batch(limit: int = 20) -> int:
+    """Resume newest queued work while steadily enrolling legacy history."""
+    now = datetime.now(timezone.utc).isoformat()
+    messages = _db["whatsapp_cloud_messages"]
+    # Stored copies are a repair-only lane: mark legacy/pending projections
+    # archived from metadata without placing them in the provider backlog.
+    stored_rows = await messages.find({
+        "direction": "inbound", "media_storage_id": {"$exists": True},
+        "archive_status": {"$nin": ["archived", "deleted"]},
+    }, {"_id": 0}).sort("received_at", -1).limit(4).to_list(4)
+    query = {
+        "direction": "inbound",
+        "type": {"$in": ["image", "audio", "video", "document"]},
+        "archive_status": {"$in": ["pending", "failed"]},
+        "media_storage_id": {"$exists": False},
+        "$or": [{"archive_next_at": {"$exists": False}}, {"archive_next_at": {"$lte": now}}],
+    }
+    legacy_slots = min(4, max(0, limit - len(stored_rows)))
+    rows = await messages.find(query, {"_id": 0}).sort("received_at", -1).limit(
+        max(0, limit - legacy_slots - len(stored_rows))).to_list(
+            max(0, limit - legacy_slots - len(stored_rows)))
+    # Historical rows are gradually enrolled oldest-first across all dates;
+    # reserving a few slots prevents an active inbox from starving backfill.
+    legacy = await messages.find({
+        "direction": "inbound", "type": {"$in": ["image", "audio", "video", "document"]},
+        "archive_status": {"$exists": False},
+    }, {"_id": 0}).sort("received_at", 1).limit(legacy_slots).to_list(legacy_slots)
+    for message in legacy:
+        if _is_inbound_attachment(message):
+            await messages.update_one({"id": message["id"], "archive_status": {"$exists": False}},
+                                      {"$set": {"archive_status": "pending", "archive_error": None}})
+            message["archive_status"] = "pending"
+            rows.append(message)
+        else:
+            # Do not let an old malformed/view-once/no-reference row occupy
+            # every oldest-first reservation forever.  It is deliberately
+            # terminal rather than retried or downloaded.
+            await messages.update_one(
+                {"id": message["id"], "archive_status": {"$exists": False}},
+                {"$set": {"archive_status": "unsupported",
+                          "archive_error": "Attachment is not eligible for archive"}},
+            )
+    for message in (stored_rows + rows)[:limit]:
+        await _archive_one_cloud_message(message["id"])
+    return min(len(stored_rows) + len(rows), limit)
+
+
+_media_archive_started = False
+
+
+async def _media_archive_loop():
+    global _media_archive_started
+    _media_archive_started = True
+    from utils.tenant import for_each_active_tenant
+    while True:
+        try:
+            await for_each_active_tenant(
+                lambda _tenant: _archive_current_tenant_batch(),
+                label="whatsapp-media-archive",
+            )
+            await asyncio.sleep(15)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.warning("WhatsApp media archive worker cycle failed")
+            await asyncio.sleep(15)
+
+
+def start_media_archive_worker():
+    if not _media_archive_started:
+        asyncio.ensure_future(_media_archive_loop())
 
 
 async def _read_cloud_chat_image(upload: UploadFile) -> tuple[bytes, str, str]:
@@ -5481,6 +5741,47 @@ async def _delete_cloud_chat_image(branch_id: str, media_id: Optional[str]):
         await meta.delete_one(scope)
 
 
+async def _delete_unshared_cloud_chat_media(
+    branch_id: str, media_id: Optional[str], message_id: str,
+):
+    """Remove a legacy direct-chat object only when this is its sole message.
+
+    Archive-owned chunks are handled by the archive service.  Old sent image
+    and voice copies have no archive ownership marker, so leaving them here
+    would make the delete action a misleading tombstone-only operation.
+    """
+    if not media_id:
+        return
+    try:
+        references = await _db["whatsapp_cloud_messages"].find(
+            {"branch_id": branch_id, "media_storage_id": media_id}, {"_id": 0, "id": 1}
+        ).limit(2).to_list(length=2)
+        if references and all(row.get("id") == message_id for row in references):
+            await _delete_cloud_chat_image(branch_id, media_id)
+    except Exception:
+        # Fail closed: a reference lookup failure must not remove shared bytes.
+        logger.warning("Could not verify direct-chat media ownership for deletion")
+
+
+async def _persist_fetched_inbound_archive(message: dict, content: bytes, mime_type: str, filename: str):
+    """A successful on-demand provider fetch takes the same archive path as worker."""
+    if not _is_inbound_attachment(message) or message.get("archive_status") == "deleted":
+        return
+    if not message.get("archive_status"):
+        await _db["whatsapp_cloud_messages"].update_one(
+            {"id": message["id"], "archive_status": {"$exists": False}},
+            {"$set": {"archive_status": "pending", "archive_error": None}},
+        )
+    await whatsapp_media_archive.process_message(
+        _db, get_current_tenant_slug(), message["id"],
+        lambda _message: _ready_media(content, mime_type, filename),
+    )
+
+
+async def _ready_media(content: bytes, mime_type: str, filename: str):
+    return content, mime_type, filename
+
+
 async def _load_cloud_chat_image(branch_id: str, media_id: str) -> tuple[bytes, str, str]:
     scope = _cloud_media_scope(branch_id, media_id)
     meta = await _db["whatsapp_cloud_media"].find_one(scope, {"_id": 0})
@@ -5497,11 +5798,84 @@ async def _load_cloud_chat_image(branch_id: str, media_id: str) -> tuple[bytes, 
     ):
         raise HTTPException(status_code=500, detail="Stored image data is incomplete")
     content = b"".join(chunk.get("data") or b"" for chunk in chunks)
-    if len(content) > CLOUD_CHAT_AUDIO_LIMIT:
+    if len(content) > whatsapp_media_archive.MAX_MEDIA_BYTES:
         raise HTTPException(status_code=500, detail="Stored media exceeds the allowed size")
     return content, str(meta.get("mime_type") or "application/octet-stream"), str(
         meta.get("name") or "image"
     )
+
+
+@router.post("/cloud-inbox/media/{message_id}/archive-retry")
+async def retry_cloud_inbox_media_archive(
+    message_id: str, current_user: dict = Depends(get_current_user)
+):
+    _require_bulk_whatsapp_access(current_user)
+    message = await _db["whatsapp_cloud_messages"].find_one({"id": message_id}, {"_id": 0})
+    if not message:
+        raise HTTPException(status_code=404, detail="Media not found")
+    _assert_branch_access(current_user, message.get("branch_id"))
+    if message.get("archive_status") == "deleted":
+        raise HTTPException(status_code=410, detail="Media was deleted")
+    if not _is_inbound_attachment(message):
+        raise HTTPException(status_code=400, detail="Only inbound attachments can be archived")
+    now = datetime.now(timezone.utc).isoformat()
+    if str(message.get("archive_lease_until") or "") > now:
+        raise HTTPException(status_code=409, detail="Attachment archive is already in progress")
+    await _db["whatsapp_cloud_messages"].update_one(
+        {
+            "id": message_id, "archive_status": {"$ne": "deleted"},
+            "$or": [{"archive_lease_until": {"$exists": False}},
+                    {"archive_lease_until": {"$lte": now}}],
+        },
+        {"$set": {"archive_status": "pending", "archive_error": None,
+                  "archive_next_at": now,
+                  "archive_attempts": 0},
+         "$unset": {"archive_lease_until": "", "archive_leased_at": ""}},
+    )
+    return {"success": True, "status": "pending"}
+
+
+@router.delete("/cloud-inbox/media/{message_id}/archive")
+async def delete_cloud_inbox_media_archive(
+    message_id: str, current_user: dict = Depends(get_current_user)
+):
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access is required")
+    message = await _db["whatsapp_cloud_messages"].find_one({"id": message_id}, {"_id": 0})
+    if not message:
+        raise HTTPException(status_code=404, detail="Media not found")
+    _assert_branch_access(current_user, message.get("branch_id"))
+    if message.get("archive_status") == "deleted":
+        return {"success": True}
+    # Tombstone before removal ensures a concurrent GET can never fall back to
+    # a provider after an authorized delete.
+    await _db["whatsapp_cloud_messages"].update_one(
+        {"id": message_id}, {"$set": {
+            "archive_status": "deleted", "archive_error": None,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+        }, "$unset": {"archive_lease_until": "", "archive_leased_at": ""}},
+    )
+    # Re-read after tombstoning: a worker may have allocated a staging key
+    # between the initial authorization read and this update.
+    tombstone = await _db["whatsapp_cloud_messages"].find_one(
+        {"id": message_id}, {"_id": 0, "archive_storage_id": 1,
+         "archive_staging_storage_id": 1, "media_storage_id": 1}
+    )
+    await whatsapp_media_archive.delete(
+        _db, get_current_tenant_slug(), message["branch_id"],
+        (tombstone or {}).get("archive_storage_id")
+        or (tombstone or {}).get("archive_staging_storage_id")
+        or (tombstone or {}).get("media_storage_id")
+        or message.get("archive_storage_id") or message.get("media_storage_id"),
+        message_id,
+        cleanup_owner=True,
+    )
+    await _delete_unshared_cloud_chat_media(
+        message["branch_id"],
+        (tombstone or {}).get("media_storage_id") or message.get("media_storage_id"),
+        message_id,
+    )
+    return {"success": True}
 
 
 @router.get("/cloud-inbox/media/{message_id}")
@@ -5521,6 +5895,9 @@ async def get_cloud_inbox_media(
     message = await _db["whatsapp_cloud_messages"].find_one(
         {"id": message_id}, {"_id": 0}
     )
+    if message and message.get("archive_status") == "deleted":
+        _assert_branch_access(current_user, message.get("branch_id"))
+        raise HTTPException(status_code=410, detail="Media was deleted")
     # Older Whatsflow voice notes were saved before media type normalization as
     # text with an empty/[message] body.  The UI will not request these by
     # itself, but an explicit media request may use the durable provider ID.
@@ -5543,125 +5920,47 @@ async def get_cloud_inbox_media(
         raise HTTPException(status_code=404, detail="Media not found")
     _assert_branch_access(current_user, message.get("branch_id"))
     if message.get("media_storage_id"):
-        content, mime_type, _filename = await _load_cloud_chat_image(
+        content, mime_type, filename = await _load_cloud_chat_image(
             message["branch_id"], message["media_storage_id"]
         )
         return Response(
             content=content,
             media_type=mime_type,
-            headers={"Cache-Control": "private, max-age=300"},
+            headers=_whatsflow_media_headers(filename, mime_type),
         )
-    if message.get("provider") == "whatsflow":
-        # Never GET the URL stored in a Whatsflow webhook.  It is a WhatsApp
-        # encrypted-media CDN URL, not a usable file.  Evolution decrypts it
-        # only through getBase64FromMediaMessage using its stored message.
-        provider_message_id = str(
-            message.get("provider_message_id")
-            or message.get("whatsflow_message_id")
-            or ""
-        )
-        if not provider_message_id:
-            raise HTTPException(status_code=404, detail="Whatsflow media message is unavailable")
-        config = await _get_branch_cloud_config(message.get("branch_id"))
-        client = _whatsflow_client(config or {})
-        if not client.configured:
-            raise HTTPException(status_code=400, detail="Whatsflow is not configured")
-        ok, media, error = await client.get_base64_from_media_message(provider_message_id)
-        if not ok or not isinstance(media, dict):
-            if error == "media_too_large":
-                raise HTTPException(status_code=413, detail="Media exceeds 20 MB")
-            raise HTTPException(status_code=502, detail="Could not retrieve Whatsflow media")
-        return StreamingResponse(
-            iter([media["content"]]),
-            media_type=media["mime_type"],
-            headers=_whatsflow_media_headers(
-                media.get("filename") or message.get("filename") or "attachment",
-                media["mime_type"],
-            ),
-        )
-    config = await _get_branch_cloud_config(message.get("branch_id"))
-    if message.get("provider") == "waha":
-        media_url = str(message.get("media_url") or "")
-        waha = WAHAClient()
-        parsed_media = urlparse(media_url)
-        parsed_base = urlparse(waha.base_url)
-        if not (
-            waha.configured
-            and parsed_media.scheme in {"http", "https"}
-            and parsed_media.scheme == parsed_base.scheme
-            and parsed_media.hostname
-            and parsed_media.hostname == parsed_base.hostname
-            and parsed_media.port == parsed_base.port
-        ):
-            raise HTTPException(status_code=502, detail="Unexpected WAHA media host")
-        try:
-            async with httpx.AsyncClient(timeout=45.0, follow_redirects=False) as client:
-                media_response = await client.get(
-                    media_url,
-                    headers={"X-Api-Key": waha.api_key},
-                )
-            if media_response.status_code >= 300:
-                raise HTTPException(status_code=502, detail="Could not download WAHA media")
-            content = media_response.content
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(status_code=502, detail="Could not download WAHA media")
-        if len(content) > 20 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Media exceeds 20 MB")
-        return StreamingResponse(
-            iter([content]),
-            media_type=(
-                message.get("mime_type")
-                or media_response.headers.get("content-type")
-                or "application/octet-stream"
-            ),
-            headers={"Cache-Control": "private, max-age=300"},
-        )
-    if not config or not config.get("access_token_encrypted"):
-        raise HTTPException(status_code=400, detail="Branch Meta API is not configured")
-    token = _decrypt_access_token(config["access_token_encrypted"])
-    version = (config.get("graph_api_version") or "v23.0").strip()
-    headers = {"Authorization": f"Bearer {token}"}
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
-            metadata_response = await client.get(
-                f"https://graph.facebook.com/{version}/{message['media_id']}",
-                headers=headers,
+        content, provider_mime, provider_name = await _download_inbound_archive_media(message)
+        mime_type, filename = whatsapp_media_archive.validate_media(
+            content, provider_mime or message.get("mime_type"),
+            provider_name or message.get("filename"),
+        )
+    except whatsapp_media_archive.ArchiveError as exc:
+        # Do not render a provider body that failed archive validation.  The
+        # details are deliberately generic and never include provider URLs/key.
+        # When a provider did return bytes, run them through the normal archive
+        # state transition too so unsafe/oversize items become `unsupported`
+        # rather than remaining indefinitely pending.
+        if "content" in locals():
+            await _persist_fetched_inbound_archive(
+                message, content, provider_mime or message.get("mime_type") or "",
+                provider_name or message.get("filename") or "attachment",
             )
-            if metadata_response.status_code >= 300:
-                raise HTTPException(status_code=502, detail="Could not retrieve Meta media")
-            media_url = metadata_response.json().get("url")
-            if not media_url:
-                raise HTTPException(status_code=502, detail="Meta media URL is missing")
-            parsed = urlparse(media_url)
-            hostname = (parsed.hostname or "").lower()
-            allowed_host = (
-                hostname == "lookaside.fbsbx.com"
-                or hostname.endswith(".fbcdn.net")
-                or hostname.endswith(".fbsbx.com")
-            )
-            if parsed.scheme != "https" or not allowed_host:
-                raise HTTPException(status_code=502, detail="Unexpected Meta media host")
-            media_response = await client.get(media_url, headers=headers)
-            if media_response.status_code >= 300:
-                raise HTTPException(status_code=502, detail="Could not download Meta media")
-            content = media_response.content
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=502, detail="Could not download Meta media")
-    if len(content) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="Media exceeds 20 MB")
-    content_type = (
-        message.get("mime_type")
-        or media_response.headers.get("content-type")
-        or "application/octet-stream"
+        if exc.status == "unsupported":
+            raise HTTPException(status_code=413, detail=exc.detail)
+        raise HTTPException(status_code=502, detail="Attachment is unavailable")
+    await _persist_fetched_inbound_archive(message, content, mime_type, filename)
+    # An authorized delete can race this provider fetch.  Bytes already sent
+    # cannot be revoked, but do not knowingly begin a new response after its
+    # tombstone has committed.
+    final_state = await _db["whatsapp_cloud_messages"].find_one(
+        {"id": message_id}, {"_id": 0, "archive_status": 1}
     )
+    if (final_state or {}).get("archive_status") == "deleted":
+        raise HTTPException(status_code=410, detail="Media was deleted")
     return StreamingResponse(
         iter([content]),
-        media_type=content_type,
-        headers={"Cache-Control": "private, max-age=300"},
+        media_type=mime_type,
+        headers=_whatsflow_media_headers(filename, mime_type),
     )
 
 
@@ -7093,7 +7392,12 @@ async def _send_meta_media_template_result(
                 )
             except Exception:
                 pass
-            return True, provider_message_id, None
+            return (
+                True,
+                str(provider_message_id)
+                if provider_message_id not in (None, "") else None,
+                None,
+            )
         logger.error("Meta media template send failed: HTTP %s", response.status_code)
     except Exception as exc:
         logger.error("Meta media template send failed: %s", type(exc).__name__)
@@ -7143,7 +7447,12 @@ async def _send_meta_chat_image_result(
                 )
             except Exception:
                 pass
-            return True, provider_message_id, None
+            return (
+                True,
+                str(provider_message_id)
+                if provider_message_id not in (None, "") else None,
+                None,
+            )
         logger.error("Meta chat image send failed: HTTP %s", response.status_code)
         return False, None, f"http_{response.status_code}"
     except Exception as exc:
@@ -7384,12 +7693,42 @@ async def _load_bulk_attachment(branch_id: str, ref: dict) -> bytes:
 async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> bool:
     provider = item["provider"]
     provider_message_id = None
+    provider_message_id_aliases = []
     wa_phone = _format_cloud_phone(item["phone"])
     attachment = item.get("attachment")
     caption = item["message"] if item.get("media_index", 0) == 0 or provider == "meta_cloud" else ""
     if not attachment:
         await assert_fence()
-        if provider in {"waha", "whatsflow"}:
+        if provider == "waha":
+            # Keep WAHA's full and stanza IDs as literal evidence.  The public
+            # text helper retains its historical three-value tuple for other
+            # callers; campaigns additionally need the alias for receipts.
+            evidence_id = await _start_whatsflow_automation_evidence(
+                wa_phone, config
+            )
+            try:
+                (
+                    success,
+                    provider_message_id,
+                    error,
+                    provider_message_id_aliases,
+                ) = await _send_waha_message_evidence_result(
+                    wa_phone, item["message"], config
+                )
+            except Exception as exc:
+                await _finish_whatsflow_automation_evidence(
+                    evidence_id, status="unknown", error=type(exc).__name__
+                )
+                raise
+            await _finish_whatsflow_automation_evidence(
+                evidence_id,
+                status="sent" if success and provider_message_id else "unknown",
+                provider_message_id=provider_message_id,
+                error=error,
+            )
+            if not success and error and not error.startswith("http_") and error != "invalid_phone":
+                raise RuntimeError(f"uncertain_provider_outcome:{error}")
+        elif provider == "whatsflow":
             success, provider_message_id, error = await _send_session_provider_result(wa_phone, item["message"], config)
             if not success and error and not error.startswith("http_") and error != "invalid_phone":
                 raise RuntimeError(f"uncertain_provider_outcome:{error}")
@@ -7422,6 +7761,9 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
                 )
                 raise
             provider_message_id = _canonical_waha_message_id(provider_response)
+            provider_message_id_aliases = _waha_message_id_variants(
+                provider_response
+            )
             await _finish_whatsflow_automation_evidence(
                 evidence_id,
                 status="sent" if success and provider_message_id else "unknown",
@@ -7444,21 +7786,32 @@ async def _dispatch_bulk_job_item(item: dict, config: dict, assert_fence) -> boo
             success, provider_message_id, _error = await _send_meta_media_template_result(
                 item["phone"], caption, media_id, media_type, filename, config
             )
-    # Whatsflow's authenticated outgoing echo is correlated by its provider
-    # message ID.  A successful transport response without that identity is an
-    # uncertain outcome, never a proven send that may advance a sequence.
-    if (
-        provider == "whatsflow"
-        and item.get("communication_kind") == campaign_inquiry_automation.KIND
-        and success
-        and not provider_message_id
-    ):
+    # Receipt evidence has to be tied to the provider's actual message ID for
+    # every transport (including Meta templates/media).  A 2xx response with
+    # no reliable identity may already have dispatched, so it is deliberately
+    # unknown rather than a confirmed send and is never retried by the worker.
+    if success and not provider_message_id:
         raise RuntimeError("uncertain_provider_outcome:missing_message_id")
     try:
         if isinstance(provider_message_id, str) and provider_message_id:
+            evidence = {"provider_message_id": provider_message_id}
+            if provider_message_id_aliases:
+                evidence["provider_message_id_aliases"] = (
+                    provider_message_id_aliases
+                )
             await _db["whatsapp_campaign_job_items"].update_one(
                 {"id": item["id"], "branch_id": item["branch_id"]},
-                {"$set": {"provider_message_id": provider_message_id}},
+                {"$set": evidence},
+            )
+            # A verified receipt can precede the provider response.  Reconcile
+            # only by this literal provider ID (or an explicit WAHA alias),
+            # never by recipient phone, and never by issuing another send.
+            await whatsapp_bulk_jobs.reconcile_receipt(
+                item["branch_id"],
+                provider,
+                provider_message_id,
+                tenant_slug=get_current_tenant_slug(),
+                aliases=provider_message_id_aliases,
             )
         if success:
             await _db["whatsapp_campaign_job_items"].update_one(

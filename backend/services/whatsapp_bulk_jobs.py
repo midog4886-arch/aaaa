@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from utils.tenant import for_each_active_tenant
+from utils.tenant import for_each_active_tenant, get_current_tenant_slug
 
 log = logging.getLogger("whatsapp.bulk_jobs")
 _DATETIME_TYPE = datetime
@@ -28,6 +28,11 @@ _started = False
 _db = None
 _handlers = {}
 _inflight_branch_tasks = {}
+RECEIPT_BUFFER_COLLECTION = "whatsapp_campaign_receipt_buffer"
+# Webhooks can arrive before a provider returns its send response.  Keep that
+# evidence long enough for a delayed response without retaining it indefinitely.
+RECEIPT_BUFFER_TTL = timedelta(days=7)
+RECEIPT_BUFFER_WRITE_RETRIES = 3
 
 
 def configure(db, **handlers):
@@ -78,10 +83,14 @@ def _receipt_can_advance(current, incoming):
         return False
     if not current:
         return True
-    # Failure and read are terminal observations.  A delayed provider event
-    # must never turn either into an earlier state.
-    if current in {"failed", "read"}:
+    # Read is a verified terminal observation.  In particular a later provider
+    # failure callback must never hide a verified read.  A failure is not
+    # terminal here: providers can emit it before their accepted/delivered
+    # callback, so a later positive receipt is stronger evidence.
+    if current == "read":
         return False
+    if current == "failed":
+        return incoming in {"accepted", "delivered", "read"}
     if incoming == "failed":
         return current == "accepted"
     return {
@@ -93,6 +102,176 @@ def _receipt_can_advance(current, incoming):
         "delivered": 2,
         "read": 3,
     }.get(current, 0)
+
+
+def _receipt_tenant_slug(value=None):
+    """Return an explicit tenant scope without making test DBs tenant-aware."""
+    if value not in (None, ""):
+        return str(value)
+    try:
+        return str(get_current_tenant_slug() or "")
+    except Exception:
+        return ""
+
+
+def _receipt_ids(message_id, aliases=()):
+    """De-duplicate literal provider identifiers; never derive one from a phone."""
+    values = [message_id, *(aliases or ())]
+    return list(dict.fromkeys(
+        str(value).strip() for value in values
+        if value not in (None, "") and str(value).strip()
+    ))
+
+
+def _receipt_values(status, timestamp, error=None):
+    """Fields consumed by campaign report/projection readers."""
+    normalized = _receipt_status(status)
+    values = {
+        "delivery_status": normalized,
+        "receipt_status": normalized,
+        "receipt_at": timestamp,
+        "status_updated_at": timestamp,
+    }
+    if normalized == "accepted":
+        values["accepted_at"] = timestamp
+        # A positive provider acknowledgement supersedes an early failure.
+        values["error"] = None
+    elif normalized == "delivered":
+        values["delivered_at"] = timestamp
+        values["error"] = None
+    elif normalized == "read":
+        values["read_at"] = timestamp
+        values["error"] = None
+    elif normalized == "failed" and error:
+        values["error"] = str(error)[:500]
+    return values
+
+
+async def _apply_receipt_to_item(branch_id, provider, message_id, status, timestamp,
+                                 error=None):
+    """Apply one exact provider receipt and return its matched-item count."""
+    collection = _db["whatsapp_campaign_job_items"]
+    query = {
+        "branch_id": branch_id, "provider": provider,
+        "provider_message_id": message_id,
+    }
+    existing = None
+    if hasattr(collection, "find_one"):
+        existing = await collection.find_one(query)
+        if not existing:
+            # WAHA can acknowledge the stanza ID while its send response gave
+            # us the canonical full ID.  This is still an exact provider
+            # alias saved with that response, never a phone/body lookup.
+            existing = await collection.find_one({
+                "branch_id": branch_id,
+                "provider": provider,
+                "provider_message_id_aliases": message_id,
+            })
+    if not existing:
+        return 0
+    # Always CAS the canonical ID stored by the campaign sender.  The received
+    # alias above is only a lookup key and must not become a replacement ID.
+    query["provider_message_id"] = existing.get("provider_message_id")
+    current_field = None
+    current = None
+    for field in ("delivery_status", "receipt_status"):
+        if _receipt_status(existing.get(field)):
+            current_field = field
+            current = existing.get(field)
+            break
+    if not current_field:
+        for field in ("delivery_status", "receipt_status"):
+            if field in existing:
+                current_field = field
+                current = existing.get(field)
+                break
+    if not _receipt_can_advance(current, status):
+        return 0
+    # This CAS makes duplicate/concurrent authenticated webhooks monotonic.
+    if current_field:
+        query[current_field] = current
+    else:
+        query["delivery_status"] = {"$exists": False}
+        query["receipt_status"] = {"$exists": False}
+    values = _receipt_values(status, timestamp, error)
+    if hasattr(collection, "update_many"):
+        result = await collection.update_many(query, {"$set": values})
+    else:
+        result = await collection.update_one(query, {"$set": values})
+    return getattr(result, "matched_count", getattr(result, "modified_count", 0))
+
+
+async def _buffer_receipt(tenant_slug, branch_id, provider, message_id, status,
+                          timestamp, error=None):
+    """Durably retain an unmatched authenticated receipt for later ID mapping."""
+    collection = _db[RECEIPT_BUFFER_COLLECTION]
+    scope = {
+        "tenant_slug": tenant_slug,
+        "branch_id": branch_id,
+        "provider": provider,
+        "provider_message_id": message_id,
+    }
+    try:
+        # These are non-destructive maintenance indexes.  The TTL index keeps
+        # an unavailable/unknown send from growing the receipt store forever.
+        if hasattr(collection, "create_index"):
+            await collection.create_index(
+                [("tenant_slug", 1), ("branch_id", 1), ("provider", 1),
+                 ("provider_message_id", 1)],
+                unique=True,
+            )
+            await collection.create_index("expires_at", expireAfterSeconds=0)
+        if not hasattr(collection, "update_one"):
+            return None
+        # Write before attempting an item update.  A response can save its ID
+        # in the tiny interval between an old lookup and an upsert; write-first
+        # ensures either this call or the sender's reconciliation observes it.
+        for _ in range(RECEIPT_BUFFER_WRITE_RETRIES):
+            existing = (
+                await collection.find_one(scope)
+                if hasattr(collection, "find_one") else None
+            )
+            current = (
+                (existing or {}).get("delivery_status")
+                or (existing or {}).get("receipt_status")
+            )
+            if existing and not _receipt_can_advance(current, status):
+                return existing
+            now = datetime.now(timezone.utc)
+            values = {
+                **_receipt_values(status, timestamp, error),
+                "buffer_token": str(uuid.uuid4()),
+                "updated_at": now,
+                "expires_at": now + RECEIPT_BUFFER_TTL,
+            }
+            try:
+                if existing:
+                    result = await collection.update_one(
+                        {**scope, "buffer_token": existing.get("buffer_token")},
+                        {"$set": values},
+                    )
+                else:
+                    result = await collection.update_one(
+                        scope,
+                        {
+                            "$set": values,
+                            "$setOnInsert": {"created_at": now},
+                        },
+                        upsert=True,
+                    )
+            except DuplicateKeyError:
+                # Another receipt created this unique scope. Re-read it and
+                # monotonically apply this event instead of losing either.
+                continue
+            if getattr(result, "matched_count", 0) or getattr(
+                result, "upserted_id", None
+            ) is not None or not existing:
+                return {**scope, **values}
+        log.warning("Could not atomically retain campaign receipt evidence")
+    except Exception as exc:
+        # An unavailable evidence buffer must not make a verified webhook fail.
+        log.warning("Could not buffer unmatched campaign receipt: %s", type(exc).__name__)
+    return None
 
 
 def _iso(value):
@@ -359,66 +538,118 @@ async def get_report(job_id, branch_id, *, phone_visible=True, names_by_phone=No
 
 async def record_receipt(
     branch_id, provider, provider_message_id, status, *,
-    timestamp=None, error=None,
+    timestamp=None, error=None, tenant_slug=None, aliases=(),
 ):
-    """Persist a provider receipt only when its exact message ID is known."""
+    """Record authenticated receipt evidence by literal provider message ID.
+
+    A send response and its webhook are independent requests: when the receipt
+    wins that race, retain it in a tenant/branch/provider-scoped buffer.  We
+    intentionally never use the recipient phone or body as a fallback key.
+    """
     if _db is None:
         return 0
-    message_id = str(provider_message_id or "").strip()
     normalized = _receipt_status(status)
-    if not message_id or not normalized:
+    message_ids = _receipt_ids(provider_message_id, aliases)
+    if not branch_id or not provider or not message_ids or not normalized:
         return 0
     timestamp = timestamp or datetime.now(timezone.utc)
-    values = {
-        "delivery_status": normalized,
-        "receipt_status": normalized,
-        "receipt_at": timestamp,
-        "status_updated_at": timestamp,
-    }
-    if normalized == "delivered":
-        values["delivered_at"] = timestamp
-    elif normalized == "read":
-        values["read_at"] = timestamp
-    elif normalized == "failed" and error:
-        values["error"] = str(error)[:500]
-    collection = _db["whatsapp_campaign_job_items"]
-    query = {
-        "branch_id": branch_id, "provider": provider,
-        "provider_message_id": message_id,
-    }
-    existing = None
-    if hasattr(collection, "find_one"):
-        existing = await collection.find_one(query)
-    current_field = None
-    current = None
-    if existing:
-        for field in ("delivery_status", "receipt_status"):
-            if _receipt_status(existing.get(field)):
-                current_field = field
-                current = existing.get(field)
-                break
-        if not current_field:
-            for field in ("delivery_status", "receipt_status"):
-                if field in existing:
-                    current_field = field
-                    current = existing.get(field)
-                    break
-        if not _receipt_can_advance(current, normalized):
-            return 0
-        if current_field:
-            # This guard makes concurrent webhook deliveries monotonic too.
-            query[current_field] = current
-        else:
-            query["delivery_status"] = {"$exists": False}
-            query["receipt_status"] = {"$exists": False}
-    else:
-        query["delivery_status"] = {"$exists": False}
-        query["receipt_status"] = {"$exists": False}
-    if hasattr(collection, "update_many"):
-        result = await collection.update_many(query, {"$set": values})
-    else:
-        result = await collection.update_one(query, {"$set": values})
-    return getattr(result, "matched_count", getattr(result, "modified_count", 0))
+    # Persist first, then reconcile.  Reversing this order loses the receipt
+    # when a send response writes the ID between an item lookup and buffer
+    # insertion.
+    for message_id in message_ids:
+        await _buffer_receipt(
+            _receipt_tenant_slug(tenant_slug), branch_id, provider,
+            message_id, normalized, timestamp, error,
+        )
+    matched = await reconcile_receipt(
+        branch_id, provider, message_ids[0],
+        tenant_slug=tenant_slug, aliases=message_ids[1:],
+    )
+    if matched:
+        return matched
+    # This covers lightweight test stores without a receipt collection and
+    # also narrows the response-save race once more.  The durable buffer above
+    # remains authoritative if no mapping exists yet.
+    for message_id in message_ids:
+        matched += await _apply_receipt_to_item(
+            branch_id, provider, message_id, normalized, timestamp, error
+        )
+    return matched
+
+
+async def reconcile_receipt(
+    branch_id, provider, provider_message_id, *,
+    tenant_slug=None, aliases=(),
+):
+    """Apply receipts buffered before the exact campaign ID was persisted."""
+    if _db is None:
+        return 0
+    message_ids = _receipt_ids(provider_message_id, aliases)
+    if not branch_id or not provider or not message_ids:
+        return 0
+    collection = _db[RECEIPT_BUFFER_COLLECTION]
+    items = _db["whatsapp_campaign_job_items"]
+    tenant = _receipt_tenant_slug(tenant_slug)
+    matched = 0
+    for message_id in message_ids:
+        scope = {
+            "tenant_slug": tenant,
+            "branch_id": branch_id,
+            "provider": provider,
+            "provider_message_id": message_id,
+        }
+        try:
+            receipt = await collection.find_one(scope) if hasattr(collection, "find_one") else None
+        except Exception as exc:
+            log.warning("Could not reconcile campaign receipt evidence: %s", type(exc).__name__)
+            continue
+        if not receipt:
+            continue
+        status = _receipt_status(
+            receipt.get("delivery_status") or receipt.get("receipt_status")
+        )
+        if not status:
+            continue
+        # Retain receipt evidence until an item has an exact primary ID (or a
+        # literal persisted WAHA alias).  In particular, do not delete it just
+        # because this is the webhook-before-send-response race.
+        mapped_item = None
+        if hasattr(items, "find_one"):
+            mapped_item = await items.find_one({
+                "branch_id": branch_id,
+                "provider": provider,
+                "provider_message_id": message_ids[0],
+            })
+            if not mapped_item:
+                mapped_item = await items.find_one({
+                    "branch_id": branch_id,
+                    "provider": provider,
+                    "provider_message_id_aliases": message_id,
+                })
+        if not mapped_item:
+            continue
+        # The item deliberately stores its exact send-response ID.  A WAHA
+        # receipt may have arrived under an explicit stanza alias, so always
+        # apply its evidence to that just-saved primary ID.
+        count = await _apply_receipt_to_item(
+            branch_id, provider, mapped_item.get("provider_message_id"), status,
+            receipt.get("receipt_at") or receipt.get("updated_at")
+            or datetime.now(timezone.utc),
+            receipt.get("error"),
+        )
+        matched += count
+        # Do not delete a later receipt that arrived after the read above.
+        # The per-write token makes this a compare-and-delete; if it changed,
+        # the sender/next webhook reconciliation will process the newer record.
+        if hasattr(collection, "delete_one"):
+            try:
+                await collection.delete_one({
+                    **scope,
+                    "buffer_token": receipt.get("buffer_token"),
+                })
+            except Exception as exc:
+                log.warning("Could not clear reconciled campaign receipt: %s", type(exc).__name__)
+    return matched
 
 
 async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=None,
