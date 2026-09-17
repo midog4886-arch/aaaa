@@ -353,10 +353,18 @@ test('ignores an old branch inbox response after the branch changes again', asyn
   expect(screen.getByText('أحمد')).toBeInTheDocument();
 });
 
-test('uses the backend match flag for orange cloud phone styling without a render lookup', async () => {
+test('uses the backend member-link status for cloud phone styling without a render lookup', async () => {
   whatsappAPI.getCloudInboxConversations.mockResolvedValue({
     data: {
-      conversations: [{ ...conversation, member_phone_match: true }],
+      conversations: [{
+        ...conversation,
+        member_link: {
+          status: 'unique',
+          member: { id: 'member-a', name: 'أحمد عضو', subscription_status: 'active' },
+          candidates: [],
+          candidate_count: 1,
+        },
+      }],
       unread_count: 0,
     },
   });
@@ -364,7 +372,6 @@ test('uses the backend match flag for orange cloud phone styling without a rende
 
   const phone = screen.getByTestId('cloud-conversation-phone');
   expect(phone).toHaveClass('text-orange-600');
-  expect(phone).toHaveClass('hover:text-orange-700');
   expect(membersAPI.lookupByPhone).not.toHaveBeenCalled();
 });
 
@@ -374,7 +381,6 @@ test('keeps unknown cloud phones neutral, including on hover', async () => {
   const phone = screen.getByTestId('cloud-conversation-phone');
   expect(phone).toHaveClass('text-muted-foreground');
   expect(phone).not.toHaveClass('text-orange-600');
-  expect(phone).not.toHaveClass('hover:text-orange-700');
 });
 
 function validPngFile() {
@@ -447,69 +453,138 @@ test('renders structured backend send errors as safe toast text and does not ret
   expect(whatsappAPI.sendCloudInboxMedia).toHaveBeenCalledTimes(1);
 });
 
-test('looks up a single cloud phone and opens the member focus deeplink', async () => {
-  membersAPI.lookupByPhone.mockResolvedValue({
-    data: {
-      members: [{
-        id: 'member-saudi-a',
-        name: 'أحمد عضو',
-        branch_id: 'branch-a',
-        branch_name: 'الفرع الرئيسي',
-      }],
+test('shows the server-derived unique member photo, subscription status, and profile deeplink', async () => {
+  const memberLink = {
+    status: 'unique',
+    candidate_count: 1,
+    candidates: [],
+    member: {
+      id: 'member-saudi-a',
+      name: 'أحمد عضو',
+      member_code: 'M-101',
+      photo: 'https://photos.example/member-saudi-a.jpg',
+      subscription_status: 'active',
     },
+  };
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({
+    data: { conversations: [{ ...conversation, member_link: memberLink }], unread_count: 0 },
+  });
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation: { ...conversation, member_link: memberLink }, messages: [] },
   });
   const user = await renderCloudInbox();
 
-  await user.click(screen.getByText(conversation.phone));
+  expect(screen.getByTestId('cloud-member-name')).toHaveTextContent('أحمد عضو');
+  expect(screen.getByTestId('cloud-member-subscription')).toHaveTextContent('اشتراك نشط');
+  expect(document.querySelector('img[src="https://photos.example/member-saudi-a.jpg"]'))
+    .toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /أحمد/ }));
+  await user.click(await screen.findByTestId('cloud-open-member-member-saudi-a'));
 
-  await waitFor(() => expect(membersAPI.lookupByPhone).toHaveBeenCalledWith(
-    conversation.phone,
-  ));
   expect(mockNavigate).toHaveBeenCalledWith('/admin/members?focus=member-saudi-a');
-  expect(whatsappAPI.getCloudInboxThread).not.toHaveBeenCalled();
+  expect(membersAPI.lookupByPhone).not.toHaveBeenCalled();
 });
 
-test('shows an explicit chooser when a shared cloud phone has multiple members', async () => {
-  membersAPI.lookupByPhone.mockResolvedValue({
-    data: {
-      members: [
-        {
-          id: 'member-shared-a',
-          name: 'عضو الفرع الأول',
-          branch_id: 'branch-a',
-          branch_name: 'الفرع الأول',
-        },
-        {
-          id: 'member-shared-b',
-          name: 'عضو الفرع الثاني',
-          branch_id: 'branch-b',
-          branch_name: 'الفرع الثاني',
-        },
-      ],
-    },
+test('loads the thread before safely choosing among server-provided shared-phone candidates', async () => {
+  const listLink = { status: 'ambiguous', member: null, candidates: [], candidate_count: 2 };
+  const threadLink = {
+    ...listLink,
+    candidates: [
+      { id: 'member-shared-a', name: 'عضو الفرع الأول', subscription_status: 'active' },
+      { id: 'member-shared-b', name: 'عضو الفرع الثاني', subscription_status: 'none' },
+    ],
+  };
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({
+    data: { conversations: [{ ...conversation, member_link: listLink }], unread_count: 0 },
+  });
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation: { ...conversation, member_link: threadLink }, messages: [] },
   });
   const user = await renderCloudInbox();
 
-  await user.click(screen.getByText(conversation.phone));
-
-  expect(await screen.findByText('اختيار ملف العضو')).toBeInTheDocument();
+  expect(screen.queryByTestId('cloud-member-name')).not.toBeInTheDocument();
+  expect(screen.getByText('رقم مشترك بين أعضاء')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /أحمد/ }));
+  expect(await screen.findByTestId('cloud-choose-member')).toBeInTheDocument();
+  await user.click(screen.getByTestId('cloud-choose-member'));
   expect(screen.getByTestId('phone-member-choice-member-shared-a')).toBeInTheDocument();
   expect(screen.getByTestId('phone-member-choice-member-shared-b')).toBeInTheDocument();
   expect(mockNavigate).not.toHaveBeenCalled();
 
   await user.click(screen.getByTestId('phone-member-choice-member-shared-b'));
   expect(mockNavigate).toHaveBeenCalledWith('/admin/members?focus=member-shared-b');
+  expect(membersAPI.lookupByPhone).not.toHaveBeenCalled();
 });
 
-test('shows a clear toast and does not navigate when the cloud phone has no member', async () => {
+test.each(['none', 'restricted'])(
+  'does not expose a member control or run a phone lookup for a %s cloud association',
+  async status => {
+    const noMemberConversation = {
+      ...conversation,
+      member_link: { status, member: null, candidates: [], candidate_count: 0 },
+    };
+    whatsappAPI.getCloudInboxConversations.mockResolvedValue({
+      data: { conversations: [noMemberConversation], unread_count: 0 },
+    });
+    whatsappAPI.getCloudInboxThread.mockResolvedValue({
+      data: { conversation: noMemberConversation, messages: [] },
+    });
+    const user = await renderCloudInbox();
+
+    expect(screen.queryByTestId('cloud-member-name')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('cloud-choose-member')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /أحمد/ }));
+    expect(screen.queryByTestId('cloud-open-member-member-saudi-a')).not.toBeInTheDocument();
+    expect(membersAPI.lookupByPhone).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  },
+);
+
+test('ignores a stale switched-chat member association response', async () => {
+  const firstThread = deferred();
+  const secondConversation = {
+    ...conversation,
+    id: 'branch-a:966501234568',
+    phone: '966501234568',
+    contact_name: 'سارة',
+  };
+  const firstLink = {
+    status: 'unique',
+    member: { id: 'member-first', name: 'عضو أول', subscription_status: 'active' },
+    candidates: [],
+    candidate_count: 1,
+  };
+  const secondLink = {
+    status: 'unique',
+    member: { id: 'member-second', name: 'عضو ثانٍ', subscription_status: 'expired' },
+    candidates: [],
+    candidate_count: 1,
+  };
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({
+    data: { conversations: [conversation, secondConversation], unread_count: 0 },
+  });
+  whatsappAPI.getCloudInboxThread
+    .mockReturnValueOnce(firstThread.promise)
+    .mockResolvedValueOnce({
+      data: {
+        conversation: { ...secondConversation, member_link: secondLink },
+        messages: [],
+      },
+    });
   const user = await renderCloudInbox();
 
-  await user.click(screen.getByText(conversation.phone));
+  await user.click(screen.getByRole('button', { name: /أحمد/ }));
+  await user.click(screen.getByRole('button', { name: /رجوع/ }));
+  await user.click(await screen.findByRole('button', { name: /سارة/ }));
+  expect(await screen.findByTestId('cloud-open-member-member-second')).toBeInTheDocument();
 
-  await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
-    'لم يتم العثور على عضو بهذا الرقم',
-  ));
-  expect(mockNavigate).not.toHaveBeenCalled();
+  await act(async () => {
+    firstThread.resolve({
+      data: { conversation: { ...conversation, member_link: firstLink }, messages: [] },
+    });
+  });
+  expect(screen.getByTestId('cloud-open-member-member-second')).toBeInTheDocument();
+  expect(screen.queryByTestId('cloud-open-member-member-first')).not.toBeInTheDocument();
 });
 
 const inboundAttachment = overrides => ({

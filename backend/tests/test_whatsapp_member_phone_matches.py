@@ -71,7 +71,7 @@ class _Database:
         return getattr(self, name)
 
 
-def test_admin_match_ignores_active_branch_and_returns_only_boolean(monkeypatch):
+def test_admin_member_link_never_crosses_conversation_branch(monkeypatch):
     db = _Database(member_rows=[{
         "id": "member-other-branch",
         "phone": "+966 50 123 4567",
@@ -93,20 +93,20 @@ def test_admin_match_ignores_active_branch_and_returns_only_boolean(monkeypatch)
         member_branch="branch-a",
     ))
 
-    assert enriched[0]["member_phone_match"] is True
-    assert set(enriched[0]) == {
-        "id", "phone", "branch_id", "member_phone_match",
+    assert enriched[0]["member_phone_match"] is False
+    assert enriched[0]["member_link"] == {
+        "status": "none",
+        "member": None,
+        "candidates": [],
+        "candidate_count": 0,
     }
-    assert "branch_id" not in db.members.queries[0]
-    assert set(db.members.queries[0]) == {"phone"}
-    assert "branch_id" not in db.members.queries[1]
-    assert set(db.members.queries[1]) == {"$or"}
+    assert db.members.queries[0]["branch_id"] == "branch-a"
 
 
-def test_exact_phone_lookup_skips_legacy_regex_for_resolved_phones(monkeypatch):
+def test_exact_phone_lookup_also_checks_legacy_formats_for_all_phones(monkeypatch):
     db = _Database(member_rows=[
-        {"phone": "0501234567", "branch_id": "branch-a"},
-        {"phone": "966501234568", "branch_id": "branch-a"},
+        {"id": "member-1", "phone": "0501234567", "branch_id": "branch-a"},
+        {"id": "member-2", "phone": "966501234568", "branch_id": "branch-a"},
     ])
     monkeypatch.setattr(mod, "_db", db)
     rows = [
@@ -121,18 +121,18 @@ def test_exact_phone_lookup_skips_legacy_regex_for_resolved_phones(monkeypatch):
     ))
 
     assert [row["member_phone_match"] for row in enriched] == [True, True, False]
-    # One exact $in query resolves two phones; the fallback contains only the
-    # one unresolved phone instead of one regex clause for every phone.
+    # Exact records do not suppress legacy-format lookup: another current
+    # sibling can use the same number with spaces/dashes or Unicode digits.
     assert len(db.members.queries) == 2
-    assert "$in" in db.members.queries[0]["phone"]
-    assert len(db.members.queries[1]["$or"]) == 1
+    assert "$in" in db.members.queries[0]["$or"][0]["phone"]
+    assert len(db.members.queries[1]["$or"]) == 6
 
 
 def test_non_admin_match_is_limited_to_authorized_branch(monkeypatch):
     db = _Database(
         member_rows=[
-            {"phone": "0501234567", "branch_id": "branch-a"},
-            {"phone": "0501234567", "branch_id": "branch-b"},
+            {"id": "member-a", "phone": "0501234567", "branch_id": "branch-a"},
+            {"id": "member-b", "phone": "0501234567", "branch_id": "branch-b"},
         ],
         user_rows=[{"id": "staff-1", "permissions": ["member-phones"]}],
     )
@@ -150,7 +150,7 @@ def test_non_admin_match_is_limited_to_authorized_branch(monkeypatch):
 
     assert [row["member_phone_match"] for row in enriched] == [True, False]
     assert db.members.queries[0]["branch_id"] == "branch-a"
-    assert len(db.members.queries) == 1
+    assert len(db.members.queries) == 2
 
 
 def test_unauthorized_user_receives_no_match_flag_or_member_query(monkeypatch):
@@ -173,4 +173,185 @@ def test_unauthorized_user_receives_no_match_flag_or_member_query(monkeypatch):
     ))
 
     assert "member_phone_match" not in enriched[0]
+    assert enriched[0]["member_link"] == {
+        "status": "restricted",
+        "member": None,
+        "candidates": [],
+        "candidate_count": 0,
+    }
     assert db.members.queries == []
+
+
+def test_member_link_matches_guardian_and_returns_only_safe_summary(monkeypatch):
+    db = _Database(member_rows=[{
+        "id": "guardian-match",
+        "phone": "0500000000",
+        "guardian_phone": "+966 (50) 123-4567",
+        "branch_id": "branch-a",
+        "name": "Sarah",
+        "name_ar": "سارة",
+        "member_code": "A-7",
+        "photo": "/api/public/member-photo/default/guardian-match?v=hash&sig=sig",
+        "activities": [
+            {"end_date": "2000-01-01", "status": "expired"},
+            {"end_date": "9999-01-01", "status": "expired"},
+        ],
+    }])
+    monkeypatch.setattr(mod, "_db", db)
+
+    row = run(mod._enrich_member_phone_matches(
+        [{"phone": "966501234567", "branch_id": "branch-a"}],
+        {"is_admin": True},
+    ))[0]
+
+    assert row["member_phone_match"] is True
+    assert row["member_link"]["status"] == "unique"
+    assert row["member_link"]["candidate_count"] == 1
+    assert row["member_link"]["candidates"] == []
+    assert row["member_link"]["member"] == {
+        "id": "guardian-match",
+        "name": "Sarah",
+        "name_ar": "سارة",
+        "member_code": "A-7",
+        "photo": "/api/public/member-photo/default/guardian-match?v=hash&sig=sig",
+        # One valid subscription means the member is not all-expired.
+        "subscription_status": "active",
+    }
+
+
+def test_shared_phone_is_ambiguous_and_thread_gets_all_candidates(monkeypatch):
+    db = _Database(member_rows=[
+        {
+            "id": "sibling-1", "phone": "0501234567",
+            "branch_id": "branch-a", "name_ar": "الأول",
+        },
+        {
+            "id": "sibling-2", "guardian_phone": "0501234567",
+            "branch_id": "branch-a", "name_ar": "الثاني",
+        },
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+
+    row = run(mod._enrich_member_phone_matches(
+        [{"phone": "966501234567", "branch_id": "branch-a"}],
+        {"is_admin": True},
+        include_candidates=True,
+    ))[0]
+
+    assert row["member_phone_match"] is True
+    assert row["member_link"]["status"] == "ambiguous"
+    assert row["member_link"]["member"] is None
+    assert row["member_link"]["candidate_count"] == 2
+    assert [candidate["id"] for candidate in row["member_link"]["candidates"]] == [
+        "sibling-1", "sibling-2",
+    ]
+    assert all(set(candidate) == {
+        "id", "name", "name_ar", "member_code", "photo",
+        "subscription_status",
+    } for candidate in row["member_link"]["candidates"])
+
+
+def test_member_with_phone_and_guardian_phone_counts_once(monkeypatch):
+    db = _Database(member_rows=[{
+        "id": "one-member",
+        "phone": "0501234567",
+        "guardian_phone": "966501234567",
+        "branch_id": "branch-a",
+    }])
+    monkeypatch.setattr(mod, "_db", db)
+
+    row = run(mod._enrich_member_phone_matches(
+        [{"phone": "0501234567", "branch_id": "branch-a"}],
+        {"is_admin": True},
+    ))[0]
+
+    assert row["member_link"]["status"] == "unique"
+    assert row["member_link"]["candidate_count"] == 1
+
+
+def test_exact_and_formatted_same_branch_siblings_are_ambiguous(monkeypatch):
+    db = _Database(member_rows=[
+        {"id": "exact", "phone": "0501234567", "branch_id": "branch-a"},
+        {"id": "formatted", "phone": "050 123-4567", "branch_id": "branch-a"},
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+
+    row = run(mod._enrich_member_phone_matches(
+        [{"phone": "966501234567", "branch_id": "branch-a"}],
+        {"is_admin": True},
+    ))[0]
+
+    assert row["member_link"]["status"] == "ambiguous"
+    assert row["member_link"]["candidate_count"] == 2
+
+
+def test_exact_one_branch_does_not_suppress_formatted_other_branch(monkeypatch):
+    db = _Database(member_rows=[
+        {"id": "exact-a", "phone": "0501234567", "branch_id": "branch-a"},
+        {"id": "formatted-b", "phone": "050 123-4567", "branch_id": "branch-b"},
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+
+    rows = run(mod._enrich_member_phone_matches(
+        [
+            {"phone": "966501234567", "branch_id": "branch-a"},
+            {"phone": "966501234567", "branch_id": "branch-b"},
+        ],
+        {"is_admin": True},
+    ))
+
+    assert [(row["member_link"]["status"], row["member_link"]["member"]["id"])
+            for row in rows] == [
+        ("unique", "exact-a"),
+        ("unique", "formatted-b"),
+    ]
+
+
+def test_arabic_indic_legacy_phone_digits_match_after_normalization(monkeypatch):
+    db = _Database(member_rows=[{
+        "id": "arabic-digits",
+        "phone": "٠٥٠ ١٢٣-٤٥٦٧",
+        "branch_id": "branch-a",
+    }])
+    monkeypatch.setattr(mod, "_db", db)
+
+    row = run(mod._enrich_member_phone_matches(
+        [{"phone": "966501234567", "branch_id": "branch-a"}],
+        {"is_admin": True},
+    ))[0]
+
+    assert row["member_link"]["status"] == "unique"
+    assert row["member_link"]["member"]["id"] == "arabic-digits"
+
+
+def test_member_link_uses_current_phone_and_branch_records(monkeypatch):
+    db = _Database(member_rows=[{
+        "id": "moved",
+        "phone": "0501234567",
+        "branch_id": "branch-a",
+    }])
+    monkeypatch.setattr(mod, "_db", db)
+    row = {"phone": "0501234567", "branch_id": "branch-a"}
+
+    assert run(mod._enrich_member_phone_matches(
+        [dict(row)], {"is_admin": True},
+    ))[0]["member_link"]["status"] == "unique"
+
+    # A subsequent read does not retain stale associations after a phone
+    # change or transfer; it derives the new branch/phone pair from members.
+    db.members.rows[0]["phone"] = "0507654321"
+    db.members.rows[0]["branch_id"] = "branch-b"
+    assert run(mod._enrich_member_phone_matches(
+        [dict(row)], {"is_admin": True},
+    ))[0]["member_link"]["status"] == "none"
+    assert run(mod._enrich_member_phone_matches(
+        [{"phone": "0507654321", "branch_id": "branch-b"}],
+        {"is_admin": True},
+    ))[0]["member_link"]["status"] == "unique"
+
+    # Deleted records no longer participate on the following read.
+    db.members.rows.clear()
+    assert run(mod._enrich_member_phone_matches(
+        [{"phone": "0507654321", "branch_id": "branch-b"}],
+        {"is_admin": True},
+    ))[0]["member_link"]["status"] == "none"

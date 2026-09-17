@@ -84,3 +84,4 @@
 - [Invoice notice branding](invoice-notice-branding.md) — delayed receipt workers need full tenant branding; preserve clickable links and paid total in a single media message.
 - [WhatsApp reply-state evidence](whatsapp-reply-state.md) — unread is not unanswered; human replies need durable evidence and reversed-event ordering tests.
 - [WhatsApp voice recording](whatsapp-voice-recording.md) — streaming WebM may have no duration; normalize bounded mono Opus and never auto-send or retry uncertain delivery.
+- [WhatsApp member association](whatsapp-member-association.md) — derive branch-local unique matches; include formatted-number siblings even when an exact match exists.

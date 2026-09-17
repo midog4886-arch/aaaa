@@ -17,7 +17,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { toast } from 'sonner';
 import { whatsappAPI, membersAPI, activitiesAPI, branchesAPI, messagesAPI, pushNotificationsAPI, levelsAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
-import { normalizePhone } from '../utils/phone';
 import {
   MessageSquare, CheckCircle2, XCircle, RefreshCw, Send, Settings, Loader2,
   Wifi, WifiOff, PhoneCall, Bell, Eye, Users, History, Clock, Phone,
@@ -33,11 +32,108 @@ const PROFILE_FIELD_LABELS = {
   date_of_birth: { ar: 'تاريخ الميلاد', en: 'Date of birth' },
 };
 
-const cloudPhoneClassName = (isRegisteredMember) => (
-  isRegisteredMember === true
-    ? 'text-orange-600 hover:text-orange-700 hover:underline cursor-pointer'
-    : 'text-muted-foreground hover:text-muted-foreground hover:underline cursor-pointer'
+const cloudPhoneClassName = (memberLink) => {
+  const status = typeof memberLink === 'object' ? memberLink?.status : memberLink;
+  if (status === 'unique' || status === true) return 'text-orange-600';
+  if (status === 'ambiguous') return 'text-amber-700';
+  return 'text-muted-foreground';
+};
+
+const cloudMemberName = (member, isRTL) => (
+  isRTL
+    ? (member?.name_ar || member?.name || member?.member_code)
+    : (member?.name || member?.name_ar || member?.member_code)
 );
+
+const CloudMemberAssociation = ({
+  memberLink,
+  isRTL,
+  t,
+  onOpenMember,
+  onChooseMember,
+  compact = false,
+}) => {
+  if (!memberLink || memberLink.status === 'none' || memberLink.status === 'restricted') return null;
+
+  if (memberLink.status === 'ambiguous') {
+    return (
+      <div className={`flex flex-wrap items-center gap-2 ${compact ? 'mt-1' : ''}`}>
+        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-900 text-xs">
+          {t('رقم مشترك بين أعضاء', 'Phone shared by members')}
+        </Badge>
+        {onChooseMember && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={onChooseMember}
+            data-testid="cloud-choose-member"
+          >
+            {t('اختيار العضو', 'Choose member')}
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (memberLink.status !== 'unique' || !memberLink.member) return null;
+  const member = memberLink.member;
+  const subscription = member.subscription_status;
+  const subscriptionLabel = subscription === 'active'
+    ? t('اشتراك نشط', 'Active subscription')
+    : subscription === 'expired'
+      ? t('اشتراك منتهٍ', 'Expired subscription')
+      : subscription === 'none' || subscription === 'no_activity'
+        ? t('لا يوجد اشتراك', 'No subscription')
+        : subscription === 'inactive'
+          ? t('اشتراك غير نشط', 'Inactive subscription')
+        : t('حالة الاشتراك غير متاحة', 'Subscription status unavailable');
+  const subscriptionClass = subscription === 'active'
+    ? 'border-green-300 bg-green-50 text-green-800'
+    : subscription === 'expired'
+      ? 'border-red-300 bg-red-50 text-red-800'
+      : 'border-muted-foreground/30 text-muted-foreground';
+
+  return (
+    <div className={`flex flex-wrap items-center gap-2 min-w-0 ${compact ? 'mt-1' : ''}`}>
+      <div className="relative w-7 h-7 rounded-full bg-muted overflow-hidden shrink-0 flex items-center justify-center">
+        <User className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+        {member.photo && (
+          <img
+            src={member.photo}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={(event) => { event.currentTarget.style.display = 'none'; }}
+          />
+        )}
+      </div>
+      <span className="font-medium text-sm truncate" data-testid="cloud-member-name">
+        {cloudMemberName(member, isRTL)}
+      </span>
+      {member.member_code && (
+        <Badge variant="outline" className="text-[10px] shrink-0">
+          #{member.member_code}
+        </Badge>
+      )}
+      <Badge variant="outline" className={`text-[10px] shrink-0 ${subscriptionClass}`} data-testid="cloud-member-subscription">
+        {subscriptionLabel}
+      </Badge>
+      {onOpenMember && (
+        <Button
+          type="button"
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-xs"
+          onClick={() => onOpenMember(member)}
+          data-testid={`cloud-open-member-${member.id}`}
+        >
+          {t('فتح ملف العضو', 'Open member profile')}
+        </Button>
+      )}
+    </div>
+  );
+};
 
 const filenameFromContentDisposition = headers => {
   const disposition = headers?.['content-disposition']
@@ -362,7 +458,6 @@ export default function WhatsAppPage() {
   const cloudImagePreviewUrlRef = useRef('');
   const [phoneLookup, setPhoneLookup] = useState({
     open: false,
-    loading: false,
     phone: '',
     members: [],
   });
@@ -743,6 +838,8 @@ export default function WhatsAppPage() {
       clearCloudMedia(mediaScope);
     }
     if (previousThread && previousThread !== conversationId) {
+      phoneLookupRequestRef.current += 1;
+      setPhoneLookup({ open: false, phone: '', members: [] });
       clearCloudImage();
       setCloudImageCaption('');
       setCloudThread(null);
@@ -765,6 +862,11 @@ export default function WhatsAppPage() {
       const response = await getCloudThreadRequest(conversationId, branchKey, authScope, viewKey);
       if (!isCurrentRequest()) return;
 
+      // Associations are derived by the server for every detail request. If a
+      // refresh changes the result, never leave an earlier candidate list open.
+      setPhoneLookup(current => (
+        current.open ? { open: false, phone: '', members: [] } : current
+      ));
       setCloudThread(response.data?.conversation || null);
       const messages = response.data?.messages || [];
       setCloudMessages(messages);
@@ -801,45 +903,26 @@ export default function WhatsAppPage() {
       return;
     }
     phoneLookupRequestRef.current += 1;
-    setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
+    setPhoneLookup({ open: false, phone: '', members: [] });
     // MembersPage already supports this focus deeplink and fetches the member
     // directly when it is not in the currently selected branch list.  That is
     // important for admins resolving a conversation from another branch.
     navigate(`/admin/members?focus=${encodeURIComponent(member.id)}`);
   };
 
-  const lookupMemberByCloudPhone = async (phone, event) => {
+  const chooseCloudMember = (memberLink, phone, event) => {
     event?.stopPropagation();
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      toast.error(t('لا يوجد رقم هاتف صالح للبحث', 'No valid phone number to search'));
+    // Candidates are deliberately supplied only by the conversation detail
+    // endpoint. Do not use the tenant-wide phone lookup here: a shared phone
+    // must stay branch-scoped and no choice is persisted onto the conversation.
+    if (memberLink?.status !== 'ambiguous' || !Array.isArray(memberLink.candidates)) {
       return;
     }
-
-    const requestId = ++phoneLookupRequestRef.current;
-    setPhoneLookup({ open: true, loading: true, phone: normalized, members: [] });
-    try {
-      const response = await membersAPI.lookupByPhone(normalized);
-      if (requestId !== phoneLookupRequestRef.current) return;
-      const candidates = Array.isArray(response.data)
-        ? response.data
-        : response.data?.members || [];
-      if (!candidates.length) {
-        setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
-        toast.error(t('لم يتم العثور على عضو بهذا الرقم', 'No member was found for this phone number'));
-        return;
-      }
-      if (candidates.length === 1) {
-        openMemberProfile(candidates[0]);
-        return;
-      }
-      // Never pick an arbitrary member when a family shares one phone number.
-      setPhoneLookup({ open: true, loading: false, phone: normalized, members: candidates });
-    } catch (error) {
-      if (requestId !== phoneLookupRequestRef.current) return;
-      setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
-      toast.error(apiErrorMessage(error, t('تعذر البحث عن العضو', 'Could not find the member')));
-    }
+    setPhoneLookup({
+      open: true,
+      phone: phone || '',
+      members: memberLink.candidates,
+    });
   };
 
   const handleCloudReply = async () => {
@@ -3147,6 +3230,8 @@ export default function WhatsAppPage() {
                     onClick={() => {
                        clearCloudImage();
                        setCloudImageCaption('');
+                       phoneLookupRequestRef.current += 1;
+                       setPhoneLookup({ open: false, phone: '', members: [] });
                        selectedCloudThreadRef.current = null;
                        cloudThreadRequestRef.current += 1;
                         clearCloudMedia();
@@ -3298,23 +3383,19 @@ export default function WhatsAppPage() {
                                      </Badge>
                                    )}
                                 </div>
-                                <span
-                                  role="button"
-                                  tabIndex={0}
-                                  dir="ltr"
-                                  onClick={(event) => lookupMemberByCloudPhone(conversation.phone, event)}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter' || event.key === ' ') {
-                                      event.preventDefault();
-                                      lookupMemberByCloudPhone(conversation.phone, event);
-                                    }
-                                  }}
-                                  className={`inline-block text-xs ${cloudPhoneClassName(conversation.member_phone_match)}`}
-                                  data-testid="cloud-conversation-phone"
-                                  aria-label={t('فتح ملف العضو عبر رقم الهاتف', 'Open member profile by phone')}
-                                >
+                                 <span
+                                   dir="ltr"
+                                   className={`inline-block text-xs ${cloudPhoneClassName(conversation.member_link || conversation.member_phone_match)}`}
+                                   data-testid="cloud-conversation-phone"
+                                 >
                                   {conversation.phone}
                                 </span>
+                                 <CloudMemberAssociation
+                                   memberLink={conversation.member_link}
+                                   isRTL={isRTL}
+                                   t={t}
+                                   compact
+                                 />
                                 <p className="text-sm text-muted-foreground truncate mt-1">
                                   {conversation.last_direction === 'outbound' ? t('أنت: ', 'You: ') : ''}
                                   {conversation.last_message}
@@ -3342,19 +3423,9 @@ export default function WhatsAppPage() {
                     <span>{cloudThread?.contact_name || cloudThread?.phone}</span>
                     {cloudThread?.phone && (
                       <span
-                        role="button"
-                        tabIndex={0}
                         dir="ltr"
-                        onClick={(event) => lookupMemberByCloudPhone(cloudThread.phone, event)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            lookupMemberByCloudPhone(cloudThread.phone, event);
-                          }
-                        }}
-                        className={`font-normal text-sm ${cloudPhoneClassName(cloudThread.member_phone_match)}`}
+                        className={`font-normal text-sm ${cloudPhoneClassName(cloudThread.member_link || cloudThread.member_phone_match)}`}
                         data-testid="cloud-thread-phone"
-                        aria-label={t('فتح ملف العضو عبر رقم الهاتف', 'Open member profile by phone')}
                       >
                         {cloudThread.phone}
                       </span>
@@ -3363,6 +3434,17 @@ export default function WhatsAppPage() {
                       <Building2 className="w-3 h-3" />{cloudThread?.branch_name}
                     </Badge>
                      <Badge variant="outline" className="text-[10px]">{cloudThread?.provider === 'waha' ? 'WAHA' : cloudThread?.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
+                      <CloudMemberAssociation
+                        memberLink={cloudThread?.member_link}
+                        isRTL={isRTL}
+                        t={t}
+                        onOpenMember={openMemberProfile}
+                        onChooseMember={(event) => chooseCloudMember(
+                          cloudThread?.member_link,
+                          cloudThread?.phone,
+                          event,
+                        )}
+                      />
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4">
@@ -3622,7 +3704,7 @@ export default function WhatsAppPage() {
           onOpenChange={(open) => {
             if (!open) {
               phoneLookupRequestRef.current += 1;
-              setPhoneLookup({ open: false, loading: false, phone: '', members: [] });
+              setPhoneLookup({ open: false, phone: '', members: [] });
             }
           }}
         >
@@ -3630,58 +3712,62 @@ export default function WhatsAppPage() {
             <DialogHeader>
               <DialogTitle>{t('اختيار ملف العضو', 'Choose member profile')}</DialogTitle>
             </DialogHeader>
-            {phoneLookup.loading ? (
-              <div className="py-8 text-center">
-                <Loader2 className="w-6 h-6 animate-spin mx-auto" />
-                <p className="text-sm text-muted-foreground mt-2">
-                  {t('جاري البحث عن العضو…', 'Searching for this member…')}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground" dir="ltr">
-                  {phoneLookup.phone}
-                </p>
-                <p className="text-sm">
-                  {t(
-                    'يوجد أكثر من عضو بهذا الرقم. اختر الملف الصحيح.',
-                    'More than one member uses this phone number. Choose the correct profile.',
-                  )}
-                </p>
-                <div className="space-y-2 max-h-72 overflow-y-auto">
-                  {phoneLookup.members.map(member => (
-                    <button
-                      key={member.id}
-                      type="button"
-                      onClick={() => openMemberProfile(member)}
-                      className="w-full text-start rounded-lg border p-3 hover:bg-accent/50 transition-colors"
-                      data-testid={`phone-member-choice-${member.id}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold truncate">
-                          {isRTL
-                            ? (member.name_ar || member.name || member.member_code)
-                            : (member.name || member.name_ar || member.member_code)}
-                        </span>
-                        {member.member_code && (
-                          <Badge variant="outline" className="text-xs shrink-0">
-                            #{member.member_code}
-                          </Badge>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground" dir="ltr">
+                {phoneLookup.phone}
+              </p>
+              <p className="text-sm">
+                {t(
+                  'هذا الرقم مشترك بين عدة أعضاء في هذا الفرع. اختر الملف الذي تريد فتحه.',
+                  'This phone is shared by members in this branch. Choose the profile to open.',
+                )}
+              </p>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {phoneLookup.members.map(member => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    onClick={() => openMemberProfile(member)}
+                    className="w-full text-start rounded-lg border p-3 hover:bg-accent/50 transition-colors"
+                    data-testid={`phone-member-choice-${member.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-9 h-9 rounded-full bg-muted overflow-hidden shrink-0 flex items-center justify-center">
+                        <User className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                        {member.photo && (
+                          <img
+                            src={member.photo}
+                            alt=""
+                            className="absolute inset-0 w-full h-full object-cover"
+                            onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                          />
                         )}
                       </div>
-                      {(member.branch_name || member.branch_name_ar || member.branch_id) && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                          <Building2 className="w-3 h-3" />
-                          {isRTL
-                            ? (member.branch_name_ar || member.branch_name || member.branch_id)
-                            : (member.branch_name || member.branch_name_ar || member.branch_id)}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold truncate">
+                            {cloudMemberName(member, isRTL)}
+                          </span>
+                          {member.member_code && (
+                            <Badge variant="outline" className="text-xs shrink-0">
+                              #{member.member_code}
+                            </Badge>
+                          )}
+                        </div>
+                        {(member.branch_name || member.branch_name_ar || member.branch_id) && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                            <Building2 className="w-3 h-3" />
+                            {isRTL
+                              ? (member.branch_name_ar || member.branch_name || member.branch_id)
+                              : (member.branch_name || member.branch_name_ar || member.branch_id)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
           </DialogContent>
         </Dialog>
 

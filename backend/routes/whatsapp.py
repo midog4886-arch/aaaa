@@ -40,6 +40,8 @@ from services import whatsapp_bulk_jobs
 from services import campaign_inbox, registration_followups
 from services import campaign_inquiry_automation
 from utils.phone import normalize_phone, phone_lookup_values
+from utils.member_photos import is_photo_url
+from .global_search import _member_overall_status
 
 logger = logging.getLogger("whatsapp")
 _bulk_media_branch_locks: dict[str, asyncio.Lock] = {}
@@ -141,104 +143,222 @@ def _member_phone_regex(canonical: str) -> str:
 
     The final Python normalization below is authoritative.  This regex only
     narrows one batched Mongo query to values containing the canonical local
-    number, including records imported with spaces/dashes/parentheses.
+    number, including records imported with spaces/dashes/parentheses or
+    Arabic/Persian numerals.
     """
     significant = (
         canonical[3:] if canonical.startswith("966")
         else canonical[2:] if canonical.startswith("20")
         else canonical
     )
-    return r"\D*".join(re.escape(digit) for digit in significant)
+    arabic_indic = "٠١٢٣٤٥٦٧٨٩"
+    persian = "۰۱۲۳۴۵۶۷۸۹"
+    digit_patterns = {
+        str(index): f"[{index}{arabic_indic[index]}{persian[index]}]"
+        for index in range(10)
+    }
+    return r"\D*".join(digit_patterns[digit] for digit in significant)
 
 
 async def _enrich_member_phone_matches(
     rows: list,
     current_user: dict,
     member_branch: Optional[str] = None,
+    include_candidates: bool = False,
 ) -> list:
-    """Add a boolean registered-member indicator with exact-first lookups.
+    """Derive the current member association for scoped inbox conversations.
 
-    ``rows`` are already scoped conversations.  Matching is intentionally
-    independent of the conversation branch for admins: a member registered in
-    any tenant branch is a proven match, even when the admin's active branch
-    differs.  Non-admins are restricted to the branch already authorized by
-    the conversation route.  Only ``phone`` and ``branch_id`` are projected;
-    no member details are returned in the indicator.
+    This is deliberately a read-time association, not a saved conversation
+    link: moving/deleting a member, changing either of their phone fields, or
+    adding a same-phone sibling is reflected by the next inbox read.  A
+    candidate must always be in the *conversation's* branch, including for
+    admins.  The legacy boolean remains for older inbox consumers, while
+    ``member_link`` is the authoritative, ambiguity-safe representation.
     """
+    def empty_link(status: str = "none") -> dict:
+        return {
+            "status": status,
+            "member": None,
+            "candidates": [],
+            "candidate_count": 0,
+        }
+
     can_view = await _can_view_member_phone_matches(current_user)
     if not can_view:
-        # Do not leak a stale or user-controlled flag to callers who cannot
-        # view member phones.  The frontend treats an absent flag as neutral.
+        # Do not leak a stale or user-controlled match flag, and do not query
+        # members at all.  ``restricted`` lets the new UI distinguish this
+        # permission state without disclosing member data.
         for row in rows:
             row.pop("member_phone_match", None)
+            row["member_link"] = empty_link("restricted")
         return rows
 
     normalized_row_phones = [
         normalize_phone(row.get("phone"))
         for row in rows
     ]
-    normalized_phones = {
-        phone for phone in normalized_row_phones if phone
+    row_branches = [
+        row.get("branch_id") or member_branch
+        for row in rows
+    ]
+
+    # Non-admin rows are already route-scoped, but retain that constraint in
+    # this helper as a defence in depth for its other callers.  Admins may see
+    # many branches, never a member from a different branch than a row.
+    authorized_branch = None
+    if not current_user.get("is_admin", False):
+        authorized_branch = member_branch or resolve_branch_filter(
+            current_user, None
+        )
+
+    lookup_pairs = {
+        (branch, phone)
+        for branch, phone in zip(row_branches, normalized_row_phones)
+        if branch
+        and phone
+        and (
+            current_user.get("is_admin", False)
+            or branch == authorized_branch
+        )
     }
-    if not normalized_phones:
+    if not lookup_pairs:
         for row in rows:
             row["member_phone_match"] = False
+            row["member_link"] = empty_link()
         return rows
 
+    normalized_phones = {phone for _, phone in lookup_pairs}
+    lookup_branches = list({
+        branch for branch, _ in lookup_pairs
+    })
     exact_values = list(dict.fromkeys(
         value
         for phone in normalized_phones
         for value in phone_lookup_values(phone)
     ))
-
-    # Admins intentionally have no branch restriction.  For a non-admin,
-    # ``member_branch`` comes from resolve_branch_filter/_assert_branch_access
-    # and therefore cannot be widened by the inbox phone data.
-    member_scope = {}
-    if not current_user.get("is_admin", False):
-        if not member_branch:
-            member_branch = resolve_branch_filter(current_user, None)
-        member_scope["branch_id"] = member_branch
+    member_scope = {
+        "branch_id": (
+            lookup_branches[0]
+            if len(lookup_branches) == 1
+            else {"$in": lookup_branches}
+        ),
+    }
+    projection = {
+        "_id": 0,
+        "id": 1,
+        "name": 1,
+        "name_ar": 1,
+        "member_code": 1,
+        "photo": 1,
+        "activities": 1,
+        "phone": 1,
+        "guardian_phone": 1,
+        "branch_id": 1,
+        "status": 1,
+        "archived": 1,
+        "deleted": 1,
+    }
 
     # Most records use one of the canonical/local forms covered by the exact
-    # lookup values.  Keep this query index-friendly and only pay for legacy
-    # formatting regexes for canonical phones not found by the exact lookup.
+    # lookup values.  We still run the legacy-format query for every requested
+    # phone below: an exact sibling (or a match in another branch) must not
+    # suppress a formatted sibling and turn a genuinely ambiguous association
+    # into an arbitrary unique one.
     exact_rows = await _db["members"].find(
-        {**member_scope, "phone": {"$in": exact_values}},
-        {"_id": 0, "phone": 1, "branch_id": 1},
-    ).to_list(length=None)
-    matched_phones = {
-        normalize_phone(member.get("phone"))
-        for member in exact_rows
-        if normalize_phone(member.get("phone")) in normalized_phones
-    }
-    unresolved_phones = normalized_phones - matched_phones
-    if unresolved_phones:
-        legacy_query = {
+        {
             **member_scope,
             "$or": [
-                {"phone": {"$regex": _member_phone_regex(phone)}}
-                for phone in unresolved_phones
+                {"phone": {"$in": exact_values}},
+                {"guardian_phone": {"$in": exact_values}},
             ],
+        },
+        projection,
+    ).to_list(length=None)
+    legacy_query = {
+        **member_scope,
+        "$or": [
+            {field: {"$regex": _member_phone_regex(phone)}}
+            for phone in normalized_phones
+            for field in ("phone", "guardian_phone")
+        ],
+    }
+    legacy_rows = await _db["members"].find(
+        legacy_query,
+        projection,
+    ).to_list(length=None)
+
+    # The two batched queries can overlap in legacy data.  De-duplicate by
+    # member ID before grouping so a number recorded as both member and
+    # guardian phone never turns one member into a false ambiguity.
+    members_by_id = {}
+    for member in [*exact_rows, *legacy_rows]:
+        member_id = member.get("id")
+        status = str(member.get("status") or "").lower()
+        if (
+            not member_id
+            or status in {"archived", "deleted"}
+            or member.get("archived") is True
+            or member.get("deleted") is True
+        ):
+            continue
+        members_by_id[member_id] = member
+
+    candidates_by_pair = {}
+    for member in members_by_id.values():
+        branch = member.get("branch_id")
+        if not branch:
+            continue
+        for field in ("phone", "guardian_phone"):
+            phone = normalize_phone(member.get(field))
+            pair = (branch, phone)
+            if phone and pair in lookup_pairs:
+                candidates_by_pair.setdefault(pair, {})[member["id"]] = member
+
+    def member_summary(member: dict) -> dict:
+        photo = member.get("photo")
+        return {
+            "id": member.get("id"),
+            "name": member.get("name") or "",
+            "name_ar": member.get("name_ar") or "",
+            "member_code": member.get("member_code") or "",
+            # Never return legacy base64 photo payloads in the inbox list.
+            "photo": photo if is_photo_url(photo) else None,
+            "subscription_status": _member_overall_status(
+                member.get("activities") or []
+            ),
         }
-        legacy_rows = await _db["members"].find(
-            legacy_query,
-            {"_id": 0, "phone": 1, "branch_id": 1},
-        ).to_list(length=None)
-        matched_phones.update(
-            normalize_phone(member.get("phone"))
-            for member in legacy_rows
-            if normalize_phone(member.get("phone")) in unresolved_phones
-        )
-    for row, normalized_phone in zip(rows, normalized_row_phones):
-        row["member_phone_match"] = (
-            normalized_phone in matched_phones
-            and (
-                current_user.get("is_admin", False)
-                or not member_branch
-                or row.get("branch_id") == member_branch
-            )
-        )
+
+    for row, branch, normalized_phone in zip(
+        rows, row_branches, normalized_row_phones
+    ):
+        pair = (branch, normalized_phone)
+        members = list((candidates_by_pair.get(pair) or {}).values())
+        members.sort(key=lambda member: (
+            str(member.get("id") or ""),
+            str(member.get("name_ar") or member.get("name") or ""),
+        ))
+        summaries = [member_summary(member) for member in members]
+        count = len(summaries)
+        if count == 1:
+            link = {
+                "status": "unique",
+                "member": summaries[0],
+                "candidates": summaries if include_candidates else [],
+                "candidate_count": 1,
+            }
+        elif count > 1:
+            link = {
+                "status": "ambiguous",
+                "member": None,
+                "candidates": summaries if include_candidates else [],
+                "candidate_count": count,
+            }
+        else:
+            link = empty_link()
+        row["member_link"] = link
+        # Compatibility only.  New clients must use member_link to avoid
+        # treating shared family phones as an arbitrary member selection.
+        row["member_phone_match"] = count > 0
     return rows
 
 
@@ -5043,8 +5163,8 @@ async def list_cloud_inbox_conversations(
     rows = await _enrich_member_phone_matches(
         rows,
         current_user,
-        # Admins are intentionally enriched tenant-wide inside the helper;
-        # non-admins stay within the branch resolved for this list request.
+        # Associations stay inside each conversation's branch, even when
+        # an admin views conversations across multiple branches.
         member_branch=effective_branch,
     )
     branch_ids = {
@@ -5113,6 +5233,7 @@ async def get_cloud_inbox_thread(
             [conversation],
             current_user,
             member_branch=conversation.get("branch_id"),
+            include_candidates=True,
         )
     )[0]
     return {"conversation": conversation, "messages": messages}
