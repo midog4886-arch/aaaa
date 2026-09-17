@@ -42,6 +42,39 @@ def test_waha_client_sends_api_key_and_text_payload(monkeypatch):
     assert captured["json"] == {"session": "academy-a", "chatId": "966501234567@c.us", "text": "hello"}
 
 
+def test_waha_client_uses_dedicated_voice_contract(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"id": "voice-1"}
+
+    class Client:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def request(self, method, url, headers, **kwargs):
+            captured.update(method=method, url=url, headers=headers, **kwargs)
+            return Response()
+
+    monkeypatch.setattr("services.waha.httpx.AsyncClient", lambda **_: Client())
+    result = run(WAHAClient("https://waha.example", "secret").send_voice(
+        "academy-a", "966501234567@c.us", b"OggSvoice",
+        "audio/ogg; codecs=opus", "voice.ogg",
+    ))
+    assert result == (True, {"id": "voice-1"}, None)
+    assert captured["url"] == "https://waha.example/api/sendVoice"
+    assert captured["json"] == {
+        "session": "academy-a", "chatId": "966501234567@c.us",
+        "file": {
+            "data": "T2dnU3ZvaWNl", "mimetype": "audio/ogg; codecs=opus",
+            "filename": "voice.ogg",
+        },
+        "convert": False,
+    }
+
+
 def test_provider_resolution_keeps_existing_branch_defaults():
     assert whatsapp_mod._branch_provider(None) == "legacy"
     assert whatsapp_mod._branch_provider({"enabled": True}) == "meta_cloud"

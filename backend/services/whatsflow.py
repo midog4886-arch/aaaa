@@ -106,6 +106,23 @@ class WhatsflowClient:
             },
         )
 
+    async def send_whatsapp_audio(self, number: str, audio: str, delay: int = 0):
+        """Send a push-to-talk voice note through Evolution's audio endpoint.
+
+        Whatsflow exposes Evolution's ``sendWhatsAppAudio`` endpoint separately
+        from ``sendMedia``.  In particular, sending an OGG as generic media
+        does not mark it as a WhatsApp voice note.
+        """
+        return await self._request(
+            "POST",
+            f"/message/sendWhatsAppAudio/{self._instance_path()}",
+            json={
+                "number": "".join(filter(str.isdigit, number or "")),
+                "audio": audio,
+                "delay": delay,
+            },
+        )
+
     @classmethod
     def _decode_provider_media(cls, data: Any) -> tuple[bool, Any, Optional[str]]:
         """Validate Evolution's decrypted-media response before returning bytes."""

@@ -32,7 +32,7 @@
 - [Member status consistency](member-status-consistency.md) — expired = end_date passed (not session count); freeze/closure extends end_date; badge+count+filter must all use all-expired rule, never per-activity .some().
 - [Reports activity filter](reports-activity-filter.md) — activity_id on report endpoints may be a dead param (financial was); now split on commas → $in; group options use Levels-page keyword convention.
 - [Renewal activity switch](renewal-activity-switch.md) — renewal dialogs can change activity/level/days; switch replaces the SAME subdoc (old id in URL, new in payload); coupon + schedule must follow the new values.
-- [Member card dates](member-card-dates.md) — printed cards show the ORIGINAL paid-invoice window (activity dates drift via off-schedule/freeze); portal digital card still live on purpose.
+- [Permanent member card](member-card-dates.md) — reusable card without member photo or subscription dates/schedule; preserve QR identity and make reprinting optional.
 - [Member portal schedule source](member-portal-schedule-source.md) — portal /my-schedule reads invoices+registration_forms, NOT member.activities where admins edit الموعد; must merge activities as authoritative or schedule page is empty/stale.
 - [Auth user object shape](auth-user-object-shape.md) — /auth/login returns a hand-picked user dict, /auth/me the full doc; any field used for authz/UI (e.g. permissions) must be in BOTH or it is undefined until refresh. Permission keys live in 3 synced places.
 - [Prepaid auto-activation](prepaid-auto-activation.md) — roll forward ONLY when item start > profile end (new period); "item end > profile end" bulk-destroys off-schedule drift (happened once, restored from backup).
@@ -83,3 +83,4 @@
 - [Manual inquiry boundaries](manual-inquiry-boundary.md) — ad inquiry imports do not authorize automated outreach; opening WhatsApp is not proof of contact.
 - [Invoice notice branding](invoice-notice-branding.md) — delayed receipt workers need full tenant branding; preserve clickable links and paid total in a single media message.
 - [WhatsApp reply-state evidence](whatsapp-reply-state.md) — unread is not unanswered; human replies need durable evidence and reversed-event ordering tests.
+- [WhatsApp voice recording](whatsapp-voice-recording.md) — streaming WebM may have no duration; normalize bounded mono Opus and never auto-send or retry uncertain delivery.

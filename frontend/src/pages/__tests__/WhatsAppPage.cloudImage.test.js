@@ -15,6 +15,7 @@ jest.mock('../../services/api', () => ({
     getCloudInboxMedia: jest.fn(),
     replyCloudInbox: jest.fn(),
     sendCloudInboxMedia: jest.fn(),
+    sendCloudInboxVoice: jest.fn(),
   },
   branchesAPI: { getAll: jest.fn() },
   membersAPI: {

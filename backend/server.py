@@ -730,11 +730,16 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
                     })
     
     branch_phone = ""
+    branch_name = ""
     member_branch_id = member.get("branch_id")
     if member_branch_id:
-        _branch = await db.branches.find_one({"id": member_branch_id}, {"_id": 0, "phone": 1})
+        _branch = await db.branches.find_one(
+            {"id": member_branch_id},
+            {"_id": 0, "phone": 1, "name": 1, "name_ar": 1},
+        )
         if _branch:
             branch_phone = _branch.get("phone") or ""
+            branch_name = _branch.get("name_ar") or _branch.get("name") or ""
 
     return {
         "id": member["id"],
@@ -744,6 +749,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
         "phone": member.get("phone"),
         "photo": member.get("photo", ""),
         "branch_id": member_branch_id,
+        "branch_name": branch_name,
         "branch_phone": branch_phone,
         "notes": member.get("notes") or "",
         "activities": activities,

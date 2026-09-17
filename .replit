@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["android-tools", "cacert", "cargo", "freetype", "glibcLocales", "jdk17", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "rustc", "tcl", "tk", "unzip", "zip", "zlib"]
+packages = ["android-tools", "cacert", "cargo", "ffmpeg", "freetype", "glibcLocales", "jdk17", "lcms2", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "rustc", "tcl", "tk", "unzip", "zip", "zlib"]
 
 [userenv]
 

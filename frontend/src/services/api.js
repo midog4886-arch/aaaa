@@ -902,6 +902,12 @@ export const whatsappAPI = {
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     ),
+  sendCloudInboxVoice: (conversationId, formData) =>
+    axios.post(
+      `${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/voice`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
   getReminderHistory: (filters = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {

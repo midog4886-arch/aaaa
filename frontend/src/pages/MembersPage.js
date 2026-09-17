@@ -3,12 +3,11 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
-import { getMemberQRValue } from '../utils/memberQR';
+import { buildPermanentMemberCardHtml, openPermanentMemberCardPrint } from '../utils/permanentMemberCard';
 import { NationalitySelect } from '../components/NationalitySelect';
 import MemberAvatar from '../components/MemberAvatar';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
-import { fetchOriginalActivityDates, applyOriginalDates } from './invoices/cardDates';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import ProfileOverview from '../components/member-profile/ProfileOverview';
@@ -834,30 +833,96 @@ export const MembersPage = () => {
     }
   };
 
-  // Open member card dialog
-  // The card must show the ORIGINAL invoice period (user decision), not the
-  // live activity dates that drift with off-schedule attendance / extensions.
+  // A permanent physical card contains only stable identity information. Its
+  // eligibility is checked by the system, so it never needs invoice dates.
   const openMemberCardDialog = (member) => {
     setMemberCardData(member);
     setIsMemberCardDialogOpen(true);
-    fetchOriginalActivityDates(member?.id).then((origMap) => {
-      if (Object.keys(origMap).length === 0) return;
-      setMemberCardData((prev) =>
-        prev && prev.id === member.id
-          ? { ...prev, activities: applyOriginalDates(prev.activities, origMap) }
-          : prev
-      );
+  };
+
+  const permanentMemberCardOptions = (member) => ({
+    member,
+    // Keep the stored identifier exactly as-is in the QR payload.
+    qrValue: member?.member_code ?? member?.id ?? '',
+    logoUrl: `${window.location.origin}/images/academy-logo.png`,
+    academyName: language === 'ar'
+      ? 'شركة اداء الابطال العالمية للرياضة'
+      : 'Global Champions Sports Performance',
+    // The physical card back must always identify the selected member's own
+    // branch, never a staff/default branch or the member's personal phone.
+    branchName: member?.branch_name
+      || branchesList.find((branch) => String(branch.id) === String(member?.branch_id))?.name_ar
+      || branchesList.find((branch) => String(branch.id) === String(member?.branch_id))?.name
+      || '',
+    branchPhone: member?.branch_phone
+      || branchesList.find((branch) => String(branch.id) === String(member?.branch_id))?.phone
+      || '',
+    language,
+  });
+
+  const formatCardPrintRequest = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString(language === 'ar' ? 'ar-SA' : 'en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
     });
   };
 
-  // Print member card
+  // Print request for the permanent physical card. Recording the request does
+  // not claim that a printer physically completed the job.
   const printMemberCard = () => {
+    if (!memberCardData) return;
+    const cardOptions = permanentMemberCardOptions(memberCardData);
+    if (cardOptions.qrValue === '') {
+      toast.error(language === 'ar' ? 'لا يمكن طباعة البطاقة بدون رمز العضوية.' : 'The card cannot be printed without a membership code.');
+      return;
+    }
+    const printWindow = openPermanentMemberCardPrint(cardOptions);
+    if (!printWindow) {
+      toast.error(language === 'ar' ? 'تعذر فتح نافذة الطباعة. يرجى السماح بالنوافذ المنبثقة.' : 'Could not open the print window. Please allow pop-ups.');
+      return;
+    }
+
+    if (!memberCardData.id) return;
+    membersAPI.markPrinted([memberCardData.id])
+      .then((response) => {
+        const printedAt = response?.data?.printed_at;
+        if (!printedAt || !Number(response?.data?.updated)) {
+          toast.error(language === 'ar'
+            ? 'فُتحت نافذة الطباعة، لكن لم يتم تسجيل طلب الطباعة.'
+            : 'The print window opened, but the print request was not recorded.');
+          return;
+        }
+        const updatePrintRequest = (member) => member?.id === memberCardData.id
+          ? {
+              ...member,
+              card_printed_at: printedAt,
+              card_print_count: (Number(member.card_print_count) || 0) + 1,
+            }
+          : member;
+        setMemberCardData((current) => updatePrintRequest(current));
+        setMembers((current) => current.map(updatePrintRequest));
+      })
+      .catch(() => {
+        toast.error(language === 'ar'
+          ? 'فُتحت نافذة الطباعة، لكن تعذر تسجيل طلب الطباعة.'
+          : 'The print window opened, but the print request could not be recorded.');
+      });
+  };
+
+  /*
+   * Retired invoice-period sticker implementation. Subscription/report
+   * printing remains in its dedicated flows; the member-card action above is
+   * intentionally permanent and uses the shared template.
+  const legacyInvoiceStickerPrint = () => {
     if (!memberCardData) return;
     
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (!printWindow) return;
     
-    const qrData = getMemberQRValue(memberCardData.member_code || memberCardData.id);
+    const qrData = memberCardData.member_code ?? memberCardData.id ?? '';
 
     const _allActs = memberCardData.activities || [];
     const _today = new Date();
@@ -996,7 +1061,7 @@ export const MembersPage = () => {
               </div>
               <div class="logo-card">
                 <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-                <div class="contact-info">📞 ${memberCardData.branch_phone || '0566238384'}</div>
+                <div class="contact-info">📞 ${memberCardData.branch_phone || ''}</div>
                 <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
               </div>
             </div>
@@ -1039,7 +1104,7 @@ export const MembersPage = () => {
             </div>
             <div class="logo-card">
               <img src="${origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-              <div class="contact-info">📞 ${memberCardData.branch_phone || '0566238384'}</div>
+              <div class="contact-info">📞 ${memberCardData.branch_phone || ''}</div>
               <div class="lost-card-notice">⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س</div>
             </div>
           </div>
@@ -1050,6 +1115,7 @@ export const MembersPage = () => {
     printWindow.document.write(printContent);
     printWindow.document.close();
   };
+  */
 
   const openEditDialog = (member) => {
     setSelectedMember(member);
@@ -1735,7 +1801,9 @@ export const MembersPage = () => {
         }
       }
       
-      toast.success(language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully');
+      toast.success(language === 'ar'
+        ? 'تم تجديد الاشتراك بنجاح. البطاقة الدائمة الحالية قابلة لإعادة الاستخدام بعد تحقق المنظومة من الأهلية.'
+        : 'Subscription renewed successfully. The current permanent card can be reused after the system verifies eligibility.');
       setIsRenewalDialogOpen(false);
       
       // Refresh member data
@@ -5453,7 +5521,16 @@ export const MembersPage = () => {
             
             {memberCardData && (
               <div className="space-y-4">
-                {/* Card Preview - Same design as MemberCardPage */}
+                {/* Portrait CR-80 front and back use the exact print template. */}
+                <div className="flex justify-center p-4 bg-gray-100 rounded-lg overflow-x-auto">
+                  <iframe
+                    title={language === 'ar' ? 'معاينة وجهي بطاقة العضوية الدائمة' : 'Permanent membership card front and back preview'}
+                    srcDoc={buildPermanentMemberCardHtml(permanentMemberCardOptions(memberCardData))}
+                    className="w-[230px] h-[690px] border-0 rounded-xl shadow-lg bg-white"
+                  />
+                </div>
+                {false && (
+                  <>
                 <div className="flex flex-nowrap gap-3 justify-center items-stretch p-4 bg-gray-100 rounded-lg overflow-x-auto">
                   {/* Member Card - Orange/Amber theme like MemberCardPage */}
                   <div className="w-[300px] shrink-0 rounded-xl overflow-hidden shadow-lg bg-white">
@@ -5474,7 +5551,7 @@ export const MembersPage = () => {
                       <div className="flex flex-col items-center shrink-0">
                         <div className="bg-white p-2 rounded-lg shadow-inner border-2 border-orange-100">
                           <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(getMemberQRValue(memberCardData.member_code || memberCardData.id))}`}
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(memberCardData.member_code ?? memberCardData.id ?? '')}`}
                             alt="QR"
                             className="w-24 h-24"
                           />
@@ -5554,37 +5631,40 @@ export const MembersPage = () => {
                   {/* Logo Card */}
                   <div className="w-[300px] shrink-0 h-auto rounded-xl overflow-hidden shadow-lg bg-white flex flex-col items-center justify-center p-4 gap-2">
                     <img src="/images/academy-logo.png" alt="شعار الأكاديمية" className="max-w-[92%] max-h-[78%] object-contain" />
-                    <p className="text-sm font-semibold text-gray-700">📞 {memberCardData?.branch_phone || '0566238384'}</p>
+                    <p className="text-sm font-semibold text-gray-700">📞 {memberCardData?.branch_phone || ''}</p>
                     <div className="text-center text-xs text-red-600 font-bold bg-red-50 border border-red-300 rounded px-3 py-2">
                       ⚠️ في حال فقدان كرت العضوية،<br/>يتم إصدار كرت جديد برسوم 10 ر.س
                     </div>
                   </div>
                 </div>
-                
-                {/* Member Info Summary */}
-                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg text-sm">
-                  <div>
-                    <span className="text-gray-500">{language === 'ar' ? 'الاسم:' : 'Name:'}</span>
-                    <span className="font-medium ms-2">{memberCardData.name_ar || memberCardData.name}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">{language === 'ar' ? 'رقم العضوية:' : 'Member ID:'}</span>
-                    <span className="font-bold text-primary ms-2">{memberCardData.member_code}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">{language === 'ar' ? 'الجوال:' : 'Phone:'}</span>
-                    <span className="font-medium ms-2" dir="ltr">{memberCardData.phone}</span>
-                  </div>
-                  {(memberCardData.guardian_name_ar || memberCardData.guardian_name) && (
-                    <div>
-                      <span className="text-gray-500">ولي الأمر:</span>
-                      <span className="font-medium ms-2">{memberCardData.guardian_name_ar || memberCardData.guardian_name}</span>
-                    </div>
+                  </>
+                )}
+
+                <div className="p-4 bg-gray-50 rounded-lg text-sm text-gray-600">
+                  <p>
+                    {language === 'ar'
+                      ? 'البطاقة الدائمة تعرض الهوية فقط، وتتحقق المنظومة من الأهلية الحالية.'
+                      : 'The permanent card shows identity only; the system verifies current eligibility.'}
+                  </p>
+                  {(memberCardData.card_printed_at || memberCardData.card_print_count) ? (
+                    <p className="mt-2">
+                      <span className="font-medium text-gray-700">
+                        {language === 'ar'
+                          ? 'آخر طلب طباعة (لا يؤكد إتمام الطباعة الفعلية): '
+                          : 'Last print request (not confirmation of physical completion): '}
+                      </span>
+                      {memberCardData.card_printed_at
+                        ? formatCardPrintRequest(memberCardData.card_printed_at)
+                        : (language === 'ar' ? 'غير متاح' : 'Unavailable')}
+                      {memberCardData.card_print_count
+                        ? ` · ${language === 'ar' ? 'عدد طلبات الطباعة' : 'Print requests'}: ${memberCardData.card_print_count}`
+                        : ''}
+                    </p>
+                  ) : (
+                    <p className="mt-2">
+                      {language === 'ar' ? 'لا يوجد طلب طباعة مسجل بعد.' : 'No print request has been recorded yet.'}
+                    </p>
                   )}
-                  <div>
-                    <span className="text-gray-500">{language === 'ar' ? 'الأنشطة:' : 'Activities:'}</span>
-                    <span className="font-medium ms-2">{memberCardData.activities?.length || 0}</span>
-                  </div>
                 </div>
               </div>
             )}

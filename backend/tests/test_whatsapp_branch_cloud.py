@@ -2,6 +2,9 @@ import asyncio
 import hashlib
 import hmac
 import json
+import shutil
+import subprocess
+import tempfile
 import pytest
 from datetime import date, datetime, timedelta
 from starlette.responses import Response
@@ -622,6 +625,346 @@ def test_cloud_inbox_image_unknown_provider_failure_is_explicit_and_cleans_media
     assert "delivery outcome is unknown" in str(exc.value.detail)
     assert deleted == [("branch-a", "private-media-failed")]
     assert db["whatsapp_cloud_messages"].rows == []
+
+
+def test_cloud_inbox_voice_route_rejects_malformed_type_and_oversized_upload(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_session_name": "main",
+    })
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-a:966501234567", "branch_id": "branch-a",
+        "phone": "966501234567",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+
+    class Upload:
+        def __init__(self, mime, chunks):
+            self.content_type = mime
+            self._chunks = iter(chunks)
+
+        async def read(self, _size=-1):
+            return next(self._chunks, b"")
+
+    with pytest.raises(Exception) as invalid:
+        run(whatsapp_mod.send_cloud_inbox_voice(
+            "branch-a:966501234567", Upload("text/plain", [b"OggS"]),
+            current_user={"is_admin": True},
+        ))
+    assert invalid.value.status_code == 400
+
+    with pytest.raises(Exception) as oversized:
+        run(whatsapp_mod.send_cloud_inbox_voice(
+            "branch-a:966501234567",
+            Upload("audio/ogg", [b"OggSOpusHead" + b"x" * whatsapp_mod.CLOUD_CHAT_AUDIO_LIMIT]),
+            current_user={"is_admin": True},
+        ))
+    assert oversized.value.status_code == 413
+
+
+def test_cloud_inbox_voice_normalizes_streaming_webm_without_header_duration():
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        pytest.skip("ffmpeg and ffprobe are required by the deployed voice feature")
+    webm = subprocess.run(
+        [
+            ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi",
+            "-i", "sine=frequency=440:sample_rate=48000", "-t", "1",
+            "-c:a", "libopus", "-f", "webm", "-live", "1", "pipe:1",
+        ],
+        check=True, stdout=subprocess.PIPE,
+    ).stdout
+    # Writing WebM to a pipe mirrors MediaRecorder's non-seekable output:
+    # there is no seek-back duration element for ffprobe to trust.
+    header_duration = subprocess.run(
+        [
+            ffprobe, "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", "pipe:0",
+        ],
+        input=webm, check=True, stdout=subprocess.PIPE,
+    ).stdout.decode().strip()
+    assert header_duration == "N/A"
+
+    class Upload:
+        content_type = "audio/webm"
+
+        def __init__(self, data):
+            self.chunks = iter([data])
+
+        async def read(self, _size=-1):
+            return next(self.chunks, b"")
+
+    voice, mime, filename = run(whatsapp_mod._read_cloud_chat_audio(Upload(webm)))
+    assert voice.startswith(b"OggS")
+    assert b"OpusHead" in voice[:512]
+    assert (mime, filename) == ("audio/ogg", "voice.ogg")
+
+
+def test_cloud_inbox_voice_accepts_120_seconds_padding_and_normalizes_to_mono():
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        pytest.skip("ffmpeg and ffprobe are required by the deployed voice feature")
+    webm = subprocess.run(
+        [
+            ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi",
+            "-i", "sine=frequency=440:sample_rate=48000", "-t", "120",
+            "-c:a", "libopus", "-f", "webm", "-live", "1", "pipe:1",
+        ],
+        check=True, stdout=subprocess.PIPE,
+    ).stdout
+
+    class Upload:
+        content_type = "audio/webm"
+
+        async def read(self, _size=-1):
+            if getattr(self, "sent", False):
+                return b""
+            self.sent = True
+            return webm
+
+    voice, _mime, _filename = run(whatsapp_mod._read_cloud_chat_audio(Upload()))
+    with tempfile.NamedTemporaryFile(suffix=".ogg") as normalized:
+        normalized.write(voice)
+        normalized.flush()
+        audio_properties = subprocess.run(
+            [
+                ffprobe, "-v", "error", "-show_entries",
+                "stream=channels,sample_rate:format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", normalized.name,
+            ],
+            check=True, stdout=subprocess.PIPE,
+        ).stdout.decode().strip().splitlines()
+    # OGG's last duration includes one Opus packet of codec padding.
+    assert float(audio_properties[-1]) <= 120.25
+    assert set(audio_properties[:-1]) == {"1", "48000"}
+
+
+def test_cloud_inbox_voice_does_not_truncate_recordings_over_120_seconds():
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("ffmpeg is required by the deployed voice feature")
+    webm = subprocess.run(
+        [
+            ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi",
+            "-i", "anullsrc=r=48000:cl=mono", "-t", "121",
+            "-c:a", "libopus", "-f", "webm", "pipe:1",
+        ],
+        check=True, stdout=subprocess.PIPE,
+    ).stdout
+
+    class Upload:
+        content_type = "audio/webm"
+
+        async def read(self, _size=-1):
+            if getattr(self, "sent", False):
+                return b""
+            self.sent = True
+            return webm
+
+    with pytest.raises(Exception) as exc:
+        run(whatsapp_mod._read_cloud_chat_audio(Upload()))
+    assert exc.value.status_code == 400
+    assert "120 seconds" in str(exc.value.detail)
+
+
+def test_cloud_inbox_voice_requires_bulk_whatsapp_access():
+    with pytest.raises(Exception) as exc:
+        run(whatsapp_mod.send_cloud_inbox_voice(
+            "branch-a:966501234567", object(),
+            current_user={"is_admin": False, "permissions": []},
+        ))
+    assert exc.value.status_code == 403
+
+
+def test_cloud_inbox_voice_rejects_cross_branch_before_read_or_storage(monkeypatch):
+    db = _DB()
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-b:966501234567", "branch_id": "branch-b",
+        "phone": "966501234567",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    called = []
+
+    async def read(_audio):
+        called.append("read")
+        return b"OggSOpusHead", "audio/ogg", "voice.ogg"
+
+    monkeypatch.setattr(whatsapp_mod, "_read_cloud_chat_audio", read)
+    with pytest.raises(Exception) as exc:
+        run(whatsapp_mod.send_cloud_inbox_voice(
+            "branch-b:966501234567", object(),
+            current_user={
+                "is_admin": False, "permissions": ["messages"],
+                "branch_id": "branch-a",
+            },
+        ))
+    assert exc.value.status_code == 403
+    assert called == []
+
+
+def test_cloud_inbox_voice_persists_audio_and_resolves_human_reply(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_session_name": "main",
+    })
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-a:966501234567", "branch_id": "branch-a",
+        "phone": "966501234567",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    stopped, noted = [], []
+
+    async def read(_audio):
+        return b"OggSOpusHeadvoice", "audio/ogg", "voice.ogg"
+
+    async def store(_branch, content, mime, filename):
+        assert (content, mime, filename) == (b"OggSOpusHeadvoice", "audio/ogg", "voice.ogg")
+        return {"media_id": "voice-private-1", "mime_type": mime, "filename": filename}
+
+    async def send(*_args):
+        return True, "waha-voice-1", None, None
+
+    async def stop(*args):
+        stopped.append(args)
+
+    async def note(*args):
+        noted.append(args)
+
+    monkeypatch.setattr(whatsapp_mod, "_read_cloud_chat_audio", read)
+    monkeypatch.setattr(whatsapp_mod, "_store_cloud_chat_image", store)
+    monkeypatch.setattr(whatsapp_mod, "_send_cloud_chat_voice_result", send)
+    monkeypatch.setattr(whatsapp_mod.registration_followups, "stop_phone", stop)
+    monkeypatch.setattr(whatsapp_mod.campaign_inquiry_automation, "stop_phone", stop)
+    monkeypatch.setattr(whatsapp_mod, "_note_cloud_human_reply", note)
+
+    result = run(whatsapp_mod.send_cloud_inbox_voice(
+        "branch-a:966501234567", object(),
+        current_user={"is_admin": True, "id": "staff-1"},
+    ))
+    assert result["success"] is True
+    assert result["message"]["type"] == "audio"
+    assert result["message"]["media_storage_id"] == "voice-private-1"
+    assert result["message"]["waha_message_id"] == "waha-voice-1"
+    assert len(stopped) == 2
+    assert noted and noted[0][3] == "waha-voice-1"
+
+
+def test_cloud_inbox_voice_uncertain_send_keeps_reply_state_and_deletes_media(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_session_name": "main",
+    })
+    db["whatsapp_cloud_conversations"].rows.append({
+        "id": "branch-a:966501234567", "branch_id": "branch-a",
+        "phone": "966501234567", "needs_reply": True,
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    deleted, noted = [], []
+
+    async def read(_audio):
+        return b"OggSOpusHeadvoice", "audio/ogg", "voice.ogg"
+
+    async def store(*_args):
+        return {"media_id": "voice-private-failed", "mime_type": "audio/ogg", "filename": "voice.ogg"}
+
+    async def send(*_args):
+        return False, None, "ReadTimeout", None
+
+    async def delete(*args):
+        deleted.append(args)
+
+    async def stop(*_args):
+        pass
+
+    async def note(*args):
+        noted.append(args)
+
+    monkeypatch.setattr(whatsapp_mod, "_read_cloud_chat_audio", read)
+    monkeypatch.setattr(whatsapp_mod, "_store_cloud_chat_image", store)
+    monkeypatch.setattr(whatsapp_mod, "_send_cloud_chat_voice_result", send)
+    monkeypatch.setattr(whatsapp_mod, "_delete_cloud_chat_image", delete)
+    monkeypatch.setattr(whatsapp_mod.registration_followups, "stop_phone", stop)
+    monkeypatch.setattr(whatsapp_mod.campaign_inquiry_automation, "stop_phone", stop)
+    monkeypatch.setattr(whatsapp_mod, "_note_cloud_human_reply", note)
+
+    with pytest.raises(Exception) as exc:
+        run(whatsapp_mod.send_cloud_inbox_voice(
+            "branch-a:966501234567", object(), current_user={"is_admin": True},
+        ))
+    assert exc.value.status_code == 502
+    assert exc.value.detail["delivery_uncertain"] is True
+    assert deleted == [("branch-a", "voice-private-failed")]
+    assert noted == []
+    assert db["whatsapp_cloud_messages"].rows == []
+
+
+def test_meta_voice_contract_uses_native_audio_message(monkeypatch):
+    monkeypatch.setenv("SESSION_SECRET", "voice-meta-test-secret")
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"messages": [{"id": "wamid.voice-1"}]}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def post(self, url, **kwargs):
+            captured.update(url=url, **kwargs)
+            return Response()
+
+    monkeypatch.setattr(whatsapp_mod.httpx, "AsyncClient", lambda **_kwargs: Client())
+    result = run(whatsapp_mod._send_meta_chat_audio_result(
+        "966501234567", "meta-audio-id", {
+            "enabled": True, "phone_number_id": "123",
+            "access_token_encrypted": whatsapp_mod._encrypt_access_token("token"),
+            "graph_api_version": "v23.0",
+        },
+    ))
+    assert result == (True, "wamid.voice-1", None)
+    assert captured["json"] == {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": "966501234567",
+        "type": "audio",
+        "audio": {"id": "meta-audio-id"},
+    }
+
+
+def test_meta_voice_upload_uses_ogg_opus_mime(monkeypatch):
+    captured = []
+
+    async def upload(content, filename, mime_type, config):
+        captured.append((content, filename, mime_type, config))
+        return "meta-media-1"
+
+    async def send(phone, media_id, config):
+        assert (phone, media_id) == ("966501234567", "meta-media-1")
+        return True, "wamid.voice-1", None
+
+    monkeypatch.setattr(whatsapp_mod, "_upload_meta_bulk_media", upload)
+    monkeypatch.setattr(whatsapp_mod, "_send_meta_chat_audio_result", send)
+    result = run(whatsapp_mod._send_cloud_chat_voice_result(
+        "966501234567", b"OggSOpusHeadvoice", "audio/ogg", "voice.ogg",
+        {
+            "provider": "meta_cloud", "enabled": True, "phone_number_id": "123",
+            "access_token_encrypted": "encrypted",
+        },
+        "branch-a",
+    ))
+    assert result == (True, "wamid.voice-1", None, "meta-media-1")
+    assert captured[0][1:3] == ("voice.ogg", "audio/ogg; codecs=opus")
 
 
 def test_whatsflow_audio_media_uses_decrypt_api_not_encrypted_cdn(monkeypatch):

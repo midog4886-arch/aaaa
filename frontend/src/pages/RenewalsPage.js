@@ -14,6 +14,7 @@ import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI, di
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
 import MemberAvatar from '../components/MemberAvatar';
+import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import {
   RefreshCcw,
@@ -87,6 +88,121 @@ const _cacheKey = (days, branchId) => `${days || ''}::${branchId || 'all'}`;
 // "تم التجديد" tab so renewed members visibly move out of the other tabs.
 const _renewedSession = { items: [] };
 
+export const isRenewalConfirmationBranchAuthorized = (item, user, selectedBranchId) => {
+  if (!item) return false;
+  if (
+    item.tenant_id &&
+    user?.tenant_id &&
+    String(item.tenant_id) !== String(user.tenant_id)
+  ) return false;
+
+  const itemBranchId = item.branch_id || '';
+  const activeBranchId = selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '';
+  if (activeBranchId && itemBranchId && itemBranchId !== activeBranchId) return false;
+  if (user?.is_admin) return true;
+
+  const assignedBranches = Array.isArray(user?.branch_ids) && user.branch_ids.length
+    ? user.branch_ids.filter(Boolean)
+    : (user?.branch_id ? [user.branch_id] : []);
+  return Boolean(itemBranchId && assignedBranches.includes(itemBranchId));
+};
+
+export const canOfferRenewalWhatsAppConfirmation = (renewal, user, selectedBranchId) => Boolean(
+  renewal?.phone &&
+  (user?.is_admin || (user?.permissions || []).includes('member-phones')) &&
+  isRenewalConfirmationBranchAuthorized(renewal, user, selectedBranchId)
+);
+
+export const buildRenewalConfirmationText = (renewal, language) => {
+  const start = (renewal?.start_date || '').replace(/-/g, '/');
+  const end = (renewal?.end_date || '').replace(/-/g, '/');
+  const schedule = renewal?.schedule || '';
+  if (language === 'ar') {
+    return [
+      `السلام عليكم ${renewal?.member_name || ''}،`,
+      `تم تجديد اشتراك ${renewal?.activity_name || ''} بنجاح.`,
+      `مدة الاشتراك: من ${start} إلى ${end}.`,
+      schedule ? `مواعيد التدريب: ${schedule}.` : '',
+      'بطاقة العضوية الحالية ما زالت سارية ولا تحتاج إلى إعادة طباعة.',
+    ].filter(Boolean).join('\n');
+  }
+  return [
+    `Hello ${renewal?.member_name || ''},`,
+    `Your ${renewal?.activity_name || ''} subscription has been renewed successfully.`,
+    `Subscription period: ${start} to ${end}.`,
+    schedule ? `Training schedule: ${schedule}.` : '',
+    'Your existing membership card remains valid; no reprint is needed.',
+  ].filter(Boolean).join('\n');
+};
+
+// Kept presentational and exported so the success-only messaging and optional
+// draft affordance can be regression-tested without exercising billing APIs.
+export const RenewalSuccessDialog = ({
+  renewal,
+  language,
+  canOpenWhatsApp,
+  onOpenWhatsApp,
+  onClose,
+}) => (
+  <Dialog
+    open={Boolean(renewal)}
+    onOpenChange={(open) => { if (!open) onClose(); }}
+  >
+    <DialogContent className="max-w-md" data-testid="single-renewal-success-dialog">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 text-emerald-700">
+          <CheckCircle2 className="w-5 h-5" />
+          {language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully'}
+        </DialogTitle>
+      </DialogHeader>
+      {renewal && (
+        <div className="space-y-3 text-sm">
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-900" data-testid="renewal-card-reuse-notice">
+            {language === 'ar'
+              ? 'بطاقة العضوية الحالية ما زالت سارية ولا تحتاج إلى إعادة طباعة.'
+              : 'The existing membership card remains valid; no reprint is needed.'}
+          </div>
+          <div className="rounded-lg bg-muted p-3 space-y-1">
+            <p><strong>{language === 'ar' ? 'النشاط:' : 'Activity:'}</strong> {renewal.activity_name}</p>
+            <p><strong>{language === 'ar' ? 'مدة الاشتراك:' : 'Subscription period:'}</strong> {renewal.start_date} — {renewal.end_date}</p>
+            {renewal.schedule && (
+              <p><strong>{language === 'ar' ? 'المواعيد:' : 'Schedule:'}</strong> {renewal.schedule}</p>
+            )}
+          </div>
+          {canOpenWhatsApp && (
+            <p className="text-xs text-muted-foreground">
+              {language === 'ar'
+                ? 'يمكن فتح مسودة تأكيد في واتساب للمراجعة؛ لن يتم إرسال أي رسالة تلقائياً.'
+                : 'You can open a WhatsApp confirmation draft for review; no message will be sent automatically.'}
+            </p>
+          )}
+        </div>
+      )}
+      <DialogFooter className="gap-2">
+        {canOpenWhatsApp && (
+          <Button
+            type="button"
+            variant="outline"
+            className="border-green-600 text-green-700 hover:bg-green-50"
+            onClick={onOpenWhatsApp}
+            data-testid="single-renewal-whatsapp-confirmation"
+          >
+            <MessageCircle className="w-4 h-4 me-1" />
+            {language === 'ar' ? 'فتح تأكيد واتساب (اختياري)' : 'Open WhatsApp confirmation (optional)'}
+          </Button>
+        )}
+        <Button
+          type="button"
+          onClick={onClose}
+          data-testid="single-renewal-success-close"
+        >
+          {language === 'ar' ? 'تم' : 'Done'}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+);
+
 const RenewalsPage = () => {
   const { t, language } = useLanguage();
   const { user, selectedBranchId } = useAuth();
@@ -120,6 +236,10 @@ const RenewalsPage = () => {
   const [isRenewalDialogOpen, setIsRenewalDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [saving, setSaving] = useState(false);
+  // This is deliberately populated only after both the invoice and membership
+  // update succeed. It offers an optional, draft-only WhatsApp confirmation;
+  // it never sends a message or opens card printing as part of renewal.
+  const [singleRenewalSuccess, setSingleRenewalSuccess] = useState(null);
   const [renewalForm, setRenewalForm] = useState({
     start_date: '',
     end_date: '',
@@ -471,6 +591,21 @@ const RenewalsPage = () => {
   // Pull selected items out of the current visible list
   const getSelectedItems = (visible) => visible.filter(it => selectedKeys.has(getKey(it)));
 
+  const openOptionalRenewalWhatsAppConfirmation = () => {
+    if (!canOfferRenewalWhatsAppConfirmation(singleRenewalSuccess, user, selectedBranchId)) return;
+    const url = whatsappChatUrl(
+      singleRenewalSuccess.phone,
+      buildRenewalConfirmationText(singleRenewalSuccess, language)
+    );
+    if (!url) {
+      toast.error(language === 'ar' ? 'رقم الجوال غير صالح لواتساب' : 'The phone number is not valid for WhatsApp');
+      return;
+    }
+    // Opening a prefilled chat leaves review and sending entirely with staff.
+    window.open(url, '_blank', 'noopener,noreferrer');
+    toast.info(language === 'ar' ? 'تم فتح مسودة واتساب؛ الإرسال اختياري' : 'WhatsApp draft opened; sending is optional');
+  };
+
   // Build manual reminder text using the editable WhatsApp template.
   // A branch-specific manual template (if set on the member's branch) overrides
   // the global template; otherwise fall back to the shared global text.
@@ -814,7 +949,11 @@ const RenewalsPage = () => {
     setBulkTargets([]);
     const success = results.filter(r => r.ok).length;
     const failed = results.length - success;
-    if (success) toast.success(language === 'ar' ? `تم تجديد ${success} اشتراك` : `${success} subscriptions renewed`);
+    if (success) {
+      toast.success(language === 'ar'
+        ? `تم تجديد ${success} اشتراك. بطاقات العضوية الحالية ما زالت سارية ولا تحتاج إلى إعادة طباعة.`
+        : `${success} subscriptions renewed. Existing membership cards remain valid; no reprint is needed.`);
+    }
     if (failed) toast.error(language === 'ar' ? `فشل تجديد ${failed} اشتراك` : `${failed} renewals failed`);
     // Show the per-member summary so failures are easy to spot and retry
     setBulkResults(results);
@@ -833,7 +972,9 @@ const RenewalsPage = () => {
     try {
       await renewOneBulkItem(row.item, bulkResultForm || {});
       setBulkResults(prev => prev.map((r, i) => i === index ? { ...r, ok: true, error: '' } : r));
-      toast.success(language === 'ar' ? `تم تجديد ${row.item.member_name}` : `Renewed ${row.item.member_name}`);
+      toast.success(language === 'ar'
+        ? `تم تجديد ${row.item.member_name}. بطاقة العضوية الحالية ما زالت سارية ولا تحتاج إلى إعادة طباعة.`
+        : `Renewed ${row.item.member_name}. The existing membership card remains valid; no reprint is needed.`);
       loadData();
     } catch (e) {
       console.error('Retry renew failed for', row.item.member_name, e);
@@ -845,6 +986,7 @@ const RenewalsPage = () => {
   };
 
   const openRenewalDialog = (item) => {
+    setSingleRenewalSuccess(null);
     const endDate = new Date(item.end_date);
     const newStartDate = new Date(endDate);
     newStartDate.setDate(newStartDate.getDate() + 1);
@@ -1007,9 +1149,23 @@ const RenewalsPage = () => {
         }
       }
 
-      toast.success(language === 'ar' ? 'تم تجديد الاشتراك بنجاح' : 'Subscription renewed successfully');
+      const successfulRenewal = {
+        member_id: selectedItem.member_id,
+        member_name: selectedItem.member_name,
+        phone: selectedItem.phone,
+        branch_id: selectedItem.branch_id,
+        tenant_id: selectedItem.tenant_id,
+        activity_name: newActivityName,
+        start_date: renewalForm.start_date,
+        end_date: renewalForm.end_date,
+        schedule: scheduleStr,
+      };
+      toast.success(language === 'ar'
+        ? 'تم تجديد الاشتراك بنجاح. بطاقة العضوية الحالية ما زالت سارية ولا تحتاج إلى إعادة طباعة.'
+        : 'Subscription renewed successfully. The existing membership card remains valid; no reprint is needed.');
       markRenewed(selectedItem, renewalForm.start_date, renewalForm.end_date);
       setIsRenewalDialogOpen(false);
+      setSingleRenewalSuccess(successfulRenewal);
       loadData();
     } catch (error) {
       console.error('Failed to renew subscription:', error);
@@ -1754,6 +1910,16 @@ const RenewalsPage = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Single-renewal completion is informational. The card is stable and
+          this dialog never invokes printing or outbound WhatsApp delivery. */}
+      <RenewalSuccessDialog
+        renewal={singleRenewalSuccess}
+        language={language}
+        canOpenWhatsApp={canOfferRenewalWhatsAppConfirmation(singleRenewalSuccess, user, selectedBranchId)}
+        onOpenWhatsApp={openOptionalRenewalWhatsAppConfirmation}
+        onClose={() => setSingleRenewalSuccess(null)}
+      />
+
       {/* Bulk renewal dialog — optional shared days/level overrides */}
       <Dialog open={isBulkRenewDialogOpen} onOpenChange={setIsBulkRenewDialogOpen}>
         <DialogContent className="max-w-md">
@@ -1912,18 +2078,27 @@ const RenewalsPage = () => {
             const okCount = bulkResults.filter(r => r.ok).length;
             const failCount = bulkResults.length - okCount;
             return (
-              <div className="flex items-center gap-3 text-sm" data-testid="bulk-renew-results-summary">
-                <span className="inline-flex items-center gap-1 text-green-700">
-                  <CheckCircle2 className="w-4 h-4" />
-                  {language === 'ar' ? `نجح: ${okCount}` : `Succeeded: ${okCount}`}
-                </span>
-                {failCount > 0 && (
-                  <span className="inline-flex items-center gap-1 text-red-700">
-                    <XCircle className="w-4 h-4" />
-                    {language === 'ar' ? `فشل: ${failCount}` : `Failed: ${failCount}`}
-                  </span>
-                )}
-              </div>
+                <>
+                  <div className="flex items-center gap-3 text-sm" data-testid="bulk-renew-results-summary">
+                    <span className="inline-flex items-center gap-1 text-green-700">
+                      <CheckCircle2 className="w-4 h-4" />
+                      {language === 'ar' ? `نجح: ${okCount}` : `Succeeded: ${okCount}`}
+                    </span>
+                    {failCount > 0 && (
+                      <span className="inline-flex items-center gap-1 text-red-700">
+                        <XCircle className="w-4 h-4" />
+                        {language === 'ar' ? `فشل: ${failCount}` : `Failed: ${failCount}`}
+                      </span>
+                    )}
+                  </div>
+                  {okCount > 0 && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-sm text-emerald-900" data-testid="bulk-renew-card-reuse-notice">
+                      {language === 'ar'
+                        ? 'بطاقات العضوية الحالية للاشتراكات الناجحة ما زالت سارية ولا تحتاج إلى إعادة طباعة. لا يتم إرسال رسائل واتساب في التجديد الجماعي.'
+                        : 'Existing cards for successful renewals remain valid; no reprint is needed. Bulk renewals do not send WhatsApp messages.'}
+                    </div>
+                  )}
+                </>
             );
           })()}
 

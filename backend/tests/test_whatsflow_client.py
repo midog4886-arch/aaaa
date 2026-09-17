@@ -80,6 +80,36 @@ def test_whatsflow_media_contract(monkeypatch):
     assert captured["json"]["fileName"] == "file.pdf"
 
 
+def test_whatsflow_voice_uses_dedicated_ptt_endpoint(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"key": {"id": "wf-voice"}}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, method, url, headers, **kwargs):
+            captured.update(method=method, url=url, headers=headers, **kwargs)
+            return Response()
+
+    monkeypatch.setattr("services.whatsflow.httpx.AsyncClient", lambda **_: Client())
+    assert run(WhatsflowClient("one", "key").send_whatsapp_audio(
+        "+966 50 000 0000", "T2dnUw==", delay=0,
+    )) == (True, {"key": {"id": "wf-voice"}}, None)
+    assert captured["url"] == "https://connect.whats-flow.net/message/sendWhatsAppAudio/one"
+    assert captured["json"] == {
+        "number": "966500000000", "audio": "T2dnUw==", "delay": 0,
+    }
+
+
 def test_whatsflow_decrypted_media_contract_and_bytes(monkeypatch):
     captured = {}
     pdf = b"%PDF-1.7 decrypted document"

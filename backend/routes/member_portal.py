@@ -731,9 +731,15 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
     linked_docs = await db.members.find(
         {"id": {"$in": linked_ids}},
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1,
-         "phone": 1, "photo": 1, "activities": 1}
+         "phone": 1, "photo": 1, "activities": 1, "branch_id": 1}
     ).to_list(len(linked_ids))
     docs_by_id = {d["id"]: d for d in linked_docs}
+    branch_ids = list({d.get("branch_id") for d in linked_docs if d.get("branch_id")})
+    branch_docs = await db.branches.find(
+        {"id": {"$in": branch_ids}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1},
+    ).to_list(len(branch_ids)) if branch_ids else []
+    branches_by_id = {branch["id"]: branch for branch in branch_docs}
 
     # Coach cache shared across all cards to avoid redundant DB lookups.
     # Key includes the linked-member id because per-level coach assignments
@@ -852,6 +858,7 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
                 })
 
         name_ar = doc.get("name_ar") or lm.get("name") or ""
+        branch = branches_by_id.get(doc.get("branch_id")) or {}
         cards.append({
             "id": lm_id,
             "name": doc.get("name"),
@@ -859,6 +866,11 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
             "member_code": doc.get("member_code") or lm.get("member_code", ""),
             "phone": doc.get("phone"),
             "photo": doc.get("photo", "") or lm.get("photo", ""),
+            # Each linked sibling can belong to another branch. Resolve card
+            # contact data from this exact member document, never the login
+            # member or a sibling sharing the same guardian phone.
+            "branch_name": branch.get("name_ar") or branch.get("name") or "",
+            "branch_phone": branch.get("phone") or "",
             "active_activities": active_activities,
             "qr_data": {
                 "type": "WCPA_MEMBER",

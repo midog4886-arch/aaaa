@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import tempfile
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -52,6 +54,10 @@ CAMPAIGN_MAX_IMAGES = 10
 # chat send can still be rendered after the provider's temporary media URL has
 # expired.
 CLOUD_CHAT_IMAGE_LIMIT = 5 * 1024 * 1024
+CLOUD_CHAT_AUDIO_LIMIT = 10 * 1024 * 1024
+CLOUD_CHAT_AUDIO_MAX_SECONDS = 120
+CLOUD_CHAT_AUDIO_DURATION_TOLERANCE = 0.25
+CLOUD_CHAT_AUDIO_PROBE_TIMEOUT = 15
 CLOUD_CHAT_MEDIA_CHUNK_SIZE = 1024 * 1024
 BILINGUAL_ENGLISH_MARKER = "— English —"
 
@@ -5174,6 +5180,138 @@ async def _read_cloud_chat_image(upload: UploadFile) -> tuple[bytes, str, str]:
     return raw, mime, filename
 
 
+async def _run_audio_tool(arguments: list[str]) -> tuple[int, bytes]:
+    """Run a fixed ffmpeg/ffprobe argument vector with a hard wall-clock limit."""
+    process = await asyncio.create_subprocess_exec(
+        *arguments,
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(
+            process.communicate(), timeout=CLOUD_CHAT_AUDIO_PROBE_TIMEOUT
+        )
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.communicate()
+        raise HTTPException(status_code=400, detail="Audio processing timed out")
+    return process.returncode or 0, stdout
+
+
+def _cloud_audio_kind(raw: bytes, mime: str) -> str:
+    """Require the claimed browser format and a matching container signature."""
+    if mime == "audio/ogg" and raw.startswith(b"OggS") and b"OpusHead" in raw[:512]:
+        return "ogg"
+    if mime == "audio/opus" and raw.startswith(b"OggS") and b"OpusHead" in raw[:512]:
+        return "ogg"
+    if mime == "audio/webm" and raw.startswith(b"\x1aE\xdf\xa3") and b"webm" in raw[:4096].lower():
+        return "webm"
+    if mime == "audio/mp4" and len(raw) >= 12 and raw[4:8] == b"ftyp":
+        return "mp4"
+    if mime == "audio/aac" and len(raw) >= 2 and raw[0] == 0xff and raw[1] & 0xf6 == 0xf0:
+        return "aac"
+    raise HTTPException(status_code=400, detail="Audio content does not match its type")
+
+
+async def _read_cloud_chat_audio(upload: UploadFile) -> tuple[bytes, str, str]:
+    """Bound, probe and normalize browser audio to an OGG/Opus voice note.
+
+    The upload stays in a 10 MiB memory bound.  Files which need transcoding
+    are placed in a private temporary directory and all subprocess arguments
+    are fixed values/paths (never shell-interpolated).
+    """
+    mime = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    allowed = {"audio/webm", "audio/ogg", "audio/opus", "audio/mp4", "audio/aac"}
+    if mime not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail="Only WebM/Opus, OGG/Opus, MP4/AAC, or AAC audio is supported",
+        )
+    content = bytearray()
+    while True:
+        chunk = await upload.read(CLOUD_CHAT_MEDIA_CHUNK_SIZE)
+        if not chunk:
+            break
+        content.extend(chunk)
+        if len(content) > CLOUD_CHAT_AUDIO_LIMIT:
+            raise HTTPException(status_code=413, detail="Audio exceeds the 10 MiB limit")
+    raw = bytes(content)
+    if not raw:
+        raise HTTPException(status_code=400, detail="Audio is empty")
+    kind = _cloud_audio_kind(raw, mime)
+    ffprobe = shutil.which("ffprobe")
+    ffmpeg = shutil.which("ffmpeg")
+    # Container/header durations are frequently unavailable for MediaRecorder's
+    # non-seekable WebM output.  Decode every input fully into a local OGG Opus
+    # file, then inspect that file's actual duration instead.  This also means
+    # an input longer than 120 seconds is rejected rather than silently cut.
+    if not ffprobe or not ffmpeg:
+        raise HTTPException(
+            status_code=503,
+            detail="Audio validation requires ffmpeg and ffprobe on this server",
+        )
+    suffix = {"ogg": ".ogg", "webm": ".webm", "mp4": ".m4a", "aac": ".aac"}[kind]
+    with tempfile.TemporaryDirectory(prefix="cloud-voice-") as temp_dir:
+        source = os.path.join(temp_dir, f"input{suffix}")
+        with open(source, "wb") as source_file:
+            source_file.write(raw)
+        code, probe = await _run_audio_tool([
+            ffprobe, "-protocol_whitelist", "file,pipe", "-v", "error",
+            "-select_streams", "a:0", "-show_entries", "stream=codec_name",
+            "-of", "default=noprint_wrappers=1:nokey=1", source,
+        ])
+        lines = probe.decode("ascii", "ignore").strip().splitlines()
+        expected_codec = {"ogg": "opus", "webm": "opus", "mp4": "aac", "aac": "aac"}[kind]
+        if code or not lines or lines[0].strip().lower() != expected_codec:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{kind.upper()} audio does not use its required {expected_codec.upper()} codec",
+            )
+        normalized = os.path.join(temp_dir, "voice.ogg")
+        code, _ = await _run_audio_tool([
+            ffmpeg, "-nostdin", "-xerror", "-v", "error", "-threads", "1",
+            "-protocol_whitelist", "file,pipe", "-i", source, "-map", "0:a:0",
+            "-vn", "-ac", "1", "-ar", "48000", "-c:a", "libopus",
+            "-f", "ogg", "-fs", str(CLOUD_CHAT_AUDIO_LIMIT), normalized,
+        ])
+        try:
+            with open(normalized, "rb") as normalized_file:
+                voice = normalized_file.read(CLOUD_CHAT_AUDIO_LIMIT + 1)
+        except OSError:
+            voice = b""
+        if code or not voice or len(voice) >= CLOUD_CHAT_AUDIO_LIMIT or not (
+            voice.startswith(b"OggS") and b"OpusHead" in voice[:512]
+        ):
+            raise HTTPException(status_code=400, detail="Audio could not be normalized to OGG Opus")
+        code, normalized_probe = await _run_audio_tool([
+            ffprobe, "-protocol_whitelist", "file,pipe", "-v", "error",
+            "-show_entries", "stream=codec_name:format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", normalized,
+        ])
+        normalized_lines = normalized_probe.decode("ascii", "ignore").strip().splitlines()
+        try:
+            duration = float(normalized_lines[-1])
+        except (ValueError, IndexError):
+            duration = 0
+        if (
+            code or len(normalized_lines) < 2
+            or normalized_lines[0].strip().lower() != "opus"
+            or duration != duration or duration <= 0
+            # libopus writes whole 20ms frames, so a recorder stopped exactly
+            # at 120.000 seconds can serialize as ~120.014.  The small
+            # tolerance permits codec padding only, never a 121-second note.
+            or duration > (
+                CLOUD_CHAT_AUDIO_MAX_SECONDS + CLOUD_CHAT_AUDIO_DURATION_TOLERANCE
+            )
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Audio must be a valid recording no longer than 120 seconds",
+            )
+    return voice, "audio/ogg", "voice.ogg"
+
+
 async def _store_cloud_chat_image(branch_id: str, content: bytes, mime: str, filename: str) -> dict:
     """Store direct-chat bytes privately before provider dispatch."""
     media_id = str(uuid.uuid4())
@@ -5238,8 +5376,8 @@ async def _load_cloud_chat_image(branch_id: str, media_id: str) -> tuple[bytes, 
     ):
         raise HTTPException(status_code=500, detail="Stored image data is incomplete")
     content = b"".join(chunk.get("data") or b"" for chunk in chunks)
-    if len(content) > CLOUD_CHAT_IMAGE_LIMIT:
-        raise HTTPException(status_code=500, detail="Stored image exceeds the allowed size")
+    if len(content) > CLOUD_CHAT_AUDIO_LIMIT:
+        raise HTTPException(status_code=500, detail="Stored media exceeds the allowed size")
     return content, str(meta.get("mime_type") or "application/octet-stream"), str(
         meta.get("name") or "image"
     )
@@ -5760,6 +5898,183 @@ async def send_cloud_inbox_media(
         raise HTTPException(
             status_code=502,
             detail="Image delivery outcome is unknown; no automatic retry was attempted",
+        )
+
+
+@router.post("/cloud-inbox/conversations/{conversation_id}/voice")
+async def send_cloud_inbox_voice(
+    conversation_id: str,
+    audio: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """Send one authenticated staff voice note, privately retained as OGG Opus."""
+    _require_bulk_whatsapp_access(current_user)
+    conversation = await _db["whatsapp_cloud_conversations"].find_one(
+        {"id": conversation_id}, {"_id": 0}
+    )
+    if not conversation:
+        conversation = await _campaign_conversation(conversation_id, current_user)
+    branch_id = conversation.get("branch_id")
+    _assert_branch_access(current_user, branch_id)
+    config = await _get_branch_cloud_config(branch_id)
+    provider = _branch_provider(config)
+    now_dt = datetime.now(timezone.utc)
+    inside_service_window = False
+    if provider == "meta_cloud":
+        try:
+            last_inbound = datetime.fromisoformat(
+                str(conversation.get("last_inbound_at") or "").replace("Z", "+00:00")
+            )
+            if last_inbound.tzinfo is None:
+                last_inbound = last_inbound.replace(tzinfo=timezone.utc)
+            inside_service_window = now_dt - last_inbound <= timedelta(hours=24)
+        except Exception:
+            inside_service_window = False
+    if provider not in {"meta_cloud", "waha", "whatsflow"}:
+        raise HTTPException(
+            status_code=400,
+            detail="No active WhatsApp provider is configured for this branch",
+        )
+    if provider == "waha" and not _waha_config_for_branch(config):
+        raise HTTPException(status_code=400, detail="WAHA is not configured for this branch")
+    if provider == "whatsflow" and not (
+        config and config.get("enabled") and config.get("whatsflow_instance")
+        and config.get("whatsflow_api_key_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Whatsflow is not configured for this branch")
+    if provider == "meta_cloud" and not (
+        config and config.get("enabled") and config.get("phone_number_id")
+        and config.get("access_token_encrypted")
+    ):
+        raise HTTPException(status_code=400, detail="Branch Meta API is not configured")
+    # Meta does not permit audio in a template header, so unlike image there is
+    # no outside-window template fallback.
+    if provider == "meta_cloud" and not inside_service_window:
+        raise HTTPException(
+            status_code=400,
+            detail="The 24-hour window ended; Meta voice messages cannot use a template",
+        )
+
+    content, mime_type, filename = await _read_cloud_chat_audio(audio)
+    if provider == "whatsflow":
+        await _db["whatsapp_cloud_messages"].create_index(
+            [("branch_id", 1), ("provider", 1), ("provider_message_id", 1)],
+            unique=True,
+            partialFilterExpression={
+                "provider": "whatsflow", "provider_message_id": {"$exists": True}
+            },
+        )
+    media_ref = None
+    media_owned_by_message = False
+    try:
+        media_ref = await _store_cloud_chat_image(branch_id, content, mime_type, filename)
+        await registration_followups.stop_phone(
+            branch_id, conversation.get("phone") or "", "staff_contacted"
+        )
+        await campaign_inquiry_automation.stop_phone(
+            branch_id, conversation.get("phone") or "", "staff_contacted"
+        )
+        success, provider_message_id, error, provider_media_id = (
+            await _send_cloud_chat_voice_result(
+                conversation.get("phone") or "", content, mime_type, filename,
+                config or {}, branch_id,
+            )
+        )
+        # No message identity means the request may have been accepted but the
+        # outgoing echo cannot be safely deduplicated.  Treat it as uncertain.
+        if not success or not provider_message_id:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "message": (
+                        f"{provider} voice delivery outcome is unknown "
+                        f"({error or 'missing_message_id'}); no automatic retry was attempted"
+                    ),
+                    "delivery_uncertain": True,
+                },
+            )
+        now = now_dt.isoformat()
+        message = {
+            "id": str(uuid.uuid4()),
+            "conversation_id": conversation_id,
+            "branch_id": branch_id,
+            "provider": provider,
+            "provider_message_id": provider_message_id,
+            "direction": "outbound",
+            "phone": conversation.get("phone"),
+            "type": "audio",
+            "body": "[voice message]",
+            "media_id": media_ref["media_id"],
+            "media_storage_id": media_ref["media_id"],
+            "provider_media_id": provider_media_id,
+            "mime_type": mime_type,
+            "filename": filename,
+            "status": "sent",
+            "created_at": now,
+            "sent_by": current_user.get("user_id") or current_user.get("id"),
+            "source": "cloud_inbox",
+            "human_reply": True,
+        }
+        if provider == "waha":
+            message["waha_message_id"] = provider_message_id
+        elif provider == "meta_cloud":
+            message["meta_message_id"] = provider_message_id
+        messages = _db["whatsapp_cloud_messages"]
+        try:
+            await messages.insert_one(message)
+            media_owned_by_message = True
+        except DuplicateKeyError:
+            existing = await messages.find_one({
+                "branch_id": branch_id, "provider": provider,
+                "provider_message_id": provider_message_id,
+            }, {"_id": 0})
+            if not existing:
+                raise
+            await messages.update_one(
+                {"id": existing["id"], "branch_id": branch_id},
+                {"$set": {
+                    "media_id": media_ref["media_id"],
+                    "media_storage_id": media_ref["media_id"],
+                    "provider_media_id": provider_media_id,
+                    "mime_type": mime_type, "filename": filename,
+                    "body": "[voice message]", "type": "audio",
+                }},
+            )
+            media_owned_by_message = True
+            message = {**existing, **{
+                "media_id": media_ref["media_id"],
+                "media_storage_id": media_ref["media_id"],
+                "provider_media_id": provider_media_id,
+                "mime_type": mime_type, "filename": filename,
+                "body": "[voice message]", "type": "audio",
+            }}
+        await _db["whatsapp_cloud_conversations"].update_one(
+            {"id": conversation_id, "branch_id": branch_id},
+            {"$set": {
+                "last_message": "[voice message]", "last_message_at": now,
+                "last_direction": "outbound",
+            }},
+        )
+        # This is intentionally after a provider acceptance with identity and
+        # durable message persistence; uncertain sends never clear needs_reply.
+        await _note_cloud_human_reply(
+            conversation_id, branch_id, now, provider_message_id
+        )
+        return {"success": True, "message": message, "used_template": False}
+    except HTTPException:
+        if media_ref and not media_owned_by_message:
+            await _delete_cloud_chat_image(branch_id, media_ref["media_id"])
+        raise
+    except Exception as exc:
+        if media_ref and not media_owned_by_message:
+            await _delete_cloud_chat_image(branch_id, media_ref["media_id"])
+        logger.error("Cloud inbox voice send failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Voice delivery outcome is unknown; no automatic retry was attempted",
+                "delivery_uncertain": True,
+            },
         )
 
 
@@ -6801,6 +7116,101 @@ async def _send_cloud_chat_image_result(
         phone, caption, media_id, "image", filename, config
     )
     return success, provider_message_id, error, True, media_id
+
+
+async def _send_meta_chat_audio_result(
+    phone: str, media_id: str, config: dict
+) -> tuple[bool, Optional[str], Optional[str]]:
+    """Send an already-uploaded OGG/Opus file as Meta's native audio type."""
+    digits = "".join(filter(str.isdigit, phone or ""))
+    if not digits:
+        return False, None, "invalid_phone"
+    try:
+        token = _decrypt_access_token(config["access_token_encrypted"])
+        version = (config.get("graph_api_version") or "v23.0").strip()
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"https://graph.facebook.com/{version}/{config['phone_number_id']}/messages",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "messaging_product": "whatsapp",
+                    "recipient_type": "individual",
+                    "to": digits,
+                    "type": "audio",
+                    "audio": {"id": media_id},
+                },
+            )
+        if not 200 <= response.status_code < 300:
+            logger.error("Meta chat audio send failed: HTTP %s", response.status_code)
+            return False, None, f"http_{response.status_code}"
+        try:
+            provider_message_id = (response.json().get("messages") or [{}])[0].get("id")
+        except Exception:
+            provider_message_id = None
+        return True, str(provider_message_id) if provider_message_id else None, None
+    except Exception as exc:
+        logger.error("Meta chat audio send failed: %s", type(exc).__name__)
+        return False, None, type(exc).__name__
+
+
+async def _send_cloud_chat_voice_result(
+    phone: str,
+    content: bytes,
+    mime_type: str,
+    filename: str,
+    config: dict,
+    branch_id: Optional[str] = None,
+) -> tuple[bool, Optional[str], Optional[str], Optional[str]]:
+    """Dispatch an OGG Opus PTT message once through the selected provider."""
+    provider = _branch_provider(config)
+    try:
+        if provider == "waha":
+            session = config.get("waha_physical_session_id") or _waha_physical_session_id(
+                str(branch_id or config.get("branch_id") or ""),
+                str(config.get("waha_session_name") or ""),
+            )
+            wa_phone = _format_cloud_phone(phone)
+            if not wa_phone or not session:
+                return False, None, "invalid_waha_config", None
+            ok, response, error = await WAHAClient().send_voice(
+                session, _waha_chat_id(wa_phone), content,
+                "audio/ogg; codecs=opus", filename,
+            )
+            return ok, _canonical_waha_message_id(response), error, None
+        if provider == "whatsflow":
+            wa_phone = _format_cloud_phone(phone)
+            if not wa_phone:
+                return False, None, "invalid_phone", None
+            ok, response, error = await _whatsflow_client(config).send_whatsapp_audio(
+                wa_phone, base64.b64encode(content).decode("ascii"), delay=0
+            )
+            return ok, _provider_message_id(response), error, None
+        if provider != "meta_cloud":
+            return False, None, "voice_not_supported_for_branch_provider", None
+        if not (
+            config.get("enabled") and config.get("phone_number_id")
+            and config.get("access_token_encrypted")
+        ):
+            return False, None, "meta_not_configured", None
+        try:
+            media_id = await _upload_meta_bulk_media(
+                content, filename, "audio/ogg; codecs=opus", config
+            )
+        except Exception as exc:
+            # The upload may have reached Meta even if its response did not;
+            # return an uncertain result and never issue a second upload.
+            return False, None, type(exc).__name__, None
+        ok, provider_message_id, error = await _send_meta_chat_audio_result(
+            phone, media_id, config
+        )
+        return ok, provider_message_id, error, media_id
+    except Exception as exc:
+        # The caller deliberately represents transport/parser failures as
+        # uncertain rather than retrying a potentially accepted voice note.
+        return False, None, type(exc).__name__, None
 
 
 async def _send_meta_media_template(

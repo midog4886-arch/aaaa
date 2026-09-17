@@ -6,12 +6,13 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { 
   Download, Printer, Loader2, QrCode, Share2, Smartphone,
-  Calendar, Clock, CheckCircle, ShieldCheck, Phone
+  Calendar, Clock, CheckCircle, Phone
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
-import { useBrandColor } from '../../services/branding';
+import { getAcademyLogoUrl, getAcademyName, useBrandColor } from '../../services/branding';
+import { getPermanentMemberCardDetails, openPermanentMemberCardPrint } from '../../utils/permanentMemberCard';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -31,178 +32,6 @@ const remainingColor = (days) => {
   if (days >= 30) return { bar: 'bg-green-500', badge: 'bg-green-100 text-green-700 border-green-300', text: 'text-green-600' };
   if (days >= 7)  return { bar: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700 border-yellow-300', text: 'text-yellow-600' };
   return             { bar: 'bg-red-500',    badge: 'bg-red-100 text-red-700 border-red-300',    text: 'text-red-600' };
-};
-
-// ── Print / Download Logic (unchanged from original) ──────────────────────────
-
-const buildStickerHtml = (cardData, brand) => {
-  const qrData = getMemberQRValue(cardData?.member_code);
-  const _brand = brand || '';
-  const _headerBg = _brand || 'linear-gradient(135deg, #F97316, #F59E0B)';
-  const _accent = _brand || '#F97316';
-  const _allActs = cardData?.active_activities || [];
-  const _parseEnd = (a) => {
-    if (!a?.end_date) return 0;
-    const t = new Date(a.end_date).getTime();
-    return isNaN(t) ? 0 : t;
-  };
-  const latestActivity = [..._allActs].sort((a, b) => _parseEnd(b) - _parseEnd(a))[0];
-  const startDate = latestActivity?.start_date || '';
-  const endDate = latestActivity?.end_date || '';
-  const schedule = latestActivity?.schedule || '';
-
-  const activitiesHtml = cardData?.active_activities?.map(act => `
-    <div class="activity-item active">
-      <div class="activity-name">✓ ${act.activity_name}</div>
-      ${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}
-      ${act.coach_name ? `
-      <div class="coach-info">
-        ${act.coach_photo ? `<img class="coach-photo" src="${act.coach_photo}" alt="${act.coach_name}" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<span style=\\"font-size:5pt;\\">🏋️</span>')" />` : `<span style="font-size:5pt;">🏋️</span>`}
-        <span class="coach-name">${act.coach_name}</span>
-      </div>` : ''}
-    </div>
-  `).join('') || '';
-
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8">
-    <title>بطاقة العضوية - ${cardData?.member_code}</title>
-    <style>
-      @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-      @page { size: A4; margin: 0mm; }
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: rtl; }
-      .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-      @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 15mm; gap: 5mm; } }
-      @media screen { .print-area { display: none; } }
-      .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
-      .card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-      .card-header { background: ${_headerBg}; padding: 1.5mm 2mm; display: flex; justify-content: space-between; align-items: center; color: white; }
-      .header-text h2 { font-size: 7pt; font-weight: 700; margin: 0; line-height: 1.3; }
-      .header-text p { font-size: 5.5pt; opacity: 0.9; margin: 0; }
-      .header-logo { width: 10mm; height: 10mm; border-radius: 50%; background: white; padding: 0.5mm; display: flex; align-items: center; justify-content: center; }
-      .header-logo img { width: 100%; height: 100%; object-fit: contain; border-radius: 50%; }
-      .card-body { padding: 2mm; display: flex; gap: 2mm; flex: 1; }
-      .info-section { flex: 1; text-align: right; overflow: hidden; }
-      .qr-container { display: flex; flex-direction: column; align-items: center; }
-      .qr-section { width: 26mm; height: 26mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
-      .qr-section img { width: 100%; height: 100%; }
-      .qr-dates { text-align: center; font-size: 8pt; color: #1f2937; margin-top: 1mm; line-height: 1.4; font-weight: 700; }
-      .qr-dates span { display: block; }
-      .schedule-info { text-align: center; font-size: 6pt; color: ${_accent}; margin-top: 1mm; font-weight: 600; background: ${/^#[0-9a-fA-F]{6}$/.test(_brand) ? `${_brand}1F` : '#FFF7ED'}; padding: 1mm; border-radius: 2mm; }
-      .member-name { font-size: 10pt; font-weight: 700; color: #1f2937; margin-bottom: 1mm; }
-      .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.8mm; font-size: 7pt; }
-      .info-label { color: #6b7280; font-size: 6pt; }
-      .member-code { color: ${_accent}; font-weight: 700; font-size: 10pt; }
-      .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; }
-      .activities-label { font-size: 6pt; color: #6b7280; margin-bottom: 0.5mm; }
-      .activity-item { padding: 1mm 1.5mm; margin-bottom: 0.5mm; border-radius: 1.5mm; font-size: 6pt; }
-      .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
-      .activity-name { font-weight: 600; color: #1f2937; font-size: 7pt; }
-      .coach-info { display: flex; align-items: center; gap: 1mm; margin-top: 0.5mm; }
-      .coach-photo { width: 4mm; height: 4mm; border-radius: 50%; object-fit: cover; border: 0.3mm solid #d1d5db; flex-shrink: 0; }
-      .coach-name { font-size: 5pt; color: #6b7280; }
-      .card-footer { text-align: right; padding: 1.5mm 2mm; background: #f9fafb; font-size: 5pt; color: #374151; border-top: 1px dashed #e5e7eb; line-height: 1.4; }
-      .card-footer .terms-title { font-weight: 700; color: #1f2937; font-size: 6pt; margin-bottom: 0.5mm; }
-      .logo-card { width: 90mm; height: 60mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3mm; }
-      .logo-card img { width: 92%; max-width: 92%; max-height: 78%; object-fit: contain; }
-      .logo-card .contact-info { font-size: 7pt; color: #374151; text-align: center; margin-top: 2mm; font-weight: 600; line-height: 1.6; }
-      .logo-card .terms { text-align: right; font-size: 5.5pt; color: #374151; margin-top: 2mm; line-height: 1.6; padding: 0 2mm; }
-      .logo-card .terms-title { font-weight: 700; color: #1f2937; font-size: 6.5pt; margin-bottom: 1mm; text-align: center; }
-      .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #3B82F6, #2563EB); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
-      .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
-      .position-label { padding: 8px 16px; background: #DBEAFE; border-radius: 8px; color: #1E40AF; font-size: 12px; }
-    </style>
-  </head>
-  <body>
-    <div class="screen-only">
-      <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة الطباعة - كرت العضوية + شعار الأكاديمية</p>
-      <div class="sticker-preview">
-        <div class="card">
-          <div class="card-header">
-            <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
-            <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-          </div>
-          <div class="card-body">
-            <div class="qr-container">
-              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
-              <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
-              ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
-            </div>
-            <div class="info-section">
-              <div class="info-label">الاسم</div>
-              <div class="member-name">${cardData?.name_ar || ''}</div>
-              <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${cardData?.member_code || ''}</span></div>
-              <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardData?.phone || '-'}</span></div>
-              ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
-            </div>
-          </div>
-          <div class="card-footer">
-            <div class="terms-title">شروط وأحكام:</div>
-            <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-            <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-            <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
-          </div>
-        </div>
-        <div class="logo-card">
-          <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-          <div class="contact-info">📞 0566238384</div>
-          <div class="terms">
-            <div class="terms-title">شروط وأحكام</div>
-            <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-            <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-            <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
-          </div>
-        </div>
-      </div>
-      <div class="position-labels">
-        <div class="position-label">📍 خانة 1: كرت العضوية</div>
-        <div class="position-label">📍 خانة 2: شعار الأكاديمية</div>
-      </div>
-      <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 9سم × 6سم</p>
-      <button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button>
-    </div>
-    <div class="print-area">
-      <div class="card">
-        <div class="card-header">
-          <div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div>
-          <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-        </div>
-        <div class="card-body">
-          <div class="qr-container">
-            <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div>
-            <div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>
-            ${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}
-          </div>
-          <div class="info-section">
-            <div class="info-label">الاسم</div>
-            <div class="member-name">${cardData?.name_ar || ''}</div>
-            <div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${cardData?.member_code || ''}</span></div>
-            <div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardData?.phone || '-'}</span></div>
-            ${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}
-          </div>
-        </div>
-        <div class="card-footer">
-          <div class="terms-title">شروط وأحكام:</div>
-          <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-          <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-          <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
-        </div>
-      </div>
-      <div class="logo-card">
-        <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-        <div class="contact-info">📞 0566238384</div>
-        <div class="terms">
-          <div class="terms-title">شروط وأحكام</div>
-          <div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div>
-          <div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div>
-          <div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>`;
 };
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -410,10 +239,20 @@ const MemberCard = () => {
   const currentCard = cards[safeIdx] || null;
 
   const handleStickerPrint = () => {
+    const popup = openPermanentMemberCardPrint({
+      member: currentCard,
+      qrValue: getMemberQRValue(currentCard?.member_code),
+      logoUrl: getAcademyLogoUrl(),
+      academyName: getAcademyName() || 'شركة اداء الابطال العالمية للرياضة',
+      branchName: currentCard?.branch_name || '',
+      branchPhone: currentCard?.branch_phone || '',
+      language,
+    });
+    if (!popup) {
+      toast.error(language === 'ar' ? 'تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.' : 'Print window was blocked. Allow pop-ups and try again.');
+      return;
+    }
     setShowPrintDialog(false);
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(buildStickerHtml(currentCard, primary));
-    printWindow.document.close();
   };
 
   if (loading) {
@@ -428,6 +267,7 @@ const MemberCard = () => {
 
   const qrData = getMemberQRValue(currentCard?.member_code);
   const name = currentCard?.name_ar || member?.name_ar || '';
+  const { activityNames, guardianPhone } = getPermanentMemberCardDetails(currentCard || member || {});
   const activeActivities = currentCard?.active_activities || [];
 
   return (
@@ -518,22 +358,20 @@ const MemberCard = () => {
               <p className="text-center text-gray-600 mb-2 font-bold">{currentCard?.name_ar}</p>
               <p className="text-center text-sm mb-4 font-bold" style={primary ? { color: primary } : { color: '#ea580c' }}>#{currentCard?.member_code}</p>
               <p className="text-center text-sm text-gray-500 mb-4">
-                {language === 'ar' ? 'سيتم طباعة كرت العضوية + شعار الأكاديمية معاً' : 'Print member card + academy logo together'}
+                {language === 'ar' ? 'ستتم طباعة بطاقة عضوية دائمة بوجه وظهر' : 'A double-sided permanent membership card will be printed'}
               </p>
               <div className="bg-gray-100 p-4 rounded-lg">
-                <div className="flex gap-3 justify-center max-w-[360px] mx-auto">
-                  <div className="aspect-[9/6] w-[140px] bg-white border-2 border-blue-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
-                    <span className="text-3xl">📇</span>
-                    <span className="text-sm font-bold text-gray-700">{language === 'ar' ? 'كرت العضوية' : 'Member Card'}</span>
-                    <span className="text-xs text-blue-500">{language === 'ar' ? 'خانة 1' : 'Slot 1'}</span>
+                <div className="flex justify-center gap-3 max-w-[360px] mx-auto">
+                  <div className="aspect-[54/85.6] w-[115px] bg-white border-2 border-blue-400 rounded-lg flex flex-col items-center justify-center gap-3 p-3 text-center">
+                    <p className="text-sm font-bold text-gray-700">{language === 'ar' ? 'الوجه' : 'Front'}</p>
+                     <p className="text-xs text-gray-500">{language === 'ar' ? 'الاسم · رقم العضوية · النشاط · جوال ولي الأمر · QR' : 'Name · member code · activity · guardian phone · QR'}</p>
                   </div>
-                  <div className="aspect-[9/6] w-[140px] bg-white border-2 border-blue-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
-                    <img src="/images/academy-logo.png" alt="logo" className="w-14 h-14 object-contain" />
-                    <span className="text-sm font-bold text-gray-700">{language === 'ar' ? 'شعار الأكاديمية' : 'Academy Logo'}</span>
-                    <span className="text-xs text-blue-500">{language === 'ar' ? 'خانة 2' : 'Slot 2'}</span>
+                  <div className="aspect-[54/85.6] w-[115px] bg-white border-2 border-blue-400 rounded-lg flex flex-col items-center justify-center gap-3 p-3 text-center">
+                    <img src={getAcademyLogoUrl()} alt="logo" className="w-12 h-12 object-contain" />
+                    <p className="text-xs text-gray-500">{language === 'ar' ? 'الظهر · الفرع ورقم التواصل' : 'Back · branch and contact phone'}</p>
                   </div>
                 </div>
-                <p className="text-center text-xs text-gray-500 mt-3">📐 {language === 'ar' ? 'حجم كل كرت: 9سم × 6سم' : 'Card size: 9cm × 6cm'}</p>
+                <p className="text-center text-xs text-gray-500 mt-3">{language === 'ar' ? 'بطاقة طولية CR-80 بوجه وظهر، بلا تواريخ اشتراك أو حصص' : 'Portrait CR-80 card, front and back, with no subscription dates or schedule'}</p>
               </div>
               <div className="mt-4 flex justify-center">
                 <Button onClick={handleStickerPrint} className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 text-lg">
@@ -546,7 +384,7 @@ const MemberCard = () => {
         </Dialog>
 
         {/* ── Saveable card area (captured as image) ── */}
-        <div ref={cardRef} className="space-y-5">
+        <div className="space-y-5">
 
         {/* ── Profile Header ── */}
         <div
@@ -576,23 +414,11 @@ const MemberCard = () => {
               🏆 {language === 'ar' ? 'شركة اداء الابطال العالمية للرياضة' : 'Global Champions Sports Academy'}
             </p>
 
-            {/* Avatar + Info */}
+            {/* Permanent card identity — no member photo or subscription data. */}
             <div className="flex items-center gap-4 mb-4">
-              {currentCard?.photo ? (
-                <img
-                  src={currentCard.photo}
-                  alt={name}
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    if (e.currentTarget.nextSibling) e.currentTarget.nextSibling.style.display = 'flex';
-                  }}
-                  className={`w-20 h-20 rounded-2xl object-cover flex-shrink-0 shadow-lg border-2 ${primary ? '' : 'shadow-amber-500/30 border-amber-400'}`}
-                  style={primary ? { borderColor: primary } : undefined}
-                />
-              ) : null}
               <div
                 className={`w-20 h-20 rounded-2xl items-center justify-center flex-shrink-0 shadow-lg ${primary ? '' : 'bg-gradient-to-br from-amber-400 to-yellow-600 shadow-amber-500/30'}`}
-                style={{ display: currentCard?.photo ? 'none' : 'flex', ...(primary ? { backgroundColor: primary } : {}) }}
+                style={{ display: 'flex', ...(primary ? { backgroundColor: primary } : {}) }}
               >
                 <span className="text-gray-900 font-black text-2xl leading-none">{getInitials(name)}</span>
               </div>
@@ -606,33 +432,31 @@ const MemberCard = () => {
                     #{currentCard?.member_code}
                   </span>
                 </div>
-                {currentCard?.phone && (
+                {guardianPhone && (
                   <div className="flex items-center gap-1.5 mt-2">
                     <Phone className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-gray-400 text-sm" dir="ltr">{currentCard.phone}</span>
+                    <span className="text-gray-400 text-sm" dir="ltr">{guardianPhone}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Status badge */}
-            {activeActivities.length > 0 && (
-              <div className="flex items-center gap-2 bg-green-500/15 border border-green-500/25 rounded-xl px-3 py-2">
-                <ShieldCheck className="w-4 h-4 text-green-400 flex-shrink-0" />
-                <span className="text-green-300 text-xs font-medium">
-                  {language === 'ar'
-                    ? `عضو ساري — ${activeActivities.length} اشتراك نشط`
-                    : `Active Member — ${activeActivities.length} active subscription${activeActivities.length > 1 ? 's' : ''}`}
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
         {/* ── QR Code Hero ── */}
-        <Card className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm`}>
+        <Card ref={cardRef} data-testid="digital-membership-card" className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm`}>
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
+              <div className="flex items-center gap-3 mb-4">
+                <img src={getAcademyLogoUrl()} alt="" className="w-11 h-11 object-contain" />
+                <div className="text-right">
+                  <p className={`text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {getAcademyName() || (language === 'ar' ? 'شركة اداء الابطال العالمية للرياضة' : 'Global Champions Sports Academy')}
+                  </p>
+                  <h2 className={`font-black text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>{name}</h2>
+                </div>
+              </div>
               {/* QR Label */}
               <div className="flex items-center gap-2 mb-4">
                 <QrCode
@@ -664,6 +488,27 @@ const MemberCard = () => {
               <p className={`text-xs mb-5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 📱 {language === 'ar' ? 'امسح هذا الرمز عند الدخول لتسجيل الحضور' : 'Scan this code at entry to record attendance'}
               </p>
+
+               {/* Permanent identity details — intentionally excludes photo,
+                   subscription dates, and schedules. */}
+               <div className={`w-full rounded-xl px-4 py-3 text-sm ${darkMode ? 'bg-gray-700/60' : 'bg-gray-50'}`}>
+                 <div className="flex items-start justify-between gap-3">
+                   <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                     {language === 'ar' ? 'النشاط' : 'Activity'}
+                   </span>
+                   <span className={`font-bold text-right ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                     {activityNames.join(' · ') || (language === 'ar' ? 'لا يوجد نشاط مسجل' : 'No activity registered')}
+                   </span>
+                 </div>
+                 <div className="flex items-center justify-between gap-3 mt-2">
+                   <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                     {language === 'ar' ? 'جوال ولي الأمر' : 'Guardian phone'}
+                   </span>
+                   <span className={`font-bold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`} dir="ltr">
+                     {guardianPhone || '—'}
+                   </span>
+                 </div>
+               </div>
 
               {/* Action buttons (excluded from the saved card image) */}
               <div data-html2canvas-ignore="true" className="w-full space-y-3">

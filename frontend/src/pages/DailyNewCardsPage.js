@@ -8,6 +8,8 @@ import { Printer, CalendarDays, Users, Building2, RefreshCw, CreditCard, Filter,
 import { membersAPI } from '../services/api';
 import { getMemberQRValue } from '../utils/memberQR';
 import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule, dedupeCardActivities } from '../utils/printLang';
+import { getAcademyLogoUrl, getAcademyName } from '../services/branding';
+import { buildPermanentMemberCardHtml } from '../utils/permanentMemberCard';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
@@ -56,8 +58,8 @@ const DailyNewCardsPage = () => {
     });
   };
 
-  // Renewal cards are RE-prints: almost every renewing member already has
-  // card_printed_at set, so (unlike new members) "select branch" takes all.
+  // Renewal cards may be requested again: almost every renewing member already
+  // has a prior print request, so (unlike new members) "select branch" takes all.
   const toggleRenewalBranchAll = (branch, checked) => {
     setRenewalSelectedIds((prev) => {
       const next = new Set(prev);
@@ -86,7 +88,7 @@ const DailyNewCardsPage = () => {
     if (!ids || ids.length === 0) return;
     try {
       await membersAPI.markPrinted(ids);
-      // Reload with the active search (if any) so printing while searching
+      // Reload with the active search (if any) so a print request while searching
       // keeps showing the search results instead of falling back to day mode.
       await load(date, debouncedSearch);
       setSelectedIds(new Set());
@@ -102,7 +104,7 @@ const DailyNewCardsPage = () => {
     } catch (_e) { return iso; }
   };
 
-  const wasPrintedAfterRenewal = (member) => {
+  const hadPrintRequestAfterRenewal = (member) => {
     if (!member?.card_printed_at || !member?.renewed_at) return false;
     const printedAt = Date.parse(member.card_printed_at);
     const renewedAt = Date.parse(member.renewed_at);
@@ -188,10 +190,72 @@ const DailyNewCardsPage = () => {
     <div class="logo-card">
       <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
       <div class="contact-block">
-        <div class="contact-row">📞 ${branchPhone || '0566238384'}</div>
+        <div class="contact-row">📞 ${branchPhone || ''}</div>
       </div>
     </div>
   `;
+
+  // Keep bulk printing in one user-initiated window. Each card body and its
+  // identity-only markup comes from the shared permanent-card template.
+  const openBatchPermanentCards = (memberEntries, lang, title, cardPages = false) => {
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (!win) return null;
+
+    try {
+      const documents = memberEntries.map(({ member, branch }) => buildPermanentMemberCardHtml({
+        member,
+        qrValue: getMemberQRValue(member.member_code),
+        logoUrl: getAcademyLogoUrl(),
+        academyName: getAcademyName() || 'شركة اداء الابطال العالمية للرياضة',
+        // The daily endpoint already groups a member with its own branch.
+        // Use that exact group; do not ever use the member's personal phone
+        // or another group's branch contact on the card back.
+        branchName: branch?.branch_name || '',
+        branchPhone: branch?.branch_phone || '',
+        language: lang === 'en' ? 'en' : 'ar',
+      }));
+      const baseStyle = documents[0]?.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
+      // The shared template emits two portrait faces per member. Preserve the
+      // document order (front, then its back) for both A4 and CR-80 jobs.
+      const cards = documents.flatMap((document) => {
+        const template = new DOMParser().parseFromString(document, 'text/html');
+        return Array.from(template.querySelectorAll('.card.front, .card.back'), (face) => face.outerHTML);
+      }).join('');
+      if (!cards) throw new Error('Permanent card faces are unavailable');
+      const pageStyle = cardPages
+        ? '@page { size: 54mm 85.6mm; margin: 0; } .card { page-break-after: always; } .card:last-child { page-break-after: auto; }'
+        : '@page { size: A4; margin: 6mm; } body { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5mm; padding: 0; } .card { break-after: auto; page-break-after: auto; }';
+
+      win.document.write(`<!doctype html><html><head><meta charset="UTF-8"><title>${title}</title>
+        <style>${baseStyle}
+          html, body { width: auto; height: auto; }
+          ${pageStyle}
+          .toolbar { width: 100%; padding: 12px; text-align: center; background: white; }
+          .toolbar button { padding: 9px 18px; border: 0; border-radius: 8px; background: #ea580c; color: white; font-weight: 700; cursor: pointer; }
+          @media print { .toolbar { display: none; } }
+        </style></head><body>
+        <div class="toolbar"><button onclick="window.print()">🖨️ طباعة البطاقات</button></div>${cards}
+      </body></html>`);
+      win.document.close();
+      const imageReady = Promise.all(Array.from(win.document.images).map((image) => new Promise((resolve) => {
+        if (image.complete) resolve();
+        else {
+          image.addEventListener('load', resolve, { once: true });
+          image.addEventListener('error', resolve, { once: true });
+        }
+      })));
+      Promise.race([imageReady, new Promise((resolve) => window.setTimeout(resolve, 5000))]).then(() => {
+        if (!win.closed) {
+          win.focus?.();
+          win.print?.();
+        }
+      });
+      return win;
+    } catch (_error) {
+      win.close?.();
+      return null;
+    }
+  };
 
   const getFilteredBranches = () => {
     const list = data?.branches || [];
@@ -230,6 +294,14 @@ const DailyNewCardsPage = () => {
         pairs.push({ branch, member: m });
       });
     });
+
+    const popup = openBatchPermanentCards(pairs, lang, `كروت ${data.date}`);
+    if (!popup) {
+      setError('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
+      return;
+    }
+    markIdsPrinted(pairs.map(({ member }) => member.id));
+    return;
 
     const pagesHtml = [];
     for (let i = 0; i < pairs.length; i += 4) {
@@ -318,6 +390,14 @@ const DailyNewCardsPage = () => {
     branchesList.forEach((branch) => {
       branch.members.forEach((m) => allMembers.push({ branch, member: m }));
     });
+
+    const popup = openBatchPermanentCards(allMembers, lang, `CD820 - ${data.date}`, true);
+    if (!popup) {
+      setError('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
+      return;
+    }
+    markIdsPrinted(allMembers.map(({ member }) => member.id));
+    return;
 
     const pagesHtml = [];
     allMembers.forEach(({ branch, member }) => {
@@ -537,36 +617,36 @@ const DailyNewCardsPage = () => {
                   className="bg-orange-500 hover:bg-orange-600 text-white gap-2"
                 >
                   <Printer className="w-4 h-4" />
-                  طباعة A4 ({totalMembers})
+                  طباعة A4 وجه وظهر ({totalMembers})
                 </Button>
                 <Button
                   onClick={() => printCD820('duplex')}
                   disabled={loading || totalMembers === 0}
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-                  title="طباعة على بطاقات بلاستيك CR-80 (وش + ظهر)"
+                  title="طباعة وجهي بطاقة العضوية الدائمة على CR-80"
                 >
                   <CreditCard className="w-4 h-4" />
-                  CD820 وش وظهر
+                  CD820 وجه وظهر
                 </Button>
                 <Button
                   onClick={() => printCD820('single')}
                   disabled={loading || totalMembers === 0}
                   variant="outline"
                   className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-2"
-                  title="طباعة وش فقط على CD820"
+                  title="طباعة وجهي بطاقة العضوية الدائمة على CR-80"
                 >
                   <CreditCard className="w-4 h-4" />
-                  CD820 وش فقط
+                  CD820 وجه وظهر
                 </Button>
                 <Button
                   onClick={() => printCD820('back')}
                   disabled={loading || totalMembers === 0}
                   variant="outline"
                   className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-2"
-                  title="طباعة ظهر فقط على CD820"
+                  title="طباعة وجهي بطاقة العضوية الدائمة على CR-80"
                 >
                   <CreditCard className="w-4 h-4" />
-                  CD820 ظهر فقط
+                  CD820 وجه وظهر
                 </Button>
               </div>
             </div>
@@ -624,11 +704,12 @@ const DailyNewCardsPage = () => {
               >
                 إلغاء التحديد
               </Button>
-              <span className="text-xs text-gray-500 self-center">
+                <span className="text-xs text-gray-500 self-center">
                 {selectedIds.size > 0
-                  ? `سيتم طباعة ${selectedIds.size} كرت محدد فقط`
-                  : 'بدون تحديد: سيتم طباعة كل أعضاء الفرع المعروض'}
+                  ? `سيتم إرسال طلب طباعة لـ ${selectedIds.size} كرت محدد فقط`
+                  : 'بدون تحديد: سيُرسل طلب طباعة لكل أعضاء الفرع المعروض'}
               </span>
+                <span className="text-xs text-gray-500 self-center">التحديد الافتراضي يستثني من سبق طلب طباعته.</span>
             </div>
           </CardContent>
         </Card>
@@ -705,11 +786,11 @@ const DailyNewCardsPage = () => {
                       const acts = [...new Set((m.activities || []).map((a) => a.activity_name).filter(Boolean))].join('، ');
                       const time = (m.created_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
                       const isSelected = selectedIds.has(m.id);
-                      const isPrinted = !!m.card_printed_at;
+                       const hasPrintRequest = !!m.card_printed_at;
                       return (
                         <tr
                           key={m.id}
-                          className={`border-t hover:bg-orange-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${isPrinted ? 'opacity-70' : ''}`}
+                           className={`border-t hover:bg-orange-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${hasPrintRequest ? 'opacity-70' : ''}`}
                           onClick={() => toggleMember(m.id)}
                         >
                           <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -725,12 +806,12 @@ const DailyNewCardsPage = () => {
                           <td className="p-2 font-medium">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span>{m.name_ar || m.name}</span>
-                              {isPrinted && (
+                               {hasPrintRequest && (
                                 <span
                                   className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300"
-                                  title={`تم الطباعة: ${formatPrintedDate(m.card_printed_at)}${m.card_print_count ? ` (${m.card_print_count} مرة)` : ''}`}
+                                  title={`طلب طباعة: ${formatPrintedDate(m.card_printed_at)}${m.card_print_count ? ` (${m.card_print_count} طلب)` : ''}`}
                                 >
-                                  ✓ مطبوع
+                                  ✓ سبق طلب طباعته
                                 </span>
                               )}
                             </div>
@@ -769,7 +850,7 @@ const DailyNewCardsPage = () => {
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-1"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  طباعة A4
+                  طباعة A4 وجه وظهر
                 </Button>
                 <Button
                   size="sm"
@@ -778,7 +859,7 @@ const DailyNewCardsPage = () => {
                   className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-1"
                 >
                   <CreditCard className="w-3.5 h-3.5" />
-                  CD820 وش وظهر
+                  CD820 وجه وظهر
                 </Button>
                 <Button
                   size="sm"
@@ -787,12 +868,12 @@ const DailyNewCardsPage = () => {
                   className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-1"
                 >
                   <CreditCard className="w-3.5 h-3.5" />
-                  CD820 وش فقط
+                  CD820 وجه وظهر
                 </Button>
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              أعضاء حاليون تم دفع فاتورة تجديد لهم في هذا اليوم — التجديد لا يُنشئ عضواً جديداً لذلك لا يظهر في القائمة أعلاه. يمكنك إعادة طباعة كروتهم بالتواريخ الجديدة، وبدون تحديد تتم طباعة كل التجديدات المعروضة.
+              أعضاء حاليون تم دفع فاتورة تجديد لهم في هذا اليوم — التجديد لا يُنشئ عضواً جديداً لذلك لا يظهر في القائمة أعلاه. يمكنك إرسال طلب طباعة جديد لبطاقاتهم الدائمة، وبدون تحديد يتم إرسال الطلب لكل التجديدات المعروضة.
             </p>
             {renewalBranchesView.map((branch) => {
               const branchSelectedCount = branch.members.filter((m) => renewalSelectedIds.has(m.id)).length;
@@ -840,12 +921,12 @@ const DailyNewCardsPage = () => {
                         <tbody>
                           {branch.members.map((m, idx) => {
                             const isSelected = renewalSelectedIds.has(m.id);
-                            const isPrinted = wasPrintedAfterRenewal(m);
+                            const hasPrintRequest = hadPrintRequestAfterRenewal(m);
                             const time = (m.renewed_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
                             return (
                               <tr
                                 key={m.id}
-                                className={`border-t hover:bg-blue-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${isPrinted ? 'opacity-70' : ''}`}
+                              className={`border-t hover:bg-blue-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${hasPrintRequest ? 'opacity-70' : ''}`}
                                 onClick={() => toggleRenewalMember(m.id)}
                               >
                                 <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -861,12 +942,12 @@ const DailyNewCardsPage = () => {
                                 <td className="p-2 font-medium">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span>{m.name_ar || m.name}</span>
-                                    {isPrinted && (
+                                  {hasPrintRequest && (
                                       <span
                                         className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300"
-                                        title={`تم الطباعة بعد التجديد: ${formatPrintedDate(m.card_printed_at)}`}
+                                        title={`طلب طباعة بعد التجديد: ${formatPrintedDate(m.card_printed_at)}`}
                                       >
-                                        ✓ تم الطبع
+                                        ✓ سبق طلب طباعته
                                       </span>
                                     )}
                                   </div>

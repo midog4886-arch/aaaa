@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import ChatMessageViewport from '../components/ChatMessageViewport';
+import CloudVoiceComposer from '../components/CloudVoiceComposer';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -356,6 +357,7 @@ export default function WhatsAppPage() {
   const [cloudImageCaption, setCloudImageCaption] = useState('');
   const [sendingCloudImage, setSendingCloudImage] = useState(false);
   const sendingCloudImageRef = useRef(false);
+  const [cloudVoiceComposerBusy, setCloudVoiceComposerBusy] = useState(false);
   const cloudImageInputRef = useRef(null);
   const cloudImagePreviewUrlRef = useRef('');
   const [phoneLookup, setPhoneLookup] = useState({
@@ -841,7 +843,12 @@ export default function WhatsAppPage() {
   };
 
   const handleCloudReply = async () => {
-    if (!selectedCloudThread || !cloudReply.trim() || sendingCloudReplyRef.current) return;
+    if (
+      !selectedCloudThread
+      || !cloudReply.trim()
+      || sendingCloudReplyRef.current
+      || cloudVoiceComposerBusy
+    ) return;
     const conversationId = selectedCloudThread;
     sendingCloudReplyRef.current = true;
     setSendingCloudReply(true);
@@ -879,6 +886,7 @@ export default function WhatsAppPage() {
   const handleCloudImageChange = async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
+    if (cloudVoiceComposerBusy) return;
     if (!file) return;
     const maxBytes = 5 * 1024 * 1024;
     const mime = (file.type || '').toLowerCase();
@@ -924,7 +932,13 @@ export default function WhatsAppPage() {
   };
 
   const handleCloudImageSend = async () => {
-    if (!selectedCloudThread || !cloudImage || sendingCloudImage || sendingCloudImageRef.current) return;
+    if (
+      !selectedCloudThread
+      || !cloudImage
+      || sendingCloudImage
+      || sendingCloudImageRef.current
+      || cloudVoiceComposerBusy
+    ) return;
     const conversationId = selectedCloudThread;
     sendingCloudImageRef.current = true;
     const formData = new FormData();
@@ -954,6 +968,26 @@ export default function WhatsAppPage() {
       sendingCloudImageRef.current = false;
       setSendingCloudImage(false);
     }
+  };
+
+  const handleCloudVoiceSend = async (conversationId, formData) => {
+    const response = await whatsappAPI.sendCloudInboxVoice(conversationId, formData);
+    if (!response.data?.success) {
+      const error = new Error(t('لم يؤكد الخادم الإرسال', 'The server did not confirm the send'));
+      // An HTTP response with an explicit negative acknowledgement is a known
+      // rejection, unlike a timeout/5xx whose provider outcome is uncertain.
+      error.definite = true;
+      throw error;
+    }
+    // A voice send is deliberately bound to its originating conversation. A
+    // late response must not refresh whichever chat the user opened afterward.
+    if (selectedCloudThreadRef.current === conversationId) {
+      await openCloudThread(conversationId, { refreshInbox: true });
+      toast.success(response.data?.used_template
+        ? t('تم إرسال المقطع الصوتي باستخدام قالب Meta المعتمد', 'Voice message sent using the approved Meta template')
+        : t('تم إرسال المقطع الصوتي من رقم الفرع', 'Voice message sent from the branch number'));
+    }
+    return response;
   };
 
   const loadPushData = async () => {
@@ -3464,6 +3498,16 @@ export default function WhatsAppPage() {
                       );
                     })}
                   </ChatMessageViewport>
+                   {(cloudThread?.voice_supported !== false && cloudThread?.capabilities?.voice !== false) && (
+                     <CloudVoiceComposer
+                       conversationId={selectedCloudThread}
+                       resourceScope={`${cloudAuthScope}:${cloudBranchFilter}`}
+                       disabled={sendingCloudReply || sendingCloudImage}
+                       onBusyChange={setCloudVoiceComposerBusy}
+                       onSend={handleCloudVoiceSend}
+                       t={t}
+                     />
+                   )}
                    {cloudImage && (
                      <div className="mb-3 rounded-lg border border-green-200 bg-green-50/60 p-3">
                        <div className="flex items-start gap-3">
@@ -3489,7 +3533,7 @@ export default function WhatsAppPage() {
                              maxLength={4096}
                              placeholder={t('تعليق اختياري للصورة…', 'Optional image caption…')}
                              className="mt-2 bg-white"
-                             disabled={sendingCloudImage}
+                              disabled={sendingCloudImage || cloudVoiceComposerBusy}
                            />
                          </div>
                          <Button
@@ -3497,7 +3541,7 @@ export default function WhatsAppPage() {
                            variant="ghost"
                            size="sm"
                            onClick={clearCloudImage}
-                           disabled={sendingCloudImage}
+                            disabled={sendingCloudImage || cloudVoiceComposerBusy}
                            aria-label={t('إزالة الصورة', 'Remove image')}
                            data-testid="button-remove-cloud-image"
                          >
@@ -3519,7 +3563,7 @@ export default function WhatsAppPage() {
                        type="button"
                        variant="outline"
                        onClick={() => cloudImageInputRef.current?.click()}
-                       disabled={sendingCloudImage || sendingCloudReply}
+                        disabled={sendingCloudImage || sendingCloudReply || cloudVoiceComposerBusy}
                        className="gap-1"
                        data-testid="button-attach-cloud-image"
                      >
@@ -3530,7 +3574,7 @@ export default function WhatsAppPage() {
                        <Button
                          type="button"
                          onClick={handleCloudImageSend}
-                         disabled={sendingCloudImage || sendingCloudReply || !cloudImage}
+                          disabled={sendingCloudImage || sendingCloudReply || cloudVoiceComposerBusy || !cloudImage}
                          className="gap-1 bg-green-600 hover:bg-green-700"
                          data-testid="button-send-cloud-image"
                        >
@@ -3546,7 +3590,7 @@ export default function WhatsAppPage() {
                   <div className="flex gap-2 border-t pt-3">
                     <Textarea
                       value={cloudReply}
-                      disabled={sendingCloudReply}
+                      disabled={sendingCloudReply || cloudVoiceComposerBusy}
                       onChange={e => setCloudReply(e.target.value)}
                       rows={2}
                       maxLength={4096}
@@ -3556,7 +3600,7 @@ export default function WhatsAppPage() {
                     <Button
                       onClick={handleCloudReply}
                       aria-label={t('إرسال الرد', 'Send reply')}
-                      disabled={sendingCloudReply || !cloudReply.trim()}
+                      disabled={sendingCloudReply || cloudVoiceComposerBusy || !cloudReply.trim()}
                       className="self-end bg-green-600 hover:bg-green-700"
                     >
                       {sendingCloudReply ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

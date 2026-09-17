@@ -1,99 +1,93 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
+import { getAcademyLogoUrl, getAcademyName } from '../../../services/branding';
+import { membersAPI } from '../../../services/api';
+import { getMemberQRValue } from '../../../utils/memberQR';
+import { openPermanentMemberCardPrint } from '../../../utils/permanentMemberCard';
 
-export const useMemberCardPrint = ({ members, language }) => {
+const DEFAULT_ACADEMY_NAME = 'شركة اداء الابطال العالمية للرياضة';
+
+export const useMemberCardPrint = ({ members, branches = [], language }) => {
   const [showCardPrintDialog, setShowCardPrintDialog] = useState(false);
   const [cardPrintMember, setCardPrintMember] = useState(null);
   const [showRegFormCardPrintDialog, setShowRegFormCardPrintDialog] = useState(false);
   const [regFormCardData, setRegFormCardData] = useState(null);
 
-  const handleOpenCardPrint = (invoice) => {
-    const today = new Date().toISOString().split('T')[0];
-    const allWindows = invoice.items?.filter(item => !item.is_product).map(item => {
-      let startDate = item.start_date || '';
-      let endDate = item.end_date || '';
-      if ((!startDate || !endDate) && item.period) {
-        const parts = item.period.split(' - ');
-        if (parts.length === 2) { startDate = startDate || parts[0].trim(); endDate = endDate || parts[1].trim(); }
-      }
-      return { activity_id: item.activity_id || '', activity_name: item.activity_name, start_date: startDate, end_date: endDate, schedule: item.schedule || '', status: endDate ? endDate >= today ? 'active' : 'expired' : 'active' };
-    }) || [];
-    // One entry per activity: with prepaid multi-period invoices prefer the
-    // window covering TODAY, else the earliest upcoming, else the latest end
-    // — so the card never shows a future prepaid period while the current
-    // one is still running.
-    const byAct = {};
-    allWindows.forEach((w) => {
-      const key = w.activity_id || w.activity_name || '';
-      const rank = (x) => {
-        if (!x.end_date) return [2, ''];
-        const covers = (!x.start_date || x.start_date <= today) && x.end_date >= today;
-        if (covers) return [0, x.start_date || ''];
-        if (x.start_date && x.start_date > today) return [1, x.start_date];
-        return [2, x.end_date];
-      };
-      const prev = byAct[key];
-      if (!prev) { byAct[key] = w; return; }
-      const [ra, ka] = rank(w); const [rb, kb] = rank(prev);
-      if (ra < rb || (ra === rb && ((ra === 1 && ka < kb) || (ra !== 1 && ka > kb)))) byAct[key] = w;
-    });
-    const activitiesWithDates = Object.values(byAct).sort((a, b) => {
-      const covers = (x) => x.end_date && (!x.start_date || x.start_date <= today) && x.end_date >= today ? 0 : 1;
-      return covers(a) - covers(b);
-    });
-    const member = members.find(m => m.id === invoice.member_id);
-    if (member) {
-      setCardPrintMember({ ...member, activities: activitiesWithDates });
-      setShowCardPrintDialog(true);
-    } else if (invoice.customer_name_ar || invoice.customer_phone) {
-      setCardPrintMember({ name_ar: invoice.customer_name_ar, phone: invoice.customer_phone, member_code: invoice.invoice_number, activities: activitiesWithDates });
-      setShowCardPrintDialog(true);
+  const noLinkedMemberMessage = language === 'ar'
+    ? 'لا يمكن طباعة البطاقة: لا يوجد عضو مرتبط بهذه العملية.'
+    : 'Cannot print card: this record is not linked to a member.';
+  const noIssuedCodeMessage = language === 'ar'
+    ? 'لا يمكن طباعة البطاقة: لم يصدر رقم عضوية لهذا العضو.'
+    : 'Cannot print card: this member has no issued membership code.';
+
+  const resolveLinkedMember = async (memberId) => {
+    if (!memberId) {
+      toast.error(noLinkedMemberMessage);
+      return null;
     }
+    const loadedMember = (members || []).find((member) => String(member.id) === String(memberId));
+    if (loadedMember) return loadedMember;
+    try {
+      const response = await membersAPI.getById(memberId);
+      return response?.data || null;
+    } catch (_error) {
+      toast.error(noLinkedMemberMessage);
+      return null;
+    }
+  };
+
+  const printPermanentCard = (cardMember) => {
+    if (!cardMember?.member_code) {
+      toast.error(language === 'ar' ? 'رقم العضوية غير متوفر للطباعة' : 'Membership number is unavailable for printing');
+      return false;
+    }
+
+    const branch = branches.find((item) => String(item.id) === String(cardMember.branch_id));
+    const popup = openPermanentMemberCardPrint({
+      member: cardMember,
+      qrValue: getMemberQRValue(cardMember.member_code),
+      logoUrl: getAcademyLogoUrl(),
+      academyName: getAcademyName() || DEFAULT_ACADEMY_NAME,
+      // Resolve strictly from this member's branch. Never substitute the
+      // invoice customer's/member's phone or a different branch's contact.
+      branchName: cardMember.branch_name || branch?.name_ar || branch?.name || '',
+      branchPhone: cardMember.branch_phone || branch?.phone || '',
+      language: language === 'en' ? 'en' : 'ar',
+    });
+    if (!popup) {
+      toast.error(language === 'ar' ? 'تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.' : 'Print window was blocked. Allow pop-ups and try again.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleOpenCardPrint = async (invoice) => {
+    const member = await resolveLinkedMember(invoice?.member_id);
+    if (!member) return;
+    if (!member.member_code) {
+      toast.error(noIssuedCodeMessage);
+      return;
+    }
+    setCardPrintMember(member);
+    setShowCardPrintDialog(true);
   };
 
   const handleStickerPrint = () => {
-    setShowCardPrintDialog(false);
-    if (!cardPrintMember) return;
-    const qrData = cardPrintMember.member_code.toString();
-    const firstActivity = cardPrintMember?.activities?.[0];
-    const startDate = firstActivity?.start_date || '';
-    const endDate = firstActivity?.end_date || '';
-    const schedule = firstActivity?.schedule || '';
-    const activitiesHtml = cardPrintMember?.activities?.map(act => `<div class="activity-item ${act.status}"><div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}</div>`).join('') || '';
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>بطاقة العضوية - ${cardPrintMember?.member_code}</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');@page{size:A4;margin:0mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Tajawal',Arial,sans-serif;background:#f3f4f6;direction:rtl}.screen-only{padding:20px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}@media print{.screen-only{display:none!important}.print-area{display:flex!important;position:absolute;top:10mm;right:10mm;gap:5mm}}@media screen{.print-area{display:none}}.sticker-preview{display:flex;gap:15px;justify-content:center;margin-bottom:20px}.card{width:90mm;height:60mm;background:white;border-radius:4mm;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.1);display:flex;flex-direction:column}.card-header{background:linear-gradient(135deg,#F97316,#F59E0B);padding:1.5mm 2mm;display:flex;justify-content:space-between;align-items:center;color:white}.header-text h2{font-size:7pt;font-weight:700;margin:0;line-height:1.3}.header-text p{font-size:5.5pt;opacity:0.9;margin:0}.header-logo{width:10mm;height:10mm;border-radius:50%;background:white;padding:0.5mm;display:flex;align-items:center;justify-content:center}.header-logo img{width:100%;height:100%;object-fit:contain;border-radius:50%}.card-body{padding:2mm;display:flex;gap:2mm;flex:1}.info-section{flex:1;text-align:right;overflow:hidden}.qr-container{display:flex;flex-direction:column;align-items:center}.qr-section{width:26mm;height:26mm;background:white;border:1px solid #eee;border-radius:2mm;padding:0.5mm}.qr-section img{width:100%;height:100%}.qr-dates{text-align:center;font-size:8pt;color:#1f2937;margin-top:1mm;line-height:1.4;font-weight:700}.qr-dates span{display:block}.schedule-info{text-align:center;font-size:6pt;color:#F97316;margin-top:1mm;font-weight:600;background:#FFF7ED;padding:1mm;border-radius:2mm}.member-name{font-size:10pt;font-weight:700;color:#1f2937;margin-bottom:1mm}.info-row{display:flex;align-items:center;gap:1mm;margin-bottom:0.8mm;font-size:7pt}.info-label{color:#6b7280;font-size:6pt}.member-code{color:#F97316;font-weight:700;font-size:10pt}.activities{margin-top:1mm;padding-top:1mm;border-top:1px dashed #e5e7eb}.activities-label{font-size:6pt;color:#6b7280;margin-bottom:0.5mm}.activity-item{padding:1mm 1.5mm;margin-bottom:0.5mm;border-radius:1.5mm;font-size:6pt}.activity-item.active{background:#D1FAE5;border-right:2px solid #10B981}.activity-item.expired{background:#FEE2E2;border-right:2px solid #EF4444}.activity-name{font-weight:600;color:#1f2937;font-size:7pt}.card-footer{text-align:right;padding:1.5mm 2mm;background:#f9fafb;font-size:5pt;color:#374151;border-top:1px dashed #e5e7eb;line-height:1.4}.card-footer .terms-title{font-weight:700;color:#1f2937;font-size:6pt;margin-bottom:0.5mm}.logo-card{width:90mm;height:60mm;background:white;border-radius:4mm;overflow:hidden;box-shadow:0 4px 15px rgba(0,0,0,0.1);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3mm}.logo-card img{max-width:100%;max-height:55%;object-fit:contain}.logo-card .contact-info{font-size:7pt;color:#374151;text-align:center;margin-top:2mm;font-weight:600;line-height:1.6}.logo-card .terms{text-align:right;font-size:5.5pt;color:#374151;margin-top:2mm;line-height:1.6;padding:0 2mm}.logo-card .terms .terms-title{font-weight:700;color:#1f2937;font-size:6.5pt;margin-bottom:1mm;text-align:center}.print-btn{margin-top:20px;padding:12px 30px;background:linear-gradient(135deg,#F97316,#EA580C);color:white;border:none;border-radius:10px;cursor:pointer;font-family:'Tajawal',Arial,sans-serif;font-size:16px;font-weight:bold}.position-labels{display:flex;gap:15px;justify-content:center;margin-top:10px}.position-label{padding:8px 16px;background:#FEF3C7;border-radius:8px;color:#92400E;font-size:12px}</style></head><body><div class="screen-only"><p style="font-size:18px;margin-bottom:20px;">📋 معاينة الطباعة - كرت العضوية + شعار الأكاديمية</p><div class="sticker-preview"><div class="card"><div class="card-header"><div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div><div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div></div><div class="card-body"><div class="qr-container"><div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div><div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}</div><div class="info-section"><div class="info-label">الاسم</div><div class="member-name">${cardPrintMember?.name_ar || ''}</div><div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${cardPrintMember?.member_code || ''}</span></div><div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}</div></div><div class="card-footer"><div class="terms-title">شروط وأحكام:</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div></div></div><div class="logo-card"><img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" /><div class="contact-info">📞 0566238384</div><div class="terms"><div class="terms-title">شروط وأحكام</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div><div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div></div></div></div><div class="position-labels"><div class="position-label">📍 خانة 1: كرت العضوية</div><div class="position-label">📍 خانة 2: شعار الأكاديمية</div></div><p style="margin-top:10px;color:#6b7280;font-size:14px;">📐 حجم كل كرت: 9سم × 6سم</p><button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button></div><div class="print-area"><div class="card"><div class="card-header"><div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div><div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div></div><div class="card-body"><div class="qr-container"><div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div><div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}</div><div class="info-section"><div class="info-label">الاسم</div><div class="member-name">${cardPrintMember?.name_ar || ''}</div><div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${cardPrintMember?.member_code || ''}</span></div><div class="info-row"><span class="info-label">رقم الجوال:</span><span>${cardPrintMember?.phone || '-'}</span></div>${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}</div></div><div class="card-footer"><div class="terms-title">شروط وأحكام:</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div></div></div><div class="logo-card"><img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" /><div class="contact-info">📞 0566238384</div><div class="terms"><div class="terms-title">شروط وأحكام</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div><div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div></div></div></div></body></html>`);
-    printWindow.document.close();
+    if (printPermanentCard(cardPrintMember)) setShowCardPrintDialog(false);
   };
 
   const handleRegFormStickerPrint = () => {
-    setShowRegFormCardPrintDialog(false);
-    if (!regFormCardData) return;
-    const qrData = (regFormCardData.member_code || regFormCardData.form_number || '').toString();
-    const firstActivity = regFormCardData?.activities?.[0];
-    const startDate = firstActivity?.start_date || '';
-    const endDate = firstActivity?.end_date || '';
-    const schedule = firstActivity?.schedule || '';
-    const activitiesHtml = regFormCardData?.activities?.map(act => `<div class="activity-item ${act.status}"><div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>${act.schedule ? `<div style="font-size:5.5pt;color:#2563EB;margin-top:0.3mm;">📅 ${act.schedule}</div>` : ''}</div>`).join('') || '';
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>بطاقة - ${regFormCardData?.member_code || regFormCardData?.form_number}</title><style>@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');@page{size:A4;margin:0mm}*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Tajawal',Arial,sans-serif;background:#f3f4f6;direction:rtl}.screen-only{padding:20px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}@media print{.screen-only{display:none!important}.print-area{display:flex!important;position:absolute;top:10mm;right:10mm;gap:5mm}}@media screen{.print-area{display:none}}.card{width:90mm;height:60mm;background:white;border-radius:4mm;overflow:hidden;display:flex;flex-direction:column}.card-header{background:linear-gradient(135deg,#F97316,#F59E0B);padding:1.5mm 2mm;display:flex;justify-content:space-between;align-items:center;color:white}.header-text h2{font-size:7pt;font-weight:700;margin:0}.header-text p{font-size:5.5pt;opacity:0.9;margin:0}.header-logo{width:10mm;height:10mm;border-radius:50%;background:white;padding:0.5mm;display:flex;align-items:center;justify-content:center}.header-logo img{width:100%;height:100%;object-fit:contain;border-radius:50%}.card-body{padding:2mm;display:flex;gap:2mm;flex:1}.info-section{flex:1;text-align:right;overflow:hidden}.qr-container{display:flex;flex-direction:column;align-items:center}.qr-section{width:26mm;height:26mm;background:white;border:1px solid #eee;border-radius:2mm;padding:0.5mm}.qr-section img{width:100%;height:100%}.qr-dates{text-align:center;font-size:8pt;color:#1f2937;margin-top:1mm;line-height:1.4;font-weight:700}.qr-dates span{display:block}.schedule-info{text-align:center;font-size:6pt;color:#F97316;margin-top:1mm;font-weight:600;background:#FFF7ED;padding:1mm;border-radius:2mm}.member-name{font-size:10pt;font-weight:700;color:#1f2937;margin-bottom:1mm}.info-row{display:flex;align-items:center;gap:1mm;margin-bottom:0.8mm;font-size:7pt}.info-label{color:#6b7280;font-size:6pt}.member-code{color:#F97316;font-weight:700;font-size:10pt}.activities{margin-top:1mm;padding-top:1mm;border-top:1px dashed #e5e7eb}.activities-label{font-size:6pt;color:#6b7280;margin-bottom:0.5mm}.activity-item{padding:1mm 1.5mm;margin-bottom:0.5mm;border-radius:1.5mm;font-size:6pt}.activity-item.active{background:#D1FAE5;border-right:2px solid #10B981}.activity-item.expired{background:#FEE2E2;border-right:2px solid #EF4444}.activity-name{font-weight:600;color:#1f2937;font-size:7pt}.card-footer{text-align:right;padding:1.5mm 2mm;background:#f9fafb;font-size:5pt;color:#374151;border-top:1px dashed #e5e7eb;line-height:1.4}.card-footer .terms-title{font-weight:700;color:#1f2937;font-size:6pt;margin-bottom:0.5mm}.logo-card{width:90mm;height:60mm;background:white;border-radius:4mm;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3mm}.logo-card img{max-width:100%;max-height:55%;object-fit:contain}.logo-card .contact-info{font-size:7pt;color:#374151;text-align:center;margin-top:2mm;font-weight:600;line-height:1.6}.logo-card .terms{text-align:right;font-size:5.5pt;color:#374151;margin-top:2mm;line-height:1.6;padding:0 2mm}.logo-card .terms .terms-title{font-weight:700;color:#1f2937;font-size:6.5pt;margin-bottom:1mm;text-align:center}.print-btn{margin-top:20px;padding:12px 30px;background:linear-gradient(135deg,#F97316,#EA580C);color:white;border:none;border-radius:10px;cursor:pointer;font-family:'Tajawal',Arial,sans-serif;font-size:16px;font-weight:bold}</style></head><body><div class="screen-only"><p style="font-size:18px;margin-bottom:20px;">📋 معاينة طباعة الكرت</p><div style="display:flex;gap:15px;justify-content:center;margin-bottom:20px"><div class="card"><div class="card-header"><div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div><div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div></div><div class="card-body"><div class="qr-container"><div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div><div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}</div><div class="info-section"><div class="info-label">الاسم</div><div class="member-name">${regFormCardData?.name_ar || ''}</div><div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${regFormCardData?.member_code || regFormCardData?.form_number || ''}</span></div><div class="info-row"><span class="info-label">رقم الجوال:</span><span>${regFormCardData?.phone || '-'}</span></div>${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}</div></div><div class="card-footer"><div class="terms-title">شروط وأحكام:</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div></div></div><div class="logo-card"><img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" /><div class="contact-info">📞 0566238384</div><div class="terms"><div class="terms-title">شروط وأحكام</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div><div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div></div></div></div><button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button></div><div class="print-area"><div class="card"><div class="card-header"><div class="header-text"><h2>شركة اداء الابطال العالمية للرياضة</h2><p>Global Champions Sports Performance</p></div><div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div></div><div class="card-body"><div class="qr-container"><div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}" /></div><div class="qr-dates"><span>من: ${startDate || '----'}</span><span>إلى: ${endDate || '----'}</span></div>${schedule ? `<div class="schedule-info">📅 ${schedule}</div>` : ''}</div><div class="info-section"><div class="info-label">الاسم</div><div class="member-name">${regFormCardData?.name_ar || ''}</div><div class="info-row"><span class="info-label">رقم العضوية:</span><span class="member-code">${regFormCardData?.member_code || regFormCardData?.form_number || ''}</span></div><div class="info-row"><span class="info-label">رقم الجوال:</span><span>${regFormCardData?.phone || '-'}</span></div>${activitiesHtml ? `<div class="activities"><div class="activities-label">الأنشطة المسجلة</div>${activitiesHtml}</div>` : ''}</div></div><div class="card-footer"><div class="terms-title">شروط وأحكام:</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div></div></div><div class="logo-card"><img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" /><div class="contact-info">📞 0566238384</div><div class="terms"><div class="terms-title">شروط وأحكام</div><div>• الاشتراك محدد البداية والنهاية ولا يتم تعويض حصص غياب المشترك</div><div>• المبلغ المدفوع لا يسترد بعد مرور أسبوع من الاشتراك</div><div>• في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</div></div></div></div></body></html>`);
-    printWindow.document.close();
+    if (printPermanentCard(regFormCardData)) setShowRegFormCardPrintDialog(false);
   };
 
-  const handlePrintRegFormCard = (form) => {
-    const today = new Date().toISOString().split('T')[0];
-    const member = members.find(m => m.phone === form.customer_phone);
-    const acts = form.items?.filter(i => !i.is_product).map(item => ({
-      activity_name: item.activity_name,
-      start_date: item.start_date || '',
-      end_date: item.end_date || '',
-      schedule: item.schedule || '',
-      status: (item.end_date || '') >= today ? 'active' : 'expired',
-      level_name: item.level_name || ''
-    })) || [];
-    if (member) {
-      setRegFormCardData({ ...member, form_number: form.form_number, member_code: form.member_code || member.member_code, activities: acts });
-    } else {
-      setRegFormCardData({ name_ar: form.customer_name, phone: form.customer_phone, member_code: form.member_code || form.form_number, form_number: form.form_number, activities: acts });
+  const handlePrintRegFormCard = async (form) => {
+    const member = await resolveLinkedMember(form?.member_id);
+    if (!member) return;
+    if (!member.member_code) {
+      toast.error(noIssuedCodeMessage);
+      return;
     }
+    setRegFormCardData(member);
     setShowRegFormCardPrintDialog(true);
   };
 
@@ -102,6 +96,6 @@ export const useMemberCardPrint = ({ members, language }) => {
     cardPrintMember, setCardPrintMember,
     showRegFormCardPrintDialog, setShowRegFormCardPrintDialog,
     regFormCardData, setRegFormCardData,
-    handleOpenCardPrint, handleStickerPrint, handleRegFormStickerPrint, handlePrintRegFormCard
+    handleOpenCardPrint, handleStickerPrint, handleRegFormStickerPrint, handlePrintRegFormCard,
   };
 };

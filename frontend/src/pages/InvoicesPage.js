@@ -132,7 +132,7 @@ export const InvoicesPage = () => {
   const qrCardHook = useQRCardPrint({ language });
   const { isQRCardDialogOpen, setIsQRCardDialogOpen, qrCardMember, setQrCardMember, qrCardSubscription, setQrCardSubscription, handleOpenQRCard, handlePrintQRCard, handleSendQRCardWhatsApp } = qrCardHook;
 
-  const memberCardHook = useMemberCardPrint({ members, language });
+  const memberCardHook = useMemberCardPrint({ members, branches, language });
   const { showCardPrintDialog, setShowCardPrintDialog, cardPrintMember, showRegFormCardPrintDialog, setShowRegFormCardPrintDialog, regFormCardData, setRegFormCardData, handleOpenCardPrint, handleStickerPrint, handleRegFormStickerPrint, handlePrintRegFormCard } = memberCardHook;
 
   const invoiceActions = useInvoiceActions({ loadData, language, t, isAdmin, getBranchName, setInvoices });

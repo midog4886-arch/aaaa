@@ -75,3 +75,16 @@ class WAHAClient:
                      "mimetype": mime_type, "filename": filename},
             "caption": caption,
         })
+
+    async def send_voice(self, session: str, chat_id: str, content: bytes,
+                         mime_type: str, filename: str):
+        """Use WAHA's dedicated voice endpoint, rather than sendFile."""
+        return await self._request("POST", "/api/sendVoice", json={
+            "session": session, "chatId": chat_id,
+            "file": {
+                "data": base64.b64encode(content).decode("ascii"),
+                "mimetype": mime_type,
+                "filename": filename,
+            },
+            "convert": False,
+        })

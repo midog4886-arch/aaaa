@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { Layout } from '../components/Layout';
+import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
+import { CreditCard, Download, Languages, Printer, User } from 'lucide-react';
+import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { User, CreditCard, Phone, Download, Printer, CheckCircle, XCircle, Languages } from 'lucide-react';
-import axios from 'axios';
 import { membersAPI } from '../services/api';
-import { getPrimaryColor } from '../services/branding';
+import { getAcademyLogoUrl, getAcademyName } from '../services/branding';
 import { getMemberQRValue } from '../utils/memberQR';
-import { getPrintLang, setPrintLang, PRINT_LABELS, translateSchedule, dedupeCardActivities } from '../utils/printLang';
+import { getPrintLang, setPrintLang } from '../utils/printLang';
+import { getPermanentMemberCardDetails, openPermanentMemberCardPrint } from '../utils/permanentMemberCard';
 
 const API_URL = '';
+const FALLBACK_ACADEMY_NAME = 'شركة اداء الابطال العالمية للرياضة';
 
 const MemberCardPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,729 +24,191 @@ const MemberCardPage = () => {
   const [error, setError] = useState('');
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const [printLang, setPrintLangState] = useState(getPrintLang);
-  const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
+  const qrValue = getMemberQRValue(member?.member_code);
 
-  const searchMember = async () => {
-    if (!searchQuery.trim()) return;
-    
-    setLoading(true);
-    setError('');
-    setMember(null);
-    setMatches([]);
-    
-    try {
-      // Use public API (no auth required)
-      const response = await axios.get(`${API_URL}/api/public/member-card/${encodeURIComponent(searchQuery.trim())}`);
-      if (response.data && response.data.multiple) {
-        setMatches(response.data.matches || []);
-      } else {
-        setMember(response.data);
-      }
-    } catch (err) {
-      const rawDetail = err.response?.data?.detail;
-      const serverMsg = typeof rawDetail === 'string'
-        ? rawDetail
-        : (rawDetail?.msg || rawDetail?.message || null);
-      if (serverMsg) {
-        setError(serverMsg);
-      } else if (err.response?.status === 404) {
-        setError('لم يتم العثور على العضو');
-      } else {
-        setError('حدث خطأ في البحث');
-      }
-    } finally {
-      setLoading(false);
-    }
+  const changePrintLang = (value) => {
+    setPrintLang(value);
+    setPrintLangState(value);
   };
 
-  const selectMatch = async (m) => {
+  const loadMember = async (lookup, message) => {
     setLoading(true);
     setError('');
-    setMatches([]);
     setMember(null);
+    setMatches([]);
     try {
-      const lookup = m.member_code || m.id;
       const response = await axios.get(`${API_URL}/api/public/member-card/${encodeURIComponent(lookup)}`);
-      if (response.data && response.data.multiple) {
-        setMatches(response.data.matches || []);
-      } else {
-        setMember(response.data);
-      }
+      if (response.data?.multiple) setMatches(response.data.matches || []);
+      else setMember(response.data);
     } catch (err) {
-      setError('حدث خطأ في عرض البطاقة');
+      const detail = err.response?.data?.detail;
+      setError(typeof detail === 'string' ? detail : (err.response?.status === 404 ? 'لم يتم العثور على العضو' : message));
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePrint = () => {
-    setShowPrintDialog(true);
+  const searchMember = () => {
+    if (searchQuery.trim()) loadMember(searchQuery.trim(), 'حدث خطأ في البحث');
   };
 
-  const markCurrentPrinted = async () => {
+  const printCard = async () => {
+    const popup = openPermanentMemberCardPrint({
+      member,
+      qrValue,
+      logoUrl: getAcademyLogoUrl(),
+      academyName: getAcademyName() || FALLBACK_ACADEMY_NAME,
+      branchName: member?.branch_name || '',
+      branchPhone: member?.branch_phone || '',
+      language: printLang === 'en' ? 'en' : 'ar',
+    });
+    if (!popup) {
+      setError('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
+      return;
+    }
+    setShowPrintDialog(false);
+    // Recording is only attempted after a physical-card print window opens.
     try {
-      if (member?.id) {
-        await membersAPI.markPrinted([member.id]);
-      }
-    } catch (_e) {}
-  };
-
-  const handleStickerPrint = (lang = printLang) => {
-    setShowPrintDialog(false);
-    const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    const qrData = getQRData();
-    const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #0A1A33 0%, #122E55 40%, #1E3A6E 70%, #0F2547 100%)';
-    const _accent = _brand || '#F97316';
-    
-    const _allActs = dedupeCardActivities(member?.activities);
-    const _today = new Date();
-    const _parseEnd = (a) => {
-      if (!a?.end_date) return 0;
-      const t = new Date(a.end_date).getTime();
-      return isNaN(t) ? 0 : t;
-    };
-    const _activeActs = _allActs.filter(a => a?.end_date && new Date(a.end_date) >= _today);
-    const _pool = _activeActs.length ? _activeActs : _allActs;
-    const latestActivity = [..._pool].sort((a, b) => _parseEnd(b) - _parseEnd(a))[0] || _allActs[0];
-    const startDate = latestActivity?.start_date || '';
-    const endDate = latestActivity?.end_date || '';
-    const schedule = latestActivity?.schedule || '';
-    
-    // Get activities list
-    const activitiesHtml = _allActs.map(act => `
-      <div class="activity-item ${act.status === 'active' ? 'active' : 'expired'}">
-        <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${act.activity_name}</div>
-        <div class="activity-status">${act.status === 'active' ? 'ساري' : 'منتهي'}</div>
-      </div>
-    `).join('') || '';
-    
-    // Print BOTH card and logo together
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>بطاقة العضوية - ${member?.member_code}</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-            @page { size: A4; margin: 0mm; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: 'Tajawal', Arial, sans-serif; background: #f3f4f6; direction: ${L.dir}; }
-            .screen-only { padding: 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
-            @media print { .screen-only { display: none !important; } .print-area { display: flex !important; position: absolute; top: 10mm; right: 10mm; gap: 5mm; } }
-            @media screen { .print-area { display: none; } }
-            .sticker-preview { display: flex; gap: 15px; justify-content: center; margin-bottom: 20px; }
-            .card { width: 60mm; height: 95mm; background: white; border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; position: relative; }
-            .accent-stripe { position: absolute; top: 0; bottom: 0; right: 0; width: 4mm; background: linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index: 2; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-            .accent-stripe span { writing-mode: vertical-rl; transform: rotate(180deg); color: white; font-size: 6.5pt; font-weight: 900; letter-spacing: 1.5pt; text-transform: uppercase; white-space: nowrap; }
-            .card-header { background: ${_headerBg}; padding: 2mm 2mm 2.5mm; display: flex; flex-direction: column; align-items: center; gap: 1mm; color: white; text-align: center; }
-            .header-text h2 { font-size: 7.5pt; font-weight: 900; margin: 0; line-height: 1.2; }
-            .header-text p { font-size: 5.5pt; font-weight: 800; opacity: 0.95; margin: 0.3mm 0 0; }
-            .header-logo { width: 18mm; height: 18mm; border-radius: 50%; background: white; padding: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1.5px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-            .header-logo img { width: 140%; height: 140%; object-fit: cover; border-radius: 50%; }
-            .card-body { padding: 2mm 5mm 1.5mm 2.5mm; display: flex; flex-direction: column; gap: 1.5mm; flex: 1; min-height: 0; }
-            .info-section { text-align: ${L.align}; overflow: hidden; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-            .qr-container { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; padding-top: 1mm; }
-            .qr-section { width: 26mm; height: 26mm; background: white; border: 1px solid #eee; border-radius: 2mm; padding: 0.5mm; }
-            .qr-section img { width: 100%; height: 100%; }
-            .qr-dates { text-align: center; font-size: 6.5pt; color: #1f2937; margin-top: 0.8mm; line-height: 1.3; font-weight: 700; }
-            .qr-dates span { display: block; }
-            .qr-label { text-align: center; font-size: 6.5pt; color: ${_accent}; font-weight: 900; margin-top: 0.5mm; letter-spacing: 0.3mm; }
-            .schedule-info { text-align: center; font-size: 5.5pt; color: ${_accent}; margin-top: 0.5mm; font-weight: 700; background: #FFF7ED; padding: 0.5mm 1mm; border-radius: 1.5mm; }
-            .member-name { font-size: 10.5pt; font-weight: 900; color: #111827; margin: 0.3mm 0 1.2mm; line-height: 1.15; letter-spacing: -0.1pt; }
-            .info-row { display: flex; align-items: center; gap: 1mm; margin-bottom: 0.5mm; font-size: 7pt; }
-            .info-label { color: #6b7280; font-size: 6pt; font-weight: 600; }
-            .member-code { color: ${_accent}; font-weight: 900; font-size: 10.5pt; }
-            .activities { margin-top: 1mm; padding-top: 1mm; border-top: 1px dashed #e5e7eb; overflow: hidden; min-height: 0; flex-shrink: 1; }
-            .activities-label { font-size: 6pt; color: #6b7280; font-weight: 700; margin-bottom: 0.4mm; }
-            .activity-item { padding: 0.6mm 1mm; margin-bottom: 0.3mm; border-radius: 1mm; font-size: 6pt; }
-            .activity-item.active { background: #D1FAE5; border-right: 2px solid #10B981; }
-            .activity-item.expired { background: #FEE2E2; border-right: 2px solid #EF4444; }
-            .activity-name { font-weight: 700; color: #1f2937; font-size: 6.5pt; }
-            .activity-status { font-size: 5.5pt; font-weight: 700; }
-            .activity-item.active .activity-status { color: #059669; }
-            .activity-item.expired .activity-status { color: #DC2626; }
-            .logo-card { width: 60mm; height: 95mm; background: linear-gradient(180deg,#FFFFFF,#FFF7ED); border-radius: 4mm; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2mm 1mm; gap: 2mm; }
-            .logo-card img { width: 100%; max-width: 100%; max-height: 85%; object-fit: contain; }
-            .logo-card .contact-block { display: flex; flex-direction: column; gap: 1.5mm; align-items: center; width: 100%; }
-            .logo-card .contact-row { font-size: 9pt; color: #111827; text-align: center; font-weight: 800; line-height: 1.3; direction: ltr; }
-            .print-btn { margin-top: 20px; padding: 12px 30px; background: linear-gradient(135deg, #F97316, #EA580C); color: white; border: none; border-radius: 10px; cursor: pointer; font-family: 'Tajawal', Arial, sans-serif; font-size: 16px; font-weight: bold; }
-            .position-labels { display: flex; gap: 15px; justify-content: center; margin-top: 10px; }
-            .position-label { padding: 8px 16px; background: #FEF3C7; border-radius: 8px; color: #92400E; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="screen-only">
-            <p style="font-size: 18px; margin-bottom: 20px;">📋 معاينة الطباعة - كرت العضوية + شعار الأكاديمية</p>
-            <div class="sticker-preview">
-              <!-- Member Card - Position 1 -->
-              <div class="card">
-                <div class="accent-stripe"><span>${(_allActs[0] && _allActs[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
-                <div class="card-header">
-                  <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-                  <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
-                </div>
-                <div class="card-body">
-                  <div class="info-section">
-                    <div class="info-label">${L.name}</div>
-                    <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-                    <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">${member?.member_code || ''}</span></div>
-                    <div class="info-row"><span class="info-label">${L.phone}:</span><span>${member?.phone || '-'}</span></div>
-                    ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
-                  </div>
-                  <div class="qr-container">
-                    <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&ecc=H&margin=0&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
-                    <div class="qr-dates">
-                      <span>${L.from} ${startDate || '----'}</span>
-                      <span>${L.to} ${endDate || '----'}</span>
-                    </div>
-                    ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
-                  </div>
-                </div>
-              </div>
-              <!-- Logo Card - Position 2 -->
-              <div class="logo-card">
-                <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-                <div class="contact-block">
-                  <div class="contact-row">📞 ${member?.branch_phone || '0566238384'}</div>
-                </div>
-              </div>
-            </div>
-            <div class="position-labels">
-              <div class="position-label">📍 خانة 1: كرت العضوية</div>
-              <div class="position-label">📍 خانة 2: شعار الأكاديمية</div>
-            </div>
-            <p style="margin-top: 10px; color: #6b7280; font-size: 14px;">📐 حجم كل كرت: 6سم × 9.5سم (عمودي)</p>
-            <button class="print-btn" onclick="window.print()">🖨️ طباعة الملصقات</button>
-          </div>
-          <div class="print-area">
-            <!-- Member Card - Position 1 -->
-            <div class="card">
-              <div class="accent-stripe"><span>${(_allActs[0] && _allActs[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
-              <div class="card-header">
-                <div class="header-logo"><img src="${window.location.origin}/images/academy-logo.png" alt="logo" /></div>
-                <div class="header-text"><h2>${L.company_name}</h2><p>${L.company_sub}</p></div>
-              </div>
-              <div class="card-body">
-                <div class="info-section">
-                  <div class="info-label">${L.name}</div>
-                  <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-                  <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">${member?.member_code || ''}</span></div>
-                  <div class="info-row"><span class="info-label">${L.phone}:</span><span>${member?.phone || '-'}</span></div>
-                  ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
-                </div>
-                <div class="qr-container">
-                  <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&ecc=H&margin=0&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
-                  <div class="qr-dates">
-                    <span>${L.from} ${startDate || '----'}</span>
-                    <span>${L.to} ${endDate || '----'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <!-- Logo Card - Position 2 -->
-            <div class="logo-card">
-              <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-              <div class="contact-block">
-                <div class="contact-row">📞 ${member?.branch_phone || '0566238384'}</div>
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    markCurrentPrinted();
-  };
-
-  const handleCD820Print = (mode = 'duplex', lang = printLang) => {
-    setShowPrintDialog(false);
-    const L = PRINT_LABELS[lang] || PRINT_LABELS.ar;
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    const qrData = getQRData();
-    const _brand = getPrimaryColor();
-    const _headerBg = 'linear-gradient(135deg, #0A1A33 0%, #122E55 40%, #1E3A6E 70%, #0F2547 100%)';
-    const _accent = _brand || '#F97316';
-    const _allActs = dedupeCardActivities(member?.activities);
-    const _today = new Date();
-    const _parseEnd = (a) => {
-      if (!a?.end_date) return 0;
-      const t = new Date(a.end_date).getTime();
-      return isNaN(t) ? 0 : t;
-    };
-    const _activeActs = _allActs.filter(a => a?.end_date && new Date(a.end_date) >= _today);
-    const _pool = _activeActs.length ? _activeActs : _allActs;
-    const latestActivity = [..._pool].sort((a, b) => _parseEnd(b) - _parseEnd(a))[0] || _allActs[0];
-    const startDate = latestActivity?.start_date || '';
-    const endDate = latestActivity?.end_date || '';
-    const schedule = latestActivity?.schedule || '';
-    const activitiesHtml = _allActs.map(act => {
-      const actName = (lang === 'en' && act.activity_name_en) ? act.activity_name_en : (act.activity_name || '');
-      return `
-      <div class="activity-item ${act.status === 'active' ? 'active' : 'expired'}">
-        <div class="activity-name">${act.status === 'active' ? '✓' : '✗'} ${actName}</div>
-      </div>
-    `;
-    }).join('') || '';
-
-    const frontHtml = `
-      <div class="cd-page">
-        <div class="card">
-          <div class="accent-stripe"><span>${(_allActs[0] && _allActs[0].activity_name) || 'GLOBAL CHAMPIONS'}</span></div>
-          <div class="card-body">
-            <div class="info-section" style="text-align:${L.align};">
-              <div class="info-label">${L.name}</div>
-              <div class="member-name">${(member?.name_ar || member?.name || '').split('+').map(n => n.trim()).filter(Boolean).join(' - ')}</div>
-              <div class="info-row"><span class="info-label">${L.member_id}:</span><span class="member-code">${member?.member_code || ''}</span></div>
-              ${activitiesHtml ? `<div class="activities"><div class="activities-label">${L.activities}</div>${activitiesHtml}</div>` : ''}
-            </div>
-            <div class="qr-container">
-              <div class="qr-section"><img src="https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&ecc=H&margin=0&qzone=1&format=png&data=${encodeURIComponent(qrData)}" /></div>
-              <div class="qr-dates"><span>${L.from} ${startDate || '----'}</span><span>${L.to} ${endDate || '----'}</span></div>
-              ${schedule ? `<div class="schedule-info">📅 ${translateSchedule(schedule, lang)}</div>` : ''}
-              ${member?.phone ? `<div class="phone-row">📱 ${member.phone}</div>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>`;
-    const backHtml = `
-      <div class="cd-page back">
-        <div class="logo-card">
-          <img src="${window.location.origin}/images/academy-logo.png" alt="شعار الأكاديمية" />
-          <div class="contact-block">
-            <div class="contact-row">📞 ${member?.branch_phone || '0566238384'}</div>
-          </div>
-        </div>
-      </div>`;
-    const pages = mode === 'duplex' ? frontHtml + backHtml : frontHtml;
-
-    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>CD820 - ${member?.member_code}</title>
-      <style>
-        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
-        @page { size: 54mm 85.6mm; margin: 0; }
-        * { margin:0; padding:0; box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        html, body { width:54mm; text-rendering:geometricPrecision; }
-        body { font-family:'Tajawal',Arial,sans-serif; background:#e5e7eb; direction:${L.dir}; }
-        .toolbar { padding:14px; text-align:center; background:white; border-bottom:1px solid #e5e7eb; position:sticky; top:0; }
-        .toolbar button { padding:10px 24px; background:linear-gradient(135deg,#F97316,#EA580C); color:white; border:none; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:700; font-size:15px; margin:0 4px; }
-        .toolbar button.secondary { background:#374151; }
-        .toolbar .meta { margin-top:6px; color:#374151; font-size:13px; }
-        .toolbar .hint { margin-top:4px; color:#6b7280; font-size:11px; line-height:1.5; }
-        .cd-page { width:54mm; height:85.6mm; background:white; margin:4mm auto; box-shadow:0 2px 8px rgba(0,0,0,0.15); overflow:hidden; page-break-after:always; position:relative; }
-        .cd-page::after { content:''; position:absolute; inset:1.2mm; border:0.5mm solid #000000; border-radius:1.5mm; pointer-events:none; z-index:3; }
-        .cd-page:last-child { page-break-after:auto; }
-        .card { width:54mm; height:85.6mm; display:flex; flex-direction:column; position:relative; padding:4mm 3mm 2.5mm 3mm; box-sizing:border-box; }
-        .accent-stripe { display:none; }
-        .card-header { background:white; padding:0.3mm 2mm 0.5mm; display:flex; flex-direction:column; align-items:center; gap:0.1mm; color:#0B1F3A; text-align:center; border-bottom:1px solid #E5E7EB; }
-        .header-text h2 { font-size:5pt; font-weight:900; line-height:1.0; color:#0B1F3A; }
-        .header-text p { font-size:3.5pt; font-weight:900; opacity:0.85; margin-top:0.1mm; color:#374151; }
-        .header-logo { width:4.5mm; height:4.5mm; border-radius:50%; background:white; padding:0.15mm; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid #0B1F3A; box-shadow:0 1px 2px rgba(0,0,0,0.2); }
-        .phone-row { text-align:center; font-size:7.5pt; color:#0B1F3A; font-weight:900; margin-top:0.2mm; direction:ltr; letter-spacing:0.1pt; }
-        .header-logo img { width:100%; height:100%; object-fit:contain; border-radius:50%; }
-        .card-body { padding:1mm 1mm 1mm 1mm; display:flex; flex-direction:column; gap:0.6mm; flex:1; min-height:0; }
-        .info-section { text-align:right; flex-shrink:0; display:flex; flex-direction:column; }
-        .qr-container { display:flex; flex-direction:column; align-items:center; flex-shrink:0; padding-top:0.3mm; margin-top:auto; }
-        .qr-section { width:18mm; height:18mm; background:white; border:1px solid #eee; border-radius:1.5mm; padding:0.2mm; }
-        .qr-section img { width:100%; height:100%; image-rendering:pixelated; image-rendering:crisp-edges; -ms-interpolation-mode:nearest-neighbor; }
-        .qr-dates { text-align:center; font-size:7pt; color:#000000; margin-top:0.3mm; line-height:1.15; font-weight:900; }
-        .qr-dates span { display:inline-block; margin:0 1mm; }
-        .qr-label { text-align:center; font-size:6pt; color:${_accent}; font-weight:900; margin-top:0.2mm; letter-spacing:0.2mm; }
-        .schedule-info { text-align:center; font-size:6.5pt; color:${_accent}; margin-top:0.2mm; font-weight:900; padding:0 0.4mm; line-height:1.15; }
-        .info-label { color:#000000; font-size:10pt; font-weight:900; }
-        .member-name { font-size:12pt; font-weight:900; color:#000000; margin:0.3mm 0 0.5mm; line-height:1.1; letter-spacing:-0.1pt; }
-        .info-row { display:flex; gap:1mm; font-size:9pt; font-weight:900; color:#000000; align-items:center; margin-bottom:0.3mm; }
-        .member-code { color:${_accent}; font-weight:900; font-size:13pt; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-        .activities { margin-top:0.5mm; padding-top:0.5mm; border-top:1px dashed #000000; flex-shrink:0; margin-bottom:0.3mm; min-height:7mm; }
-        .activities-label { font-size:8pt; color:#000000; font-weight:900; margin-bottom:0.3mm; }
-        .activity-item { padding:0.3mm 1mm; margin-bottom:0.3mm; border-radius:0.8mm; font-size:9.5pt; overflow:hidden; line-height:1.2; }
-        .activity-item.active { background:transparent; border-right:2px solid #000000; }
-        .activity-item.expired { background:transparent; border-right:2px solid #000000; }
-        .activity-name { font-weight:900; color:#000000; font-size:9.5pt; line-height:1.2; word-break:break-word; }
-        .cd-page.back { }
-        .accent-stripe { position:absolute; top:0; bottom:0; right:0; width:4mm; background:linear-gradient(180deg,#0B1F3A 0%,#1E3A5F 35%,#C9A227 78%,#F5C842 100%); z-index:2; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-        .accent-stripe span { writing-mode:vertical-rl; transform:rotate(180deg); color:white; font-size:6pt; font-weight:900; letter-spacing:1.2pt; text-transform:uppercase; white-space:nowrap; }
-        .logo-card { width:54mm; height:85.6mm; background:linear-gradient(180deg,#FFFFFF,#FFF7ED); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:3mm 2mm 3mm; gap:1.5mm; }
-        .logo-card img { width:54mm; max-width:100%; max-height:92%; object-fit:contain; margin-bottom:0; }
-        .logo-card .contact-block { display:flex; flex-direction:column; gap:1mm; align-items:center; width:100%; }
-        .logo-card .contact-row { font-size:8pt; color:#111827; text-align:center; font-weight:800; line-height:1.3; direction:ltr; }
-        .logo-card .contact-row.branch-name { font-size:8.5pt; color:#0B1F3A; direction:rtl; }
-        @media print {
-          .toolbar { display:none; }
-          html, body { background:white; margin:0; padding:0; }
-          .cd-page { margin:0; box-shadow:none; }
-        }
-      </style></head><body>
-      <div class="toolbar">
-        <button onclick="window.print()">🖨️ طباعة على Datacard CD820</button>
-        <button class="secondary" onclick="window.close()">إغلاق</button>
-        <div class="meta">عضو واحد — ${mode === 'duplex' ? '2 صفحة (وش + ظهر)' : 'صفحة 1 (وش فقط)'}</div>
-        <div class="hint">
-          إعدادات الطابعة:<br/>
-          • Paper Size: CR-80 (54 × 85.6 mm)<br/>
-          • Orientation: Portrait<br/>
-          • Margins: None<br/>
-          ${mode === 'duplex' ? '• Double-sided: ON (flip on long edge)<br/>' : ''}
-          • Scale: 100%
-        </div>
-      </div>
-      ${pages}
-      </body></html>`);
-    printWindow.document.close();
-    markCurrentPrinted();
+      if (member?.id) await membersAPI.markPrinted([member.id]);
+    } catch (_error) {
+      // Printing itself remains available if the audit update is unavailable.
+    }
   };
 
   const handleDownload = () => {
     const svg = document.getElementById('member-qr-code');
-    if (!svg) return;
-    
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    if (!svg || !member) return;
     const img = new Image();
-    
+    const canvas = document.createElement('canvas');
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-      
+      const context = canvas.getContext('2d');
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(img, 0, 0);
       const link = document.createElement('a');
       link.download = `member-${member.member_code}-qr.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     };
-    
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    img.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(svg))))}`;
   };
 
-  // Generate QR data - Just the member code number for easy scanning
-  const getQRData = () => {
-    if (!member) return '';
-    return getMemberQRValue(member.member_code);
-  };
+  const memberName = (member?.name_ar || member?.name || '')
+    .split('+').map((name) => name.trim()).filter(Boolean).join(' - ');
+  const { activityNames, guardianPhone } = getPermanentMemberCardDetails(member || {});
 
   return (
     <Layout>
-    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 md:p-8 min-h-[80vh]">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">🏆 بطاقة العضوية</h1>
-          <p className="text-gray-600">شركة اداء الابطال العالمية للرياضة العالمية</p>
-        </div>
+      <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 md:p-8 min-h-[80vh]" dir="rtl">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">🏆 بطاقة العضوية</h1>
+            <p className="text-gray-600">بطاقة دائمة للتعريف بالعضو وتسجيل الحضور</p>
+          </div>
 
-        {/* Search */}
-        <Card className="mb-6 shadow-lg">
-          <CardContent className="p-6">
-            <div className="flex gap-3">
-              <Input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && searchMember()}
-                placeholder="رقم العضوية أو رقم الجوال أو الاسم"
-                className="text-lg"
-                dir="auto"
-              />
-              <Button 
-                onClick={searchMember} 
-                disabled={loading}
-                className="bg-orange-500 hover:bg-orange-600 px-6"
-              >
-                {loading ? '...' : 'بحث'}
-              </Button>
-            </div>
-            {error && (
-              <p className="text-red-500 mt-3 text-center">{error}</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Multiple matches — let the user pick which member */}
-        {matches.length > 0 && (
           <Card className="mb-6 shadow-lg">
-            <CardContent className="p-4">
-              <p className="text-gray-700 font-bold mb-3 text-center">
-                تم العثور على {matches.length} أعضاء — اختر العضو لعرض بطاقته
-              </p>
-              <div className="space-y-2">
-                {matches.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => selectMatch(m)}
-                    disabled={loading}
-                    className="w-full flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-orange-50 hover:border-orange-300 transition text-right"
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <User className="w-5 h-5 text-orange-500 shrink-0" />
-                      <span className="font-bold text-gray-800 truncate">{m.name}</span>
-                    </span>
-                    <span className="text-sm text-gray-500 shrink-0">
-                      {m.member_code}{m.phone ? ` · ${m.phone}` : ''}
-                    </span>
-                  </button>
-                ))}
+            <CardContent className="p-6">
+              <div className="flex gap-3">
+                <Input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => event.key === 'Enter' && searchMember()}
+                  placeholder="رقم العضوية أو رقم الجوال أو الاسم" className="text-lg" dir="auto" />
+                <Button onClick={searchMember} disabled={loading} className="bg-orange-500 hover:bg-orange-600 px-6">
+                  {loading ? '...' : 'بحث'}
+                </Button>
               </div>
+              {error && <p className="text-red-500 mt-3 text-center">{error}</p>}
             </CardContent>
           </Card>
-        )}
 
-        {/* Member Card */}
-        {member && (
-          <div className="space-y-4">
-            {/* Print Position Dialog */}
-            <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
-              <DialogContent className="max-w-lg" dir="rtl">
-                <DialogHeader>
-                  <DialogTitle className="text-center text-xl">🖨️ طباعة الملصقات</DialogTitle>
-                </DialogHeader>
-                <div className="py-4">
-                  <p className="text-center text-gray-600 mb-2 font-bold">{(member?.name_ar || member?.name || '').split('+').map((n, i) => <span key={i}>{i > 0 && <br/>}{n.trim()}</span>)}</p>
-                  <p className="text-center text-sm text-orange-600 mb-4 font-bold">{member?.member_code}</p>
-                  <p className="text-center text-sm text-gray-500 mb-3">سيتم طباعة كرت العضوية + شعار الأكاديمية معاً</p>
-                  <div className="flex justify-center mb-4">
-                    <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-sm" title="لغة الطباعة">
-                      <button type="button" onClick={() => changePrintLang('ar')} className={`px-4 py-1.5 font-bold flex items-center gap-1 ${printLang === 'ar' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                        <Languages className="w-3.5 h-3.5" /> عربي
-                      </button>
-                      <button type="button" onClick={() => changePrintLang('en')} className={`px-4 py-1.5 font-bold border-r border-gray-300 ${printLang === 'en' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                        English
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {/* Preview Cards */}
-                  <div className="bg-gray-100 p-4 rounded-lg">
-                    <div className="flex gap-3 justify-center max-w-[360px] mx-auto">
-                      {/* Preview Card 1 - Member Card */}
-                      <div className="aspect-[9/6] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3">
-                        <span className="text-3xl">📇</span>
-                        <span className="text-sm font-bold text-gray-700">كرت العضوية</span>
-                        <span className="text-xs text-orange-500">خانة 1</span>
-                      </div>
-                      
-                      {/* Preview Card 2 - Academy Logo */}
-                      <div className="aspect-[9/6] w-[140px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-2 p-3 overflow-hidden">
-                        <img 
-                          src="/images/academy-logo.png" 
-                          alt="شعار الأكاديمية" 
-                          className="w-14 h-14 object-contain"
-                        />
-                        <span className="text-sm font-bold text-gray-700">شعار الأكاديمية</span>
-                        <span className="text-xs text-orange-500">خانة 2</span>
-                      </div>
-                    </div>
-                    <p className="text-center text-xs text-gray-500 mt-3">
-                      📐 حجم كل كرت: 6سم × 9.5سم (عمودي)
-                    </p>
-                  </div>
-                  
-                  <div className="mt-4 flex flex-col gap-2 items-center">
-                    <Button
-                      onClick={() => handleStickerPrint()}
-                      className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 text-lg w-full max-w-sm"
-                    >
-                      <Printer className="w-5 h-5 ml-2" />
-                      طباعة على ورق A4 (ملصقات)
-                    </Button>
-                    <div className="flex gap-2 w-full max-w-sm">
-                      <Button
-                        onClick={() => handleCD820Print('duplex')}
-                        className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
-                        title="طباعة على Datacard CD820 — وش وظهر"
-                      >
-                        💳 CD820 وش وظهر
-                      </Button>
-                      <Button
-                        onClick={() => handleCD820Print('single')}
-                        variant="outline"
-                        className="border-blue-600 text-blue-700 hover:bg-blue-50 flex-1"
-                        title="طباعة وش فقط على CD820"
-                      >
-                        💳 CD820 وش فقط
-                      </Button>
-                    </div>
-                    <p className="text-xs text-gray-500 text-center mt-1">
-                      مقاس CD820: 54 × 85.6 مم (CR-80) — عمودي
-                    </p>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            {/* Printable Card */}
-            <Card className="shadow-2xl overflow-hidden print:shadow-none" id="member-card">
-              <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-4 text-white">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-xl font-bold">شركة اداء الابطال العالمية للرياضة</h2>
-                    <p className="text-orange-100 text-sm">Global Champions Sports Performance</p>
-                  </div>
-                  <div className="text-4xl">🏆</div>
-                </div>
-              </div>
-              
-              <CardContent className="p-6">
-                <div className="flex flex-col md:flex-row gap-6 items-center">
-                  {/* QR Code with Dates and Schedule */}
-                  <div className="flex flex-col items-center">
-                    <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-orange-100">
-                      <QRCodeSVG
-                        id="member-qr-code"
-                        value={getQRData()}
-                        size={180}
-                        level="H"
-                        includeMargin={true}
-                        bgColor="#ffffff"
-                        fgColor="#000000"
-                      />
-                    </div>
-                    {/* Dates under QR */}
-                    {(() => {
-                      const all = member?.activities || [];
-                      if (!all.length) return null;
-                      const today = new Date();
-                      const parseEnd = (a) => {
-                        if (!a?.end_date) return 0;
-                        const t = new Date(a.end_date).getTime();
-                        return isNaN(t) ? 0 : t;
-                      };
-                      const actives = all.filter(a => a?.end_date && new Date(a.end_date) >= today);
-                      const pool = actives.length ? actives : all;
-                      const latest = [...pool].sort((a, b) => parseEnd(b) - parseEnd(a))[0] || all[0];
-                      return (
-                        <div className="mt-3 text-center">
-                          <div className="text-lg font-bold text-gray-800">
-                            <span>من: {latest.start_date || '----'}</span>
-                            <span className="mx-2">|</span>
-                            <span>إلى: {latest.end_date || '----'}</span>
-                          </div>
-                          {latest.schedule && (
-                            <div className="mt-2 px-4 py-2 bg-orange-50 rounded-lg text-orange-600 font-semibold">
-                              📅 {latest.schedule}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  
-                  {/* Member Info */}
-                  <div className="flex-1 space-y-4 text-right">
-                    <div>
-                      <p className="text-gray-500 text-sm">الاسم</p>
-                      <p className="text-2xl font-bold text-gray-800">{(member.name_ar || member.name || '').split('+').map((n, i) => <span key={i}>{i > 0 && <br/>}{n.trim()}</span>)}</p>
-                    </div>
-                    
-                    <div className="flex items-center gap-3 justify-end">
-                      <div>
-                        <p className="text-gray-500 text-sm">رقم العضوية</p>
-                        <p className="text-xl font-bold text-orange-600">{member.member_code}</p>
-                      </div>
-                      <CreditCard className="w-8 h-8 text-orange-400" />
-                    </div>
-                    
-                    <div className="flex items-center gap-3 justify-end">
-                      <div>
-                        <p className="text-gray-500 text-sm">رقم الجوال</p>
-                        <p className="text-lg font-medium text-gray-700" dir="ltr">{member.phone || '-'}</p>
-                      </div>
-                      <Phone className="w-6 h-6 text-gray-400" />
-                    </div>
-
-                    {/* Activities Status */}
-                    {member.activities && member.activities.length > 0 && (
-                      <div className="pt-3 border-t">
-                        <p className="text-gray-500 text-sm mb-2">الأنشطة المسجلة</p>
-                        <div className="flex flex-wrap gap-2 justify-end">
-                          {member.activities.map((act, idx) => (
-                            <span 
-                              key={idx}
-                              className={`px-3 py-1 rounded-full text-sm ${
-                                act.status === 'active' 
-                                  ? 'bg-green-100 text-green-700' 
-                                  : 'bg-red-100 text-red-700'
-                              }`}
-                            >
-                              {act.status === 'active' ? <CheckCircle className="w-4 h-4 inline ml-1" /> : <XCircle className="w-4 h-4 inline ml-1" />}
-                              {act.activity_name}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Footer */}
-                <div className="mt-6 pt-4 border-t border-dashed text-center text-gray-400 text-sm">
-                  امسح الكود عند الدخول لتسجيل الحضور
+          {matches.length > 0 && (
+            <Card className="mb-6 shadow-lg">
+              <CardContent className="p-4">
+                <p className="text-gray-700 font-bold mb-3 text-center">تم العثور على {matches.length} أعضاء — اختر العضو لعرض بطاقته</p>
+                <div className="space-y-2">
+                  {matches.map((match) => (
+                    <button key={match.id} onClick={() => loadMember(match.member_code || match.id, 'حدث خطأ في عرض البطاقة')}
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 hover:bg-orange-50 text-right">
+                      <span className="flex items-center gap-2 min-w-0"><User className="w-5 h-5 text-orange-500 shrink-0" /><span className="font-bold truncate">{match.name}</span></span>
+                      <span className="text-sm text-gray-500 shrink-0">{match.member_code}{match.phone ? ` · ${match.phone}` : ''}</span>
+                    </button>
+                  ))}
                 </div>
               </CardContent>
             </Card>
+          )}
 
-            <div className="text-center p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-600 font-semibold text-sm">⚠️ في حال فقدان كرت العضوية، يتم إصدار كرت جديد برسوم 10 ر.س</p>
+          {member && (
+            <div className="space-y-4">
+              <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
+                <DialogContent className="max-w-lg" dir="rtl">
+                  <DialogHeader><DialogTitle className="text-center text-xl">🖨️ طباعة بطاقة العضوية</DialogTitle></DialogHeader>
+                  <div className="py-4">
+                    <p className="text-center text-gray-600 mb-2 font-bold">{memberName}</p>
+                    <p className="text-center text-sm text-orange-600 mb-4 font-bold">{member.member_code}</p>
+                    <p className="text-center text-sm text-gray-500 mb-3">ستتم طباعة وجهي بطاقة عضوية دائمة (وجه وظهر)</p>
+                    <div className="flex justify-center mb-4">
+                      <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-sm">
+                        <button type="button" onClick={() => changePrintLang('ar')} className={`px-4 py-1.5 font-bold flex gap-1 ${printLang === 'ar' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700'}`}><Languages className="w-3.5 h-3.5" />عربي</button>
+                        <button type="button" onClick={() => changePrintLang('en')} className={`px-4 py-1.5 font-bold border-r border-gray-300 ${printLang === 'en' ? 'bg-orange-500 text-white' : 'bg-white text-gray-700'}`}>English</button>
+                      </div>
+                    </div>
+                    <div className="bg-gray-100 p-4 rounded-lg">
+                      <div className="flex justify-center gap-3">
+                        <div className="aspect-[54/85.6] w-[115px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-3 p-3 text-center">
+                          <p className="text-sm font-bold text-gray-700">الوجه</p><p className="text-xs text-gray-500">الاسم · رقم العضوية · النشاط · جوال ولي الأمر · QR</p>
+                        </div>
+                        <div className="aspect-[54/85.6] w-[115px] bg-white border-2 border-orange-400 rounded-lg flex flex-col items-center justify-center gap-3 p-3 text-center">
+                          <img src={getAcademyLogoUrl()} alt="شعار الأكاديمية" className="w-12 h-12 object-contain" />
+                          <p className="text-xs text-gray-500">الظهر · الشعار ورقم التواصل</p>
+                        </div>
+                      </div>
+                      <p className="text-center text-xs text-gray-500 mt-3">بطاقة طولية CR-80 بوجه وظهر، بلا تواريخ اشتراك أو حصص</p>
+                    </div>
+                    <div className="mt-4 flex justify-center">
+                      <Button onClick={printCard} className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 text-lg"><Printer className="w-5 h-5 ml-2" />طباعة البطاقة</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Card className="shadow-2xl overflow-hidden" id="member-card">
+                <div className="bg-gradient-to-r from-orange-500 to-amber-500 p-4 text-white flex items-center justify-between">
+                  <div><h2 className="text-xl font-bold">{getAcademyName() || FALLBACK_ACADEMY_NAME}</h2><p className="text-orange-100 text-sm">Membership Card</p></div>
+                  <img src={getAcademyLogoUrl()} alt="" className="w-12 h-12 object-contain bg-white rounded-full p-1" />
+                </div>
+                <CardContent className="p-6">
+                  <div className="flex flex-col md:flex-row gap-6 items-center">
+                    <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-orange-100">
+                      <QRCodeSVG id="member-qr-code" value={qrValue} size={180} level="H" includeMargin bgColor="#ffffff" fgColor="#000000" />
+                    </div>
+                    <div className="flex-1 space-y-4 text-right">
+                       <div><p className="text-gray-500 text-sm">الاسم</p><p className="text-2xl font-bold text-gray-800">{memberName}</p></div>
+                      <div className="flex items-center gap-3 justify-end"><div><p className="text-gray-500 text-sm">رقم العضوية</p><p className="text-xl font-bold text-orange-600">{member.member_code}</p></div><CreditCard className="w-8 h-8 text-orange-400" /></div>
+                       <div>
+                         <p className="text-gray-500 text-sm">النشاط</p>
+                         <p className="font-bold text-gray-800">{activityNames.join(' · ') || 'لا يوجد نشاط مسجل'}</p>
+                       </div>
+                       <div>
+                         <p className="text-gray-500 text-sm">جوال ولي الأمر</p>
+                         <p className="font-bold text-gray-800" dir="ltr">{guardianPhone || '—'}</p>
+                       </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex gap-3 justify-center">
+                <Button onClick={() => setShowPrintDialog(true)} variant="outline" className="gap-2"><Printer className="w-4 h-4" />طباعة البطاقة</Button>
+                <Button onClick={handleDownload} variant="outline" className="gap-2"><Download className="w-4 h-4" />تحميل QR</Button>
+              </div>
             </div>
+          )}
 
-            {/* Action Buttons - Hidden when printing */}
-            <div className="flex gap-3 justify-center print:hidden">
-              <Button onClick={handlePrint} variant="outline" className="gap-2">
-                <Printer className="w-4 h-4" />
-                طباعة البطاقة
-              </Button>
-              <Button onClick={handleDownload} variant="outline" className="gap-2">
-                <Download className="w-4 h-4" />
-                تحميل QR
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Instructions */}
-        {!member && !error && (
-          <Card className="bg-white/50 border-dashed">
-            <CardContent className="p-8 text-center text-gray-500">
-              <User className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <p className="text-lg mb-2">ابحث عن العضو لعرض بطاقته</p>
-              <p className="text-sm">يمكنك البحث برقم العضوية أو رقم الجوال أو الاسم</p>
-            </CardContent>
-          </Card>
-        )}
+          {!member && !error && <Card className="bg-white/50 border-dashed"><CardContent className="p-8 text-center text-gray-500"><User className="w-16 h-16 mx-auto mb-4 text-gray-300" /><p className="text-lg">ابحث عن العضو لعرض بطاقته</p></CardContent></Card>}
+        </div>
       </div>
-
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          @page {
-            margin: 0;
-            padding: 0;
-          }
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          body * {
-            visibility: hidden;
-          }
-          #member-card, #member-card * {
-            visibility: visible;
-          }
-          #member-card {
-            position: fixed !important;
-            left: 50% !important;
-            top: 0 !important;
-            transform: translateX(-50%) !important;
-            width: 400px !important;
-            margin: 10px auto !important;
-            padding-top: 10px !important;
-          }
-        }
-      `}</style>
-    </div>
     </Layout>
   );
 };
