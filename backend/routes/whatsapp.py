@@ -5964,6 +5964,17 @@ async def get_cloud_inbox_media(
     )
 
 
+def _cloud_send_response(message: dict, *, used_template: bool = False) -> dict:
+    # Motor mutates insert_one's input by adding a BSON _id. Returning that
+    # value makes FastAPI fail AFTER the provider has already sent the message,
+    # so the composer retains the draft and users can accidentally send twice.
+    return {
+        "success": True,
+        "message": {key: value for key, value in message.items() if key != "_id"},
+        "used_template": used_template,
+    }
+
+
 @router.post("/cloud-inbox/conversations/{conversation_id}/reply")
 async def reply_to_cloud_inbox_thread(
     conversation_id: str,
@@ -6025,7 +6036,7 @@ async def reply_to_cloud_inbox_thread(
         await _note_cloud_human_reply(
             conversation_id, branch_id, now, provider_message_id
         )
-        return {"success": True, "message": message, "used_template": False}
+        return _cloud_send_response(message)
     if not (
         config
         and config.get("enabled")
@@ -6095,7 +6106,7 @@ async def reply_to_cloud_inbox_thread(
     await _note_cloud_human_reply(
         conversation_id, branch_id, now, meta_message_id
     )
-    return {"success": True, "message": message, "used_template": not inside_service_window}
+    return _cloud_send_response(message, used_template=not inside_service_window)
 
 
 @router.post("/cloud-inbox/conversations/{conversation_id}/media")
@@ -6302,11 +6313,7 @@ async def send_cloud_inbox_media(
         await _note_cloud_human_reply(
             conversation_id, branch_id, now, provider_message_id
         )
-        return {
-            "success": True,
-            "message": message,
-            "used_template": used_template,
-        }
+        return _cloud_send_response(message, used_template=used_template)
     except HTTPException:
         if media_ref and not media_owned_by_message:
             await _delete_cloud_chat_image(branch_id, media_ref["media_id"])
@@ -6480,7 +6487,7 @@ async def send_cloud_inbox_voice(
         await _note_cloud_human_reply(
             conversation_id, branch_id, now, provider_message_id
         )
-        return {"success": True, "message": message, "used_template": False}
+        return _cloud_send_response(message)
     except HTTPException:
         if media_ref and not media_owned_by_message:
             await _delete_cloud_chat_image(branch_id, media_ref["media_id"])

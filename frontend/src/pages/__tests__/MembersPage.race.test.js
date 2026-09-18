@@ -14,6 +14,12 @@ import { MemoryRouter } from 'react-router-dom';
 
 jest.setTimeout(60000);
 
+let mockAuth = {
+  selectedBranchId: 'all',
+  isAdmin: true,
+  user: { id: 'admin-1', permissions: [] },
+};
+
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -52,11 +58,7 @@ jest.mock('../../contexts/LanguageContext', () => ({
 }));
 
 jest.mock('../../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    selectedBranchId: 'all',
-    isAdmin: true,
-    user: { id: 'admin-1', permissions: [] },
-  }),
+  useAuth: () => mockAuth,
 }));
 
 jest.mock('../../components/Layout', () => ({
@@ -87,6 +89,7 @@ jest.mock('../../components/ui/dialog', () => {
     DialogContent: passthrough('content'),
     DialogHeader: passthrough('header'),
     DialogTitle: passthrough('title'),
+    DialogDescription: passthrough('description'),
     DialogFooter: passthrough('footer'),
   };
 });
@@ -163,7 +166,57 @@ async function renderMembersPage() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAuth = {
+    selectedBranchId: 'all',
+    isAdmin: true,
+    user: { id: 'admin-1', permissions: [] },
+  };
+  api.membersAPI.getSubscriptionAudit.mockResolvedValue({ data: [] });
   setupListEndpoints();
+});
+
+test('admin can open exact recorded changes directly from the modified badge', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  api.membersAPI.getAll.mockResolvedValue({ data: [{ ...MEMBER_A, has_edits: true }, MEMBER_B] });
+  api.membersAPI.getSubscriptionAudit.mockResolvedValue({ data: [{
+    id: 'audit-member-a',
+    action: 'member.update',
+    actor_username: 'Audit Reviewer',
+    created_at: '2026-09-18T10:00:00Z',
+    diff: { name: { before: 'Previous Name', after: 'Updated Name' } },
+  }] });
+  await renderMembersPage();
+  expect(screen.getByTestId(`edited-badge-${MEMBER_A.id}`).parentElement.closest('button')).toBeNull();
+  await user.click(screen.getByTestId(`edited-badge-${MEMBER_A.id}`));
+
+  expect(await screen.findByText('Previous Name')).toBeInTheDocument();
+  expect(screen.getByText('Updated Name')).toBeInTheDocument();
+  expect(screen.getByText(/Audit Reviewer/)).toBeInTheDocument();
+  expect(api.membersAPI.getSubscriptionAudit).toHaveBeenCalledWith(MEMBER_A.id);
+  expect(api.membersAPI.getById).not.toHaveBeenCalled();
+});
+
+test('admin can open history from member actions even without a modified badge', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  await renderMembersPage();
+  expect(screen.queryByTestId(`edited-badge-${MEMBER_B.id}`)).not.toBeInTheDocument();
+  await user.click(screen.getByTestId(`member-edit-history-${MEMBER_B.id}`));
+  await waitFor(() => expect(api.membersAPI.getSubscriptionAudit).toHaveBeenCalledWith(MEMBER_B.id));
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+});
+
+test('staff never see edit-history badges or actions even if list data includes has_edits', async () => {
+  mockAuth = {
+    selectedBranchId: 'branch-a',
+    isAdmin: false,
+    user: { id: 'staff-1', branch_id: 'branch-a', permissions: ['members', 'member-phones'] },
+  };
+  api.membersAPI.getAll.mockResolvedValue({ data: [{ ...MEMBER_A, has_edits: true }, MEMBER_B] });
+  await renderMembersPage();
+  expect(screen.queryByTestId(`edited-badge-${MEMBER_A.id}`)).not.toBeInTheDocument();
+  expect(screen.queryByTestId(`member-edit-history-${MEMBER_A.id}`)).not.toBeInTheDocument();
+  expect(screen.queryByTestId(`member-edit-history-${MEMBER_B.id}`)).not.toBeInTheDocument();
+  expect(api.membersAPI.getSubscriptionAudit).not.toHaveBeenCalled();
 });
 
 // ---------------------------------------------------------------------------

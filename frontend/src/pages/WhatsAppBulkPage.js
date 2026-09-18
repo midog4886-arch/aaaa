@@ -170,6 +170,8 @@ export default function WhatsAppBulkPage() {
   const usesName = nameTokenRe().test(message);
   const isWaha = cloudStatus.provider === 'waha';
   const isSessionProvider = isWaha || cloudStatus.provider === 'whatsflow';
+  const whatsflowQuotaExhausted = cloudStatus.provider === 'whatsflow'
+    && Number(cloudStatus.daily_remaining) <= 0;
   const attachment = attachments[0] || null;
   const attachmentPreviews = useMemo(
     () => attachments.map(file => file.type === 'application/pdf' ? null : URL.createObjectURL(file)),
@@ -607,6 +609,10 @@ export default function WhatsAppBulkPage() {
       ));
       return;
     }
+    if (whatsflowQuotaExhausted) {
+      toast.error(t('تم استنفاد حد إرسال Whatsflow اليومي', 'The daily Whatsflow sending quota is exhausted'));
+      return;
+    }
     if (!validItems.length || !message.trim()) {
       toast.error(t('أضف أرقاماً واكتب الرسالة أولاً', 'Add recipients and enter a message first'));
       return;
@@ -867,7 +873,7 @@ export default function WhatsAppBulkPage() {
               <div className="pb-1">
                 {cloudStatus.loading ? (
                   <Badge variant="outline"><Loader2 className="w-3 h-3 me-1 animate-spin" />{t('جاري التحقق', 'Checking')}</Badge>
-                ) : cloudStatus.enabled && selectedTemplateReady ? (
+                ) : cloudStatus.enabled && selectedTemplateReady && (!isSessionProvider || cloudStatus.connected) && !whatsflowQuotaExhausted ? (
                   <Badge className="bg-emerald-100 text-emerald-800">{t('API والقالب جاهزان', 'API and template ready')}</Badge>
                 ) : (
                   <Badge className="bg-amber-100 text-amber-800">{t('API أو القالب غير مهيأ', 'API or template not configured')}</Badge>
@@ -1087,6 +1093,7 @@ export default function WhatsAppBulkPage() {
                 </>
               )}
              {isSessionProvider && <p className="text-xs text-amber-700">{t(`حد الإرسال اليومي مؤشر تشغيلي داخلي. يجب أن يكون اتصال ${isWaha ? 'WAHA' : 'Whatsflow'} جاهزاً قبل الإرسال.`, `The daily limit is an internal operating guard. ${isWaha ? 'WAHA' : 'Whatsflow'} must be connected before sending.`)}</p>}
+             {whatsflowQuotaExhausted && <p className="text-xs text-red-700">{t('تم استنفاد حد إرسال Whatsflow اليومي؛ لا يمكن إضافة حملة جديدة حالياً.', 'The daily Whatsflow quota is exhausted; a new campaign cannot be queued right now.')}</p>}
              {!isSessionProvider && <p className="text-xs text-muted-foreground">
                 {t(
                   'الصورة تحتاج قالب IMAGE معتمد، وPDF يحتاج قالب DOCUMENT معتمد في إعدادات الفرع.',
@@ -1125,7 +1132,7 @@ export default function WhatsAppBulkPage() {
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !selectedTemplateReady)}
+                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || whatsflowQuotaExhausted || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !selectedTemplateReady)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />

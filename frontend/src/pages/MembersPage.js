@@ -13,6 +13,7 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import ProfileOverview from '../components/member-profile/ProfileOverview';
 import ProfileFeed from '../components/member-profile/ProfileFeed';
+import MemberEditHistoryDialog from '../components/members/MemberEditHistoryDialog';
  
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -214,6 +215,15 @@ export const MembersPage = () => {
   
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [editHistoryTarget, setEditHistoryTarget] = useState(null);
+  const editHistoryScope = `${selectedBranchId || ''}:${user?.id || ''}`;
+  const openMemberEditHistory = (member) => {
+    if (!isAdmin || !member?.id) return;
+    viewReqGenRef.current++;
+    activeViewMemberIdRef.current = null;
+    setIsViewDialogOpen(false);
+    setEditHistoryTarget({ member, scope: editHistoryScope });
+  };
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [isRenewalDialogOpen, setIsRenewalDialogOpen] = useState(false);
   const [isMemberCardDialogOpen, setIsMemberCardDialogOpen] = useState(false);
@@ -471,6 +481,7 @@ export const MembersPage = () => {
     viewReqGenRef.current++;
     activeViewMemberIdRef.current = null;
     setIsViewDialogOpen(false);
+    setEditHistoryTarget(null);
     setSelectedMember(null);
     setMemberInvoices([]);
     setMemberAttendance(null);
@@ -2296,6 +2307,7 @@ export const MembersPage = () => {
                           {member.member_code || '-'}
                         </td>
                         <td>
+                          <div className="flex items-start gap-1.5">
                           <button
                             type="button"
                             onClick={() => openViewDialog(member)}
@@ -2307,15 +2319,6 @@ export const MembersPage = () => {
                               {member.is_vip && (
                                 <span className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-gradient-to-r from-amber-400 to-yellow-500 text-white rounded px-1.5 py-0.5 shadow-sm" data-testid={`vip-badge-${member.id}`}>
                                   <Crown className="w-3 h-3" /> VIP
-                                </span>
-                              )}
-                              {isAdmin && member.has_edits && (
-                                <span
-                                  className="inline-flex items-center gap-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-300 rounded px-1.5 py-0.5"
-                                  data-testid={`edited-badge-${member.id}`}
-                                  title={language === 'ar' ? 'تم تعديل بيانات/اشتراك هذا العضو — راجع سجل التعديلات' : 'This member has recorded edits — see the audit log'}
-                                >
-                                  <History className="w-3 h-3" /> {language === 'ar' ? 'مُعدَّل' : 'Edited'}
                                 </span>
                               )}
                             </div>
@@ -2331,6 +2334,19 @@ export const MembersPage = () => {
                               </div>
                             )}
                           </button>
+                          {isAdmin && member.has_edits && (
+                            <button
+                              type="button"
+                              onClick={() => openMemberEditHistory(member)}
+                              className="inline-flex shrink-0 items-center gap-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-300 rounded px-1.5 py-0.5 hover:bg-orange-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-600"
+                              data-testid={`edited-badge-${member.id}`}
+                              aria-label={language === 'ar' ? `عرض تعديلات ${member.name_ar || member.name || ''}` : `View edits for ${member.name || member.name_ar || ''}`}
+                              title={language === 'ar' ? 'عرض ما تغيّر والقيم السابقة والجديدة' : 'View changed fields and their previous and new values'}
+                            >
+                              <History className="w-3 h-3" /> {language === 'ar' ? 'مُعدَّل' : 'Edited'}
+                            </button>
+                          )}
+                          </div>
                         </td>
                         <td dir="ltr" className="text-start">
                           <div className="flex items-center gap-1">
@@ -2435,6 +2451,18 @@ export const MembersPage = () => {
                         </td>
                         <td>
                           <div className="action-buttons">
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="action-button"
+                                onClick={() => openMemberEditHistory(member)}
+                                data-testid={`member-edit-history-${member.id}`}
+                                aria-label={language === 'ar' ? 'عرض سجل التعديلات' : 'View edit history'}
+                                title={language === 'ar' ? 'عرض سجل التعديلات' : 'View edit history'}
+                              >
+                                <History className="w-4 h-4" />
+                              </button>
+                            )}
                             <button 
                               className="action-button"
                               onClick={() => openViewDialog(member)}
@@ -3041,6 +3069,18 @@ export const MembersPage = () => {
           </DialogContent>
         </Dialog>
 
+        {isAdmin && (
+          <MemberEditHistoryDialog
+            key={editHistoryScope}
+            open={Boolean(editHistoryTarget && editHistoryTarget.scope === editHistoryScope)}
+            onOpenChange={(open) => { if (!open) setEditHistoryTarget(null); }}
+            member={editHistoryTarget?.scope === editHistoryScope ? editHistoryTarget.member : null}
+            language={language}
+            isAdmin={isAdmin}
+            activeBranchId={selectedBranchId}
+          />
+        )}
+
         {/* View Member Dialog */}
         <Dialog open={isViewDialogOpen} onOpenChange={(open) => {
           setIsViewDialogOpen(open);
@@ -3075,6 +3115,18 @@ export const MembersPage = () => {
                 <span className="flex-1">{language === 'ar' ? selectedMember?.name_ar : selectedMember?.name}</span>
                 {selectedMember && (
                   <>
+                    {isAdmin && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        onClick={() => openMemberEditHistory(selectedMember)}
+                        data-testid="view-dialog-edit-history"
+                      >
+                        <History className="w-4 h-4" />
+                        {language === 'ar' ? 'سجل التعديلات' : 'Edit History'}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"

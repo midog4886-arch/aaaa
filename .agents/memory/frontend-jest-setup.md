@@ -13,3 +13,9 @@ Component-test gotchas:
 - `userEvent.setup({ pointerEventsCheck: 0 })` needed when a dialog overlay would block clicks.
 - Tab labels like `invoices ({n})` are split across text nodes — query by role+accessible-name regex, not getByText.
 - Race-guard regression tests live in `frontend/src/pages/__tests__/MembersPage.race.test.js`; they were mutation-verified (removing the gen/active-member guards makes them fail).
+
+Provider UI checks used during builds must remain offline: mock API responses, file uploads and confirmations instead of using a live WhatsApp connection.
+
+**Why:** Builds can run unattended; regression checks must never send a campaign, change a webhook, expose real credentials, or disconnect a branch.
+
+**How to apply:** Exercise actual page controls against mocked connected/disconnected/error/quota responses. Assert that blocked actions do not call sending APIs; reserve live-provider checks for separately authorized work.

@@ -45,6 +45,7 @@
 - [Member create branch assignment](member-create-branch-assignment.md) — admin-created members must use the UI-selected branch from payload, not admin's own branch_id (invoices did, members didn't → member lands on wrong branch, selected branch looks empty while invoices show).
 - [Invoice refund authorization](invoice-refund-authz.md) — refund (credit-note) needs `invoices-refund` perm AND non-admin branch-ownership of the invoice; UI hides button but server enforces both. credit-note READ endpoints still lack branch scope.
 - [Member phone permission masking](member-phone-masking.md) — phones gated by `member-phones` perm; EVERY member-returning endpoint (incl update_member response) must mask, or it's a bypass.
+- [Member edit-history scope](member-edit-history-boundary.md) — admin staff-change evidence is separate from portal requests; never reconstruct missing historical values from today's profile.
 - [Supplier branch scoping](supplier-branch-scoping.md) — suppliers are branch-or-shared (branch_id null/""/missing = shared, shows in EVERY branch); list+report use $or fallback; by-id get/update/delete/statement need explicit object-level branch guard (list scoping alone leaks via known id), and non-admins must be pinned to own branch (ignore branch_filter).
 - [Public self-registration vs registration_forms](public-self-registration.md) — public /register link → registration_requests (pending review, NEVER auto-creates member); distinct from registration_forms which auto-creates. Supervisor "process" prefills invoice via sessionStorage.
 - [Link preview OG tags](link-preview-og-tags.md) — WhatsApp/FB link preview needs og:* tags in index.html with an ABSOLUTE og:image URL; crawler fetches server-side so SW cache bump doesn't help; needs re-Publish.
@@ -83,6 +84,7 @@
 - [Manual inquiry boundaries](manual-inquiry-boundary.md) — ad inquiry imports do not authorize automated outreach; opening WhatsApp is not proof of contact.
 - [Invoice notice branding](invoice-notice-branding.md) — delayed receipt workers need full tenant branding; preserve clickable links and paid total in a single media message.
 - [WhatsApp reply-state evidence](whatsapp-reply-state.md) — unread is not unanswered; human replies need durable evidence and reversed-event ordering tests.
+- [Mongo send-response tests](mongo-send-response-tests.md) — mock insert mutation and HTTP serialization; a sent message can otherwise return 500 and leave its draft ready to resend.
 - [WhatsApp voice recording](whatsapp-voice-recording.md) — streaming WebM may have no duration; normalize bounded mono Opus and never auto-send or retry uncertain delivery.
 - [WhatsApp member association](whatsapp-member-association.md) — derive branch-local unique matches; include formatted-number siblings even when an exact match exists.
 - [WhatsApp media retention](whatsapp-media-retention.md) — private archive survives provider expiry; deletion tombstones win over downloads and lease losers clean only their own staging.

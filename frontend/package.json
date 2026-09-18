@@ -78,8 +78,9 @@
   },
   "scripts": {
     "start": "craco start",
-    "build": "craco build",
-    "test": "craco test"
+    "build": "yarn test:whatsflow && craco build",
+    "test": "craco test",
+    "test:whatsflow": "CI=true craco test --watchAll=false --runInBand --runTestsByPath src/pages/__tests__/BranchesPage.whatsflow.test.js src/pages/__tests__/WhatsAppBulkPage.whatsflow.test.js"
   },
   "browserslist": {
     "production": [
