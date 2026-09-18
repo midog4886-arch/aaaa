@@ -19,6 +19,7 @@ jest.mock('../../services/api', () => ({
     replyCloudInbox: jest.fn(),
     sendCloudInboxMedia: jest.fn(),
     sendCloudInboxVoice: jest.fn(),
+    disconnect: jest.fn(),
   },
   branchesAPI: { getAll: jest.fn() },
   membersAPI: {
@@ -120,6 +121,7 @@ beforeEach(() => {
   });
   whatsappAPI.retryCloudInboxMediaArchive.mockResolvedValue({ data: { success: true } });
   whatsappAPI.deleteCloudInboxMediaArchive.mockResolvedValue({ data: { success: true } });
+  whatsappAPI.disconnect.mockResolvedValue({ data: { success: true } });
   branchesAPI.getAll.mockResolvedValue({ data: [] });
 });
 
@@ -940,4 +942,133 @@ test('uses latest campaign metadata for a mixed conversation preview and never f
   expect(screen.getByTestId(`campaign-conversation-preview-${conversation.id}`))
     .toHaveTextContent('حملة · لم يتأكد الإرسال · رسالة حملة حديثة');
   expect(screen.queryByTestId(`campaign-conversation-time-${conversation.id}`)).not.toBeInTheDocument();
+});
+
+const setDocumentVisibility = value => {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value,
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+};
+
+const flushPromises = async () => {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+};
+
+afterEach(() => {
+  jest.useRealTimers();
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'visible',
+  });
+  jest.restoreAllMocks();
+});
+
+test('does not run the legacy status poll in cloud inbox, including after disconnect', async () => {
+  jest.useFakeTimers();
+  jest.spyOn(window, 'confirm').mockReturnValue(true);
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  render(<WhatsAppPage />);
+  await flushPromises();
+  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(screen.getByRole('button', { name: /فصل/ }));
+  await flushPromises();
+  fireEvent.click(screen.getByRole('button', { name: /شات واتساب/ }));
+  await flushPromises();
+
+  await act(async () => {
+    jest.advanceTimersByTime(35000);
+  });
+  await flushPromises();
+  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+});
+
+test('refreshes the new inbox view list instead of polling the previously selected thread', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  render(<WhatsAppPage />);
+  await user.click(screen.getByRole('button', { name: /شات واتساب/ }));
+  await screen.findByText('أحمد');
+  const unreadViewButton = screen.getByRole('button', { name: /غير مقروءة/ });
+  const conversationButton = screen.getByRole('button', { name: /أحمد/ });
+
+  // Batch the scope change with opening the old list item. The scope effect
+  // must own the new list read even though a selected-thread ref now exists.
+  await act(async () => {
+    unreadViewButton.click();
+    conversationButton.click();
+  });
+  await waitFor(() => {
+    expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(2);
+  });
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith('branch-a', true);
+  expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(1);
+});
+
+test('pauses cloud inbox reads while hidden, refreshes on visible, and cleans up', async () => {
+  jest.useFakeTimers();
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  const view = render(<WhatsAppPage />);
+  await flushPromises();
+  fireEvent.click(screen.getByRole('button', { name: /شات واتساب/ }));
+  await flushPromises();
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    setDocumentVisibility('hidden');
+  });
+  await act(async () => {
+    jest.advanceTimersByTime(30000);
+  });
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    setDocumentVisibility('visible');
+  });
+  await flushPromises();
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(2);
+
+  await act(async () => {
+    jest.advanceTimersByTime(10000);
+  });
+  await flushPromises();
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3);
+  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+
+  view.unmount();
+  await act(async () => {
+    jest.advanceTimersByTime(30000);
+  });
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3);
+  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+});
+
+test('deduplicates in-flight status reads and refreshes immediately when visible', async () => {
+  jest.useFakeTimers();
+  const pendingStatus = deferred();
+  whatsappAPI.getStatus.mockReturnValueOnce(pendingStatus.promise);
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  render(<WhatsAppPage />);
+  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    jest.advanceTimersByTime(15000);
+  });
+  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    setDocumentVisibility('hidden');
+  });
+  pendingStatus.resolve({ data: { connected: false, qr: null, connecting: false } });
+  await flushPromises();
+  await act(async () => {
+    setDocumentVisibility('visible');
+  });
+  await flushPromises();
+  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(2);
 });

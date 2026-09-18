@@ -5,6 +5,8 @@ Lives in MongoDB database ``champions_control`` on the same cluster as the
 tenant databases. Accessed directly (NOT through the tenant proxy) since
 it is consulted by the tenant middleware before any tenant context exists.
 """
+import asyncio
+import copy
 import os
 import logging
 from datetime import datetime, timezone, timedelta
@@ -25,6 +27,21 @@ def _build_control_db():
 
 
 control_db = _build_control_db()
+
+# Only pending reads live here.  Including the event loop in the key prevents a
+# task created by one asyncio.run()/test loop from ever being reused by another.
+_tenant_lookup_inflight = {}
+
+
+def _finish_tenant_lookup(key, task):
+    """Remove a completed lookup and consume orphaned task exceptions."""
+    if _tenant_lookup_inflight.get(key) is task:
+        _tenant_lookup_inflight.pop(key, None)
+    if not task.cancelled():
+        # A lookup can outlive its only waiter when that waiter is cancelled.
+        # Retrieving the exception here prevents an unhandled-task warning; it
+        # does not prevent active waiters from receiving the same exception.
+        task.exception()
 
 
 async def ensure_default_tenant():
@@ -408,4 +425,30 @@ async def notify_expired_email_confirmations() -> dict:
 async def get_tenant_by_slug(slug: str):
     if not slug:
         return None
-    return await control_db.tenants.find_one({"slug": slug}, {"_id": 0})
+
+    loop = asyncio.get_running_loop()
+    key = (loop, slug)
+    task = _tenant_lookup_inflight.get(key)
+    if task is None or task.done():
+        # Motor returns an asyncio Future here (rather than a native coroutine),
+        # so use ensure_future to support both real-driver and proxy awaitables.
+        task = asyncio.ensure_future(
+            control_db.tenants.find_one({"slug": slug}, {"_id": 0})
+        )
+        _tenant_lookup_inflight[key] = task
+        task.add_done_callback(
+            lambda done, lookup_key=key: _finish_tenant_lookup(lookup_key, done)
+        )
+
+    try:
+        tenant = await asyncio.shield(task)
+    finally:
+        # Done callbacks normally perform this cleanup.  Also doing it here
+        # makes the no-completed-result-cache guarantee independent of callback
+        # scheduling order.
+        if task.done() and _tenant_lookup_inflight.get(key) is task:
+            _tenant_lookup_inflight.pop(key, None)
+
+    # Motor returns mutable dictionaries.  Every caller gets its own graph so
+    # middleware/request mutations cannot leak into another coalesced caller.
+    return copy.deepcopy(tenant)

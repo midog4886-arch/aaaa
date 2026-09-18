@@ -35,7 +35,10 @@ from utils.tenant import (
 
 logger = logging.getLogger("tenant_middleware")
 
-BYPASS_PREFIXES = ("/super", "/health", "/uploads")
+# /static/ is the public, tenant-independent React bundle mount. Downloading
+# each JS/CSS chunk must not read the tenant registry (including its logo).
+# Keep the trailing slash: dynamic branding and all API routes stay scoped.
+BYPASS_PREFIXES = ("/super", "/health", "/uploads", "/static/")
 STRICT_BYPASS_PREFIXES = ("/super", "/health")
 COMMON_HOSTS_IGNORE = {"localhost", "127.0.0.1", "0.0.0.0", "app", "www", "api"}
 TENANT_BASE_DOMAIN = (os.environ.get("TENANT_BASE_DOMAIN") or "").lower().strip().lstrip(".")

@@ -458,6 +458,11 @@ export default function WhatsAppPage() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const intervalRef = useRef(null);
+  const statusRequestRef = useRef(null);
+  const statusRefreshTimeoutRef = useRef(null);
+  const mountedRef = useRef(true);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
   // ── Manual WhatsApp Messages State ──
   const [members, setMembers] = useState([]);
@@ -614,15 +619,33 @@ export default function WhatsAppPage() {
   };
 
   // ── Load functions ──
-  const loadStatus = async () => {
-    try {
-      const res = await whatsappAPI.getStatus();
-      setStatus(res.data);
-    } catch {
-      setStatus({ connected: false, qr: null, connecting: false });
-    } finally {
-      setLoadingStatus(false);
-    }
+  const loadStatus = () => {
+    if (statusRequestRef.current) return statusRequestRef.current;
+
+    const canApplyStatus = () => (
+      mountedRef.current
+      && activeTabRef.current === 'connection'
+      && (typeof document === 'undefined' || document.visibilityState !== 'hidden')
+    );
+    const request = whatsappAPI.getStatus()
+      .then(res => {
+        if (canApplyStatus()) setStatus(res.data);
+        return res;
+      })
+      .catch(error => {
+        if (canApplyStatus()) {
+          setStatus({ connected: false, qr: null, connecting: false });
+        }
+        return Promise.reject(error);
+      })
+      .finally(() => {
+        if (statusRequestRef.current === request) statusRequestRef.current = null;
+        if (canApplyStatus()) setLoadingStatus(false);
+      });
+    // Poll callers do not need to handle a transient status read failure.
+    request.catch(() => {});
+    statusRequestRef.current = request;
+    return request;
   };
 
   const loadWaSettings = async () => {
@@ -1302,12 +1325,12 @@ export default function WhatsAppPage() {
 
   // Initial loads
   useEffect(() => {
-    loadStatus();
     loadWaSettings();
     loadTargetCount();
-    // Poll every 5s when not connected (waiting for QR or waiting for scan)
-    intervalRef.current = setInterval(() => { if (!status.connected) loadStatus(); }, 5000);
-    return () => clearInterval(intervalRef.current);
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(statusRefreshTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -1322,13 +1345,42 @@ export default function WhatsAppPage() {
   }, [selectedBranchId]);
 
   useEffect(() => {
-    clearInterval(intervalRef.current);
-    intervalRef.current = null;
-    if (!status.connected) {
-      // 5s when waiting for QR or scan; slow down to 15s once connected
-      intervalRef.current = setInterval(loadStatus, 5000);
+    const updateStatusTimer = () => {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+      if (activeTab === 'connection' && visible && !status.connected) {
+        intervalRef.current = setInterval(loadStatus, 5000);
+      }
+    };
+    updateStatusTimer();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', updateStatusTimer);
     }
-  }, [status.connected]);
+    return () => {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', updateStatusTimer);
+      }
+    };
+  }, [activeTab, status.connected]);
+
+  useEffect(() => {
+    const refreshStatusWhenVisible = () => {
+      const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+      if (activeTab === 'connection' && visible) loadStatus();
+    };
+    refreshStatusWhenVisible();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', refreshStatusWhenVisible);
+    }
+    return () => {
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', refreshStatusWhenVisible);
+      }
+    };
+  }, [activeTab]);
 
   const loadActivityNotifActivities = async (branchFilter) => {
     setActNotifLoadingActivities(true);
@@ -1358,18 +1410,40 @@ export default function WhatsAppPage() {
 
   useEffect(() => {
     if (activeTab !== 'cloud_inbox') return undefined;
-    loadCloudConversations(
-      cloudBranchFilterRef.current,
-      cloudInboxViewRef.current === 'unread',
-      cloudInboxViewRef.current === 'needs_reply',
-    );
-    const interval = setInterval(() => {
+    let interval = null;
+    let needsInitialListLoad = true;
+    const refreshCloudInbox = () => {
       if (selectedCloudThreadRef.current) {
         openCloudThread(selectedCloudThreadRef.current, { polling: true });
       }
       else loadCloudConversations();
-    }, 10000);
-    return () => clearInterval(interval);
+    };
+    const startCloudInboxPolling = () => {
+      clearInterval(interval);
+      interval = null;
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      if (needsInitialListLoad) {
+        needsInitialListLoad = false;
+        loadCloudConversations(
+          cloudBranchFilterRef.current,
+          cloudInboxViewRef.current === 'unread',
+          cloudInboxViewRef.current === 'needs_reply',
+        );
+      } else {
+        refreshCloudInbox();
+      }
+      interval = setInterval(refreshCloudInbox, 10000);
+    };
+    startCloudInboxPolling();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', startCloudInboxPolling);
+    }
+    return () => {
+      clearInterval(interval);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', startCloudInboxPolling);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, cloudBranchFilter, cloudInboxView, cloudAuthScope]);
 
@@ -1593,9 +1667,11 @@ export default function WhatsAppPage() {
     try {
       await whatsappAPI.disconnect();
       toast.success(t('تم الفصل. سيتم توليد QR جديد...', 'Disconnected. New QR will appear...'));
-      setTimeout(() => {
-        clearInterval(intervalRef.current); intervalRef.current = null;
-        loadStatus(); intervalRef.current = setInterval(loadStatus, 30000);
+      clearTimeout(statusRefreshTimeoutRef.current);
+      statusRefreshTimeoutRef.current = setTimeout(() => {
+        statusRefreshTimeoutRef.current = null;
+        const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
+        if (mountedRef.current && activeTabRef.current === 'connection' && visible) loadStatus();
       }, 3000);
     } catch { toast.error(t('فشل الفصل', 'Disconnect failed')); }
     finally { setDisconnecting(false); }

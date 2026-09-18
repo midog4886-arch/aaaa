@@ -65,6 +65,7 @@
 - [Permission enforcement per-endpoint](permission-enforcement-per-endpoint.md) — ALL_PERMISSIONS + frontend guard is UI-only; every route handler must call require_permission itself, incl. admin-only deletes.
 - [Invoice–member linkage](invoice-member-linkage.md) — activity invoices must link a member (card button needs invoice.member_id); guards in create UI+API+reg-form convert; never phone-match customers to members (siblings share phones).
 - [Tenant context in scripts](tenant-context-scripts.md) — one-off scripts must set_current_tenant from control_db before code/counter helpers, or member codes get wrong prefix + colliding suffixes.
+- [Tenant lookup performance](tenant-lookup-performance.md) — share in-flight reads, not stale access decisions; preserve branding and keep dynamic routes tenant-scoped.
 - [VIP cross-branch attendance](vip-cross-branch-attendance.md) — is_vip member attends ANY branch; record tags SCANNING branch not home branch; branch summary/board must enrich foreign visitors from today_records or VIP visits vanish from counts.
 - [Split payment on invoices](split-payment-invoices.md) — invoice can be cash+card+transfer; payment_method="split" + payment_split{}; reports distribute each leg to its method; screen-only breakdown must live OUTSIDE printRef (html2canvas ignores print: classes).
 - [Invoice paid status & coupon count](invoice-paid-status-coupon-count.md) — invoice create ALWAYS inserts "pending" (payload status ignored); coupon used_count/stock/loyalty run only at /pay.
