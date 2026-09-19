@@ -108,6 +108,9 @@ test('يعرض معاينة RTL الموثوقة ويرسل معرّفها بع�
   const WhatsAppPage = require('../WhatsAppPage').default;
   render(<WhatsAppPage />);
 
+  await user.click(screen.getByRole('button', { name: 'الإعدادات' }));
+  expect(screen.getByText('إعدادات التذكيرات التلقائية')).toBeInTheDocument();
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', { name: 'إرسال التذكيرات الآن' }));
 
   expect(await screen.findByText('سارة')).toBeInTheDocument();
@@ -140,6 +143,7 @@ test('يغلق المعاينة عند تغيير الفرع ويتجاهل اس
 
   const WhatsAppPage = require('../WhatsAppPage').default;
   const view = render(<WhatsAppPage />);
+  await user.click(screen.getByRole('button', { name: 'الإعدادات' }));
   await user.click(screen.getByRole('button', { name: 'إرسال التذكيرات الآن' }));
   expect(await screen.findByText('جاري إعداد المعاينة...')).toBeInTheDocument();
 

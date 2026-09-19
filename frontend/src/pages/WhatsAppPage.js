@@ -19,7 +19,7 @@ import { whatsappAPI, membersAPI, activitiesAPI, branchesAPI, messagesAPI, pushN
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import {
   MessageSquare, CheckCircle2, XCircle, RefreshCw, Send, Settings, Loader2,
-  Wifi, WifiOff, PhoneCall, Bell, Eye, Users, History, Clock, Phone,
+  PhoneCall, Bell, Eye, Users, History, Clock, Phone,
   AlertTriangle, Building2, ChevronDown, ChevronUp, Megaphone, Gift,
   Info, Mail, ArrowRight, ArrowLeft, RefreshCcw, User, Filter, Trash2,
   MessageCircle, CheckCircle,
@@ -411,10 +411,9 @@ export default function WhatsAppPage() {
   const isRTL = language === 'ar';
   const isAdmin = user?.is_admin === true;
 
-  const [activeTab, setActiveTab] = useState('connection');
+  const [activeTab, setActiveTab] = useState('cloud_inbox');
 
-  // ── WhatsApp Connection State ──
-  const [status, setStatus] = useState({ connected: false, qr: null, connecting: false });
+  // ── WhatsApp Reminder Settings ──
   const [waSettings, setWaSettings] = useState({
     enabled: false, days_before: 3, days_before_2: 1, reminder_2_enabled: true,
     offsets: [
@@ -436,7 +435,6 @@ export default function WhatsAppPage() {
     admin_alert_enabled: false,
     admin_alert_phone: '',
   });
-  const [loadingStatus, setLoadingStatus] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
@@ -448,7 +446,6 @@ export default function WhatsAppPage() {
     data: null,
   });
   const previewRequestRef = useRef(0);
-  const [disconnecting, setDisconnecting] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [targetInfo, setTargetInfo] = useState({ count: 0, count_today: 0, target_date: '', count_2: 0, count_today_2: 0, target_date_2: '', reminder_2_enabled: true, loading: false });
   const [sendLogs, setSendLogs] = useState([]);
@@ -457,12 +454,6 @@ export default function WhatsAppPage() {
   logBranchRef.current = selectedBranchId || 'all';
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const intervalRef = useRef(null);
-  const statusRequestRef = useRef(null);
-  const statusRefreshTimeoutRef = useRef(null);
-  const mountedRef = useRef(true);
-  const activeTabRef = useRef(activeTab);
-  activeTabRef.current = activeTab;
 
   // ── Manual WhatsApp Messages State ──
   const [members, setMembers] = useState([]);
@@ -619,35 +610,6 @@ export default function WhatsAppPage() {
   };
 
   // ── Load functions ──
-  const loadStatus = () => {
-    if (statusRequestRef.current) return statusRequestRef.current;
-
-    const canApplyStatus = () => (
-      mountedRef.current
-      && activeTabRef.current === 'connection'
-      && (typeof document === 'undefined' || document.visibilityState !== 'hidden')
-    );
-    const request = whatsappAPI.getStatus()
-      .then(res => {
-        if (canApplyStatus()) setStatus(res.data);
-        return res;
-      })
-      .catch(error => {
-        if (canApplyStatus()) {
-          setStatus({ connected: false, qr: null, connecting: false });
-        }
-        return Promise.reject(error);
-      })
-      .finally(() => {
-        if (statusRequestRef.current === request) statusRequestRef.current = null;
-        if (canApplyStatus()) setLoadingStatus(false);
-      });
-    // Poll callers do not need to handle a transient status read failure.
-    request.catch(() => {});
-    statusRequestRef.current = request;
-    return request;
-  };
-
   const loadWaSettings = async () => {
     try { const res = await whatsappAPI.getSettings(); setWaSettings(res.data); } catch { }
   };
@@ -1327,10 +1289,6 @@ export default function WhatsAppPage() {
   useEffect(() => {
     loadWaSettings();
     loadTargetCount();
-    return () => {
-      mountedRef.current = false;
-      clearTimeout(statusRefreshTimeoutRef.current);
-    };
   }, []);
 
   useEffect(() => {
@@ -1343,44 +1301,6 @@ export default function WhatsAppPage() {
     previewRequestRef.current += 1;
     setReminderPreview({ open: false, loading: false, error: '', data: null });
   }, [selectedBranchId]);
-
-  useEffect(() => {
-    const updateStatusTimer = () => {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
-      if (activeTab === 'connection' && visible && !status.connected) {
-        intervalRef.current = setInterval(loadStatus, 5000);
-      }
-    };
-    updateStatusTimer();
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', updateStatusTimer);
-    }
-    return () => {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', updateStatusTimer);
-      }
-    };
-  }, [activeTab, status.connected]);
-
-  useEffect(() => {
-    const refreshStatusWhenVisible = () => {
-      const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
-      if (activeTab === 'connection' && visible) loadStatus();
-    };
-    refreshStatusWhenVisible();
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', refreshStatusWhenVisible);
-    }
-    return () => {
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', refreshStatusWhenVisible);
-      }
-    };
-  }, [activeTab]);
 
   const loadActivityNotifActivities = async (branchFilter) => {
     setActNotifLoadingActivities(true);
@@ -1538,7 +1458,6 @@ export default function WhatsAppPage() {
     if (!resolvedMemberIds.length) { toast.error(t('لا يوجد أعضاء مستهدفون', 'No target members')); return; }
 
     if (actNotifChannel === 'whatsapp') {
-      if (!status.connected) { toast.error(t('واتساب غير متصل', 'WhatsApp not connected')); return; }
       const membersWithPhone = actNotifFilteredMembers.filter(m => m.phone);
       if (!membersWithPhone.length) { toast.error(t('لا يوجد أعضاء لديهم رقم هاتف', 'No members have phone numbers')); return; }
       if (!window.confirm(t(`سيتم إرسال رسالة واتساب لـ ${membersWithPhone.length} عضو. متابعة؟`, `Send WhatsApp to ${membersWithPhone.length} members. Continue?`))) return;
@@ -1661,22 +1580,6 @@ export default function WhatsAppPage() {
     finally { setSendingNow(false); }
   };
 
-  const handleDisconnect = async () => {
-    if (!window.confirm(t('هل تريد فصل الحساب وحذف الجلسة؟', 'Disconnect and clear session?'))) return;
-    setDisconnecting(true);
-    try {
-      await whatsappAPI.disconnect();
-      toast.success(t('تم الفصل. سيتم توليد QR جديد...', 'Disconnected. New QR will appear...'));
-      clearTimeout(statusRefreshTimeoutRef.current);
-      statusRefreshTimeoutRef.current = setTimeout(() => {
-        statusRefreshTimeoutRef.current = null;
-        const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
-        if (mountedRef.current && activeTabRef.current === 'connection' && visible) loadStatus();
-      }, 3000);
-    } catch { toast.error(t('فشل الفصل', 'Disconnect failed')); }
-    finally { setDisconnecting(false); }
-  };
-
   // ── Manual WhatsApp handlers ──
   const handleMessageTypeChange = (type) => {
     setMessageType(type);
@@ -1770,7 +1673,6 @@ export default function WhatsAppPage() {
 
   const handleSendToSelectedViaSession = async () => {
     if (!selectedMembers.length) { toast.error(t('اختر الأعضاء أولاً', 'Select members first')); return; }
-    if (!status.connected) { toast.error(t('يجب الاتصال بواتساب أولاً', 'Connect first')); return; }
     if (connTabMsgType === 'custom' && !connTabCustomMsg.trim()) { toast.error(t('أدخل نص الرسالة', 'Enter message')); return; }
     if (!window.confirm(t(`سيتم إرسال الرسالة لـ ${selectedMembers.length} عضو. هل تريد المتابعة؟`, `Send to ${selectedMembers.length} members. Continue?`))) return;
 
@@ -2143,11 +2045,9 @@ export default function WhatsAppPage() {
     .replace('{activity}', t('كرة القدم', 'Football'))
     .replace('{days}', waSettings.days_before);
 
-  const lastLog = sendLogs[0];
-
   // ── Tabs definition ──
   const tabs = [
-    { id: 'connection', label: t('واتساب', 'WhatsApp'), icon: <Wifi className="w-4 h-4" /> },
+    { id: 'settings', label: t('الإعدادات', 'Settings'), icon: <Settings className="w-4 h-4" /> },
     { id: 'manual', label: t('إرسال يدوي', 'Manual Send'), icon: <Phone className="w-4 h-4" /> },
     { id: 'activity_notif', label: t('إشعار النشاط', 'Activity Alert'), icon: <Megaphone className="w-4 h-4" /> },
     { id: 'portal', label: t('إشعارات الأعضاء', 'Member Notifications'), icon: <Bell className="w-4 h-4" /> },
@@ -2197,57 +2097,10 @@ export default function WhatsAppPage() {
         </div>
 
         {/* ══════════════════════════════════════════
-            TAB 1: CONNECTION & AUTO REMINDERS
+            SETTINGS & AUTO REMINDERS
         ══════════════════════════════════════════ */}
-        {activeTab === 'connection' && (
+        {activeTab === 'settings' && (
           <div className="space-y-5 max-w-3xl">
-
-            {/* Connection Status */}
-            <div className={`rounded-2xl border-2 p-6 ${status.connected ? 'border-green-200 bg-green-50' : 'border-orange-200 bg-orange-50'}`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  {status.connected ? <Wifi className="w-6 h-6 text-green-600" /> : <WifiOff className="w-6 h-6 text-orange-500" />}
-                  <div>
-                    <h2 className="text-lg font-bold">{status.connected ? t('متصل بواتساب ✓', 'Connected ✓') : t('غير متصل', 'Not Connected')}</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {status.connected ? t('الخدمة جاهزة للإرسال', 'Service ready') : status.connecting ? t('جارٍ الاتصال...', 'Connecting...') : t('امسح QR بهاتفك', 'Scan QR with your phone')}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={loadStatus} disabled={loadingStatus}>
-                    <RefreshCw className={`w-4 h-4 ${loadingStatus ? 'animate-spin' : ''}`} />
-                  </Button>
-                  {status.connected && (
-                    <Button variant="outline" size="sm" onClick={handleDisconnect} disabled={disconnecting} className="text-red-600 border-red-200 hover:bg-red-50">
-                      {disconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                      <span className="ms-1">{t('فصل', 'Disconnect')}</span>
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {lastLog && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground border-t pt-3">
-                  <Clock className="w-3 h-3 shrink-0" />
-                  <span>{t('آخر إرسال:', 'Last send:')} {lastLog.member_name} — {new Date(lastLog.timestamp).toLocaleString(isRTL ? 'ar-SA' : 'en-US')} {lastLog.success ? '✓' : '✗'}</span>
-                </div>
-              )}
-
-              {!status.connected && status.qr && (
-                <div className="text-center py-4">
-                  <p className="text-sm font-medium mb-3 text-orange-700">{t('افتح واتساب ← الأجهزة المرتبطة ← ربط جهاز ← امسح الكود', 'Open WhatsApp → Linked Devices → Link a Device → Scan')}</p>
-                  <img src={status.qr} alt="WhatsApp QR" className="mx-auto w-56 h-56 rounded-xl border-4 border-white shadow-lg" />
-                  <p className="text-xs text-muted-foreground mt-2">{t('يتجدد كل 30 ثانية', 'Refreshes every 30 seconds')}</p>
-                </div>
-              )}
-              {!status.connected && !status.qr && !loadingStatus && (
-                <div className="text-center py-4">
-                  <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">{t('جارٍ تشغيل خدمة واتساب...', 'Starting WhatsApp service...')}</p>
-                </div>
-              )}
-            </div>
 
             {/* Auto Reminders Settings */}
             <div className="rounded-2xl border p-6 bg-card space-y-5">
@@ -2613,12 +2466,11 @@ export default function WhatsAppPage() {
                   <input type="text" placeholder={t('رقم الهاتف (0501234567)', 'Phone (0501234567)')}
                     value={testPhone} onChange={e => setTestPhone(e.target.value)} dir="ltr"
                     className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary" />
-                  <Button onClick={handleSendTest} disabled={sendingTest || !status.connected} variant="outline">
+                  <Button onClick={handleSendTest} disabled={sendingTest} variant="outline">
                     {sendingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     <span className="ms-1">{t('إرسال', 'Send')}</span>
                   </Button>
                 </div>
-                {!status.connected && <p className="text-xs text-orange-600 mt-1">{t('يجب الاتصال بواتساب أولاً', 'Connect first')}</p>}
               </div>
 
               {/* Send to selected members */}
@@ -2812,7 +2664,7 @@ export default function WhatsAppPage() {
                 )}
                 <Button
                   onClick={handleSendToSelectedViaSession}
-                  disabled={!selectedMembers.length || !status.connected || sendingToSelected}
+                  disabled={!selectedMembers.length || sendingToSelected}
                   className="w-full gap-2"
                 >
                   {sendingToSelected ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -2820,7 +2672,6 @@ export default function WhatsAppPage() {
                     ? t(`إرسال ${sendToSelectedProgress.done}/${sendToSelectedProgress.total}...`, `Sending ${sendToSelectedProgress.done}/${sendToSelectedProgress.total}...`)
                     : t(`إرسال الرسالة لـ ${selectedMembers.length} عضو`, `Send to ${selectedMembers.length} members`)}
                 </Button>
-                {!status.connected && <p className="text-xs text-orange-600 -mt-1">{t('يجب الاتصال بواتساب أولاً', 'Connect first')}</p>}
               </div>
 
               {/* Send all reminders now */}
@@ -3344,9 +3195,6 @@ export default function WhatsAppPage() {
                     className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${actNotifChannel === 'whatsapp' ? 'bg-green-600 text-white border-green-600' : 'bg-background hover:bg-muted'}`}>
                     <span className="inline me-1">📱</span>
                     {t('واتساب', 'WhatsApp')}
-                    {!status.connected && actNotifChannel === 'whatsapp' && (
-                      <span className="ms-1 text-xs opacity-80">{t('(غير متصل)', '(offline)')}</span>
-                    )}
                   </button>
                 </div>
               </div>

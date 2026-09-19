@@ -4174,6 +4174,7 @@ async def _mark_cloud_inbound_read(
     fetched_messages: list[dict],
     *,
     provider: Optional[str] = None,
+    fetched_complete: Optional[bool] = None,
 ):
     """Mark only inbound rows included in the fetched thread as read.
 
@@ -4205,8 +4206,6 @@ async def _mark_cloud_inbound_read(
     if not snapshot:
         return False
     snapshot_count = int(snapshot.get("unread_count") or 0)
-    snapshot_message_id = snapshot.get("last_inbound_message_id")
-    snapshot_generation = snapshot.get("inbound_generation")
 
     message_ids = [
         row.get("id") or row.get("provider_message_id")
@@ -4256,21 +4255,35 @@ async def _mark_cloud_inbound_read(
     # The thread query is capped at 500 rows. A short result proves that the
     # fetched set is complete; otherwise only a cutoff reaching the last row
     # can safely clear legacy aggregate state.
-    fetch_complete = len(fetched_messages) < 500
+    fetch_complete = (
+        len(fetched_messages) < 500
+        if fetched_complete is None
+        else fetched_complete
+    )
     safe_full_clear = fetch_complete and (
         not latest_inbound or latest_inbound <= cutoff
     )
     conversations = _db["whatsapp_cloud_conversations"]
-    if safe_full_clear and (snapshot_message_id or snapshot_generation is not None):
+    if safe_full_clear:
         cas_query = {
             "id": conversation_id,
             "branch_id": branch_id,
             "unread_count": snapshot_count,
         }
-        if snapshot_message_id:
-            cas_query["last_inbound_message_id"] = snapshot_message_id
-        if snapshot_generation is not None:
-            cas_query["inbound_generation"] = snapshot_generation
+        # Old conversation rows predate both identity fields.  Matching their
+        # absence explicitly is what makes clearing their legacy aggregate
+        # safe: a concurrent first inbound creates these fields and invalidates
+        # this CAS instead of having its increment overwritten by the clear.
+        for field in (
+            "last_inbound_message_id",
+            "inbound_generation",
+            "last_inbound_at",
+        ):
+            cas_query[field] = (
+                snapshot[field]
+                if field in snapshot
+                else {"$exists": False}
+            )
         result = await conversations.update_one(
             cas_query,
             {"$set": {"unread_count": 0}},
@@ -4728,11 +4741,22 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                         receipt_at = candidate
                 except (ValueError, TypeError, OverflowError, OSError):
                     pass
-                from_me = (
+                raw_from_me = (
                     key.get("fromMe")
                     if "fromMe" in key
                     else data.get("fromMe")
                 )
+                if isinstance(raw_from_me, bool):
+                    from_me = raw_from_me
+                elif isinstance(raw_from_me, str):
+                    normalized_from_me = raw_from_me.strip().lower()
+                    from_me = (
+                        True if normalized_from_me == "true"
+                        else False if normalized_from_me == "false"
+                        else None
+                    )
+                else:
+                    from_me = None
                 await _db["whatsapp_cloud_messages"].update_one(
                     {"branch_id": config["branch_id"], "provider": "whatsflow",
                      "provider_message_id": message_id},
@@ -5319,17 +5343,20 @@ async def get_cloud_inbox_thread(
     if not conversation:
         conversation = await _campaign_conversation(conversation_id, current_user)
     _assert_branch_access(current_user, conversation.get("branch_id"))
-    messages, campaign_messages = await asyncio.gather(
+    cloud_rows, campaign_messages = await asyncio.gather(
         _db["whatsapp_cloud_messages"]
         .find({"conversation_id": conversation_id}, {"_id": 0})
-        .sort("created_at", 1)
-        .limit(500)
-        .to_list(length=500),
+        .sort("created_at", -1)
+        .limit(501)
+        .to_list(length=501),
         campaign_inbox.thread(
             _db, conversation["branch_id"], conversation["phone"]
         ),
     )
-    cloud_messages = messages
+    # Load the newest page, then restore chronological order for rendering.
+    # The extra row is only a completeness sentinel and is never marked read.
+    fetched_complete = len(cloud_rows) <= 500
+    cloud_messages = list(reversed(cloud_rows[:500]))
     messages = campaign_inbox.merge_messages(
         cloud_messages, campaign_messages
     )
@@ -5338,6 +5365,7 @@ async def get_cloud_inbox_thread(
         conversation.get("branch_id") or "",
         cloud_messages,
         provider=None,
+        fetched_complete=fetched_complete,
     )
     branch = await _db["branches"].find_one(
         {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}

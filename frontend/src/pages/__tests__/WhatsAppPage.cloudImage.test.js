@@ -968,24 +968,25 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-test('does not run the legacy status poll in cloud inbox, including after disconnect', async () => {
+test('never requests legacy connection status and keeps reminder settings accessible', async () => {
   jest.useFakeTimers();
-  jest.spyOn(window, 'confirm').mockReturnValue(true);
   const WhatsAppPage = require('../WhatsAppPage').default;
   render(<WhatsAppPage />);
   await flushPromises();
-  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
+  expect(screen.getByText('محادثات واتساب الفروع')).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole('button', { name: /فصل/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'الإعدادات' }));
   await flushPromises();
-  fireEvent.click(screen.getByRole('button', { name: /شات واتساب/ }));
-  await flushPromises();
+  expect(screen.getByText('إعدادات التذكيرات التلقائية')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /فصل/ })).not.toBeInTheDocument();
+  expect(screen.queryByAltText('WhatsApp QR')).not.toBeInTheDocument();
 
   await act(async () => {
     jest.advanceTimersByTime(35000);
   });
   await flushPromises();
-  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
 });
 
 test('refreshes the new inbox view list instead of polling the previously selected thread', async () => {
@@ -1038,37 +1039,34 @@ test('pauses cloud inbox reads while hidden, refreshes on visible, and cleans up
   });
   await flushPromises();
   expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3);
-  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
 
   view.unmount();
   await act(async () => {
     jest.advanceTimersByTime(30000);
   });
   expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(3);
-  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
 });
 
-test('deduplicates in-flight status reads and refreshes immediately when visible', async () => {
+test('does not restore legacy status reads after visibility changes', async () => {
   jest.useFakeTimers();
-  const pendingStatus = deferred();
-  whatsappAPI.getStatus.mockReturnValueOnce(pendingStatus.promise);
   const WhatsAppPage = require('../WhatsAppPage').default;
   render(<WhatsAppPage />);
-  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+  await flushPromises();
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
 
   await act(async () => {
     jest.advanceTimersByTime(15000);
   });
-  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(1);
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
 
   await act(async () => {
     setDocumentVisibility('hidden');
   });
-  pendingStatus.resolve({ data: { connected: false, qr: null, connecting: false } });
-  await flushPromises();
   await act(async () => {
     setDocumentVisibility('visible');
   });
   await flushPromises();
-  expect(whatsappAPI.getStatus).toHaveBeenCalledTimes(2);
+  expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
 });

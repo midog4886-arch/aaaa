@@ -383,6 +383,142 @@ def test_thread_read_mixed_legacy_and_new_clears_when_cutoff_is_safe(db):
     assert marked["unread"] is False
 
 
+def test_thread_read_clears_legacy_row_missing_inbound_identity(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation.pop("last_inbound_message_id")
+    conversation.pop("inbound_generation")
+    conversation["unread_count"] = 1
+    legacy = {
+        "id": "legacy-inbound", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": conversation["last_inbound_at"],
+    }
+    db["whatsapp_cloud_messages"].rows.append(legacy)
+
+    asyncio.run(mod._mark_cloud_inbound_read(
+        conversation["id"], "a", [legacy], fetched_complete=True
+    ))
+
+    assert conversation["unread_count"] == 0
+
+
+def test_thread_read_legacy_cas_does_not_overwrite_first_concurrent_inbound(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation.pop("last_inbound_message_id")
+    conversation.pop("inbound_generation")
+    conversation["unread_count"] = 1
+    legacy = {
+        "id": "legacy-inbound", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": conversation["last_inbound_at"],
+    }
+    db["whatsapp_cloud_messages"].rows.append(legacy)
+    conversations = db["whatsapp_cloud_conversations"]
+    original_update = conversations.update_one
+
+    async def update_after_arrival(query, update, upsert=False):
+        if (
+            update.get("$set", {}).get("unread_count") == 0
+            and "last_inbound_message_id" in query
+        ):
+            conversation.update({
+                "last_inbound_message_id": "first-new-inbound",
+                "inbound_generation": 1,
+                "last_inbound_at": "2026-09-10T10:01:00+00:00",
+                "unread_count": 2,
+            })
+        return await original_update(query, update, upsert=upsert)
+
+    conversations.update_one = update_after_arrival
+    asyncio.run(mod._mark_cloud_inbound_read(
+        conversation["id"], "a", [legacy], fetched_complete=True
+    ))
+
+    assert conversation["unread_count"] == 2
+    assert conversation["last_inbound_message_id"] == "first-new-inbound"
+
+
+def test_thread_read_incomplete_latest_page_does_not_clear_unseen_legacy(db):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 2
+    unseen_legacy = {
+        "id": "unseen-legacy", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": "2026-09-10T09:59:00+00:00",
+    }
+    fetched = {
+        "id": "fetched-new", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow", "direction": "inbound",
+        "created_at": conversation["last_inbound_at"], "unread": True,
+    }
+    db["whatsapp_cloud_messages"].rows.extend([unseen_legacy, fetched])
+
+    asyncio.run(mod._mark_cloud_inbound_read(
+        conversation["id"], "a", [fetched], fetched_complete=False
+    ))
+
+    assert fetched["unread"] is False
+    assert "unread" not in unseen_legacy
+    assert conversation["unread_count"] == 1
+
+
+def test_thread_fetches_latest_500_without_marking_unseen_older_message(
+    db, monkeypatch
+):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["phone"] = "966500000001"
+    conversation["unread_count"] = 501
+    start = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    rows = []
+    for index in range(501):
+        created_at = (
+            start.replace(hour=index // 60, minute=index % 60)
+            if index < 24 * 60
+            else start
+        ).isoformat()
+        rows.append({
+            "id": f"inbound-{index:03d}",
+            "conversation_id": conversation["id"],
+            "branch_id": "a",
+            "provider": "whatsflow",
+            "direction": "inbound",
+            "created_at": created_at,
+            "unread": True,
+        })
+    conversation["last_inbound_at"] = rows[-1]["created_at"]
+    conversation["last_inbound_message_id"] = rows[-1]["id"]
+    conversation["inbound_generation"] = 501
+    db["whatsapp_cloud_messages"].rows.extend(rows)
+    db["branches"] = Collection([{"id": "a", "name": "Branch A"}])
+
+    async def no_campaign_messages(*args, **kwargs):
+        return []
+
+    async def passthrough(rows, *args, **kwargs):
+        return rows
+
+    monkeypatch.setattr(mod.campaign_inbox, "thread", no_campaign_messages)
+    monkeypatch.setattr(
+        mod.campaign_inbox,
+        "merge_messages",
+        lambda cloud, campaign: cloud,
+    )
+    monkeypatch.setattr(mod, "_enrich_member_phone_matches", passthrough)
+
+    result = asyncio.run(mod.get_cloud_inbox_thread(
+        conversation["id"], {"is_admin": True}
+    ))
+
+    assert len(result["messages"]) == 500
+    assert result["messages"][0]["id"] == "inbound-001"
+    assert result["messages"][-1]["id"] == "inbound-500"
+    assert rows[0]["unread"] is True
+    assert all(row["unread"] is False for row in rows[1:])
+    assert conversation["unread_count"] == 1
+    # The detail response intentionally retains the pre-mark aggregate value.
+    assert result["conversation"]["unread_count"] == 501
+
+
 def test_common_whatsflow_send_persists_exact_automation_evidence(db, monkeypatch):
     class Client:
         async def send_text(self, *args, **kwargs):
@@ -562,6 +698,40 @@ def test_phone_read_marks_exact_inbound_id_and_preserves_other_messages(db):
     _read_update("outbound-read", from_me=True)
     assert conversation["unread_count"] == 1
     assert by_provider_id["outbound-read"]["unread"] is False
+
+
+@pytest.mark.parametrize("from_me", [False, "false", " FALSE "])
+def test_phone_read_accepts_explicit_false_boolean_or_string(db, from_me):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 1
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "stored-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow",
+        "provider_message_id": "inbound-old", "direction": "inbound",
+        "unread": True,
+    })
+
+    _read_update("inbound-old", from_me=from_me)
+
+    assert db["whatsapp_cloud_messages"].rows[0]["unread"] is False
+    assert conversation["unread_count"] == 0
+
+
+@pytest.mark.parametrize("from_me", [True, "true", "yes", 0, 1])
+def test_phone_read_rejects_non_false_or_ambiguous_from_me(db, from_me):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["unread_count"] = 1
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "stored-old", "conversation_id": conversation["id"],
+        "branch_id": "a", "provider": "whatsflow",
+        "provider_message_id": "inbound-old", "direction": "inbound",
+        "unread": True,
+    })
+
+    _read_update("inbound-old", from_me=from_me)
+
+    assert db["whatsapp_cloud_messages"].rows[0]["unread"] is True
+    assert conversation["unread_count"] == 1
 
 
 def test_phone_read_race_with_new_inbound_decrements_only_transitioned_row(db):
