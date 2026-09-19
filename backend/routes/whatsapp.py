@@ -748,6 +748,68 @@ def _normalize_whatsflow_message(message: dict) -> dict:
     return current
 
 
+WHATSFLOW_TEXT_MAX_CHARS = 65536
+
+
+def _bounded_message_text(value: object) -> str:
+    """Return text only; provider objects must never become stored body text."""
+    if not isinstance(value, str):
+        return ""
+    return value[:WHATSFLOW_TEXT_MAX_CHARS]
+
+
+def _whatsflow_text_field(value: object) -> str:
+    """Accept Evolution's explicit text forms, without recursive traversal."""
+    if isinstance(value, str):
+        return _bounded_message_text(value)
+    if isinstance(value, dict):
+        return _bounded_message_text(value.get("body"))
+    return ""
+
+
+def _extract_whatsflow_body(raw_message: object, data: object = None) -> str:
+    """Extract only documented, non-private Evolution text locations.
+
+    Only ephemeral/document caption wrappers are normalized.  In particular,
+    this deliberately does not recurse through quoted/context messages and
+    refuses all view-once wrappers.
+    """
+    if not isinstance(raw_message, dict):
+        raw_message = {}
+    if _provider_marks_view_once(raw_message):
+        return ""
+    message = _normalize_whatsflow_message(raw_message)
+    if any(key in message for key in (
+        "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
+    )):
+        return ""
+
+    extended = message.get("extendedTextMessage")
+    extended_text = (
+        _bounded_message_text(extended.get("text"))
+        if isinstance(extended, dict)
+        else ""
+    )
+    media_caption = ""
+    for key in ("imageMessage", "documentMessage", "audioMessage", "videoMessage"):
+        media = message.get(key)
+        if isinstance(media, dict):
+            media_caption = _bounded_message_text(media.get("caption"))
+            if media_caption:
+                break
+
+    data = data if isinstance(data, dict) else {}
+    candidates = (
+        _bounded_message_text(message.get("conversation")),
+        extended_text,
+        _whatsflow_text_field(message.get("text")),
+        media_caption,
+        _whatsflow_text_field(data.get("text")),
+        _bounded_message_text(data.get("body")),
+    )
+    return next((text for text in candidates if text), "")
+
+
 def _whatsflow_media_headers(filename: str, mime_type: str) -> dict:
     """Build an RFC 5987 disposition without reflecting unsafe filenames."""
     name = Path(str(filename or "attachment").replace("\\", "/")).name
@@ -4843,13 +4905,7 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             else "video" if video_message
             else None
         )
-        body = (
-            message.get("conversation")
-            or (message.get("extendedTextMessage") or {}).get("text")
-            or media_message.get("caption")
-            or data.get("text")
-            or ""
-        )
+        body = _extract_whatsflow_body(raw_message, data)
         conversation_id = f"{config['branch_id']}:{phone}"
         echo_class = (
             await _classify_whatsflow_echo(
@@ -5861,6 +5917,79 @@ async def retry_cloud_inbox_media_archive(
          "$unset": {"archive_lease_until": "", "archive_leased_at": ""}},
     )
     return {"success": True, "status": "pending"}
+
+
+@router.post("/cloud-inbox/messages/{message_id}/recover-text")
+async def recover_cloud_inbox_message_text(
+    message_id: str, current_user: dict = Depends(get_current_user)
+):
+    """Explicitly recover one missing Whatsflow body from read-only history."""
+    _require_bulk_whatsapp_access(current_user)
+    message = await _db["whatsapp_cloud_messages"].find_one(
+        {"id": message_id}, {"_id": 0}
+    )
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    _assert_branch_access(current_user, message.get("branch_id"))
+    if message.get("provider") != "whatsflow":
+        raise HTTPException(status_code=400, detail="Text recovery is only available for Whatsflow")
+    if message.get("type") != "text" or message.get("media_id") or message.get("media_storage_id"):
+        raise HTTPException(status_code=400, detail="Only text messages can be recovered")
+    if isinstance(message.get("body"), str) and message["body"]:
+        return {"success": True, "body": message["body"], "recovered": False}
+    if message.get("view_once"):
+        raise HTTPException(status_code=400, detail="View-once text cannot be recovered")
+    provider_message_id = message.get("provider_message_id")
+    if not isinstance(provider_message_id, str) or not provider_message_id:
+        raise HTTPException(status_code=400, detail="Provider message ID is unavailable")
+
+    branch_id = message.get("branch_id")
+    config = await _db["whatsapp_branch_configs"].find_one(
+        {
+            "branch_id": branch_id,
+            "provider": "whatsflow",
+            "enabled": True,
+        },
+        {"_id": 0},
+    )
+    if not config or not config.get("whatsflow_instance"):
+        raise HTTPException(status_code=409, detail="Whatsflow is not configured for this branch")
+    ok, record, error = await _whatsflow_client(config).find_message(
+        provider_message_id, message.get("direction") == "outbound"
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail="تعذر استرجاع النص من مزود واتساب")
+    body = _extract_whatsflow_body(record.get("message"), record)
+    if not body:
+        raise HTTPException(status_code=404, detail="Message text is unavailable in provider history")
+
+    # Scope the write to the same branch/provider/provider ID and only fill a
+    # still-missing body.  Reply, unread and delivery fields are never touched.
+    result = await _db["whatsapp_cloud_messages"].update_one(
+        {
+            "id": message_id,
+            "branch_id": branch_id,
+            "provider": "whatsflow",
+            "provider_message_id": provider_message_id,
+            "$or": [{"body": ""}, {"body": {"$exists": False}}, {"body": None}],
+        },
+        {"$set": {"body": body}},
+    )
+    if not getattr(result, "matched_count", 0):
+        current = await _db["whatsapp_cloud_messages"].find_one(
+            {
+                "id": message_id,
+                "branch_id": branch_id,
+                "provider": "whatsflow",
+                "provider_message_id": provider_message_id,
+            },
+            {"_id": 0, "body": 1},
+        )
+        current_body = (current or {}).get("body")
+        if not isinstance(current_body, str) or not current_body:
+            raise HTTPException(status_code=409, detail="Message changed during text recovery")
+        body = current_body
+    return {"success": True, "body": body, "recovered": True}
 
 
 @router.delete("/cloud-inbox/media/{message_id}/archive")

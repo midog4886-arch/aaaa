@@ -152,14 +152,16 @@ def db(monkeypatch):
 
 def deliver(*, outbound=True, timestamp="2026-09-10T10:01:00+00:00",
             branch="a", instance="instance-a", secret="test-secret",
-            jid="966500000001@s.whatsapp.net"):
+             jid="966500000001@s.whatsapp.net", message=None,
+             data_fields=None, message_id="message-1"):
     envelope = {
         "event": "messages.upsert", "instance": instance,
         "data": {
-            "key": {"id": "message-1", "fromMe": outbound, "remoteJid": jid},
+            "key": {"id": message_id, "fromMe": outbound, "remoteJid": jid},
             "messageTimestamp": datetime.fromisoformat(timestamp).timestamp(),
-            "message": {"conversation": "Phone reply"},
+            "message": message if message is not None else {"conversation": "Phone reply"},
             "pushName": "Branch owner",
+            **(data_fields or {}),
         },
     }
     class Request:
@@ -183,12 +185,137 @@ def test_phone_reply_clears_unread_preserves_customer_and_deduplicates(db):
     assert conversation["last_message"] == "Phone reply"
 
 
+@pytest.mark.parametrize(
+    "outbound,message,data_fields,expected",
+    [
+        (False, {"conversation": "Inbound conversation"}, {}, "Inbound conversation"),
+        (True, {"extendedTextMessage": {"text": "Outbound extended"}}, {}, "Outbound extended"),
+        (False, {"text": "Inbound message.text"}, {}, "Inbound message.text"),
+        (True, {"text": {"body": "Outbound body object"}}, {}, "Outbound body object"),
+        (False, {}, {"text": "Inbound data.text"}, "Inbound data.text"),
+        (True, {}, {"body": "Outbound data.body"}, "Outbound data.body"),
+        (
+            False,
+            {"ephemeralMessage": {"message": {"conversation": "Ephemeral text"}}},
+            {},
+            "Ephemeral text",
+        ),
+        (
+            True,
+            {"documentWithCaptionMessage": {"message": {
+                "documentMessage": {"caption": "Document caption"}
+            }}},
+            {},
+            "Document caption",
+        ),
+    ],
+)
+def test_webhook_extracts_supported_inbound_and_outbound_text_variants(
+    db, outbound, message, data_fields, expected
+):
+    deliver(
+        outbound=outbound,
+        message=message,
+        data_fields=data_fields,
+        message_id=f"variant-{expected}",
+    )
+    stored = db["whatsapp_cloud_messages"].rows[-1]
+    assert stored["direction"] == ("outbound" if outbound else "inbound")
+    assert stored["body"] == expected
+    assert isinstance(stored["body"], str)
+
+
+@pytest.mark.parametrize(
+    "message,data_fields",
+    [
+        ({"conversation": {"body": "not a string"}}, {}),
+        ({"extendedTextMessage": {"text": {"body": "not direct text"}}}, {}),
+        ({"text": {"unexpected": "not body"}}, {"text": {"unexpected": "also invalid"}}),
+        (
+            {"viewOnceMessage": {"message": {"conversation": "private"}}},
+            {"text": "must not bypass view-once"},
+        ),
+        (
+            {"extendedTextMessage": {
+                "contextInfo": {"quotedMessage": {"conversation": "quoted secret"}}
+            }},
+            {},
+        ),
+    ],
+)
+def test_webhook_never_stores_malformed_view_once_or_quoted_objects_as_body(
+    db, message, data_fields
+):
+    deliver(
+        outbound=False,
+        message=message,
+        data_fields=data_fields,
+        message_id=f"unsafe-{len(db['whatsapp_cloud_messages'].rows)}",
+    )
+    stored = db["whatsapp_cloud_messages"].rows[-1]
+    assert stored["body"] == ""
+    assert isinstance(stored["body"], str)
+
+
+def test_whatsflow_text_extraction_has_a_hard_size_bound():
+    body = mod._extract_whatsflow_body({
+        "conversation": "x" * (mod.WHATSFLOW_TEXT_MAX_CHARS + 100),
+    })
+    assert body == "x" * mod.WHATSFLOW_TEXT_MAX_CHARS
+
+
 def test_old_reply_does_not_clear_newer_incoming_or_replace_preview(db):
     deliver(timestamp="2026-09-10T09:59:00+00:00")
     conversation = db["whatsapp_cloud_conversations"].rows[0]
     assert conversation["unread_count"] == 2
     assert conversation["last_message"] == "Question"
     assert len(db["whatsapp_cloud_messages"].rows) == 1
+
+
+def test_explicit_history_recovery_only_fills_body_and_preserves_state(db, monkeypatch):
+    original = {
+        "id": "local-missing",
+        "type": "text",
+        "conversation_id": "a:966500000001",
+        "branch_id": "a",
+        "provider": "whatsflow",
+        "provider_message_id": "provider-missing",
+        "direction": "inbound",
+        "body": "",
+        "unread": True,
+        "status": "received",
+        "needs_reply": True,
+    }
+    db["whatsapp_cloud_messages"].rows.append(original.copy())
+    seen = {}
+
+    class Client:
+        async def find_message(self, provider_message_id, from_me):
+            seen.update(provider_message_id=provider_message_id, from_me=from_me)
+            return True, {
+                "key": {"id": provider_message_id, "fromMe": from_me},
+                "message": {"extendedTextMessage": {"text": "Recovered safely"}},
+            }, None
+
+    monkeypatch.setattr(mod, "_whatsflow_client", lambda config: (
+        seen.update(instance=config["whatsflow_instance"]) or Client()
+    ))
+    result = asyncio.run(mod.recover_cloud_inbox_message_text(
+        "local-missing", current_user={"is_admin": True}
+    ))
+
+    assert result == {
+        "success": True, "body": "Recovered safely", "recovered": True,
+    }
+    assert seen == {
+        "instance": "instance-a",
+        "provider_message_id": "provider-missing",
+        "from_me": False,
+    }
+    stored = db["whatsapp_cloud_messages"].rows[-1]
+    assert stored["body"] == "Recovered safely"
+    for field in ("unread", "status", "needs_reply", "direction"):
+        assert stored[field] == original[field]
 
 
 def test_phone_reply_reconciles_only_older_marked_inbound_messages(db):

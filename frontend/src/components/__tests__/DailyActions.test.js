@@ -5,16 +5,26 @@ import DailyActions, { pageFor } from '../DailyActions';
 jest.mock('../../services/api', () => ({ dashboardAPI: { getActions: jest.fn() } }));
 jest.mock('../../contexts/LanguageContext', () => ({ useLanguage: () => ({ language: 'en' }) }));
 let mockBranch = 'north';
-jest.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ selectedBranchId: mockBranch, switchBranch: jest.fn(), user: { id: 'u1' } }) }));
+let mockUserId = 0;
+const mockSwitchBranch = jest.fn();
+jest.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ selectedBranchId: mockBranch, switchBranch: mockSwitchBranch, user: { id: `u${mockUserId}` } }) }));
 jest.mock('../ui/button', () => ({ Button: ({ children, ...props }) => <button type="button" {...props}>{children}</button> }));
 jest.mock('../ui/card', () => ({ Card: ({ children, ...props }) => <div {...props}>{children}</div>, CardContent: ({ children, ...props }) => <div {...props}>{children}</div> }));
 
 const { dashboardAPI } = require('../../services/api');
 const response = groups => ({ data: { generated_at: '2025-01-01T10:00:00Z', groups } });
 const expiring = { key: 'expiring', count: 2, status: 'ready', items: [{ id: 'm1', title: 'Lina S.', detail: 'Swimming · 4 days', kind: 'member', entity_id: 'm1', branch_id: 'north' }], has_more: false };
+const allGroups = [
+  expiring,
+  { key: 'absence', count: 1, status: 'ready', items: [{ id: 'a1', title: 'Absent member', detail: '3 absences', kind: 'attendance', entity_id: 'm2', branch_id: 'north' }], has_more: false },
+  { key: 'registrations', count: 1, status: 'ready', items: [{ id: 'r1', title: 'Registration', detail: 'Pending review', kind: 'registration_request', entity_id: 'r1', branch_id: 'north' }], has_more: false },
+  { key: 'conversations', count: 1, status: 'ready', items: [{ id: 'c1', title: 'Inbound contact', detail: 'Last inbound message', kind: 'whatsapp', entity_id: 'c1', branch_id: 'north' }], has_more: false },
+  { key: 'failures', count: 1, status: 'ready', items: [{ id: 'f1', title: 'Failed payment', detail: 'Declined', kind: 'failed_payment', entity_id: 'f1' }], has_more: false },
+];
 
 beforeEach(() => {
   mockBranch = 'north';
+  mockUserId += 1;
   jest.clearAllMocks();
   dashboardAPI.getActions.mockResolvedValue(response([expiring]));
 });
@@ -87,4 +97,72 @@ test('keeps partial and all group errors visible instead of treating them as zer
 
 test('sends renewals-only actions to the supported renewals page', async () => {
   expect(pageFor('expiring', { kind: 'member', entity_id: 'm1' })).toBe('/admin/renewals');
+});
+
+test('all five cards open their current API-supplied lists, including an empty list', async () => {
+  dashboardAPI.getActions.mockResolvedValueOnce(response(allGroups.map(group => (
+    group.key === 'conversations' ? { ...group, count: 0, items: [] } : group
+  ))));
+  render(<DailyActions />);
+
+  const expectations = [
+    ['Renewals due', 'Lina S.'],
+    ['Attendance follow-up', 'Absent member'],
+    ['Pending registrations', 'Registration'],
+    ['Latest inbound', 'There are no items to show.'],
+    ['Confirmed failures', 'Failed payment'],
+  ];
+  for (const [card, item] of expectations) {
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(`${card}:`) }));
+    expect(await screen.findByText(item)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  }
+});
+
+test('routes every backend action kind only to an existing matching list page', () => {
+  expect(pageFor('expiring', { kind: 'member' })).toBe('/admin/renewals');
+  expect(pageFor('absence', { kind: 'attendance' })).toBe('/admin/attendance');
+  expect(pageFor('registrations', { kind: 'registration_request' })).toBe('/admin/registration-requests');
+  expect(pageFor('conversations', { kind: 'whatsapp' })).toBe('/admin/whatsapp');
+  expect(pageFor('failures', { kind: 'failed_send' })).toBe('/admin/whatsapp');
+  expect(pageFor('failures', { kind: 'failed_payment' })).toBe('/admin/settings#billing');
+  expect(pageFor('failures', { kind: 'payment' })).toBe('/admin/settings#billing');
+  expect(pageFor('failures', { kind: 'billing_payment' })).toBe('/admin/settings#billing');
+});
+
+test('manual refresh is deduped in flight and keeps cards and an open dialog live', async () => {
+  const refreshed = { ...expiring, count: 3, items: [{ ...expiring.items[0], title: 'Updated member' }] };
+  let resolveRefresh;
+  dashboardAPI.getActions
+    .mockResolvedValueOnce(response([expiring]))
+    .mockImplementationOnce(() => new Promise(resolve => { resolveRefresh = resolve; }));
+  render(<DailyActions />);
+  fireEvent.click(await screen.findByRole('button', { name: /Renewals due: 2/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh daily actions' }));
+  await waitFor(() => expect(dashboardAPI.getActions).toHaveBeenCalledTimes(2));
+  expect(screen.getByText('Lina S.')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Loading actions')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh daily actions' }));
+  expect(dashboardAPI.getActions).toHaveBeenCalledTimes(2);
+  await act(async () => { resolveRefresh(response([refreshed])); });
+  expect(await screen.findByText('Updated member')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Renewals due: 3/ })).toBeInTheDocument();
+});
+
+test('polls every 60 seconds only while the dashboard document is visible', async () => {
+  jest.useFakeTimers();
+  let visibility = 'visible';
+  const originalVisibility = Object.getOwnPropertyDescriptor(document, 'visibilityState');
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibility });
+  render(<DailyActions />);
+  await act(async () => {});
+  expect(dashboardAPI.getActions).toHaveBeenCalledTimes(1);
+  await act(async () => { jest.advanceTimersByTime(60000); });
+  expect(dashboardAPI.getActions).toHaveBeenCalledTimes(2);
+  visibility = 'hidden';
+  fireEvent(document, new Event('visibilitychange'));
+  await act(async () => { jest.advanceTimersByTime(120000); });
+  expect(dashboardAPI.getActions).toHaveBeenCalledTimes(2);
+  if (originalVisibility) Object.defineProperty(document, 'visibilityState', originalVisibility);
+  jest.useRealTimers();
 });

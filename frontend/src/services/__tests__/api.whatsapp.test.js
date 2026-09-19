@@ -52,12 +52,16 @@ test('sends cloud inbox voice as the documented multipart audio field', () => {
   );
 });
 
-test('uses the dedicated archive retry and deletion endpoints', () => {
+test('uses the dedicated archive and text recovery endpoints', () => {
   whatsappAPI.retryCloudInboxMediaArchive('message/a');
+  whatsappAPI.recoverCloudInboxMessageText('message/a');
   whatsappAPI.deleteCloudInboxMediaArchive('message/a');
 
   expect(axios.post).toHaveBeenCalledWith(
     '/api/whatsapp/cloud-inbox/media/message%2Fa/archive-retry',
+  );
+  expect(axios.post).toHaveBeenCalledWith(
+    '/api/whatsapp/cloud-inbox/messages/message%2Fa/recover-text',
   );
   expect(axios.delete).toHaveBeenCalledWith(
     '/api/whatsapp/cloud-inbox/media/message%2Fa/archive',

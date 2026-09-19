@@ -166,6 +166,48 @@ def test_whatsflow_decrypted_media_rejects_malformed_or_oversized_payloads():
     }) == (False, None, "media_too_large")
 
 
+def test_whatsflow_history_lookup_is_exact_and_bounded(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "messages": {
+                    "records": [{
+                        "key": {"id": "provider-1", "fromMe": False},
+                        "message": {"conversation": "historical text"},
+                    }]
+                }
+            }
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, method, url, headers, **kwargs):
+            captured.update(method=method, url=url, headers=headers, **kwargs)
+            return Response()
+
+    monkeypatch.setattr("services.whatsflow.httpx.AsyncClient", lambda **_: Client())
+    ok, record, error = run(
+        WhatsflowClient("instance one", "secret").find_message("provider-1", False)
+    )
+
+    assert (ok, error) == (True, None)
+    assert record["message"]["conversation"] == "historical text"
+    assert captured["url"].endswith("/chat/findMessages/instance%20one")
+    assert captured["json"] == {
+        "where": {"key": {"id": "provider-1", "fromMe": False}},
+        "page": 1,
+        "offset": 1,
+    }
+
+
 def test_provider_resolution_accepts_whatsflow_without_changing_legacy_defaults():
     assert whatsapp_mod._branch_provider({"provider": "whatsflow", "enabled": True}) == "whatsflow"
     assert whatsapp_mod._branch_provider(None) == "legacy"

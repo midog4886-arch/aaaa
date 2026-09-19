@@ -10,6 +10,7 @@ import httpx
 
 class WhatsflowClient:
     MAX_MEDIA_BYTES = 20 * 1024 * 1024
+    MAX_HISTORY_RECORDS = 1
     _MIME_TYPE_RE = re.compile(
         r"^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
     )
@@ -174,6 +175,50 @@ class WhatsflowClient:
         if not ok:
             return False, None, error
         return self._decode_provider_media(data)
+
+    async def find_message(self, provider_message_id: str, from_me: bool):
+        """Read one exact message from Evolution's persisted message history.
+
+        Evolution API 2.3.7 implements ``chat/findMessages`` as a Prisma read
+        ordered by message timestamp.  Supplying the provider key and an
+        offset of one keeps this recovery lookup both exact and bounded.
+        """
+        if not provider_message_id:
+            return False, None, "missing_message_id"
+        ok, data, error = await self._request(
+            "POST",
+            f"/chat/findMessages/{self._instance_path()}",
+            json={
+                "where": {
+                    "key": {
+                        "id": provider_message_id,
+                        "fromMe": from_me,
+                    }
+                },
+                "page": 1,
+                "offset": self.MAX_HISTORY_RECORDS,
+            },
+        )
+        if not ok:
+            return False, None, error
+        records = (
+            data.get("messages", {}).get("records")
+            if isinstance(data, dict)
+            and isinstance(data.get("messages"), dict)
+            else None
+        )
+        if not isinstance(records, list) or len(records) != 1:
+            return False, None, "message_not_found"
+        record = records[0]
+        key = record.get("key") if isinstance(record, dict) else None
+        if not isinstance(key, dict):
+            return False, None, "invalid_history_response"
+        if (
+            key.get("id") != provider_message_id
+            or key.get("fromMe") is not from_me
+        ):
+            return False, None, "history_message_mismatch"
+        return True, record, None
 
     async def set_webhook(self, url: str, secret: str):
         return await self._request(

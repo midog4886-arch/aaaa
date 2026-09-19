@@ -15,6 +15,7 @@ jest.mock('../../services/api', () => ({
     getCloudInboxThread: jest.fn(),
     getCloudInboxMedia: jest.fn(),
     retryCloudInboxMediaArchive: jest.fn(),
+    recoverCloudInboxMessageText: jest.fn(),
     deleteCloudInboxMediaArchive: jest.fn(),
     replyCloudInbox: jest.fn(),
     sendCloudInboxMedia: jest.fn(),
@@ -120,6 +121,9 @@ beforeEach(() => {
     data: new Blob(['image'], { type: 'image/png' }),
   });
   whatsappAPI.retryCloudInboxMediaArchive.mockResolvedValue({ data: { success: true } });
+  whatsappAPI.recoverCloudInboxMessageText.mockResolvedValue({
+    data: { success: true, body: 'النص المسترجع' },
+  });
   whatsappAPI.deleteCloudInboxMediaArchive.mockResolvedValue({ data: { success: true } });
   whatsappAPI.disconnect.mockResolvedValue({ data: { success: true } });
   branchesAPI.getAll.mockResolvedValue({ data: [] });
@@ -153,6 +157,30 @@ test('refreshes the current branch inbox after opening a read-only thread and pr
   expect(branchesAPI.getAll).toHaveBeenCalledTimes(1);
   expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(1);
   expect(screen.getByPlaceholderText(/اكتب الرد/)).toBeInTheDocument();
+});
+
+test('shows a clear unavailable notice and explicitly recovers missing Whatsflow text', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation: { ...conversation, provider: 'whatsflow' },
+      messages: [{
+        id: 'missing-text',
+        provider: 'whatsflow',
+        provider_message_id: 'provider-missing',
+        type: 'text',
+        body: '',
+        direction: 'inbound',
+      }],
+    },
+  });
+  const user = await renderOpenCloudThread();
+
+  expect(screen.getByText('نص الرسالة غير متاح')).toBeInTheDocument();
+  expect(screen.queryByText('[text]')).not.toBeInTheDocument();
+  await user.click(screen.getByTestId('recover-cloud-text-missing-text'));
+
+  await screen.findByText('النص المسترجع');
+  expect(whatsappAPI.recoverCloudInboxMessageText).toHaveBeenCalledWith('missing-text');
 });
 
 test('loads unread conversations for the selected branch and keeps the branch selector visible', async () => {

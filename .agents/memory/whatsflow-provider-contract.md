@@ -3,6 +3,12 @@ name: Whatsflow provider contract
 description: Durable boundaries for the hosted Whatsflow API provider alongside Meta, WAHA, and legacy WhatsApp.
 ---
 
+Text history recovery is a provider read, not a resend or a read receipt.
+
+**Why:** Evolution 2.3.7's public source exposes a persisted-message lookup, but hosted Whatsflow retention and endpoint availability can differ. A missing local body cannot be reconstructed from a placeholder.
+
+**How to apply:** Recover only exact provider identities within the configured branch instance, preserve unread/reply/delivery evidence, and report unavailable history honestly. Never traverse quoted or view-once content to invent a missing body.
+
 Treat `whatsflow` as an explicit provider, never as a WAHA URL or compatibility mode. Its `INSTANCE` is provisioned by Whatsflow and is used unchanged; the app can read connection state and request QR, but must not expose WAHA start, stop, restart, or logout controls.
 
 **Why:** Whatsflow and WAHA have different session lifecycle and request contracts. Treating them as interchangeable can call destructive or nonexistent lifecycle routes and can bind the wrong branch.

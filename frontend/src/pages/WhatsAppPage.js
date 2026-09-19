@@ -546,6 +546,8 @@ export default function WhatsAppPage() {
   const cloudDeletedMediaIdsRef = useRef(new Set());
   const [cloudArchiveActions, setCloudArchiveActions] = useState({});
   const cloudArchiveActionRequestsRef = useRef(new Map());
+  const [cloudTextRecoveryActions, setCloudTextRecoveryActions] = useState({});
+  const cloudTextRecoveryRequestsRef = useRef(new Set());
   // Object URLs are intentionally cached only for the currently open
   // conversation and auth/branch scope. A 10-second detail poll must not
   // recreate them, otherwise it interrupts active audio playback.
@@ -1087,6 +1089,38 @@ export default function WhatsAppPage() {
           return next;
         });
       }
+    }
+  };
+
+  const recoverCloudMessageText = async (message) => {
+    if (cloudTextRecoveryRequestsRef.current.has(message.id)) return;
+    const scope = cloudMediaScopeRef.current;
+    cloudTextRecoveryRequestsRef.current.add(message.id);
+    setCloudTextRecoveryActions(previous => ({ ...previous, [message.id]: true }));
+    try {
+      const response = await whatsappAPI.recoverCloudInboxMessageText(message.id);
+      if (cloudMediaScopeRef.current !== scope) return;
+      const body = response.data?.body;
+      if (typeof body !== 'string' || !body) {
+        throw new Error('Provider returned no message text');
+      }
+      setCloudMessages(previous => previous.map(current => (
+        current.id === message.id ? { ...current, body } : current
+      )));
+      toast.success(t('تم استرجاع نص الرسالة', 'Message text recovered'));
+    } catch (error) {
+      if (cloudMediaScopeRef.current !== scope) return;
+      toast.error(apiErrorMessage(
+        error,
+        t('تعذر استرجاع نص الرسالة', 'Could not recover message text'),
+      ));
+    } finally {
+      cloudTextRecoveryRequestsRef.current.delete(message.id);
+      setCloudTextRecoveryActions(previous => {
+        const next = { ...previous };
+        delete next[message.id];
+        return next;
+      });
     }
   };
 
@@ -3691,11 +3725,30 @@ export default function WhatsAppPage() {
                               </Badge>
                             </div>
                           )}
-                          {message.body ? (
+                          {typeof message.body === 'string' && message.body ? (
                             <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">[{message.type}]</p>
-                          )}
+                          ) : message.type === 'text' && !message.media_id && !message.media_storage_id ? (
+                            <div className="space-y-1">
+                              <p className="text-sm text-muted-foreground">
+                                {t('نص الرسالة غير متاح', 'Message text unavailable')}
+                              </p>
+                              {message.provider === 'whatsflow' && message.provider_message_id && !message.view_once && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  disabled={Boolean(cloudTextRecoveryActions[message.id])}
+                                  onClick={() => recoverCloudMessageText(message)}
+                                  data-testid={`recover-cloud-text-${message.id}`}
+                                >
+                                  {cloudTextRecoveryActions[message.id]
+                                    ? t('جارٍ الاسترجاع...', 'Recovering...')
+                                    : t('استرجاع النص', 'Recover text')}
+                                </Button>
+                              )}
+                            </div>
+                          ) : <p className="text-sm text-muted-foreground">[{message.type}]</p>}
                           {(message.media_id || message.media_storage_id) && (
                             <div className="mt-2">
                               {archiveStatusText && (
