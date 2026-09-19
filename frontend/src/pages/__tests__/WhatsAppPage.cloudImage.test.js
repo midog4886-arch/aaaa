@@ -13,6 +13,7 @@ jest.mock('../../services/api', () => ({
     getTargetCount: jest.fn(),
     getCloudInboxConversations: jest.fn(),
     getCloudInboxThread: jest.fn(),
+    syncCloudInboxPhoneReplies: jest.fn(),
     getCloudInboxMedia: jest.fn(),
     retryCloudInboxMediaArchive: jest.fn(),
     recoverCloudInboxMessageText: jest.fn(),
@@ -53,7 +54,12 @@ jest.mock('react-router-dom', () => ({
 }));
 
 jest.mock('sonner', () => ({
-  toast: { error: jest.fn(), success: jest.fn() },
+  toast: {
+    error: jest.fn(),
+    success: jest.fn(),
+    warning: jest.fn(),
+    info: jest.fn(),
+  },
 }));
 
 const { branchesAPI, membersAPI, whatsappAPI } = require('../../services/api');
@@ -116,6 +122,16 @@ beforeEach(() => {
   });
   whatsappAPI.getCloudInboxThread.mockResolvedValue({
     data: { conversation, messages: [] },
+  });
+  whatsappAPI.syncCloudInboxPhoneReplies.mockResolvedValue({
+    data: {
+      success: true,
+      outcome: 'imported',
+      imported: 1,
+      existing: 0,
+      excluded: 0,
+      scanned: 1,
+    },
   });
   whatsappAPI.getCloudInboxMedia.mockResolvedValue({
     data: new Blob(['image'], { type: 'image/png' }),
@@ -181,6 +197,28 @@ test('shows a clear unavailable notice and explicitly recovers missing Whatsflow
 
   await screen.findByText('النص المسترجع');
   expect(whatsappAPI.recoverCloudInboxMessageText).toHaveBeenCalledWith('missing-text');
+});
+
+test('syncs linked-phone replies only from the open Whatsflow thread', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation: { ...conversation, provider: 'whatsflow' },
+      messages: [],
+    },
+  });
+  const user = await renderOpenCloudThread();
+
+  await user.click(screen.getByTestId('button-sync-phone-replies'));
+
+  await waitFor(() => {
+    expect(whatsappAPI.syncCloudInboxPhoneReplies).toHaveBeenCalledWith(
+      conversation.id,
+    );
+  });
+  await waitFor(() => {
+    expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(2);
+  });
+  expect(toast.success).toHaveBeenCalledWith('تمت مزامنة 1 رد من الجوال');
 });
 
 test('loads unread conversations for the selected branch and keeps the branch selector visible', async () => {
@@ -899,12 +937,34 @@ test('labels provider-accepted campaign sends without claiming delivery', async 
   await renderOpenCloudThread();
 
   expect(screen.getByTestId('campaign-message-status-campaign-message-1'))
-    .toHaveTextContent('مرسلة (لم يتأكد وصولها)');
+    .toHaveTextContent('قبلها المزوّد (لم يتأكد وصولها)');
   expect(screen.getByTestId('campaign-message-status-campaign-message-1'))
     .toHaveAttribute('title', expect.stringContaining('قبل المزوّد الرسالة'));
   expect(screen.getByTestId('campaign-message-time-campaign-message-1'))
-    .toHaveTextContent('وقت الإرسال');
+    .toHaveTextContent('وقت قبول المزوّد');
   expect(screen.queryByText('وصلت')).not.toBeInTheDocument();
+});
+
+test('labels regular outbound acceptance separately from delivery evidence', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: {
+      conversation,
+      messages: [{
+        id: 'regular-outbound',
+        direction: 'outbound',
+        type: 'text',
+        body: 'رد عادي',
+        status: 'sent',
+        delivery_status: 'accepted',
+        created_at: '2026-01-02T09:00:00Z',
+      }],
+    },
+  });
+
+  await renderOpenCloudThread();
+
+  expect(screen.getByText('· قبلها المزوّد (لم يتأكد وصولها)')).toBeInTheDocument();
+  expect(screen.queryByText('· وصلت')).not.toBeInTheDocument();
 });
 
 test.each([

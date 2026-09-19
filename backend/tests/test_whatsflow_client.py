@@ -208,6 +208,46 @@ def test_whatsflow_history_lookup_is_exact_and_bounded(monkeypatch):
     }
 
 
+def test_whatsflow_conversation_history_is_exact_and_capped(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"messages": {"records": []}}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+        async def request(self, method, url, headers, **kwargs):
+            captured.update(method=method, url=url, headers=headers, **kwargs)
+            return Response()
+
+    monkeypatch.setattr("services.whatsflow.httpx.AsyncClient", lambda **_: Client())
+    ok, records, error = run(
+        WhatsflowClient("instance one", "secret").find_messages(
+            "966500000001@s.whatsapp.net", True, limit=500
+        )
+    )
+
+    assert (ok, records, error) == (True, [], None)
+    assert captured["json"] == {
+        "where": {
+            "key": {
+                "remoteJid": "966500000001@s.whatsapp.net",
+                "fromMe": True,
+            }
+        },
+        "page": 1,
+        "offset": 50,
+    }
+
+
 def test_provider_resolution_accepts_whatsflow_without_changing_legacy_defaults():
     assert whatsapp_mod._branch_provider({"provider": "whatsflow", "enabled": True}) == "whatsflow"
     assert whatsapp_mod._branch_provider(None) == "legacy"

@@ -214,7 +214,7 @@ const isCampaignConversation = (conversation) => conversation?.last_source === '
 
 const campaignStatusLabel = (status, t) => ({
   pending: t('بانتظار الإرسال', 'Awaiting send'),
-  sent: t('مرسلة (لم يتأكد وصولها)', 'Sent (delivery not confirmed)'),
+  sent: t('قبلها المزوّد (لم يتأكد وصولها)', 'Provider accepted (delivery not confirmed)'),
   delivered: t('وصلت', 'Delivered'),
   read: t('قُرئت', 'Read'),
   failed: t('فشلت', 'Failed'),
@@ -224,12 +224,33 @@ const campaignStatusLabel = (status, t) => ({
 
 const campaignTimestampLabel = (kind, t) => ({
   queued: t('وقت الإضافة للطابور', 'Queued at'),
-  sent: t('وقت الإرسال', 'Sent at'),
+  sent: t('وقت قبول المزوّد', 'Provider accepted at'),
   delivered: t('وقت الوصول', 'Delivered at'),
   read: t('وقت القراءة', 'Read at'),
   failed: t('وقت الفشل', 'Failed at'),
   cancelled: t('وقت الإلغاء', 'Cancelled at'),
 })[kind];
+
+const outboundEvidenceLabel = (message, t) => {
+  const receipt = String(message?.delivery_status || message?.receipt_status || '').toLowerCase();
+  const status = String(message?.status || '').toLowerCase();
+  if (receipt === 'read' || receipt === 'played' || status === 'read') {
+    return t('قُرئت', 'Read');
+  }
+  if (receipt === 'delivered' || receipt === 'device' || status === 'delivered') {
+    return t('وصلت', 'Delivered');
+  }
+  if (receipt === 'failed' || receipt === 'error' || status === 'failed') {
+    return t('فشلت', 'Failed');
+  }
+  if (
+    ['accepted', 'sent', 'server'].includes(receipt)
+    || ['accepted', 'sent'].includes(status)
+  ) {
+    return t('قبلها المزوّد (لم يتأكد وصولها)', 'Provider accepted (delivery not confirmed)');
+  }
+  return null;
+};
 
 const campaignMessageTimestamp = (message) => {
   const status = campaignStatusKey(message?.status);
@@ -511,6 +532,7 @@ export default function WhatsAppPage() {
   const [cloudReply, setCloudReply] = useState('');
   const [loadingCloudInbox, setLoadingCloudInbox] = useState(false);
   const [sendingCloudReply, setSendingCloudReply] = useState(false);
+  const [syncingPhoneReplies, setSyncingPhoneReplies] = useState(false);
   // These maps intentionally hold only in-flight work. They prevent an
   // effect, a poll, and a click from issuing the same safe GET together
   // without keeping data around across users or branch changes.
@@ -535,6 +557,7 @@ export default function WhatsAppPage() {
   const selectedCloudThreadRef = useRef(null);
   const cloudThreadRequestRef = useRef(0);
   const sendingCloudReplyRef = useRef(false);
+  const syncingPhoneRepliesRef = useRef(false);
   const [cloudMediaUrls, setCloudMediaUrls] = useState({});
   const cloudMediaUrlsRef = useRef({});
   const [cloudMediaErrors, setCloudMediaErrors] = useState({});
@@ -1190,6 +1213,70 @@ export default function WhatsAppPage() {
     } finally {
       sendingCloudReplyRef.current = false;
       setSendingCloudReply(false);
+    }
+  };
+
+  const handleSyncPhoneReplies = async () => {
+    const conversationId = selectedCloudThreadRef.current;
+    if (
+      !conversationId
+      || cloudThread?.provider !== 'whatsflow'
+      || syncingPhoneRepliesRef.current
+    ) return;
+    const authScope = cloudAuthScope;
+    const branchKey = cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+      ? cloudBranchFilterRef.current
+      : 'all';
+    const isCurrentScope = () => (
+      selectedCloudThreadRef.current === conversationId
+      && cloudBranchesScopeRef.current === authScope
+      && (
+        (cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
+          ? cloudBranchFilterRef.current
+          : 'all') === branchKey
+      )
+    );
+    syncingPhoneRepliesRef.current = true;
+    setSyncingPhoneReplies(true);
+    try {
+      const response = await whatsappAPI.syncCloudInboxPhoneReplies(conversationId);
+      if (!response.data?.success) {
+        throw new Error(t('لم يؤكد الخادم المزامنة', 'The server did not confirm the sync'));
+      }
+      if (!isCurrentScope()) return;
+      await openCloudThread(conversationId, { refreshInbox: true });
+      if (!isCurrentScope()) return;
+      const imported = Number(response.data?.imported || 0);
+      const excluded = Number(response.data?.excluded || 0);
+      if (excluded > 0) {
+        toast.warning(t(
+          `تمت مزامنة ${imported} رد واستبعاد ${excluded} سجل غير صالح أو خاص`,
+          `Synced ${imported} replies; excluded ${excluded} private or invalid records`,
+        ));
+      } else if (imported > 0) {
+        toast.success(t(
+          `تمت مزامنة ${imported} رد من الجوال`,
+          `Synced ${imported} phone replies`,
+        ));
+      } else {
+        toast.info(t(
+          'لا توجد ردود جوال جديدة ضمن آخر 50 رسالة صادرة',
+          'No new phone replies were found in the latest 50 outbound messages',
+        ));
+      }
+    } catch (error) {
+      if (isCurrentScope()) {
+        toast.error(apiErrorMessage(
+          error,
+          t(
+            'سجل ردود الجوال غير متاح حاليًا لدى مزود واتساب',
+            'Phone reply history is currently unavailable from the WhatsApp provider',
+          ),
+        ));
+      }
+    } finally {
+      syncingPhoneRepliesRef.current = false;
+      setSyncingPhoneReplies(false);
     }
   };
 
@@ -3579,13 +3666,19 @@ export default function WhatsAppPage() {
                                    t={t}
                                    compact
                                  />
-                                 <p
+                                  <div
                                    className="text-sm text-muted-foreground truncate mt-1"
                                    data-testid={campaignConversation ? `campaign-conversation-preview-${conversation.id}` : undefined}
                                  >
                                    {campaignConversation ? (
                                      <>
-                                       <span>{t('حملة', 'Campaign')} · {campaignStatusLabel(campaignStatus, t)}</span>
+                                        <span>{t('حملة', 'Campaign')} · </span>
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[10px] ${campaignStatus === 'failed' ? 'border-red-300 bg-red-50 text-red-700' : ''}`}
+                                        >
+                                          {campaignStatusLabel(campaignStatus, t)}
+                                        </Badge>
                                        {conversation.last_message && <span> · {conversation.last_message}</span>}
                                      </>
                                    ) : (
@@ -3594,7 +3687,7 @@ export default function WhatsAppPage() {
                                        {conversation.last_message}
                                      </>
                                    )}
-                                 </p>
+                                  </div>
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0">
@@ -3625,7 +3718,7 @@ export default function WhatsAppPage() {
             ) : (
               <Card>
                 <CardHeader className="border-b">
-                  <CardTitle className="flex flex-wrap items-center gap-2">
+                   <CardTitle className="flex flex-wrap items-center gap-2">
                     <Phone className="w-5 h-5 text-green-600" />
                     <span>{cloudThread?.contact_name || cloudThread?.phone}</span>
                     {cloudThread?.phone && (
@@ -3652,6 +3745,20 @@ export default function WhatsAppPage() {
                           event,
                         )}
                       />
+                       {cloudThread?.provider === 'whatsflow' && (
+                         <Button
+                           type="button"
+                           variant="outline"
+                           size="sm"
+                           onClick={handleSyncPhoneReplies}
+                           disabled={syncingPhoneReplies}
+                           className="gap-1"
+                           data-testid="button-sync-phone-replies"
+                         >
+                           <RefreshCcw className={`w-3.5 h-3.5 ${syncingPhoneReplies ? 'animate-spin' : ''}`} />
+                           {t('مزامنة ردود الجوال', 'Sync phone replies')}
+                         </Button>
+                       )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-4">
@@ -3667,7 +3774,7 @@ export default function WhatsAppPage() {
                       const campaignMessage = isCampaignMessage(message);
                       const campaignStatus = campaignStatusKey(message.status);
                       const campaignTime = campaignMessage ? campaignMessageTimestamp(message) : null;
-                      const statusText = {
+                      const statusText = (outbound && outboundEvidenceLabel(message, t)) || {
                         sent: t('أُرسلت', 'Sent'),
                         delivered: t('وصلت', 'Delivered'),
                         read: t('قُرئت', 'Read'),
@@ -3715,7 +3822,7 @@ export default function WhatsAppPage() {
                               </Badge>
                               <Badge
                                 variant="outline"
-                                className="text-[10px]"
+                                className={`text-[10px] ${campaignStatus === 'failed' ? 'border-red-300 bg-red-50 text-red-700' : ''}`}
                                 title={campaignStatus === 'sent'
                                   ? t('قبل المزوّد الرسالة، لكن لا يوجد تأكيد وصول أو قراءة.', 'The provider accepted the message; delivery and read are not confirmed.')
                                   : undefined}

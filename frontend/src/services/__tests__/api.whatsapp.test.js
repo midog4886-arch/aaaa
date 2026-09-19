@@ -67,3 +67,11 @@ test('uses the dedicated archive and text recovery endpoints', () => {
     '/api/whatsapp/cloud-inbox/media/message%2Fa/archive',
   );
 });
+
+test('uses the branch-scoped conversation phone-reply sync endpoint', () => {
+  whatsappAPI.syncCloudInboxPhoneReplies('branch-a:9665');
+
+  expect(axios.post).toHaveBeenCalledWith(
+    '/api/whatsapp/cloud-inbox/conversations/branch-a%3A9665/sync-phone-replies',
+  );
+});

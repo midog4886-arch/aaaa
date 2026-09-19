@@ -11,6 +11,7 @@ import httpx
 class WhatsflowClient:
     MAX_MEDIA_BYTES = 20 * 1024 * 1024
     MAX_HISTORY_RECORDS = 1
+    MAX_CONVERSATION_HISTORY_RECORDS = 50
     _MIME_TYPE_RE = re.compile(
         r"^[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+$"
     )
@@ -219,6 +220,51 @@ class WhatsflowClient:
         ):
             return False, None, "history_message_mismatch"
         return True, record, None
+
+    async def find_messages(
+        self, remote_jid: str, from_me: bool, limit: int = 50
+    ):
+        """Read one bounded page for an exact Evolution message key.
+
+        Evolution API 2.3.7 supports ``key.remoteJid`` and ``key.fromMe`` in
+        the same ``chat/findMessages`` where clause used by ``find_message``.
+        This method deliberately exposes neither pagination nor an unbounded
+        scan because phone-reply recovery only needs the latest page.
+        """
+        if (
+            not isinstance(remote_jid, str)
+            or not remote_jid
+            or not isinstance(from_me, bool)
+        ):
+            return False, None, "invalid_history_query"
+        bounded_limit = min(
+            max(int(limit), 1), self.MAX_CONVERSATION_HISTORY_RECORDS
+        )
+        ok, data, error = await self._request(
+            "POST",
+            f"/chat/findMessages/{self._instance_path()}",
+            json={
+                "where": {
+                    "key": {
+                        "remoteJid": remote_jid,
+                        "fromMe": from_me,
+                    }
+                },
+                "page": 1,
+                "offset": bounded_limit,
+            },
+        )
+        if not ok:
+            return False, None, error
+        records = (
+            data.get("messages", {}).get("records")
+            if isinstance(data, dict)
+            and isinstance(data.get("messages"), dict)
+            else None
+        )
+        if not isinstance(records, list) or len(records) > bounded_limit:
+            return False, None, "invalid_history_response"
+        return True, records, None
 
     async def set_webhook(self, url: str, secret: str):
         return await self._request(

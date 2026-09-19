@@ -723,6 +723,34 @@ def _whatsflow_client(config: dict) -> WhatsflowClient:
     return WhatsflowClient(config.get("whatsflow_instance") or "", api_key)
 
 
+def _strict_provider_bool(value: object) -> Optional[bool]:
+    """Accept only JSON booleans and Evolution's canonical string form."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    return None
+
+
+def _provider_from_me(key: dict, data: dict) -> Optional[bool]:
+    """Resolve duplicate provider fields only when all evidence agrees."""
+    values = []
+    if "fromMe" in key:
+        values.append(key.get("fromMe"))
+    if "fromMe" in data:
+        values.append(data.get("fromMe"))
+    if not values:
+        return None
+    normalized = [_strict_provider_bool(value) for value in values]
+    if any(value is None for value in normalized) or len(set(normalized)) != 1:
+        return None
+    return normalized[0]
+
+
 def _normalize_whatsflow_message(message: dict) -> dict:
     """Unwrap non-private Evolution message containers.
 
@@ -4803,22 +4831,7 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
                         receipt_at = candidate
                 except (ValueError, TypeError, OverflowError, OSError):
                     pass
-                raw_from_me = (
-                    key.get("fromMe")
-                    if "fromMe" in key
-                    else data.get("fromMe")
-                )
-                if isinstance(raw_from_me, bool):
-                    from_me = raw_from_me
-                elif isinstance(raw_from_me, str):
-                    normalized_from_me = raw_from_me.strip().lower()
-                    from_me = (
-                        True if normalized_from_me == "true"
-                        else False if normalized_from_me == "false"
-                        else None
-                    )
-                else:
-                    from_me = None
+                from_me = _provider_from_me(key, data)
                 await _db["whatsapp_cloud_messages"].update_one(
                     {"branch_id": config["branch_id"], "provider": "whatsflow",
                      "provider_message_id": message_id},
@@ -4853,14 +4866,33 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
             return {"received": True}
         if event != "messages.upsert":
             return {"received": True}
-        outbound = key.get("fromMe") is True
+        outbound = _provider_from_me(key, data)
+        if outbound is None:
+            return {"received": True}
         remote_jid = str(key.get("remoteJid") or data.get("remoteJid") or "")
         if remote_jid.endswith(("@g.us", "@broadcast", "@newsletter")):
             return {"received": True}
         # LID identifiers are not phone numbers; use the provider's phone JID.
         if remote_jid.endswith("@lid"):
-            remote_jid = str(key.get("remoteJidAlt") or data.get("remoteJidAlt") or "")
-        if not remote_jid.endswith(("@s.whatsapp.net", "@c.us")):
+            key_alt = key.get("remoteJidAlt")
+            data_alt = data.get("remoteJidAlt")
+            if (
+                ("remoteJidAlt" in key and not isinstance(key_alt, str))
+                or ("remoteJidAlt" in data and not isinstance(data_alt, str))
+            ):
+                return {"received": True}
+            documented_alts = [
+                value for value in (key_alt, data_alt)
+                if isinstance(value, str) and value
+            ]
+            if (
+                not documented_alts
+                or len(set(documented_alts)) != 1
+                or not documented_alts[0].endswith(("@s.whatsapp.net", "@c.us"))
+            ):
+                return {"received": True}
+            remote_jid = documented_alts[0]
+        if not re.fullmatch(r"\d+@(?:s\.whatsapp\.net|c\.us)", remote_jid):
             return {"received": True}
         event_at = now
         try:
@@ -5436,6 +5468,213 @@ async def get_cloud_inbox_thread(
         )
     )[0]
     return {"conversation": conversation, "messages": messages}
+
+
+def _whatsflow_history_timestamp(record: dict) -> Optional[str]:
+    raw = record.get("messageTimestamp")
+    if raw is None:
+        raw = record.get("timestamp")
+    try:
+        epoch = float(raw)
+        if epoch > 1e12:
+            epoch /= 1000
+        if epoch <= 0:
+            return None
+        return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+
+
+def _whatsflow_history_status(record: dict) -> str:
+    """Use only a persisted provider receipt as delivery evidence."""
+    raw = record.get("status")
+    if not isinstance(raw, str):
+        return "accepted"
+    normalized = raw.strip().lower()
+    return {
+        "sent": "sent",
+        "server_ack": "sent",
+        "delivered": "delivered",
+        "delivery_ack": "delivered",
+        "read": "read",
+        "played": "read",
+        "failed": "failed",
+        "error": "failed",
+        "pending": "pending",
+    }.get(normalized, "accepted")
+
+
+@router.post("/cloud-inbox/conversations/{conversation_id}/sync-phone-replies")
+async def sync_cloud_inbox_phone_replies(
+    conversation_id: str, current_user: dict = Depends(get_current_user)
+):
+    """Import a bounded, read-only page of exact Whatsflow outbound text."""
+    _require_bulk_whatsapp_access(current_user)
+    conversation = await _db["whatsapp_cloud_conversations"].find_one(
+        {"id": conversation_id}, {"_id": 0}
+    )
+    if not conversation:
+        conversation = await _campaign_conversation(conversation_id, current_user)
+    branch_id = conversation.get("branch_id")
+    _assert_branch_access(current_user, branch_id)
+    if conversation.get("provider") != "whatsflow":
+        raise HTTPException(
+            status_code=400,
+            detail="Phone reply sync is only available for Whatsflow",
+        )
+    phone = str(conversation.get("phone") or "")
+    if not phone.isdigit():
+        raise HTTPException(status_code=400, detail="Conversation phone is invalid")
+    remote_jid = f"{phone}@s.whatsapp.net"
+    config = await _db["whatsapp_branch_configs"].find_one(
+        {
+            "branch_id": branch_id,
+            "provider": "whatsflow",
+            "enabled": True,
+        },
+        {"_id": 0},
+    )
+    if not config or not config.get("whatsflow_instance"):
+        raise HTTPException(
+            status_code=409,
+            detail="Whatsflow is not configured for this branch",
+        )
+
+    ok, records, error = await _whatsflow_client(config).find_messages(
+        remote_jid, True, limit=50
+    )
+    if not ok:
+        logger.warning(
+            "Whatsflow phone reply history unavailable for branch %s: %s",
+            branch_id,
+            error,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Phone reply history is unavailable from the provider",
+        )
+
+    messages = _db["whatsapp_cloud_messages"]
+    await messages.create_index(
+        [("branch_id", 1), ("provider", 1), ("provider_message_id", 1)],
+        unique=True,
+        partialFilterExpression={
+            "provider": "whatsflow", "provider_message_id": {"$exists": True}
+        },
+    )
+    imported = 0
+    existing_count = 0
+    excluded = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for record in records:
+        if not isinstance(record, dict):
+            excluded += 1
+            continue
+        key = record.get("key")
+        if not isinstance(key, dict):
+            excluded += 1
+            continue
+        provider_id = key.get("id")
+        record_jid = key.get("remoteJid")
+        from_me = _strict_provider_bool(key.get("fromMe"))
+        if (
+            not isinstance(provider_id, str)
+            or not provider_id
+            or record_jid != remote_jid
+            or from_me is not True
+        ):
+            excluded += 1
+            continue
+        raw_message = record.get("message")
+        if (
+            not isinstance(raw_message, dict)
+            or _provider_marks_view_once(raw_message)
+        ):
+            excluded += 1
+            continue
+        normalized = _normalize_whatsflow_message(raw_message)
+        if any(
+            isinstance(normalized.get(kind), dict)
+            for kind in (
+                "imageMessage", "documentMessage", "audioMessage",
+                "videoMessage", "stickerMessage",
+            )
+        ):
+            excluded += 1
+            continue
+        body = _extract_whatsflow_body(raw_message, record)
+        created_at = _whatsflow_history_timestamp(record)
+        if not body or not created_at:
+            excluded += 1
+            continue
+
+        scope = {
+            "branch_id": branch_id,
+            "provider": "whatsflow",
+            "provider_message_id": provider_id,
+        }
+        existing = await messages.find_one(
+            scope, {"_id": 0, "body": 1, "conversation_id": 1}
+        )
+        if existing:
+            existing_count += 1
+            # Never rewrite known evidence. The sole safe repair is filling an
+            # empty body on the same provider identity and conversation.
+            if (
+                existing.get("conversation_id") == conversation_id
+                and not existing.get("body")
+            ):
+                await messages.update_one(
+                    {
+                        **scope,
+                        "conversation_id": conversation_id,
+                        "$or": [
+                            {"body": ""},
+                            {"body": None},
+                            {"body": {"$exists": False}},
+                        ],
+                    },
+                    {"$set": {"body": body}},
+                )
+            continue
+        historical = {
+            "id": str(uuid.uuid4()),
+            "conversation_id": conversation_id,
+            "branch_id": branch_id,
+            "provider": "whatsflow",
+            "provider_message_id": provider_id,
+            "direction": "outbound",
+            "phone": phone,
+            "type": "text",
+            "body": body,
+            "status": _whatsflow_history_status(record),
+            "unread": False,
+            "source": "history",
+            "echo_source": "history",
+            "created_at": created_at,
+            "received_at": now,
+            "view_once": False,
+        }
+        try:
+            await messages.insert_one(historical)
+            imported += 1
+        except DuplicateKeyError:
+            existing_count += 1
+
+    outcome = (
+        "partial" if excluded
+        else "empty" if imported == 0 and existing_count == 0
+        else "unchanged" if imported == 0
+        else "imported"
+    )
+    return {
+        "success": True,
+        "outcome": outcome,
+        "imported": imported,
+        "existing": existing_count,
+        "excluded": excluded,
+        "scanned": len(records),
+    }
 
 
 async def _campaign_conversation(conversation_id, current_user):

@@ -3,6 +3,12 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+
+
+def test_history_failed_and_pending_are_not_reported_as_accepted():
+    assert mod._whatsflow_history_status({"status": "ERROR"}) == "failed"
+    assert mod._whatsflow_history_status({"status": "failed"}) == "failed"
+    assert mod._whatsflow_history_status({"status": "pending"}) == "pending"
 from fastapi import HTTPException
 from routes import whatsapp as mod
 
@@ -183,6 +189,152 @@ def test_phone_reply_clears_unread_preserves_customer_and_deduplicates(db):
     assert conversation["contact_name"] == "Customer"
     assert conversation["last_direction"] == "outbound"
     assert conversation["last_message"] == "Phone reply"
+
+
+@pytest.mark.parametrize("from_me", [True, "true", " TRUE "])
+def test_upsert_accepts_only_canonical_outbound_boolean_forms(db, from_me):
+    deliver(data_fields={"fromMe": from_me}, message_id=f"canonical-{from_me}")
+    assert db["whatsapp_cloud_messages"].rows[-1]["direction"] == "outbound"
+
+
+@pytest.mark.parametrize("from_me", [1, "yes", "1", "", None])
+def test_upsert_rejects_ambiguous_outbound_boolean_forms(db, from_me):
+    before = len(db["whatsapp_cloud_messages"].rows)
+    deliver(data_fields={"fromMe": from_me}, message_id=f"ambiguous-{from_me}")
+    assert len(db["whatsapp_cloud_messages"].rows) == before
+
+
+def test_lid_upsert_requires_an_exact_documented_phone_alt(db):
+    deliver(
+        jid="opaque@lid",
+        data_fields={"remoteJidAlt": "966500000001@s.whatsapp.net"},
+        message_id="lid-valid",
+    )
+    assert db["whatsapp_cloud_messages"].rows[-1]["provider_message_id"] == "lid-valid"
+
+    before = len(db["whatsapp_cloud_messages"].rows)
+    deliver(
+        jid="opaque@lid",
+        data_fields={"remoteJidAlt": "not-a-phone@s.whatsapp.net"},
+        message_id="lid-invalid",
+    )
+    assert len(db["whatsapp_cloud_messages"].rows) == before
+
+
+def test_sync_phone_replies_is_bounded_filtered_idempotent_and_state_neutral(
+    db, monkeypatch
+):
+    conversation = db["whatsapp_cloud_conversations"].rows[0]
+    conversation["provider"] = "whatsflow"
+    conversation["phone"] = "966500000001"
+    state_before = conversation.copy()
+    db["whatsapp_cloud_messages"].rows.append({
+        "id": "known-local",
+        "conversation_id": conversation["id"],
+        "branch_id": "a",
+        "provider": "whatsflow",
+        "provider_message_id": "known-provider",
+        "direction": "outbound",
+        "body": "keep original",
+        "status": "accepted",
+        "source": "automation",
+    })
+    seen = {}
+
+    class Client:
+        async def find_messages(self, remote_jid, from_me, limit):
+            seen.update(
+                remote_jid=remote_jid, from_me=from_me, limit=limit
+            )
+            timestamp = datetime(
+                2026, 9, 10, 10, 3, tzinfo=timezone.utc
+            ).timestamp()
+            return True, [
+                {
+                    "key": {
+                        "id": "history-valid",
+                        "remoteJid": remote_jid,
+                        "fromMe": "true",
+                    },
+                    "messageTimestamp": timestamp,
+                    "status": "DELIVERY_ACK",
+                    "message": {"conversation": "Reply from linked phone"},
+                },
+                {
+                    "key": {
+                        "id": "known-provider",
+                        "remoteJid": remote_jid,
+                        "fromMe": True,
+                    },
+                    "messageTimestamp": timestamp,
+                    "message": {"conversation": "must not overwrite"},
+                },
+                {
+                    "key": {
+                        "id": "wrong-recipient",
+                        "remoteJid": "966599999999@s.whatsapp.net",
+                        "fromMe": True,
+                    },
+                    "messageTimestamp": timestamp,
+                    "message": {"conversation": "wrong"},
+                },
+                {
+                    "key": {
+                        "id": "inbound",
+                        "remoteJid": remote_jid,
+                        "fromMe": False,
+                    },
+                    "messageTimestamp": timestamp,
+                    "message": {"conversation": "inbound"},
+                },
+                {
+                    "key": {
+                        "id": "private",
+                        "remoteJid": remote_jid,
+                        "fromMe": True,
+                    },
+                    "messageTimestamp": timestamp,
+                    "message": {
+                        "viewOnceMessage": {
+                            "message": {"conversation": "private"}
+                        }
+                    },
+                },
+            ], None
+
+    monkeypatch.setattr(mod, "_whatsflow_client", lambda config: Client())
+    first = asyncio.run(mod.sync_cloud_inbox_phone_replies(
+        conversation["id"], current_user={"is_admin": True}
+    ))
+    second = asyncio.run(mod.sync_cloud_inbox_phone_replies(
+        conversation["id"], current_user={"is_admin": True}
+    ))
+
+    assert seen == {
+        "remote_jid": "966500000001@s.whatsapp.net",
+        "from_me": True,
+        "limit": 50,
+    }
+    assert first == {
+        "success": True,
+        "outcome": "partial",
+        "imported": 1,
+        "existing": 1,
+        "excluded": 3,
+        "scanned": 5,
+    }
+    assert second["imported"] == 0
+    assert second["existing"] == 2
+    stored = {
+        row.get("provider_message_id"): row
+        for row in db["whatsapp_cloud_messages"].rows
+    }
+    assert stored["known-provider"]["body"] == "keep original"
+    assert stored["history-valid"]["status"] == "delivered"
+    assert stored["history-valid"]["source"] == "history"
+    assert stored["history-valid"]["unread"] is False
+    assert "human_reply" not in stored["history-valid"]
+    assert conversation == state_before
 
 
 @pytest.mark.parametrize(

@@ -11,6 +11,12 @@ Thread-read responses intentionally retain the pre-read unread count.
 
 Treat “needs reply” as a human-response obligation, not as unread status or the direction of the latest message. Opening a conversation does not resolve it; automated reminders and campaigns are not staff replies.
 
+Historical outbound recovery is display evidence, not proof of a staff reply.
+
+**Why:** Provider history can mix phone replies, campaigns, and automated sends without enough provenance to distinguish them safely.
+
+**How to apply:** Import exact recipient/provider identities idempotently with original timestamps, but do not replay webhook state transitions or clear unread/needs-reply from history alone.
+
 **Why:** Provider echoes can arrive before the send response, older incoming events can arrive after newer ones, and failure receipts can precede the echoed outgoing message. A last-direction shortcut silently hides unanswered conversations.
 
 **How to apply:** Require durable human-send evidence, correlate automation before dispatch, preserve unmatched failure receipts, and keep inbound boundaries monotonic. Test reversed event ordering and concurrent inbound arrivals whenever changing reply-state logic. Do not infer historical phone replies that were never persisted.

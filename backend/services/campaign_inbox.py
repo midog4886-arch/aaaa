@@ -11,6 +11,44 @@ PREVIEW_FIELDS = (
     "last_failed_at", "last_cancelled_at", "last_timestamp_kind",
 )
 
+# Keep this predicate in Mongo so an unsent row cannot win a recipient group or
+# consume the bounded result page.  A provider id is correlation, not proof of
+# sending.  Failed rows are visible only when a prior acceptance/send event was
+# durably recorded.
+_ACCEPTED_RECEIPTS = ["accepted", "sent", "server"]
+_DELIVERY_RECEIPTS = ["delivered", "device", "read", "played"]
+_FAILURE_VALUES = ["failed", "error"]
+_PRIOR_SEND_EVIDENCE = {
+    "$or": [
+        {"accepted_at": {"$exists": True, "$nin": [None, ""]}},
+        {"sent_at": {"$exists": True, "$nin": [None, ""]}},
+        {"delivered_at": {"$exists": True, "$nin": [None, ""]}},
+        {"read_at": {"$exists": True, "$nin": [None, ""]}},
+    ]
+}
+CAMPAIGN_INBOX_EVIDENCE = {
+    "$or": [
+        {"status": {"$in": ["accepted", "sent"]}},
+        {"delivery_status": {"$in": _ACCEPTED_RECEIPTS}},
+        {"receipt_status": {"$in": _ACCEPTED_RECEIPTS}},
+        {"$and": [
+            {"provider_message_id": {"$exists": True, "$nin": [None, ""]}},
+            {"$or": [
+                {"delivery_status": {"$in": _DELIVERY_RECEIPTS}},
+                {"receipt_status": {"$in": _DELIVERY_RECEIPTS}},
+            ]},
+        ]},
+        {"$and": [
+            {"$or": [
+                {"status": {"$in": _FAILURE_VALUES}},
+                {"delivery_status": {"$in": _FAILURE_VALUES}},
+                {"receipt_status": {"$in": _FAILURE_VALUES}},
+            ]},
+            _PRIOR_SEND_EVIDENCE,
+        ]},
+    ]
+}
+
 
 def iso(value):
     if isinstance(value, datetime):
@@ -39,13 +77,35 @@ def _queue_display_status(value):
         "dispatching", "processing",
     }:
         return "pending"
-    if status == "sent":
+    if status in {"accepted", "sent"}:
         return "sent"
     if status in {"failed", "error"}:
         return "failed"
     if status == "cancelled":
         return "cancelled"
     return "unknown"
+
+
+def _has_send_evidence(item):
+    """Python equivalent of CAMPAIGN_INBOX_EVIDENCE for serialization."""
+    queue_status = str(item.get("status") or "").strip().lower()
+    receipt = _receipt_status(
+        item.get("delivery_status") or item.get("receipt_status")
+    )
+    provider_id = item.get("provider_message_id")
+    prior_send = any(item.get(field) for field in (
+        "accepted_at", "sent_at", "delivered_at", "read_at",
+    ))
+    if queue_status in {"accepted", "sent"} or receipt == "accepted":
+        return True
+    if receipt in {"delivered", "read"} and provider_id:
+        return True
+    return (queue_status in {"failed", "error"} or receipt == "failed") and prior_send
+
+
+def _evidence_query(query):
+    """Combine caller scope and evidence without allowing key collisions."""
+    return {"$and": [dict(query), CAMPAIGN_INBOX_EVIDENCE]}
 
 
 def _display_fields(status, *, queued_at, sent_at=None, delivered_at=None,
@@ -92,7 +152,7 @@ def as_message(item):
         status = queue_display
 
     queued_at = iso(item.get("created_at"))
-    actual_sent = status in {"sent", "delivered", "read"}
+    actual_sent = _has_send_evidence(item)
     # ``completed_at`` records completion of an item, not proof that an
     # enqueued/unknown/failed item reached the provider.
     sent_at = ""
@@ -145,7 +205,7 @@ def as_message(item):
 
 async def conversations(db, query):
     pipeline = [
-        {"$match": {**query, "status": {"$ne": "initializing"}}},
+        {"$match": _evidence_query(query)},
         {"$addFields": {
             # Queue creation is stable chronology.  Completion is not proof
             # that an item was sent, and must not reorder queued projections.
@@ -183,11 +243,10 @@ async def conversations(db, query):
 
 
 async def thread(db, branch_id, phone):
-    rows = await db["whatsapp_campaign_job_items"].find({
+    rows = await db["whatsapp_campaign_job_items"].find(_evidence_query({
         "branch_id": branch_id,
         "phone": {"$in": [phone, f"{phone}@s.whatsapp.net", f"{phone}@c.us"]},
-        "status": {"$ne": "initializing"},
-    }, {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
+    }), {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
     return [as_message(item) for item in rows]
 
 
@@ -215,10 +274,7 @@ def merge_messages(stored, projected):
             )
             for key in ("sent_at", "delivered_at", "read_at"):
                 existing[key] = existing.get(key) or message.get(key) or ""
-            if existing["status"] not in {"sent", "delivered", "read"}:
-                # A terminal failure/cancellation is not evidence that the
-                # provider accepted the message, even if a stale echo carried
-                # an old local sent timestamp.
+            if existing["status"] == "cancelled":
                 existing["sent_at"] = ""
             display_at, timestamp_kind = _display_fields(
                 existing["status"],

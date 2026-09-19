@@ -13,7 +13,13 @@ Queue insertion time is not send time. Project a campaign preview's source, stat
 
 **Why:** Several campaign items created together can show identical timestamps even when paced dispatch happens minutes apart; showing them as sent wrongly suggests a burst.
 
-**How to apply:** Pending messages show queue time, accepted messages show evidence-backed acceptance/send time, and delivery/read require exact correlated receipts. Preserve event metadata from the same winning preview when merging stored conversations and projected campaign items.
+**How to apply:** The conversation inbox must exclude unsent queue items; show queue times only in campaign management/reporting. Accepted messages show evidence-backed acceptance/send time, and delivery/read require exact correlated receipts. Preserve event metadata from the same winning preview when merging stored conversations and projected campaign items.
+
+The conversation inbox represents actual communication, not planned campaign recipients.
+
+**Why:** The user found pending campaign rows misleading when deciding which customers had actually been contacted.
+
+**How to apply:** Apply send-evidence filtering before recipient grouping and limits, so a newer queued item cannot hide an older sent message. Preserve post-send failures and never equate provider acceptance with confirmed customer delivery.
 
 Persist authenticated receipt evidence before trying to attach it to a campaign item; reconcile both immediately and when the send response supplies the provider ID. Clear buffered receipts only with a matching version token.
 

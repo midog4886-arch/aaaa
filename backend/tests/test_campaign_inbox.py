@@ -44,7 +44,9 @@ def test_non_sent_queue_states_never_get_a_sent_timestamp(status):
         completed_at=datetime(2026, 9, 10, 1),
         sent_at=datetime(2026, 9, 10, 1),
     ))
-    assert message["sent_at"] == ""
+    assert message["sent_at"] == (
+        "2026-09-10T01:00:00+00:00" if status == "failed" else ""
+    )
     assert message["status"] == ("failed" if status == "failed" else
                                  ("pending" if status == "dispatching" else "unknown"))
     if status == "failed":
@@ -168,11 +170,22 @@ def test_read_only_projection_queries_scope_branch_and_phone():
     collection = ReadOnlyItems()
     db = {"whatsapp_campaign_job_items": collection}
     messages = asyncio.run(inbox.thread(db, "a", "966500000001"))
-    assert collection.query["branch_id"] == "a"
-    assert collection.query["phone"]["$in"][0] == "966500000001"
+    thread_scope, thread_evidence = collection.query["$and"]
+    assert thread_scope["branch_id"] == "a"
+    assert thread_scope["phone"]["$in"][0] == "966500000001"
+    assert thread_evidence == inbox.CAMPAIGN_INBOX_EVIDENCE
     assert len(messages) == 1
     rows = asyncio.run(inbox.conversations(db, {"branch_id": "a"}))
-    assert collection.pipeline[0]["$match"]["branch_id"] == "a"
+    conversation_scope, conversation_evidence = (
+        collection.pipeline[0]["$match"]["$and"]
+    )
+    assert conversation_scope["branch_id"] == "a"
+    assert conversation_evidence == inbox.CAMPAIGN_INBOX_EVIDENCE
+    assert next(
+        index for index, stage in enumerate(collection.pipeline) if "$match" in stage
+    ) < next(
+        index for index, stage in enumerate(collection.pipeline) if "$group" in stage
+    )
     assert rows[0]["unread_count"] == 0
     assert {
         key: rows[0][key] for key in (
@@ -191,6 +204,76 @@ def test_read_only_projection_queries_scope_branch_and_phone():
         "last_timestamp_kind": "queued",
         "last_message_at": "2026-09-10T00:00:00+00:00",
     }
+
+
+class EvidenceItems:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def aggregate(self, pipeline):
+        assert "$match" in pipeline[0]
+        visible = [row for row in self.rows if inbox._has_send_evidence(row)]
+        newest_by_phone = {}
+        for row in visible:
+            phone = row["phone"].split("@")[0]
+            current = newest_by_phone.get((row["branch_id"], phone))
+            if not current or row["created_at"] > current["created_at"]:
+                newest_by_phone[(row["branch_id"], phone)] = row
+        return Cursor([{"item": row} for row in newest_by_phone.values()])
+
+    def find(self, query, projection):
+        assert query["$and"][1] == inbox.CAMPAIGN_INBOX_EVIDENCE
+        return Cursor([row for row in self.rows if inbox._has_send_evidence(row)])
+
+
+def test_newer_queued_item_does_not_hide_older_sent_projection():
+    rows = [
+        item(id="sent", status="sent", completed_at=datetime(2026, 9, 10, 1)),
+        item(id="queued", status="pending", created_at=datetime(2026, 9, 11)),
+    ]
+    db = {"whatsapp_campaign_job_items": EvidenceItems(rows)}
+    conversations = asyncio.run(inbox.conversations(db, {"branch_id": "a"}))
+    assert len(conversations) == 1
+    assert conversations[0]["last_status"] == "sent"
+    assert conversations[0]["last_message_at"] == "2026-09-10T01:00:00+00:00"
+
+
+def test_queue_only_campaign_disappears_but_existing_inbound_remains():
+    db = {"whatsapp_campaign_job_items": EvidenceItems([
+        item(status="queued"),
+        item(id="failed-before-send", status="failed",
+             provider_message_id="correlation-is-not-evidence"),
+    ])}
+    assert asyncio.run(inbox.conversations(db, {"branch_id": "a"})) == []
+    assert asyncio.run(inbox.thread(db, "a", "966500000001")) == []
+
+    inbound = {
+        "id": "inbound", "provider": "whatsflow",
+        "provider_message_id": "inbound-id", "direction": "inbound",
+        "created_at": "2026-09-09T00:00:00+00:00", "status": "received",
+    }
+    assert inbox.merge_messages([inbound], []) == [inbound]
+
+
+def test_receipt_can_project_before_queue_status_update_and_failure_needs_send_evidence():
+    delivered = item(
+        status="processing", provider_message_id="provider-id",
+        delivery_status="delivered", delivered_at=datetime(2026, 9, 10, 2),
+    )
+    assert inbox._has_send_evidence(delivered)
+    assert inbox.as_message(delivered)["status"] == "delivered"
+    assert not inbox._has_send_evidence(item(
+        status="failed", provider_message_id="provider-id",
+    ))
+    after_acceptance = item(
+        status="failed", accepted_at=datetime(2026, 9, 10, 1),
+        failed_at=datetime(2026, 9, 10, 2),
+    )
+    assert inbox._has_send_evidence(after_acceptance)
+    projected = inbox.as_message(after_acceptance)
+    assert projected["status"] == "failed"
+    assert projected["sent_at"] == "2026-09-10T01:00:00+00:00"
+    assert projected["failed_at"] == "2026-09-10T02:00:00+00:00"
 
 
 def test_virtual_thread_denies_foreign_branch_before_read(monkeypatch):
