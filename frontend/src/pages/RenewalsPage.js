@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -79,13 +79,13 @@ const _renewalsCache = {
   key: null,
   expiring: null,
   expired: null,
+  renewed: null,
   branches: null,
   ts: 0,
 };
-const _cacheKey = (days, branchId) => `${days || ''}::${branchId || 'all'}`;
+const _cacheKey = (days, branchId, user) => `${user?.tenant_id || ''}::${user?.id || ''}::${days || ''}::${branchId || 'all'}`;
 
-// Session-level list of subscriptions renewed from this page. Shown in the
-// "تم التجديد" tab so renewed members visibly move out of the other tabs.
+// Optimistic paid renewals, reconciled with server-side invoice evidence.
 const _renewedSession = { items: [] };
 
 export const isRenewalConfirmationBranchAuthorized = (item, user, selectedBranchId) => {
@@ -208,7 +208,7 @@ const RenewalsPage = () => {
   const { user, selectedBranchId } = useAuth();
   const navigate = useNavigate();
 
-  const _initialKey = _cacheKey('7', selectedBranchId);
+  const _initialKey = _cacheKey('7', selectedBranchId, user);
   const _hasCache = _renewalsCache.key === _initialKey && Array.isArray(_renewalsCache.expiring);
 
   const [loading, setLoading] = useState(!_hasCache);
@@ -216,13 +216,14 @@ const RenewalsPage = () => {
   const [expiredList, setExpiredList] = useState(_hasCache ? _renewalsCache.expired : []);
   // Scope the session "renewed" list to the current user + active branch so
   // branch switches or a different login never show someone else's renewals.
-  const _renewedKey = `${user?.id || ''}::${selectedBranchId || 'all'}`;
+  const _renewedKey = `${user?.tenant_id || ''}::${user?.id || ''}::${selectedBranchId || 'all'}`;
   if (_renewedSession.key !== _renewedKey) {
     _renewedSession.key = _renewedKey;
     _renewedSession.items = [];
   }
   const [renewedList, setRenewedList] = useState(_renewedSession.items);
   useEffect(() => { setRenewedList(_renewedSession.items); }, [_renewedKey]);
+  const loadSequenceRef = useRef(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [days, setDays] = useState('7');
   const [activeTab, setActiveTab] = useState('expiring');
@@ -301,7 +302,13 @@ const RenewalsPage = () => {
 
   useEffect(() => {
     loadData();
-  }, [days, selectedBranchId]);
+    const refresh = () => loadData();
+    window.addEventListener('focus', refresh);
+    return () => {
+      loadSequenceRef.current += 1;
+      window.removeEventListener('focus', refresh);
+    };
+  }, [days, selectedBranchId, user?.id, user?.tenant_id]);
 
   // Auto-prune selections when filters/tabs change so the bulk action count
   // never reflects items that are no longer visible.
@@ -384,18 +391,23 @@ const RenewalsPage = () => {
   };
 
   const loadData = async () => {
-    const key = _cacheKey(days, selectedBranchId);
+    const sequence = ++loadSequenceRef.current;
+    const key = _cacheKey(days, selectedBranchId, user);
     const cacheHit = _renewalsCache.key === key && Array.isArray(_renewalsCache.expiring);
     if (cacheHit) {
       setExpiringList(_renewalsCache.expiring);
       setExpiredList(_renewalsCache.expired);
+      setRenewedList(_renewalsCache.renewed || []);
       if (Array.isArray(_renewalsCache.branches)) setBranches(_renewalsCache.branches);
       setLoading(false);
     } else {
+      setExpiringList([]);
+      setExpiredList([]);
+      setRenewedList([]);
       setLoading(true);
     }
     try {
-      const params = { days: parseInt(days) };
+      const params = { days: parseInt(days), include_renewed: true };
       if (selectedBranchId && selectedBranchId !== 'all') {
         params.branch_filter = selectedBranchId;
       }
@@ -403,37 +415,44 @@ const RenewalsPage = () => {
         notificationsAPI.getExpiringSubscriptions(params),
         branchesAPI.getAll()
       ]);
+      if (sequence !== loadSequenceRef.current) return;
       const allItems = res.data || [];
       const branchesData = branchRes.data || [];
       setBranches(branchesData);
 
-      const expiring = allItems.filter(item => item.days_remaining >= 0);
+      const renewed = allItems.filter(item => item._renewed && item.days_remaining >= 0);
+      const expiring = allItems.filter(item => !item._renewed && item.days_remaining >= 0);
       const expired = allItems.filter(item => item.days_remaining < 0);
 
       setExpiringList(expiring);
       setExpiredList(expired);
+      setRenewedList(renewed);
+      _renewedSession.items = renewed;
 
       _renewalsCache.key = key;
       _renewalsCache.expiring = expiring;
       _renewalsCache.expired = expired;
+      _renewalsCache.renewed = renewed;
       _renewalsCache.branches = branchesData;
       _renewalsCache.ts = Date.now();
 
       reloadLastReminders([...expiring, ...expired]);
       try {
         const tplRes = await whatsappAPI.getReminderTemplate();
+        if (sequence !== loadSequenceRef.current) return;
         const tpl = tplRes?.data?.manual_reminder_template;
         if (tpl) setWaTemplate(tpl);
         const tplExpired = tplRes?.data?.manual_reminder_expired_template;
         if (tplExpired) setWaExpiredTemplate(tplExpired);
       } catch {}
     } catch (error) {
+      if (sequence !== loadSequenceRef.current) return;
       console.error('Failed to load renewals data:', error);
       if (!cacheHit) {
         toast.error(language === 'ar' ? 'حدث خطأ في تحميل البيانات' : 'Failed to load data');
       }
     } finally {
-      setLoading(false);
+      if (sequence === loadSequenceRef.current) setLoading(false);
     }
   };
 
@@ -507,7 +526,7 @@ const RenewalsPage = () => {
     { value: 'كاراتيه', label: '🥋 كاراتيه', icon: '🥋' },
   ];
 
-  const allActivities = [...new Set([...expiringList, ...expiredList].map(i => i.activity_name).filter(Boolean))];
+  const allActivities = [...new Set([...expiringList, ...expiredList, ...renewedList].map(i => i.activity_name).filter(Boolean))];
 
   const getActivityCategory = (name) => {
     if (!name) return null;
@@ -788,8 +807,7 @@ const RenewalsPage = () => {
     return e?.message || (language === 'ar' ? 'خطأ غير معروف' : 'Unknown error');
   };
 
-  // Move a just-renewed item into the "تم التجديد" tab (session-scoped so the
-  // admin sees exactly what was renewed in this sitting).
+  // Optimistically move a paid renewal; loadData reconciles with invoice evidence.
   const markRenewed = (item, newStart, newEnd) => {
     const entry = {
       ...item,
@@ -1294,7 +1312,19 @@ const RenewalsPage = () => {
             )}
             <div className="flex items-center gap-2 text-muted-foreground">
               <RefreshCcw className="w-3.5 h-3.5" />
-              <span>{item.activity_name}</span>
+              <span>{language === 'ar' ? 'النشاط: ' : 'Activity: '}{item.activity_name || '—'}</span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground" data-testid={`renewal-price-${item.member_id}`}>
+              <span>{language === 'ar' ? 'سعر النشاط: ' : 'Activity price: '}</span>
+              <span className="font-medium">
+                {item.fee !== null && item.fee !== undefined && item.fee !== '' && Number.isFinite(Number(item.fee))
+                  ? `${Number(item.fee).toLocaleString(language === 'ar' ? 'ar-SA' : 'en-US')} ${language === 'ar' ? 'ر.س' : 'SAR'}`
+                  : (language === 'ar' ? 'غير محدد' : 'Not specified')}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-muted-foreground" data-testid={`renewal-nationality-${item.member_id}`}>
+              <span>{language === 'ar' ? 'الجنسية: ' : 'Nationality: '}</span>
+              <span>{item.nationality || (language === 'ar' ? 'غير مسجلة' : 'Not recorded')}</span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="w-3.5 h-3.5" />

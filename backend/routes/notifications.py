@@ -12,6 +12,103 @@ from utils.auth import resolve_branch_filter
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+def _subscription_item_window(item: dict) -> tuple:
+    """Return an invoice item's normalized subscription date window."""
+    start = item.get("start_date") or ""
+    end = item.get("end_date") or ""
+    period = item.get("period") or ""
+    if (not start or not end) and " - " in period:
+        parts = period.split(" - ")
+        if len(parts) == 2:
+            start = start or parts[0].strip()
+            end = end or parts[1].strip()
+    return start[:10], end[:10]
+
+
+def _renewal_evidence_by_activity(members: list, invoices: list) -> dict:
+    """Derive paid renewal evidence keyed by (member_id, activity_id).
+
+    Explicit renewal invoices are authoritative.  Ordinary invoices count only
+    when their item is a later paid period following an earlier paid period for
+    the same member and activity.  This deliberately leaves a member's initial
+    purchase unclassified.  Per-item member ids take precedence so family
+    invoices cannot leak one member's renewal onto another.
+    """
+    member_branches = {
+        member.get("id"): member.get("branch_id")
+        for member in members
+        if member.get("id")
+    }
+    periods = {}
+    for invoice in invoices:
+        if invoice.get("status") != "paid":
+            continue
+        invoice_branch = invoice.get("branch_id")
+        invoice_mid = invoice.get("member_id")
+        for item in invoice.get("items") or []:
+            if item.get("is_product"):
+                continue
+            member_id = item.get("member_id") or invoice_mid
+            activity_id = item.get("activity_id")
+            if not member_id or not activity_id or member_id not in member_branches:
+                continue
+            # Evidence must belong to the same branch as the member.  Requiring
+            # equality also keeps legacy branchless documents isolated from
+            # branch-owned members.
+            if invoice_branch != member_branches[member_id]:
+                continue
+            start, end = _subscription_item_window(item)
+            if not start or not end:
+                continue
+            periods.setdefault((member_id, activity_id), []).append({
+                "start": start,
+                "end": end,
+                "invoice_id": invoice.get("id"),
+                "explicit": bool(invoice.get("is_renewal")),
+            })
+
+    evidence = {}
+    for key, rows in periods.items():
+        rows.sort(key=lambda row: (row["start"], row["end"], row["invoice_id"] or ""))
+        for index, row in enumerate(rows):
+            is_successive = any(
+                previous["start"] < row["start"]
+                and previous["end"] < row["end"]
+                for previous in rows[:index]
+            )
+            if row["explicit"] or is_successive:
+                evidence.setdefault(key, []).append(row)
+    return evidence
+
+
+def _matching_renewal_evidence(activity: dict, evidence_rows: list) -> Optional[dict]:
+    """Return evidence for the current or prepaid-next activity window."""
+    activity_start = (activity.get("start_date") or "")[:10]
+    activity_end = (activity.get("end_date") or "")[:10]
+    activity_source_id = activity.get("source_id")
+    if not activity_end:
+        return None
+    matches = []
+    for row in evidence_rows:
+        # A current period needs a trustworthy identity match.  Mere date
+        # overlap is insufficient: an older renewal can overlap the beginning
+        # of a later member activity and must not classify that later period.
+        matches_current = (
+            (activity_start and row["start"] == activity_start)
+            or (
+                activity_source_id
+                and row.get("invoice_id") == activity_source_id
+            )
+        )
+        is_prepaid_next = row["start"] > activity_end
+        if matches_current or is_prepaid_next:
+            matches.append((is_prepaid_next, row))
+    if not matches:
+        return None
+    # Prefer prepaid evidence, then the furthest paid-through period.
+    return max(matches, key=lambda pair: (pair[0], pair[1]["end"]))[1]
+
+
 # ── Daily-checks scheduler settings ────────────────────────────────────────
 # Singleton document in ``db.notifications_settings`` (key=``daily_checks``)
 # holding the hour-of-day (and optional minute) in Asia/Riyadh that the
@@ -898,6 +995,7 @@ async def get_expiring_subscriptions(
     days: int = 7,
     branch_filter: Optional[str] = None,
     include_expired: bool = True,
+    include_renewed: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     """Get list of subscriptions expiring within specified days.
@@ -924,14 +1022,10 @@ async def get_expiring_subscriptions(
     past_date = (today_dt - timedelta(days=90)).strftime("%Y-%m-%d")
     lower_bound = past_date if include_expired else today
 
-    query = {
-        "activities": {
-            "$elemMatch": {
-                "status": "active",
-                "end_date": {"$gte": lower_bound, "$lte": future_date},
-            }
-        }
-    }
+    activity_match = {"status": "active"}
+    if not include_renewed:
+        activity_match["end_date"] = {"$gte": lower_bound, "$lte": future_date}
+    query = {"activities": {"$elemMatch": activity_match}}
     # Branch scoping centralized via ``resolve_branch_filter``:
     # - Non-admins are always locked to their own branch (branch_filter is ignored).
     #   A non-admin without a branch_id is denied entirely (fail-closed).
@@ -946,9 +1040,46 @@ async def get_expiring_subscriptions(
         if effective_branch:
             query["branch_id"] = effective_branch
 
-    members = await db.members.find(query, {"_id": 0}).to_list(2000)
+    # Do not cap the expanded active-member candidate set: a fixed limit can
+    # silently drop urgent subscriptions depending on Mongo's natural order.
+    members = []
+    async for member in db.members.find(query, {"_id": 0}):
+        members.append(member)
 
     member_ids = [m["id"] for m in members if m.get("id")]
+
+    renewal_evidence = {}
+    if include_renewed and member_ids:
+        invoice_query = {
+            "status": "paid",
+            "$or": [
+                {"member_id": {"$in": member_ids}},
+                {"items.member_id": {"$in": member_ids}},
+            ],
+        }
+        scoped_branches = list({
+            member.get("branch_id") for member in members
+            if member.get("branch_id") is not None
+        })
+        has_branchless_member = any(
+            member.get("branch_id") is None for member in members
+        )
+        if scoped_branches and not has_branchless_member:
+            invoice_query["branch_id"] = (
+                scoped_branches[0]
+                if len(scoped_branches) == 1
+                else {"$in": scoped_branches}
+            )
+        paid_invoices = []
+        async for invoice in db.invoices.find(
+            invoice_query,
+            {
+                "_id": 0, "id": 1, "member_id": 1, "branch_id": 1,
+                "status": 1, "is_renewal": 1, "items": 1,
+            },
+        ):
+            paid_invoices.append(invoice)
+        renewal_evidence = _renewal_evidence_by_activity(members, paid_invoices)
 
     # Bulk-fetch each member's latest attendance date in one aggregation
     last_attendance_map: dict = {}
@@ -970,7 +1101,21 @@ async def get_expiring_subscriptions(
             if activity.get("status") != "active":
                 continue
             end_date = activity.get("end_date", "")
-            if not end_date or not (lower_bound <= end_date <= future_date):
+            in_normal_horizon = bool(
+                end_date and lower_bound <= end_date <= future_date
+            )
+            evidence = None
+            # Expired cards stay actionable expired cards.  Renewal evidence
+            # only changes classification while the member's active activity
+            # window itself has not ended.
+            if include_renewed and end_date >= today:
+                evidence = _matching_renewal_evidence(
+                    activity,
+                    renewal_evidence.get(
+                        (member.get("id"), activity.get("activity_id")), []
+                    ),
+                )
+            if not in_normal_horizon and not evidence:
                 continue
             try:
                 days_remaining = (datetime.strptime(end_date[:10], "%Y-%m-%d") - today_dt).days
@@ -981,10 +1126,13 @@ async def get_expiring_subscriptions(
                 "member_name": member.get("name_ar", member.get("name", "")),
                 "member_code": member.get("member_code", ""),
                 "phone": member.get("phone", ""),
+                "nationality": member.get("nationality", ""),
                 "branch_id": member.get("branch_id"),
                 "activity_id": activity.get("activity_id", ""),
                 "activity_name": activity.get("activity_name", ""),
-                "fee": activity.get("fee", 0),
+                # Preserve the distinction between a genuinely free
+                # subscription (0) and legacy data with no recorded price.
+                "fee": activity.get("fee"),
                 "coach_id": activity.get("coach_id", ""),
                 "level_id": activity.get("level_id", ""),
                 "schedule": activity.get("schedule", ""),
@@ -996,6 +1144,13 @@ async def get_expiring_subscriptions(
                 "days_remaining": days_remaining,
                 "last_attendance_date": last_attendance_map.get(member["id"]),
             })
+            if evidence:
+                expiring[-1]["_renewed"] = True
+                expiring[-1]["renewal_invoice_id"] = evidence.get("invoice_id")
+                if evidence["start"] > end_date:
+                    expiring[-1]["prepaid"] = True
+                    expiring[-1]["prepaid_start"] = evidence["start"]
+                    expiring[-1]["prepaid_end"] = evidence["end"]
 
     # ── Enrich with session usage (attended X of Y paid sessions) ──────────
     # Total = weeks in the ORIGINAL purchased window (paid invoice item dates

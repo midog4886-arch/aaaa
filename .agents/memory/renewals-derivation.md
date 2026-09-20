@@ -23,3 +23,16 @@ fallback `{paid_at: None}` (matches missing AND null) on `created_at`; skip
 same day (those are "new", not renewals). Refunds can't leak in: credit notes
 live in the separate `db.credit_notes`, and cancelling sets
 `status:"cancelled"`.
+
+## Renewals board policy
+
+The “تم التجديد” tab is not limited to renewals performed during the current
+page session. Include still-active renewed subscriptions paid through either
+the renewal page or ordinary invoices; an expired subscription returns to the
+expired group despite historical renewal evidence.
+
+**Why:** The owner expects a persistent follow-up classification across both
+payment entry points, not a temporary success list or a lifetime renewed flag.
+
+**How to apply:** Require paid renewal evidence, exclude initial purchases,
+and separate the current subscription deadline from future prepaid dates.
