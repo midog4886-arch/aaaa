@@ -338,7 +338,7 @@ async def _normalize_registration_request_rows(rows: list) -> list:
 
 
 async def _attach_phone_matched_members(rows: list, current_user: dict) -> list:
-    """Enrich auto-archives with current same-branch member matches.
+    """Enrich requests in every tab with current same-branch member matches.
 
     The relationship is deliberately resolved on every read rather than
     persisted on the request: a phone is only matching evidence, not durable
@@ -347,9 +347,7 @@ async def _attach_phone_matched_members(rows: list, current_user: dict) -> list:
     """
     candidates = [
         row for row in rows
-        if row.get("status") == "archived"
-        and row.get("archived_reason") == "member_phone_match_same_branch"
-        and row.get("branch_id")
+        if row.get("branch_id")
         and row.get("customer_phone")
     ]
     if not candidates or not await _can_open_members(current_user):

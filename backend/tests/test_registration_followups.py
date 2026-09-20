@@ -742,3 +742,17 @@ def test_archived_phone_member_matches_require_members_permission(database):
 
     assert "matching_members" not in rows[0]
     assert database.members.find_calls == []
+
+
+@pytest.mark.parametrize("status", ["pending", "processed", "rejected", "archived"])
+def test_member_links_available_for_every_request_status(database, status):
+    database.members.rows.extend([
+        {"id": "member", "branch_id": "b1", "phone": "+966501234567", "name": "Member"},
+        {"id": "other", "branch_id": "b2", "phone": "0501234567", "name": "Other"},
+    ])
+    rows = [request_doc(status=status)]
+    result = run(routes._attach_phone_matched_members(rows, {"is_admin": True}))
+    assert result[0]["matching_members"] == [
+        {"id": "member", "name": "Member", "code": ""},
+    ]
+    assert result[0]["status"] == status
