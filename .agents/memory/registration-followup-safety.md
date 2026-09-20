@@ -5,6 +5,12 @@ description: New-only authorization, phone-level contact limits and safe classif
 
 Only newly submitted public registration requests are authorized for automated follow-up. Existing requests must never be enrolled by a scheduler scan, date cutoff or backfill.
 
+Pending registration requests may be automatically archived on a normalized member-phone match in the same branch, including shared-family numbers; no invoice or waiting period is required.
+
+**Why:** The owner explicitly selected immediate same-branch phone matching after being told that siblings can share a guardian's phone. This authorizes archival, not inferred member/invoice linkage.
+
+**How to apply:** Preserve the request in the archive, stop its follow-up, and keep other branches and terminal request states unchanged. This does not authorize outreach to old requests.
+
 **Why:** The user explicitly chose “نفّذ للطلبات الجديدة فقط” to avoid contacting the old pending backlog.
 
 **How to apply:** Require enrollment explicitly written at creation. First follow-up is AFTER 24 hours, not within the first 24 hours; final is day three. Advance quiet-hour sends into 10:00–20:00 Riyadh and never catch up both on the same day.

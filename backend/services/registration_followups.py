@@ -23,6 +23,7 @@ _get_config = None
 _started = False
 
 STOP_STATUSES = {"processed", "rejected", "archived", "deleted"}
+MEMBER_PHONE_ARCHIVE_REASON = "member_phone_match_same_branch"
 STAFF_CONTACT_REASONS = {"contacted", "staff_contacted"}
 PRESERVE_ON_REQUEST_CLOSE = {
     "contacted", "staff_contacted", "opted_out", "customer_replied", "replied",
@@ -50,6 +51,129 @@ def normalize_phone(phone: str) -> str:
     elif digits.startswith("01") and len(digits) == 11:
         digits = "20" + digits[1:]
     return digits if 9 <= len(digits) <= 15 and not digits.startswith("0") else ""
+
+
+async def _cursor_rows(cursor) -> list:
+    """Consume the complete cursor; never silently truncate reconciliation."""
+    if hasattr(cursor, "__aiter__"):
+        return [row async for row in cursor]
+    return await cursor.to_list(length=None)
+
+
+async def member_phone_exists(branch_id: str, phone: str) -> bool:
+    """Compare canonical phones without relying on how legacy rows were formatted."""
+    normalized = normalize_phone(phone)
+    if _db is None or not normalized:
+        return False
+    members = await _cursor_rows(_db["members"].find(
+        {"branch_id": branch_id}, {"_id": 0, "phone": 1}
+    ))
+    return any(normalize_phone(member.get("phone")) == normalized for member in members)
+
+
+async def archive_pending_for_member(branch_id: str, phone: str, now=None) -> int:
+    """Persistently archive pending requests matching a member in the same branch.
+
+    Phone equality is canonical only; no invoice or member relationship is
+    invented.  The status predicate on each write protects terminal records
+    from a concurrent admin action.
+    """
+    normalized = normalize_phone(phone)
+    if _db is None or not normalized or not await member_phone_exists(branch_id, phone):
+        return 0
+    rows = await _cursor_rows(_db["registration_requests"].find(
+        {"branch_id": branch_id, "status": "pending"},
+        {"_id": 0, "id": 1, "customer_phone": 1, "followup_enrolled": 1},
+    ))
+    timestamp = (now or datetime.now(timezone.utc)).isoformat()
+    archived = 0
+    for row in rows:
+        if normalize_phone(row.get("customer_phone")) != normalized:
+            continue
+        values = {
+            "status": "archived",
+            "archived_from": "pending",
+            "archived_at": timestamp,
+            "archived_reason": MEMBER_PHONE_ARCHIVE_REASON,
+        }
+        if row.get("followup_enrolled"):
+            # Branch-local stop: a shared family phone in another branch must
+            # remain independent. Dispatch authorization also rechecks status.
+            values.update({
+                "followup_status": "stopped",
+                "followup_stop_reason": "request_closed",
+                "followup_stopped_at": timestamp,
+            })
+        result = await _db["registration_requests"].update_one(
+            {
+                "id": row["id"],
+                "branch_id": branch_id,
+                "customer_phone": row.get("customer_phone"),
+                "status": "pending",
+            },
+            {"$set": values},
+        )
+        if getattr(result, "matched_count", 0):
+            archived += 1
+    return archived
+
+
+async def reconcile_member_registration_requests(branch_id=None) -> int:
+    """Archive pending matches, optionally constrained to one authorized branch."""
+    if _db is None:
+        return 0
+    pending_query = {"status": "pending"}
+    if branch_id is not None:
+        pending_query["branch_id"] = branch_id
+    pending = await _cursor_rows(_db["registration_requests"].find(
+        pending_query,
+        {"_id": 0, "id": 1, "branch_id": 1, "customer_phone": 1,
+         "followup_enrolled": 1},
+    ))
+    if not pending:
+        return 0
+    pending_branches = list({row.get("branch_id") for row in pending})
+    members = await _cursor_rows(_db["members"].find(
+        {"branch_id": {"$in": pending_branches}},
+        {"_id": 0, "branch_id": 1, "phone": 1},
+    ))
+    phones_by_branch = {}
+    for member in members:
+        phone = normalize_phone(member.get("phone"))
+        if phone:
+            phones_by_branch.setdefault(member.get("branch_id"), set()).add(phone)
+    if not phones_by_branch:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    archived = 0
+    for row in pending:
+        phone = normalize_phone(row.get("customer_phone"))
+        if not phone or phone not in phones_by_branch.get(row.get("branch_id"), set()):
+            continue
+        values = {
+            "status": "archived",
+            "archived_from": "pending",
+            "archived_at": now,
+            "archived_reason": MEMBER_PHONE_ARCHIVE_REASON,
+        }
+        if row.get("followup_enrolled"):
+            values.update({
+                "followup_status": "stopped",
+                "followup_stop_reason": "request_closed",
+                "followup_stopped_at": now,
+            })
+        result = await _db["registration_requests"].update_one(
+            {
+                "id": row["id"],
+                "branch_id": row.get("branch_id"),
+                "customer_phone": row.get("customer_phone"),
+                "status": "pending",
+            },
+            {"$set": values},
+        )
+        if getattr(result, "matched_count", 0):
+            archived += 1
+    return archived
 
 
 def enrollment_fields(now=None) -> dict:
@@ -368,6 +492,9 @@ async def _reconcile_outbound_observations(item: dict, outcome: str) -> bool:
 
 
 async def schedule_due():
+    # The existing worker is also the recovery path for members imported or
+    # created through older flows which cannot invoke the lifecycle hook.
+    await reconcile_member_registration_requests()
     rows = await _db["registration_requests"].find({
         "followup_enrolled": True,
         "followup_status": {"$in": ["scheduled", "first_sent", "blocked"]},

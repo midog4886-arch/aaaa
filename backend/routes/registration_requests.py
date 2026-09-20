@@ -74,6 +74,19 @@ async def _can_view_registration_request_phones(current_user: dict) -> bool:
     return "member-phones" in ((user_doc or {}).get("permissions") or [])
 
 
+async def _can_open_members(current_user: dict) -> bool:
+    """Keep member identity links behind the Members page permission."""
+    if current_user.get("is_admin", False):
+        return True
+    user_id = current_user.get("user_id") or current_user.get("id")
+    if not user_id:
+        return False
+    user_doc = await db.users.find_one(
+        {"id": user_id}, {"_id": 0, "permissions": 1}
+    )
+    return "members" in ((user_doc or {}).get("permissions") or [])
+
+
 def _timestamp_value(value):
     """Return a JSON-safe timestamp without inventing one for old data."""
     if isinstance(value, datetime):
@@ -324,6 +337,61 @@ async def _normalize_registration_request_rows(rows: list) -> list:
     return normalized
 
 
+async def _attach_phone_matched_members(rows: list, current_user: dict) -> list:
+    """Enrich auto-archives with current same-branch member matches.
+
+    The relationship is deliberately resolved on every read rather than
+    persisted on the request: a phone is only matching evidence, not durable
+    member or invoice identity. All candidate members are loaded in one query
+    so shared family numbers can return every sibling without an N+1 lookup.
+    """
+    candidates = [
+        row for row in rows
+        if row.get("status") == "archived"
+        and row.get("archived_reason") == "member_phone_match_same_branch"
+        and row.get("branch_id")
+        and row.get("customer_phone")
+    ]
+    if not candidates or not await _can_open_members(current_user):
+        return rows
+
+    from services.registration_followups import normalize_phone
+
+    request_keys = {
+        (row.get("branch_id"), normalize_phone(row.get("customer_phone")))
+        for row in candidates
+    }
+    request_keys = {key for key in request_keys if key[1]}
+    if not request_keys:
+        return rows
+
+    branch_ids = list({branch_id for branch_id, _phone in request_keys})
+    members = await db.members.find(
+        {"branch_id": {"$in": branch_ids}},
+        {
+            "_id": 0, "id": 1, "name": 1, "name_ar": 1,
+            "member_code": 1, "branch_id": 1, "phone": 1,
+        },
+    ).to_list(10000)
+    members_by_key = {}
+    for member in members:
+        key = (member.get("branch_id"), normalize_phone(member.get("phone")))
+        if not key[1] or key not in request_keys or not member.get("id"):
+            continue
+        members_by_key.setdefault(key, []).append({
+            "id": member["id"],
+            "name": member.get("name_ar") or member.get("name") or "",
+            "code": member.get("member_code") or "",
+        })
+
+    for row in candidates:
+        key = (row.get("branch_id"), normalize_phone(row.get("customer_phone")))
+        matches = members_by_key.get(key)
+        if matches:
+            row["matching_members"] = matches
+    return rows
+
+
 def _academy_name() -> str:
     """Public display name of the current tenant (resolved by middleware from
     X-Tenant-Slug / subdomain). Only the name is exposed on public pages."""
@@ -556,6 +624,10 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     followup_fields = await registration_followups.enrollment_fields_for_new(
         branch_id, phone
     )
+    member_already_exists = await registration_followups.member_phone_exists(
+        branch_id, phone
+    )
+    created_at = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
         "customer_name": name,
@@ -568,14 +640,23 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         "preferred_time": (payload.preferred_time or "").strip(),
         "notes": (payload.notes or "").strip(),
         "branch_id": branch_id,
-        "status": "pending",
+        "status": "archived" if member_already_exists else "pending",
         # Track where the request came from. "social_ad" = the all-branches
         # link shared in social-media ads; anything else falls back to the
         # normal public link so we never store arbitrary client-supplied values.
         "source": "social_ad" if (payload.source or "").strip().lower() in ("social", "social_ad") else "public_link",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at,
         **followup_fields,
     }
+    if member_already_exists:
+        doc.update({
+            "archived_from": "pending",
+            "archived_at": created_at,
+            "archived_reason": registration_followups.MEMBER_PHONE_ARCHIVE_REASON,
+            "followup_status": "stopped",
+            "followup_stop_reason": "request_closed",
+            "followup_stopped_at": created_at,
+        })
 
     # Marketer (affiliate) referral: attach the marketer if the link carried a
     # valid, active referral code so the supervisor sees it and the discount +
@@ -635,8 +716,12 @@ async def count_pending_registration_requests(
     # prefill-only flow never produced an invoice.  Include both candidate
     # states, then apply the same authoritative read normalization as the list
     # endpoint.  This deliberately performs no data migration.
-    query: dict = {"status": {"$in": ["pending", "processed"]}}
     effective_branch = resolve_branch_filter(current_user, branch_filter)
+    from services import registration_followups
+    await registration_followups.reconcile_member_registration_requests(
+        effective_branch
+    )
+    query: dict = {"status": {"$in": ["pending", "processed"]}}
     if effective_branch:
         query["branch_id"] = effective_branch
     rows = await db.registration_requests.find(query, {"_id": 0}).to_list(2000)
@@ -652,8 +737,12 @@ async def list_registration_requests(
     current_user: dict = Depends(get_current_user),
     search: Optional[str] = None,
 ):
-    query: dict = {}
     effective_branch = resolve_branch_filter(current_user, branch_filter)
+    from services import registration_followups
+    await registration_followups.reconcile_member_registration_requests(
+        effective_branch
+    )
+    query: dict = {}
     if effective_branch:
         query["branch_id"] = effective_branch
     followed_evidence = {}
@@ -688,6 +777,7 @@ async def list_registration_requests(
     if followed_evidence:
         for request in requests:
             _attach_followed_evidence(request, followed_evidence)
+    requests = await _attach_phone_matched_members(requests, current_user)
     return await _sanitize_registration_requests(requests, current_user)
 
 
@@ -731,6 +821,13 @@ async def update_registration_request(
             update["archived_from"] = req.get("status") or "pending"
         update["archived_at"] = datetime.now(timezone.utc).isoformat()
     await db.registration_requests.update_one({"id": req_id}, {"$set": update})
+    if payload.status == "pending":
+        # Restoring is allowed, but policy immediately rearchives it while the
+        # same normalized phone still belongs to this branch.
+        from services import registration_followups
+        await registration_followups.archive_pending_for_member(
+            req.get("branch_id"), req.get("customer_phone")
+        )
     if payload.status in {"processed", "rejected", "archived"}:
         from services import registration_followups
         await registration_followups.stop_request(req, "request_closed")

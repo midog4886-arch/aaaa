@@ -1816,6 +1816,18 @@ async def create_registration_form(
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             await db.members.insert_one(new_member)
+            try:
+                from services import registration_followups
+                await registration_followups.archive_pending_for_member(
+                    branch_id, new_member.get("phone")
+                )
+            except Exception as exc:
+                # Do not turn a committed member insert into a retry/duplicate;
+                # the registration follow-up scheduler reconciles it safely.
+                logger.warning(
+                    "Registration request archival after legacy member creation failed: %s",
+                    type(exc).__name__,
+                )
     
     # Update the registration form with member_id and member_code
     if member_id:

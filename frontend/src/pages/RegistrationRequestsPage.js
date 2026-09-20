@@ -11,7 +11,7 @@ import { getPublicBaseUrl } from '../utils/publicUrl';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import RegistrationFollowup from '../components/RegistrationFollowup';
-import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download, Search, X, Archive, ArchiveRestore } from 'lucide-react';
+import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download, Search, X, Archive, ArchiveRestore, ExternalLink } from 'lucide-react';
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'قيد الانتظار' },
@@ -76,6 +76,9 @@ export const RegistrationRequestsPage = () => {
 
   const canViewPhones = Boolean(
     isAdmin || (user?.permissions || []).includes('member-phones')
+  );
+  const canViewMembers = Boolean(
+    isAdmin || (user?.permissions || []).includes('members')
   );
 
   const formatFollowupTimestamp = (value) => {
@@ -266,6 +269,7 @@ export const RegistrationRequestsPage = () => {
           <strong>متابعة هادئة للطلبات الجديدة فقط:</strong> رسالة بعد 24 ساعة وأخرى أخيرة بعد 3 أيام،
           بين 10 صباحاً و8 مساءً بتوقيت السعودية. تتوقف عند الرد أو المعالجة أو الأرشفة.
           عند التواصل من خارج النظام، اضغط «تم التواصل» لإيقاف المتابعة. فتح رابط واتساب وحده لا يُعدّ تأكيداً للتواصل.
+          <p className="mt-1">يُؤرشف الطلب تلقائياً إذا كان رقم الجوال مسجلاً لدى عضو في نفس الفرع، دون انتظار أو اشتراط فاتورة.</p>
         </div>
         {showLink && (
           <Card className="mb-5 border-emerald-200">
@@ -446,6 +450,11 @@ export const RegistrationRequestsPage = () => {
                         {(() => { const b = STATUS_BADGE[req.status] || STATUS_BADGE.pending; return (
                           <span className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${b.cls}`}>{b.label}</span>
                         ); })()}
+                        {req.status === 'archived' && req.archived_reason === 'member_phone_match_same_branch' && (
+                          <span className="text-[11px] rounded-full px-2 py-0.5 bg-amber-50 text-amber-800">
+                            أُرشف تلقائياً: الرقم موجود لدى عضو في نفس الفرع
+                          </span>
+                        )}
                         {req.followup_staff_contacted && (
                           <span
                             className="text-[11px] rounded-full px-2 py-0.5 font-medium bg-sky-100 text-sky-700 inline-flex items-center gap-1"
@@ -498,6 +507,26 @@ export const RegistrationRequestsPage = () => {
                         {(req.preferred_days || []).length > 0 && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{(req.preferred_days || []).join('، ')}</span>}
                         {req.preferred_time && <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{req.preferred_time}</span>}
                       </div>
+                      {canViewMembers && (req.matching_members || []).length > 0 && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2" data-testid={`matching-members-${req.id}`}>
+                          <span className="text-xs text-gray-500">العضو الموجود:</span>
+                          {req.matching_members.map(member => (
+                            <Button
+                              key={member.id}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 border-amber-300 text-amber-800 hover:bg-amber-50"
+                              onClick={() => navigate(`/admin/members?focus=${encodeURIComponent(member.id)}`)}
+                              data-testid={`open-matching-member-${member.id}`}
+                            >
+                              {member.name || member.code || 'عضو'}
+                              {member.code && member.name ? ` (${member.code})` : ''}
+                              <ExternalLink className="w-3 h-3" />
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                       {req.notes && <p className="mt-2 text-xs text-gray-500 bg-gray-50 rounded p-2">{req.notes}</p>}
                       <p className="mt-2 text-[11px] text-gray-400">{new Date(req.created_at).toLocaleString('ar-EG')}</p>
                     </div>

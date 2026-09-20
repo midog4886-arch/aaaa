@@ -50,6 +50,7 @@ class Cursor:
 class Collection:
     def __init__(self, rows=()):
         self.rows = [deepcopy(row) for row in rows]
+        self.find_calls = []
 
     async def create_index(self, *_args, **_kwargs):
         return None
@@ -59,10 +60,14 @@ class Collection:
         return deepcopy(row) if row else None
 
     def find(self, query, *_args):
+        self.find_calls.append(deepcopy(query))
         return Cursor(row for row in self.rows if matches(row, query))
 
     async def insert_one(self, row):
         self.rows.append(deepcopy(row))
+
+    async def count_documents(self, query):
+        return sum(1 for row in self.rows if matches(row, query))
 
     async def update_one(self, query, update, upsert=False):
         row = next((row for row in self.rows if matches(row, query)), None)
@@ -590,3 +595,150 @@ def test_archived_request_stays_archived_during_read_normalization(database):
         status="pending",
         current_user={"is_admin": True},
     )) == []
+
+
+def test_member_phone_reconciliation_archives_only_pending_same_branch(database):
+    database.members.rows.extend([
+        {"id": "m1", "branch_id": "b1", "phone": "٠٠٩٦٦ ٥٠ ١٢٣ ٤٥٦٧"},
+        {"id": "m2", "branch_id": "b2", "phone": "0509999999"},
+    ])
+    database.registration_requests.rows.extend([
+        request_doc(id="same-branch", customer_phone="+966-50-123-4567"),
+        request_doc(id="other-branch", branch_id="b2",
+                    customer_phone="٠٥٠١٢٣٤٥٦٧"),
+        request_doc(id="already-rejected", status="rejected",
+                    customer_phone="0501234567"),
+    ])
+
+    assert run(followups.reconcile_member_registration_requests()) == 1
+    by_id = {row["id"]: row for row in database.registration_requests.rows}
+    archived = by_id["same-branch"]
+    assert archived["status"] == "archived"
+    assert archived["archived_from"] == "pending"
+    assert archived["archived_reason"] == "member_phone_match_same_branch"
+    assert archived["followup_status"] == "stopped"
+    assert by_id["other-branch"]["status"] == "pending"
+    assert by_id["other-branch"]["followup_status"] == "scheduled"
+    assert by_id["already-rejected"]["status"] == "rejected"
+
+
+def test_restore_rearchives_while_member_phone_match_remains(database):
+    database.members.rows.append({
+        "id": "m1", "branch_id": "b1", "phone": "+966501234567"
+    })
+    database.registration_requests.rows.append(request_doc(
+        status="archived",
+        archived_from="pending",
+        archived_reason="member_phone_match_same_branch",
+    ))
+    run(routes.update_registration_request(
+        "r1",
+        routes.RegistrationRequestUpdate(status="pending"),
+        {"is_admin": False, "branch_id": "b1"},
+    ))
+    row = database.registration_requests.rows[0]
+    assert row["status"] == "archived"
+    assert row["archived_reason"] == "member_phone_match_same_branch"
+
+
+def test_public_request_is_immediately_archived_when_branch_member_matches(database):
+    database.branches.rows.append({"id": "b1"})
+    database.members.rows.append({
+        "id": "m1", "branch_id": "b1", "phone": "00966 50 123 4567"
+    })
+    payload = routes.PublicRegistrationCreate(
+        customer_name="طفل جديد",
+        customer_phone="٠٥٠١٢٣٤٥٦٧",
+        age=8,
+        nationality="سعودي",
+        expected_start_date="2026-02-01",
+    )
+    result = run(routes.public_create_registration("b1", payload))
+    assert result["success"] is True
+    row = database.registration_requests.rows[0]
+    assert row["status"] == "archived"
+    assert row["archived_reason"] == "member_phone_match_same_branch"
+    assert row["followup_status"] == "stopped"
+    assert "invoice_id" not in row
+    assert "member_id" not in row
+
+
+def test_non_admin_list_reconciles_only_authorized_branch(database):
+    database.members.rows.extend([
+        {"id": "m1", "branch_id": "b1", "phone": "0501234567"},
+        {"id": "m2", "branch_id": "b2", "phone": "0509999999"},
+    ])
+    database.registration_requests.rows.extend([
+        request_doc(id="b1-request", branch_id="b1"),
+        request_doc(id="b2-request", branch_id="b2",
+                    customer_phone="0509999999",
+                    followup_normalized_phone="966509999999"),
+    ])
+    assert run(routes.list_registration_requests(
+        status="pending",
+        current_user={"is_admin": False, "branch_id": "b1"},
+    )) == []
+    by_id = {row["id"]: row for row in database.registration_requests.rows}
+    assert by_id["b1-request"]["status"] == "archived"
+    assert by_id["b2-request"]["status"] == "pending"
+
+
+def test_archived_phone_match_returns_all_current_same_branch_members_in_one_query(database):
+    database.registration_requests.rows.append(request_doc(
+        id="legacy-archive",
+        status="archived",
+        archived_from="pending",
+        archived_reason="member_phone_match_same_branch",
+    ))
+    database.members.rows.extend([
+        {
+            "id": "m1", "branch_id": "b1", "phone": "+966 50 123 4567",
+            "name_ar": "سارة", "name": "Sarah", "member_code": "M-1",
+        },
+        {
+            "id": "m2", "branch_id": "b1", "phone": "٠٥٠١٢٣٤٥٦٧",
+            "name": "Mohammed", "member_code": "M-2",
+        },
+        {
+            "id": "wrong-branch", "branch_id": "b2", "phone": "0501234567",
+            "name": "Private", "member_code": "M-X",
+        },
+    ])
+
+    rows = run(routes.list_registration_requests(
+        status="archived",
+        current_user={"is_admin": True},
+    ))
+
+    assert rows[0]["matching_members"] == [
+        {"id": "m1", "name": "سارة", "code": "M-1"},
+        {"id": "m2", "name": "Mohammed", "code": "M-2"},
+    ]
+    assert set(rows[0]["matching_members"][0]) == {"id", "name", "code"}
+    assert len(database.members.find_calls) == 1
+    assert "member_id" not in database.registration_requests.rows[0]
+
+
+def test_archived_phone_member_matches_require_members_permission(database):
+    database.registration_requests.rows.append(request_doc(
+        status="archived",
+        archived_reason="member_phone_match_same_branch",
+    ))
+    database.members.rows.append({
+        "id": "m1", "branch_id": "b1", "phone": "0501234567",
+        "name": "Sarah",
+    })
+    database.users.rows.append({
+        "id": "staff-1", "permissions": ["invoices", "member-phones"],
+    })
+
+    rows = run(routes.list_registration_requests(
+        status="archived",
+        current_user={
+            "is_admin": False, "user_id": "staff-1", "branch_id": "b1",
+            "permissions": ["invoices", "member-phones"],
+        },
+    ))
+
+    assert "matching_members" not in rows[0]
+    assert database.members.find_calls == []

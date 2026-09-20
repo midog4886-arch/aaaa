@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
@@ -14,6 +15,7 @@ from utils.cache import cache_invalidate, invalidate_dashboard_caches
 from utils.phone import normalize_phone, phone_lookup_values
 
 router = APIRouter(prefix="/members", tags=["members"])
+logger = logging.getLogger(__name__)
 
 # ============ MODELS ============
 
@@ -522,6 +524,18 @@ async def _create_member_core(member: MemberCreate, current_user: dict) -> Membe
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.members.insert_one(member_doc)
+    try:
+        from services import registration_followups
+        await registration_followups.archive_pending_for_member(
+            branch_id, member_doc.get("phone")
+        )
+    except Exception as exc:
+        # Member creation is authoritative; the scheduler safely retries the
+        # derived registration-request archival.
+        logger.warning(
+            "Registration request archival after member creation failed: %s",
+            type(exc).__name__,
+        )
     invalidate_dashboard_caches()
     try:
         await db.push_subscriptions.update_many(

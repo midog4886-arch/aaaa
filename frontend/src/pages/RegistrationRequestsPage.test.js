@@ -8,7 +8,8 @@ jest.mock('../contexts/AuthContext', () => ({
     user: { is_admin: true, permissions: ['member-phones'] },
   }),
 }));
-jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
 jest.mock('../components/Layout', () => ({
   Layout: ({ children }) => <div>{children}</div>,
 }));
@@ -38,6 +39,7 @@ jest.mock('lucide-react', () => {
     FileText: Icon, Link2: Icon, Copy: Icon, QrCode: Icon, Inbox: Icon,
     UserPlus: Icon, Globe: Icon, CheckCircle2: Icon, Megaphone: Icon,
     Download: Icon, Search: Icon, X: Icon, Archive: Icon, ArchiveRestore: Icon,
+    ExternalLink: Icon,
   };
 });
 jest.mock('../services/api', () => ({
@@ -80,4 +82,32 @@ test('loads the server-filtered followed-up tab and shows both evidence badges',
     expect(screen.getByTestId('badge-followup-staff-request-both')).toBeTruthy();
     expect(screen.getByTestId('badge-followup-automatic-request-both')).toBeTruthy();
   });
+});
+
+test('offers every same-phone member choice and opens the selected member', async () => {
+  branchesAPI.getAll.mockResolvedValue({ data: [] });
+  registrationRequestsAPI.getAll.mockImplementation(({ status }) => Promise.resolve({
+    data: status === 'archived' ? [{
+      id: 'archived-family',
+      status: 'archived',
+      archived_reason: 'member_phone_match_same_branch',
+      customer_name: 'ولي الأمر',
+      customer_phone: '0501234567',
+      created_at: '2026-01-03T09:00:00Z',
+      matching_members: [
+        { id: 'member-one', name: 'سارة', code: 'M-1' },
+        { id: 'member/two', name: 'محمد', code: 'M-2' },
+      ],
+    }] : [],
+  }));
+
+  render(<RegistrationRequestsPage />);
+  fireEvent.click(screen.getByTestId('req-status-filter-archived'));
+
+  await waitFor(() => {
+    expect(screen.getByTestId('open-matching-member-member-one')).toBeTruthy();
+    expect(screen.getByTestId('open-matching-member-member/two')).toBeTruthy();
+  });
+  fireEvent.click(screen.getByTestId('open-matching-member-member/two'));
+  expect(mockNavigate).toHaveBeenCalledWith('/admin/members?focus=member%2Ftwo');
 });
