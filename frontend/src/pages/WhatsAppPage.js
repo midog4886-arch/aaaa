@@ -3532,7 +3532,7 @@ export default function WhatsAppPage() {
                 )}
                 {!selectedCloudThread && (
                   <>
-                    <div className="relative w-full sm:w-72">
+                    <div className="relative w-full sm:w-80">
                       {loadingCloudInbox
                         ? <Loader2 className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                         : <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
@@ -3541,7 +3541,7 @@ export default function WhatsAppPage() {
                         onChange={event => setCloudSearchInput(event.target.value.slice(0, 100))}
                         placeholder={t('ابحث بالاسم أو الرقم أو نص الرسالة', 'Search name, phone, or message')}
                         aria-label={t('البحث في محادثات واتساب', 'Search WhatsApp conversations')}
-                        className="ps-9 pe-9"
+                        className="ps-9 pe-9 text-base md:text-base"
                       />
                       {cloudSearchInput && (
                         <button
@@ -3557,7 +3557,7 @@ export default function WhatsAppPage() {
                         </button>
                       )}
                     </div>
-                    <div role="tablist" className="flex flex-wrap items-center gap-1 rounded-lg border p-1">
+                    <div role="tablist" className="flex flex-wrap items-center gap-1 rounded-lg border p-1 [&>button]:text-base">
                       <Button
                         type="button"
                         aria-label={t('الكل — الفرع الحالي', 'All — current branch')}
@@ -3598,7 +3598,7 @@ export default function WhatsAppPage() {
                       </Button>
                     </div>
                     <Select value={cloudBranchFilter} onValueChange={setCloudBranchFilter}>
-                      <SelectTrigger className="w-56">
+                      <SelectTrigger className="w-full sm:w-64 text-base">
                         <SelectValue placeholder={t('كل الفروع', 'All branches')} />
                       </SelectTrigger>
                       <SelectContent>
@@ -3648,7 +3648,7 @@ export default function WhatsAppPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="mb-4 text-xs text-muted-foreground">
+                  <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
                     {t(
                       'فتح المحادثة يحدّث حالة القراءة فقط؛ «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
                       'Opening a conversation updates read status only; “Needs reply” tracks inbound messages that have not received a reply.'
@@ -3685,27 +3685,27 @@ export default function WhatsAppPage() {
                             conversation.unread_count > 0 ? 'border-green-400 bg-green-50/60' : 'border-border'
                           }`}
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0 w-full sm:flex-1">
                               <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                                 <Phone className="w-5 h-5 text-green-700" />
                               </div>
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold truncate">{conversation.contact_name || conversation.phone}</p>
-                                  <Badge variant="secondary" className="text-xs gap-1">
+                                  <p className="text-xl leading-7 font-semibold break-words min-w-0">{conversation.contact_name || conversation.phone}</p>
+                                  <Badge variant="secondary" className="text-sm gap-1">
                                     <Building2 className="w-3 h-3" />{conversation.branch_name}
                                   </Badge>
-                                  <Badge variant="outline" className="text-[10px]">{conversation.provider === 'waha' ? 'WAHA' : conversation.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
+                                  <Badge variant="outline" className="text-xs">{conversation.provider === 'waha' ? 'WAHA' : conversation.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
                                    {conversation.needs_reply && (
-                                     <Badge variant="secondary" className="text-[10px]">
+                                     <Badge variant="secondary" className="text-sm">
                                        {t('تحتاج ردًا', 'Needs reply')}
                                      </Badge>
                                    )}
                                 </div>
                                  <span
                                    dir="ltr"
-                                   className={`inline-block text-xs ${cloudPhoneClassName(conversation.member_link || conversation.member_phone_match)}`}
+                                   className={`inline-block text-base ${cloudPhoneClassName(conversation.member_link || conversation.member_phone_match)}`}
                                    data-testid="cloud-conversation-phone"
                                  >
                                   {conversation.phone}
@@ -3717,7 +3717,7 @@ export default function WhatsAppPage() {
                                    compact
                                  />
                                   <div
-                                   className="text-sm text-muted-foreground truncate mt-1"
+                                   className="text-2xl leading-9 text-foreground break-words line-clamp-2 mt-1"
                                    data-testid={campaignConversation ? `campaign-conversation-preview-${conversation.id}` : undefined}
                                  >
                                    {campaignConversation ? (
@@ -3740,22 +3740,22 @@ export default function WhatsAppPage() {
                                   </div>
                               </div>
                             </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
+                            <div className="flex sm:flex-col items-end gap-2 shrink-0 self-end sm:self-auto sm:max-w-40">
                                {campaignConversation ? (
                                  campaignTime && (
                                    <span
-                                     className="text-xs text-muted-foreground text-end"
+                                     className="text-sm text-muted-foreground text-end"
                                      data-testid={`campaign-conversation-time-${conversation.id}`}
                                    >
                                      {campaignTimestampLabel(campaignTime.kind, t)}: {formatCloudTimestamp(campaignTime.value, isRTL)}
                                    </span>
                                  )
                                ) : (
-                                 <span className="text-xs text-muted-foreground">
+                                 <span className="text-sm text-muted-foreground">
                                    {formatCloudTimestamp(conversation.last_message_at, isRTL)}
                                  </span>
                                )}
-                              {conversation.unread_count > 0 && <Badge className="bg-green-600">{conversation.unread_count}</Badge>}
+                              {conversation.unread_count > 0 && <Badge className="bg-green-600 text-sm">{conversation.unread_count}</Badge>}
                             </div>
                           </div>
                           </button>
@@ -3883,7 +3883,7 @@ export default function WhatsAppPage() {
                             </div>
                           )}
                           {typeof message.body === 'string' && message.body ? (
-                            <p className="text-sm whitespace-pre-wrap break-words">{message.body}</p>
+                            <p className="text-2xl leading-9 whitespace-pre-wrap break-words">{message.body}</p>
                           ) : message.type === 'text' && !message.media_id && !message.media_storage_id ? (
                             <div className="space-y-1">
                               <p className="text-sm text-muted-foreground">
