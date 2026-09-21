@@ -39,6 +39,14 @@ test('preserves the existing all and unread inbox query behavior', () => {
   );
 });
 
+test('adds encoded search while preserving inbox filters', () => {
+  whatsappAPI.getCloudInboxConversations('branch-a', true, false, 'رسالة & اسم');
+
+  expect(axios.get).toHaveBeenCalledWith(
+    '/api/whatsapp/cloud-inbox/conversations?branch_filter=branch-a&unread_only=true&search=%D8%B1%D8%B3%D8%A7%D9%84%D8%A9+%26+%D8%A7%D8%B3%D9%85',
+  );
+});
+
 test('sends cloud inbox voice as the documented multipart audio field', () => {
   const formData = new FormData();
   formData.append('audio', new Blob(['voice'], { type: 'audio/webm;codecs=opus' }));

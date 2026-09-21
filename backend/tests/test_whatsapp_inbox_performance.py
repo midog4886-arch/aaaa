@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import re
 
 import pytest
 from fastapi import HTTPException
@@ -37,6 +38,15 @@ def _matches(row, query):
             if not (row.get(key) is not None and row.get(key) <= value["$lte"]):
                 return False
             continue
+        if isinstance(value, dict) and "$ne" in value:
+            if row.get(key) == value["$ne"]:
+                return False
+            continue
+        if isinstance(value, dict) and "$regex" in value:
+            flags = re.IGNORECASE if "i" in value.get("$options", "") else 0
+            if not re.search(value["$regex"], str(row.get(key) or ""), flags):
+                return False
+            continue
         if row.get(key) != value:
             return False
     return True
@@ -67,6 +77,7 @@ class _Collection:
         self.find_queries = []
         self.find_projections = []
         self.find_one_queries = []
+        self.distinct_queries = []
 
     async def find_one(self, query, projection=None):
         self.find_one_queries.append(copy.deepcopy(query))
@@ -77,6 +88,13 @@ class _Collection:
 
     async def count_documents(self, query):
         return sum(_matches(row, query) for row in self.rows)
+
+    async def distinct(self, key, query):
+        self.distinct_queries.append((key, copy.deepcopy(query)))
+        return list({
+            row.get(key) for row in self.rows
+            if _matches(row, query) and row.get(key) is not None
+        })
 
     async def update_one(self, query, update, upsert=False):
         for row in self.rows:
@@ -277,6 +295,69 @@ def test_cloud_list_runs_cloud_and_campaign_reads_concurrently(monkeypatch):
 
     assert result == {
         "conversations": [], "unread_count": 0, "needs_reply_count": 0,
+    }
+
+
+def test_cloud_search_uses_scoped_safe_message_history_and_skips_campaign_queue(monkeypatch):
+    db = _Database(conversations=[
+        {
+            "id": "branch-a:history", "branch_id": "branch-a",
+            "phone": "966500000001", "contact_name": "Ahmed",
+            "last_message": "new preview", "unread_count": 0,
+            "last_message_at": "2026-03-01T10:00:00+00:00",
+            "needs_reply": False,
+        },
+        {
+            "id": "branch-b:history", "branch_id": "branch-b",
+            "phone": "966500000002", "contact_name": "Other",
+            "last_message": "other", "unread_count": 4,
+            "last_message_at": "2026-03-01T11:00:00+00:00",
+            "needs_reply": True,
+        },
+    ], branches=[{"id": "branch-a", "name": "Branch A"}])
+    db["whatsapp_cloud_messages"].rows.extend([
+        {
+            "conversation_id": "branch-a:history", "branch_id": "branch-a",
+            "body": "old literal a.b message",
+        },
+        {
+            "conversation_id": "branch-a:private", "branch_id": "branch-a",
+            "body": "a.b", "view_once": True,
+        },
+        {
+            "conversation_id": "branch-a:deleted", "branch_id": "branch-a",
+            "body": "a.b", "archive_status": "deleted",
+        },
+        {
+            "conversation_id": "branch-b:history", "branch_id": "branch-b",
+            "body": "a.b",
+        },
+    ])
+    monkeypatch.setattr(mod, "_db", db)
+
+    async def campaigns_should_not_run(*_args):
+        raise AssertionError("queued campaign projections are not searchable")
+
+    monkeypatch.setattr(mod.campaign_inbox, "conversations", campaigns_should_not_run)
+    result = run(mod.list_cloud_inbox_conversations(
+        branch_filter="branch-a", search="a.b",
+        current_user={"is_admin": True},
+    ))
+
+    assert [row["id"] for row in result["conversations"]] == [
+        "branch-a:history",
+    ]
+    assert result["unread_count"] == 0
+    assert result["needs_reply_count"] == 0
+    distinct_key, message_query = db[
+        "whatsapp_cloud_messages"
+    ].distinct_queries[0]
+    assert distinct_key == "conversation_id"
+    assert message_query == {
+        "body": {"$regex": r"a\.b", "$options": "i"},
+        "view_once": {"$ne": True},
+        "archive_status": {"$ne": "deleted"},
+        "branch_id": "branch-a",
     }
 
 

@@ -62,6 +62,7 @@ CLOUD_CHAT_AUDIO_MAX_SECONDS = 120
 CLOUD_CHAT_AUDIO_DURATION_TOLERANCE = 0.25
 CLOUD_CHAT_AUDIO_PROBE_TIMEOUT = 15
 CLOUD_CHAT_MEDIA_CHUNK_SIZE = 1024 * 1024
+CLOUD_INBOX_SEARCH_MAX_LENGTH = 100
 BILINGUAL_ENGLISH_MARKER = "— English —"
 
 
@@ -5315,6 +5316,7 @@ async def list_cloud_inbox_conversations(
     current_user: dict = Depends(get_current_user),
     unread_only: bool = False,
     needs_reply_only: bool = False,
+    search: Optional[str] = None,
 ):
     _require_bulk_whatsapp_access(current_user)
     # Resolve the selected branch for both views.  In particular, unread must
@@ -5339,6 +5341,36 @@ async def list_cloud_inbox_conversations(
     if needs_reply_only:
         query["needs_reply"] = True
 
+    search_text = (search or "").strip()[:CLOUD_INBOX_SEARCH_MAX_LENGTH]
+    if search_text:
+        # Treat user input as plain text rather than a Mongo expression. Search
+        # message history separately, then apply the authorized conversation
+        # scope below; a message can therefore never widen branch access.
+        escaped_search = re.escape(search_text)
+        message_query = {
+            "body": {"$regex": escaped_search, "$options": "i"},
+            "view_once": {"$ne": True},
+            "archive_status": {"$ne": "deleted"},
+        }
+        if effective_branch:
+            message_query["branch_id"] = effective_branch
+        # ``distinct`` searches the whole stored history without loading message
+        # bodies into application memory. The final conversation read remains
+        # sorted and capped to the normal 200-row inbox page.
+        message_conversation_ids = [
+            value for value in await _db["whatsapp_cloud_messages"].distinct(
+                "conversation_id", message_query
+            )
+            if value
+        ]
+        identity_predicates = [
+            {"contact_name": {"$regex": escaped_search, "$options": "i"}},
+            {"phone": {"$regex": escaped_search, "$options": "i"}},
+        ]
+        if message_conversation_ids:
+            identity_predicates.append({"id": {"$in": message_conversation_ids}})
+        query["$or"] = identity_predicates
+
     # All regular polling reads are bounded.  The full scoped counts use
     # server-side aggregation/counting, not the 200-row response page.
     cloud_rows_request = (
@@ -5352,10 +5384,11 @@ async def list_cloud_inbox_conversations(
         **scope_query, "needs_reply": True,
     })
     unread_count_request = _scoped_cloud_unread_count(scope_query)
-    if unread_only or needs_reply_only:
+    if unread_only or needs_reply_only or search_text:
         # Campaign sends are outbound projections and always have
         # ``unread_count == 0`` and never resolve a human response. Keep them
-        # out of both focused views entirely.
+        # out of focused/search views entirely. In particular, search must not
+        # expose an unsent campaign queue projection as conversation history.
         gathered = await asyncio.gather(
             cloud_rows_request, needs_reply_count_request, unread_count_request,
             backfill_request,

@@ -1099,6 +1099,38 @@ test('refreshes the new inbox view list instead of polling the previously select
   expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(1);
 });
 
+test('debounces conversation history search and clears empty results', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  whatsappAPI.getCloudInboxConversations
+    .mockResolvedValueOnce({
+      data: { conversations: [conversation], unread_count: 0, needs_reply_count: 0 },
+    })
+    .mockResolvedValue({
+      data: { conversations: [], unread_count: 0, needs_reply_count: 0 },
+    });
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  render(<WhatsAppPage />);
+  await user.click(screen.getByRole('button', { name: /شات واتساب/ }));
+  await screen.findByText('أحمد');
+
+  const search = screen.getByRole('textbox', { name: 'البحث في محادثات واتساب' });
+  await user.type(search, 'رسالة قديمة');
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledTimes(1);
+  await waitFor(() => {
+    expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith(
+      'branch-a', false, false, 'رسالة قديمة',
+    );
+  });
+  expect(await screen.findByText('لا توجد نتائج مطابقة للبحث')).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'مسح البحث' }));
+  await waitFor(() => {
+    expect(whatsappAPI.getCloudInboxConversations).toHaveBeenLastCalledWith(
+      'branch-a', false,
+    );
+  });
+});
+
 test('pauses cloud inbox reads while hidden, refreshes on visible, and cleans up', async () => {
   jest.useFakeTimers();
   const WhatsAppPage = require('../WhatsAppPage').default;

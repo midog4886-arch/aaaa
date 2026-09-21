@@ -22,7 +22,7 @@ import {
   PhoneCall, Bell, Eye, Users, History, Clock, Phone,
   AlertTriangle, Building2, ChevronDown, ChevronUp, Megaphone, Gift,
   Info, Mail, ArrowRight, ArrowLeft, RefreshCcw, User, Filter, Trash2,
-  MessageCircle, CheckCircle,
+  MessageCircle, CheckCircle, Search, X,
   Paperclip,
 } from 'lucide-react';
 
@@ -523,6 +523,8 @@ export default function WhatsAppPage() {
   const [cloudCurrentUnreadCount, setCloudCurrentUnreadCount] = useState(0);
   const [cloudNeedsReplyCount, setCloudNeedsReplyCount] = useState(0);
   const [cloudInboxView, setCloudInboxView] = useState('all');
+  const [cloudSearchInput, setCloudSearchInput] = useState('');
+  const [cloudSearch, setCloudSearch] = useState('');
   const [cloudBranchFilter, setCloudBranchFilter] = useState(
     selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all'
   );
@@ -548,6 +550,8 @@ export default function WhatsAppPage() {
   cloudBranchFilterRef.current = cloudBranchFilter;
   const cloudInboxViewRef = useRef(cloudInboxView);
   cloudInboxViewRef.current = cloudInboxView;
+  const cloudSearchRef = useRef(cloudSearch);
+  cloudSearchRef.current = cloudSearch;
   if (cloudBranchesScopeRef.current !== cloudAuthScope) {
     if (cloudBranchesScopeRef.current !== null) cloudBranchesResetRef.current = true;
     cloudBranchesScopeRef.current = cloudAuthScope;
@@ -743,6 +747,7 @@ export default function WhatsAppPage() {
     branchFilter = cloudBranchFilterRef.current,
     unreadOnly = cloudInboxViewRef.current === 'unread',
     needsReplyOnly = cloudInboxViewRef.current === 'needs_reply',
+    search = cloudSearchRef.current,
   ) => {
     const isUnreadView = Boolean(unreadOnly);
     const isNeedsReplyView = Boolean(needsReplyOnly);
@@ -751,7 +756,8 @@ export default function WhatsAppPage() {
     // tab.
     const branchKey = branchFilter && branchFilter !== 'all' ? branchFilter : 'all';
     const viewKey = isNeedsReplyView ? 'needs_reply' : (isUnreadView ? 'unread' : 'all');
-    const requestKey = `${cloudAuthScope}:${viewKey}:${branchKey}`;
+    const searchKey = (search || '').trim().slice(0, 100);
+    const requestKey = `${cloudAuthScope}:${viewKey}:${branchKey}:${searchKey}`;
     const requestId = ++cloudInboxRequestRef.current;
     setLoadingCloudInbox(true);
 
@@ -760,6 +766,7 @@ export default function WhatsAppPage() {
       requestId === cloudInboxRequestRef.current
       && cloudAuthScope === cloudBranchesScopeRef.current
       && viewKey === cloudInboxViewRef.current
+      && searchKey === cloudSearchRef.current
       && branchKey === (
         cloudBranchFilterRef.current && cloudBranchFilterRef.current !== 'all'
           ? cloudBranchFilterRef.current
@@ -769,9 +776,15 @@ export default function WhatsAppPage() {
 
     try {
       if (!request) {
-        const inboxRequest = isNeedsReplyView
-          ? whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView, true)
-          : whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView);
+        const inboxRequest = searchKey
+          ? whatsappAPI.getCloudInboxConversations(
+            branchKey, isUnreadView, isNeedsReplyView, searchKey,
+          )
+          : (
+            isNeedsReplyView
+              ? whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView, true)
+              : whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView)
+          );
         const branchesRequest = branches.length
           ? Promise.resolve(branches)
           : loadCloudBranches();
@@ -1450,6 +1463,13 @@ export default function WhatsAppPage() {
   }, [activeTab]);
 
   useEffect(() => {
+    const timeout = setTimeout(() => {
+      setCloudSearch(cloudSearchInput.trim().slice(0, 100));
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [cloudSearchInput]);
+
+  useEffect(() => {
     if (activeTab !== 'cloud_inbox') return undefined;
     let interval = null;
     let needsInitialListLoad = true;
@@ -1469,6 +1489,7 @@ export default function WhatsAppPage() {
           cloudBranchFilterRef.current,
           cloudInboxViewRef.current === 'unread',
           cloudInboxViewRef.current === 'needs_reply',
+          cloudSearchRef.current,
         );
       } else {
         refreshCloudInbox();
@@ -1486,7 +1507,7 @@ export default function WhatsAppPage() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, cloudBranchFilter, cloudInboxView, cloudAuthScope]);
+  }, [activeTab, cloudBranchFilter, cloudInboxView, cloudAuthScope, cloudSearch]);
 
   useEffect(() => {
     const mediaScope = cloudMediaScopeRef.current;
@@ -3511,6 +3532,31 @@ export default function WhatsAppPage() {
                 )}
                 {!selectedCloudThread && (
                   <>
+                    <div className="relative w-full sm:w-72">
+                      {loadingCloudInbox
+                        ? <Loader2 className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                        : <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
+                      <Input
+                        value={cloudSearchInput}
+                        onChange={event => setCloudSearchInput(event.target.value.slice(0, 100))}
+                        placeholder={t('ابحث بالاسم أو الرقم أو نص الرسالة', 'Search name, phone, or message')}
+                        aria-label={t('البحث في محادثات واتساب', 'Search WhatsApp conversations')}
+                        className="ps-9 pe-9"
+                      />
+                      {cloudSearchInput && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCloudSearchInput('');
+                            setCloudSearch('');
+                          }}
+                          aria-label={t('مسح البحث', 'Clear search')}
+                          className="absolute end-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                     <div role="tablist" className="flex flex-wrap items-center gap-1 rounded-lg border p-1">
                       <Button
                         type="button"
@@ -3613,10 +3659,14 @@ export default function WhatsAppPage() {
                   ) : cloudConversations.length === 0 ? (
                     <div className="py-12 text-center text-muted-foreground">
                       <MessageCircle className="w-16 h-16 mx-auto mb-3 opacity-20" />
-                      <p>{t('لا توجد محادثات واتساب واردة بعد', 'No inbound WhatsApp conversations yet')}</p>
-                      <p className="text-xs mt-2">
-                         {t('تأكد من اتصال مزود واتساب وإعداد استقبال الرسائل لهذا الفرع.', 'Check the branch WhatsApp provider connection and inbound message setup.')}
-                      </p>
+                      <p>{cloudSearch
+                        ? t('لا توجد نتائج مطابقة للبحث', 'No conversations match your search')
+                        : t('لا توجد محادثات واتساب واردة بعد', 'No inbound WhatsApp conversations yet')}</p>
+                      {!cloudSearch && (
+                        <p className="text-xs mt-2">
+                          {t('تأكد من اتصال مزود واتساب وإعداد استقبال الرسائل لهذا الفرع.', 'Check the branch WhatsApp provider connection and inbound message setup.')}
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2">
