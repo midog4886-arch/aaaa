@@ -73,3 +73,11 @@ number of sessions paid for.
   `orig_end_by_source` / `orig_end_by_activity` store `(start, end)` tuples and
   `_process_subscription` takes `quota_start_date`; the `(source_id, start_date,
   …)` join paths don't need it (start is the join key there, so it's unshifted).
+
+## Purchased-period history is not attendance authorization
+
+Show distinct purchased periods in admin history even when the profile points to a later renewal; never broaden attendance eligibility to all displayed periods.
+
+**Why:** one activity can have several paid months. Activity-level display deduplication hides an intermediate month, but changing the shared quota guard to include historical/future cards could authorize attendance against the wrong purchase.
+
+**How to apply:** keep period history opt-in and read-only for non-profile or upcoming periods. Bind cards to exact owned invoice items, preserve original quota evidence, and let the linked current profile override stale effective dates after later freeze/off-schedule adjustments.

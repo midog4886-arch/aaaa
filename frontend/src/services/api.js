@@ -584,10 +584,10 @@ export const attendanceAPI = {
   getLevelsBoard: (params = {}) => axios.get(`${API}/attendance/levels-board`, { params }),
   getMemberReport: (memberId, params = {}) => axios.get(`${API}/attendance/member/${memberId}/report`, { params }),
   getActivityReport: (activityId, params = {}) => axios.get(`${API}/attendance/activity/${activityId}/report`, { params }),
-  getSessionQuota: (memberId, activityId) => {
+  getSessionQuota: (memberId, activityId, includePeriods = false) => {
     let url = `${API}/attendance/session-quota/${memberId}`;
     if (activityId) url += `?activity_id=${encodeURIComponent(activityId)}`;
-    return axios.get(url);
+    return axios.get(url, includePeriods ? { params: { include_periods: true } } : undefined);
   },
   getSessionQuotaAlerts: (branchFilter) => axios.get(`${API}/attendance/session-quota-alerts`, { params: { branch_filter: branchFilter } }),
   delete: (id) => axios.delete(`${API}/attendance/${id}`),

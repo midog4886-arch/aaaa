@@ -832,12 +832,149 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     return results
 
 
+async def get_member_subscription_history(member_id: str, activity_id: str = None, member: dict = None):
+    """Read-only purchased-period view. Never used by attendance/quota guards."""
+    today = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")
+    if member is None:
+        member = await db.members.find_one(
+            {"id": member_id}, {"_id": 0, "activities": 1, "branch_id": 1}
+        ) or {}
+    activities = member.get("activities") or []
+    invoices = await db.invoices.find({
+        "$or": [{"member_id": member_id}, {"items.member_id": member_id}],
+        "status": {"$in": ["paid", "partial"]},
+    }, {"_id": 0}).to_list(10000)
+    periods = await effective_period_map(db, invoices)
+    sources = []
+    for inv in invoices:
+        for index, item in enumerate(inv.get("items") or []):
+            if item.get("is_product") or not item.get("activity_id"):
+                continue
+            # An item-level owner overrides the invoice payer (family invoices).
+            if (item.get("member_id") or inv.get("member_id")) != member_id:
+                continue
+            sources.append((inv, item, index))
+
+    matched = {}
+    for ai, act in enumerate(activities):
+        exact = [s for s in sources if act.get("source_period_key") == source_key(*s)]
+        candidates = exact
+        if not candidates and not act.get("source_period_key"):
+            candidates = [
+                s for s in sources
+                if act.get("source") == "invoice" and act.get("source_id") == s[0].get("id")
+                and str(act.get("start_date") or "")[:10] in (
+                    original_window(s[1])[0], operational_window(*s, periods)[0])
+                and act.get("schedule") == s[1].get("schedule")
+            ]
+            same_aid = [s for s in candidates if s[1].get("activity_id") == act.get("activity_id")]
+            candidates = same_aid or candidates
+            if not candidates and act.get("source") == "invoice" and act.get("source_id"):
+                candidates = [s for s in sources if s[0].get("id") == act["source_id"]
+                              and s[1].get("activity_id") == act.get("activity_id")]
+        if len(candidates) == 1:
+            matched[ai] = source_key(*candidates[0])
+
+    cards = []
+    for inv, item, index in sources:
+        key = source_key(inv, item, index)
+        links = [activities[ai] for ai, k in matched.items() if k == key]
+        act = links[0] if len(links) == 1 else None
+        start, end = operational_window(inv, item, index, periods)
+        # The linked profile is authoritative: later freezes/off-day shifts may
+        # have changed it since an effective-period row was last written.
+        if act:
+            start = str(act.get("start_date") or start)[:10]
+            end = str(act.get("end_date") or end)[:10]
+        if start > today and inv.get("status") != "paid":
+            continue
+        original_start, original_end = original_window(item)
+        cards.append({
+            "activity_id": (act or item).get("activity_id"),
+            "activity_name": (act or item).get("activity_name", ""),
+            "start_date": start, "end_date": end,
+            "original_start_date": original_start, "original_end_date": original_end,
+            "source_period_key": key, "source_id": inv.get("id"),
+            "profile_subscription": bool(act),
+            "invoice_number": inv.get("invoice_number", ""),
+            "count_activity_ids": sorted({item["activity_id"]} | {
+                a["activity_id"] for a in links if a.get("activity_id")}),
+            "schedule": (act or item).get("schedule", ""),
+            "quota_schedule": item.get("schedule", ""),
+            "read_only": not act or act.get("status", "active") not in ("active", "expired"),
+        })
+    for ai, act in enumerate(activities):
+        if ai in matched or act.get("status", "active") not in ("active", "expired"):
+            continue
+        # Do not guess an invoice identity for an unlinked legacy profile row.
+        # An identical activity/window/schedule is already represented.
+        if any(c["activity_id"] == act.get("activity_id")
+               and c["start_date"] == str(act.get("start_date") or "")[:10]
+               and c["end_date"] == str(act.get("end_date") or "")[:10]
+               and c["schedule"] == act.get("schedule", "") for c in cards):
+            continue
+        cards.append({
+            "activity_id": act.get("activity_id"), "activity_name": act.get("activity_name", ""),
+            "start_date": str(act.get("start_date") or "")[:10],
+            "end_date": str(act.get("end_date") or "")[:10],
+            "schedule": act.get("schedule", ""), "invoice_number": "",
+            "count_activity_ids": [act.get("activity_id")],
+            "profile_subscription": True, "read_only": act.get("source") == "invoice",
+        })
+    results = []
+    for card in cards:
+        start, end = card["start_date"], card["end_date"]
+        days = parse_schedule_days(card.pop("schedule"))
+        quota_days = parse_schedule_days(card.pop("quota_schedule", "")) or days
+        if not start or not end or not days or not quota_days:
+            continue
+        try:
+            purchased_start = datetime.strptime(card.get("original_start_date", start), "%Y-%m-%d")
+            purchased_end = datetime.strptime(card.get("original_end_date", end), "%Y-%m-%d")
+        except ValueError:
+            continue
+        total = max(1, math.ceil((purchased_end - purchased_start).days / 7)) * len(quota_days)
+        # Off-day attendance still consumes quota after an early shortened end,
+        # but must never spill into the next purchased period.
+        next_starts = [c["start_date"] for c in cards if c["start_date"] > start
+                       and set(c["count_activity_ids"]) & set(card["count_activity_ids"])]
+        next_start = min(next_starts) if next_starts else None
+        off_day = {"off_schedule": True}
+        if next_start:
+            off_day["date"] = {"$lt": next_start}
+        used = await db.attendance.count_documents({
+            "member_id": member_id, "activity_id": {"$in": card["count_activity_ids"]},
+            "date": {"$gte": start}, "$or": [{"date": {"$lte": end}}, off_day],
+        })
+        card.update({
+            "attendance_before": next_start, "days_per_week": len(days),
+            "schedule_days": [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in days],
+            "total_allowed": total, "used_sessions": used, "remaining": max(0, total - used),
+            "exceeded": used >= total, "expired": end < today, "upcoming": start > today,
+            "period_status": "upcoming" if start > today else "previous" if end < today else "current",
+        })
+        if not activity_id or card["activity_id"] == activity_id:
+            results.append(card)
+    return sorted(results, key=lambda c: (c["start_date"], c.get("source_period_key", "")))
+
+
 @router.get("/session-quota/{member_id}")
 async def get_member_session_quota(
     member_id: str,
     activity_id: Optional[str] = None,
+    include_periods: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
+    if include_periods:
+        member = await db.members.find_one(
+            {"id": member_id}, {"_id": 0, "activities": 1, "branch_id": 1}
+        )
+        if member is None:
+            raise HTTPException(status_code=404, detail="Member not found")
+        branch = resolve_branch_filter(current_user)
+        if branch and member.get("branch_id") != branch:
+            raise HTTPException(status_code=403, detail="Member belongs to another branch")
+        return await get_member_subscription_history(member_id, activity_id, member=member)
     results = await check_member_session_quota(member_id, activity_id)
     return results
 

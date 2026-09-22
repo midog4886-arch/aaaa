@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
+import { attendanceForPeriod, periodIsReadOnly } from '../utils/attendancePeriods';
 import { NationalitySelect } from '../components/NationalitySelect';
 import MemberAvatar from '../components/MemberAvatar';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
@@ -1210,7 +1211,7 @@ export const MembersPage = () => {
     try {
       const [attendanceRes, quotaRes] = await Promise.all([
         attendanceAPI.getMemberReport(memberId),
-        attendanceAPI.getSessionQuota(memberId)
+        attendanceAPI.getSessionQuota(memberId, undefined, true)
       ]);
       // Guard by member id (not generation): the preceding mutation may have
       // been awaited while another member was opened; this refresh must only
@@ -1315,7 +1316,7 @@ export const MembersPage = () => {
         invoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getMemberReport(member.id),
         productInvoicesAPI.getAll({ member_id: member.id }),
-        attendanceAPI.getSessionQuota(member.id),
+        attendanceAPI.getSessionQuota(member.id, undefined, true),
         tournamentsAPI.getByMember(member.id).catch(() => ({ data: [] })),
         dayExtensionsAPI.getClosures().catch(() => ({ data: [] })),
         // List rows are fetched with exclude_photo — pull the full doc so the
@@ -4069,8 +4070,7 @@ export const MembersPage = () => {
                             const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
                             const scheduleDates = [...baseDates, ...transferInfo.replacementDates];
                             const replacementSet = new Set(transferInfo.replacementDates);
-                            const attendedRecords = (memberAttendance?.records || [])
-                              .filter(r => r.activity_id === q.activity_id && (r.status === 'present' || !r.status));
+                            const attendedRecords = attendanceForPeriod(memberAttendance?.records || [], q);
                             const attendedDates = new Set(attendedRecords.map(r => r.date));
                             const attendedRecordIdByDate = {};
                             attendedRecords.forEach(r => { attendedRecordIdByDate[r.date] = r.id; });
@@ -4088,12 +4088,18 @@ export const MembersPage = () => {
                             const displayDates = [...new Set([...scheduleDates, ...offScheduleDates])].sort();
                             const isOldExpanded = expandedOldDatesIdx.has(idx);
                             const todayStr = localDateStr(new Date());
+                            const readOnly = periodIsReadOnly(q, todayStr);
                             return (
                               <div key={idx} className={`rounded-lg border ${q.expired ? 'bg-gray-50 border-gray-300' : q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
                                 <div className="p-3">
                                   <div className="flex items-center justify-between mb-1">
                                     <span className="font-medium text-sm">{q.activity_name}</span>
                                     <span className="flex items-center gap-1">
+                                      <Badge className="bg-blue-100 text-blue-700">
+                                        {q.upcoming ? (language === 'ar' ? 'قادم' : 'Upcoming')
+                                          : q.expired ? (language === 'ar' ? 'سابق' : 'Previous')
+                                          : (language === 'ar' ? 'الفترة الحالية' : 'Current period')}
+                                      </Badge>
                                       {q.expired && (
                                         <Badge className="bg-gray-200 text-gray-700">
                                           {language === 'ar' ? 'اشتراك منتهي' : 'Expired'}
@@ -4103,6 +4109,14 @@ export const MembersPage = () => {
                                         {q.exceeded ? (language === 'ar' ? 'استنفدت' : 'Exceeded') : `${q.remaining} ${language === 'ar' ? 'متبقي' : 'left'}`}
                                       </Badge>
                                     </span>
+                                  </div>
+                                  <div className="text-xs text-gray-600 mb-2" dir="ltr">
+                                    {q.start_date} — {q.end_date}{q.invoice_number ? ` · #${q.invoice_number}` : ''}
+                                  </div>
+                                  <div className="text-xs text-gray-500 mb-1">
+                                    {q.profile_subscription
+                                      ? (language === 'ar' ? 'اشتراك الملف الشخصي' : 'Profile subscription')
+                                      : (language === 'ar' ? 'فترة اشتراك مشتراة — للعرض فقط' : 'Purchased period — view only')}
                                   </div>
                                   <div className="flex items-center gap-3 text-xs text-gray-600">
                                     <span>{language === 'ar' ? `${q.days_per_week} أيام/أسبوع` : `${q.days_per_week} days/week`}</span>
@@ -4132,7 +4146,7 @@ export const MembersPage = () => {
                                 {isExpanded && (
                                   <div className="border-t px-3 pb-3 pt-2">
                                     <p className="text-xs text-gray-500 mb-2">
-                                      {language === 'ar'
+                                      {readOnly ? (language === 'ar' ? 'للعرض فقط' : 'View only') : language === 'ar'
                                         ? 'اضغط على تاريخ غير مسجّل لتسجيل الحضور'
                                         : 'Click an unregistered date to record attendance'}
                                     </p>
@@ -4165,14 +4179,14 @@ export const MembersPage = () => {
                                         const recordId = attendedRecordIdByDate[date];
                                         // Expired subscription card = read-only reference: no
                                         // registering, replacing, or removing dates.
-                                        const removable = !q.expired && attended && !isRegistering && !isTransferred && !!recordId;
-                                        const clickable = !q.expired && ((!attended && !isRegistering && !isFuture && !isTransferred) || removable);
+                                        const removable = !readOnly && attended && !isRegistering && !isTransferred && !!recordId;
+                                        const clickable = !readOnly && ((!attended && !isRegistering && !isFuture && !isTransferred) || removable);
                                         return (
                                           <button
                                             key={date + (isReplacement ? '_r' : '')}
                                             disabled={!clickable}
                                             onClick={() => {
-                                              if (q.expired || isRegistering || isTransferred) return;
+                                              if (readOnly || isRegistering || isTransferred) return;
                                               if (attended) {
                                                 if (!recordId) return;
                                                 handleReplaceDateAttendance(selectedMember.id, q.activity_id, date, recordId);
@@ -4184,8 +4198,9 @@ export const MembersPage = () => {
                                                 }
                                               }
                                             }}
-                                            title={q.expired
-                                              ? (language === 'ar' ? 'الاشتراك منتهي — للعرض فقط' : 'Subscription expired — view only')
+                                            title={readOnly
+                                              ? (q.upcoming ? (language === 'ar' ? 'اشتراك قادم — للعرض فقط' : 'Upcoming subscription — view only')
+                                                : (language === 'ar' ? 'للعرض فقط' : 'View only'))
                                               : isTransferred
                                               ? (language === 'ar' ? `مُرحَّل (${transferMeta?.title || ''}) — تم التعويض بمدّ تاريخ نهاية الاشتراك` : `Transferred (${transferMeta?.title || ''}) — compensated by extending the subscription end date`)
                                               : isReplacement
