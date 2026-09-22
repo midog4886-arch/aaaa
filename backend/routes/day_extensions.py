@@ -11,6 +11,8 @@ from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
 from services import whatsapp_bulk_jobs
+from services.closure_notice_summary import summaries, notice_key
+from utils.auth import get_allowed_branch_ids
 from utils.effective_periods import (
     effective_period_map, invoice_item_key, operational_window, original_window,
     source_key,
@@ -196,9 +198,34 @@ class ClosureNoticeSend(BaseModel):
     excluded_member_ids: Optional[List[str]] = []
 
 @router.get("/closures")
-async def get_closures(user=Depends(get_current_user)):
-    closures = await db.closures.find().sort("created_at", -1).to_list(500)
-    from routes.members import _mask_phone
+async def get_closures(user=Depends(get_current_user), include_notice_summary: bool = True,
+                       summary_only: bool = False):
+    allowed = None if user.get("is_admin") else get_allowed_branch_ids(user)
+    if allowed == []:
+        raise HTTPException(status_code=403, detail="No branch assigned")
+    query = {} if allowed is None else {"$or": [
+        {"branch_id": {"$in": [*allowed, "all", "", None]}},
+    ]}
+    projection = {"_id": 0, "id": 1, "branch_id": 1} if summary_only else {"_id": 0}
+    closures = await db.closures.find(query, projection).sort("created_at", -1).to_list(500)
+    notice_summaries = await summaries(db, closures, allowed) if include_notice_summary or summary_only else {}
+    branch_rows = await db.branches.find(
+        {} if allowed is None else {"id": {"$in": allowed}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "name_en": 1},
+    ).to_list(None)
+    branch_map = {b["id"]: b for b in branch_rows}
+    if summary_only:
+        for c in closures:
+            c["notice_summary"] = notice_summaries[c["id"]]
+            c["notice_summary"]["scope_branch_ids"] = list(branch_map) if c.get("branch_id") in (None, "", "all") else [c["branch_id"]]
+        return closures
+    # Avoid importing the member routes (and their heavy dependencies) merely
+    # to format persisted closure phones on the initial list request.
+    def _mask_phone(phone):
+        if not phone:
+            return phone
+        value = str(phone).strip()
+        return value if len(value) <= 5 else value[:3] + "•" * (len(value) - 5) + value[-2:]
     current_user_doc = await db.users.find_one(
         {"id": user.get("user_id")},
         {"_id": 0, "is_admin": 1, "permissions": 1},
@@ -210,17 +237,24 @@ async def get_closures(user=Depends(get_current_user)):
             or "member-phones" in (current_user_doc.get("permissions") or [])
         )
     )
+    affected_ids = list({a["member_id"] for c in closures
+                         if c.get("branch_id") not in (None, "", "all")
+                         for a in c.get("affected_members") or [] if a.get("member_id")})
     member_branch_cache = {}
+    if affected_ids:
+        async for m in db.members.find(
+            {"id": {"$in": affected_ids}}, {"id": 1, "branch_id": 1, "_id": 0}
+        ):
+            member_branch_cache[m["id"]] = m.get("branch_id") or ""
     for c in closures:
         c.pop("_id", None)
+        c["notice_summary"] = notice_summaries.get(c["id"], {"state": "loading", "jobs": []})
+        c["branch_name"] = branch_map.get(c.get("branch_id"), {}).get("name_ar") or branch_map.get(c.get("branch_id"), {}).get("name")
+        c["notice_summary"]["scope_branch_ids"] = list(branch_map) if c.get("branch_id") in (None, "", "all") else [c["branch_id"]]
         cb = (c.get("branch_id") or "all")
         if cb and cb != "all":
             affected = c.get("affected_members") or []
             if affected:
-                ids_to_lookup = [a.get("member_id") for a in affected if a.get("member_id") and a.get("member_id") not in member_branch_cache]
-                if ids_to_lookup:
-                    async for m in db.members.find({"id": {"$in": ids_to_lookup}}, {"id": 1, "branch_id": 1, "_id": 0}):
-                        member_branch_cache[m.get("id")] = m.get("branch_id") or ""
                 filtered = [a for a in affected if member_branch_cache.get(a.get("member_id"), "") == cb]
                 if len(filtered) != len(affected):
                     c["affected_members"] = filtered
@@ -1195,6 +1229,21 @@ async def enqueue_closure_notices(
         ):
             raise HTTPException(status_code=400, detail="Branch not found")
 
+    existing_query = {"idempotency_key": notice_key(closure["id"])}
+    if effective_branch != "all":
+        existing_query["branch_id"] = effective_branch
+    existing_jobs = await db.whatsapp_campaign_jobs.find(
+        existing_query, {"_id": 0, "tenant_slug": 0}
+    ).to_list(None)
+    existing_by_branch = {j["branch_id"]: j for j in existing_jobs}
+    target_branches = (
+        [effective_branch] if effective_branch != "all" else
+        [b["id"] for b in await db.branches.find({}, {"id": 1}).to_list(None)]
+    )
+    if target_branches and all(b in existing_by_branch for b in target_branches):
+        return {"queued": 0, "existing": True, "skipped_without_phone": 0,
+                "jobs": [{**j, "created": False} for j in existing_jobs]}
+
     # Recompute the preview from the stored closure. The client supplies neither
     # recipient phones nor personalization values.
     preview = await apply_extension(
@@ -1214,6 +1263,9 @@ async def enqueue_closure_notices(
         if member.get("member_id") not in excluded_ids
     ]
     if not preview_members:
+        if existing_jobs:
+            return {"queued": 0, "existing": True, "skipped_without_phone": 0,
+                    "jobs": [{**j, "created": False} for j in existing_jobs]}
         raise HTTPException(status_code=400, detail="No eligible recipients")
 
     member_ids = [m["member_id"] for m in preview_members if m.get("member_id")]
@@ -1233,6 +1285,8 @@ async def enqueue_closure_notices(
         if not member:
             continue
         branch_id = member.get("branch_id")
+        if branch_id in existing_by_branch:
+            continue
         if not branch_id:
             raise HTTPException(
                 status_code=400,
@@ -1256,8 +1310,9 @@ async def enqueue_closure_notices(
         message = _personalize_closure_notice(template, item)
         if not message or len(message) > 4096:
             raise HTTPException(status_code=400, detail="Personalized message is invalid")
-        grouped.setdefault(branch_id, []).append({"phone": phone, "message": message})
-    if not grouped:
+        grouped.setdefault(branch_id, []).append({"phone": phone, "message": message,
+                                                  "recipient_id": member["id"]})
+    if not grouped and not existing_jobs:
         raise HTTPException(status_code=400, detail="No recipients have a phone number")
 
     # Validate every branch first so unsupported/disabled branches cannot result
@@ -1265,17 +1320,18 @@ async def enqueue_closure_notices(
     providers = {
         branch_id: await _closure_provider(branch_id) for branch_id in grouped
     }
-    jobs = []
+    jobs = [{**j, "created": False} for j in existing_jobs]
     for branch_id, recipients in grouped.items():
         # Branch-scoped uniqueness makes retries, double-clicks, and a later
         # all-branches retry return the original job rather than sending twice.
-        key = re.sub(r"[^A-Za-z0-9_-]", "", f"closure_notice_{closure['id']}")[:100]
+        key = notice_key(closure["id"])
         job, created = await whatsapp_bulk_jobs.enqueue(
             branch_id, providers[branch_id], recipients, key
         )
         jobs.append({**job, "created": created})
     return {
-        "queued": sum(job.get("total", 0) for job in jobs),
+        "queued": sum(job.get("recipient_count", job.get("total", 0)) for job in jobs if job["created"]),
+        "existing": any(not job["created"] for job in jobs),
         "skipped_without_phone": skipped_without_phone,
         "jobs": jobs,
     }

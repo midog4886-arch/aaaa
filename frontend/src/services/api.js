@@ -689,7 +689,7 @@ export const messagesAPI = {
 };
 
 export const dayExtensionsAPI = {
-  getClosures: () => axios.get(`${API}/day-extensions/closures`),
+  getClosures: (params = {}) => axios.get(`${API}/day-extensions/closures`, { params }),
   createClosure: (data) => axios.post(`${API}/day-extensions/closures`, data),
   deleteClosure: (id) => axios.delete(`${API}/day-extensions/closures/${id}`),
   applyExtension: (data) => axios.post(`${API}/day-extensions/apply`, data),

@@ -284,6 +284,7 @@ async def get_members(
     branch_filter: Optional[str] = None,
     search: Optional[str] = None,
     exclude_photo: bool = False,
+    picker_only: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     """Get all members with optional filters"""
@@ -319,7 +320,18 @@ async def get_members(
         ]
     
     projection = {"_id": 0, "photo": 0} if exclude_photo else {"_id": 0}
+    if picker_only:
+        projection = {"_id": 0, "id": 1, "name": 1, "name_ar": 1,
+                      "phone": 1, "status": 1, "branch_id": 1}
     members = await db.members.find(query, projection).sort("created_at", -1).to_list(1000)
+
+    if picker_only:
+        can_view_phones = await _can_view_member_phones(current_user)
+        for member in members:
+            member.setdefault("status", "active")
+            if not can_view_phones:
+                member["phone"] = _mask_phone(member.get("phone"))
+        return members
 
     branch_docs = await db.branches.find({}, {"_id": 0, "id": 1, "phone": 1}).to_list(500)
     branch_phone_map = {b["id"]: (b.get("phone") or "") for b in branch_docs}

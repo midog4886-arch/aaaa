@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const mockApi = {
@@ -61,7 +61,7 @@ jest.mock('../../utils/whatsapp', () => ({
 }));
 
 jest.mock('sonner', () => ({
-  toast: { error: jest.fn(), success: jest.fn() },
+  toast: { error: jest.fn(), success: jest.fn(), info: jest.fn() },
 }));
 
 const closure = {
@@ -72,6 +72,7 @@ const closure = {
   end_date: '2026-01-02',
   days: 2,
   applied: false,
+  notice_summary: { jobs: [], state: 'not_queued', scope_branch_ids: [] },
 };
 
 const previewMembers = [
@@ -131,6 +132,7 @@ const preview = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  localStorage.clear();
   mockApi.dayExtensions.getClosures.mockResolvedValue({ data: [closure] });
   mockApi.dayExtensions.getLogs.mockResolvedValue({ data: [] });
   mockApi.dayExtensions.getAvailableTimes.mockResolvedValue({ data: [] });
@@ -141,6 +143,77 @@ beforeEach(() => {
     Promise.resolve({ data: dry_run ? preview : { extended_count: 1 } })
   ));
   window.confirm = jest.fn(() => true);
+});
+
+test('manual reopen remains opened-only across page remount and requires confirmation', async () => {
+  await openManualPreview();
+  fireEvent.click(screen.getByTestId('manual-whatsapp-member-1'));
+  expect(screen.getByTestId('manual-whatsapp-member-1')).toHaveTextContent('Opened only');
+  cleanup();
+  await openManualPreview();
+  expect(screen.getByTestId('manual-whatsapp-member-1')).toHaveTextContent('Opened only');
+  window.confirm.mockReturnValue(false);
+  expect(fireEvent.click(screen.getByTestId('manual-whatsapp-member-1'))).toBe(false);
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('sending is unverified'));
+});
+
+test('automatic double click queues only once while the request is in flight', async () => {
+  mockWhatsappAPI.enqueueClosureNotices.mockImplementation(() => new Promise(() => {}));
+  render(<DayExtensionsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: /Preview & WhatsApp/i }));
+  const send = await screen.findByRole('button', { name: /Send WhatsApp to All/i });
+  await waitFor(() => expect(send).toBeEnabled());
+  fireEvent.click(send);
+  fireEvent.click(send);
+  expect(mockWhatsappAPI.enqueueClosureNotices).toHaveBeenCalledTimes(1);
+});
+
+test('closures paint without auxiliary reads or waiting for notice evidence; unknown evidence blocks sends', async () => {
+  mockApi.dayExtensions.getClosures.mockImplementation(params => (
+    params?.summary_only ? new Promise(() => {}) : Promise.resolve({ data: [{
+      ...closure, notice_summary: { state: 'loading', jobs: [] }
+    }] })
+  ));
+  render(<DayExtensionsPage />);
+  const previewButton = await screen.findByRole('button', { name: /Preview & WhatsApp/i });
+  expect(mockMembersAPI.getAll).not.toHaveBeenCalled();
+  expect(mockActivitiesAPI.getAll).not.toHaveBeenCalled();
+  expect(mockApi.dayExtensions.getLogs).not.toHaveBeenCalled();
+  expect(mockApi.dayExtensions.getAvailableTimes).not.toHaveBeenCalled();
+  expect(screen.getByTestId('closure-notice-status-closure-1')).toHaveTextContent('Checking message status');
+  fireEvent.click(previewButton);
+  expect(await screen.findByRole('button', { name: /Send WhatsApp to All/i })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: /Open chats manually/i }));
+  expect(screen.queryByTestId('manual-whatsapp-member-1')).not.toBeInTheDocument();
+  expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
+});
+
+test('manual member picker is fetched only when opened, without photos or full member documents', async () => {
+  render(<DayExtensionsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Manual Extension$/i }));
+  await waitFor(() => expect(mockMembersAPI.getAll).toHaveBeenCalledWith({
+    exclude_photo: true, picker_only: true
+  }));
+  expect(mockApi.dayExtensions.getLogs).not.toHaveBeenCalled();
+  expect(mockApi.dayExtensions.getAvailableTimes).not.toHaveBeenCalled();
+});
+
+test.each(['sent', 'failed', 'cancelled', 'unknown', 'pending'])('existing %s branch job is visible immediately and locks automatic and manual repeat', async (state) => {
+  const job = { id: 'j1', branch_id: 'branch-a', idempotency_key: 'closure_notice_closure-1',
+    status: 'completed', sent: 1, recipient_states: { 'member-1': state } };
+  mockApi.dayExtensions.getClosures.mockResolvedValue({ data: [{
+    ...closure, branch_id: 'branch-a', branch_name: 'Branch A',
+    notice_summary: { jobs: [job], sent: 1, state: 'completed', scope_branch_ids: ['branch-a'] },
+  }] });
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<DayExtensionsPage />);
+  expect(await screen.findByText('Branch A')).toBeInTheDocument();
+  expect(screen.getByTestId('closure-notice-status-closure-1')).toHaveTextContent('Accepted, not confirmed delivered');
+  await user.click(screen.getByRole('button', { name: /Preview & WhatsApp/i }));
+  expect(await screen.findByRole('button', { name: /Send WhatsApp to All/i })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: /Open chats manually/i }));
+  expect(screen.queryByTestId('manual-whatsapp-member-1')).not.toBeInTheDocument();
+  expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
 });
 
 const DayExtensionsPage = require('../DayExtensionsPage').default;

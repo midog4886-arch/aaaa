@@ -26,3 +26,15 @@ Persist authenticated receipt evidence before trying to attach it to a campaign 
 **Why:** Callbacks can beat the send response, or a newer read event can arrive during reconciliation. Apply-first buffering and unconditional deletion can silently lose either event.
 
 **How to apply:** Scope receipt identities to tenant, branch, provider and literal provider ID; use only explicit provider aliases, never phone/body guesses. Keep idempotence and reversed-order race tests whenever changing receipt handling.
+
+Closure compensation and WhatsApp sending are separate actions; duplicate protection must survive reload and cover manual chat links too.
+
+**Why:** an applied closure does not prove its notice was sent. Opening a manual chat after an uncertain automatic attempt risks duplication. Identical titles in different branches do not identify the same send.
+
+**How to apply:** use durable closure-and-branch job identity for automatic locks and recipient evidence for manual locks. Manual opening is unverified, never sent. Claimed/quota-reserving states are pending; unfamiliar states are unknown, not safe to retry.
+
+Load send evidence separately from the initial closure list, but fail closed while evidence is unavailable.
+
+**Why:** bulk member reads can exceed 15 seconds even without photos; waiting for picker-only data before rendering caused a long blank spinner. Speed improvements must not turn a missing summary into permission to resend.
+
+**How to apply:** lazy-load optional dialog data, poll only summaries, and reject stale summary responses after enqueue/cancel.

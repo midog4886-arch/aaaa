@@ -14,9 +14,28 @@ test('closure preview queues through backend and never opens browser WhatsApp', 
 
 test('closure queue exposes durable progress and cancellation', () => {
   expect(source).toContain('data-testid="closure-whatsapp-job-progress"');
-  expect(source).toContain('whatsappAPI.getBranchCloudJob');
+  expect(source).toContain('api.dayExtensions.getClosures');
   expect(source).toContain('whatsappAPI.cancelBranchCloudJob');
-  expect(source).toContain('whatsappAPI.listBranchCloudJobs');
+  expect(source).toContain('c.notice_summary?.jobs');
+});
+
+test('double clicks are guarded synchronously and reopen uses durable branch identities', () => {
+  expect(source).toContain('if (sendInFlight.current || automaticLocked) return;');
+  expect(source.indexOf('sendInFlight.current = true')).toBeLessThan(source.indexOf('await whatsappAPI.enqueueClosureNotices'));
+  expect(source).toContain('selectedNoticeBranches.every(id => previewJobs.some(job => job.branch_id === id))');
+  expect(source).toContain('Existing queue; no new messages queued');
+  expect(source).toContain('closure.notice_summary.sent');
+  expect(source).toContain('All Branches');
+});
+
+test('manual opening is not sending and persists by tenant, closure and recipient', () => {
+  expect(source).toContain("localStorage.getItem('tenant_slug')");
+  expect(source).toContain('${previewClosure?.id}:${member.member_id}');
+  expect(source).toContain("localStorage.setItem(key, 'opened')");
+  expect(source).toContain('Previously opened only; sending is unverified. Reopen chat?');
+  expect(source).toContain('Object.prototype.hasOwnProperty.call(job.recipient_states, member.member_id)');
+  expect(source).not.toContain('{closure.notice_summary.state}');
+  expect(source).not.toContain('value.id === job.id ? response.data : value');
 });
 
 test('applied closures retain preview sending and page-level progress', () => {

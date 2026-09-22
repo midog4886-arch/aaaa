@@ -34,12 +34,15 @@ class Collection:
         )
 
     def find(self, query, _projection=None):
-        ids = set(query.get("id", {}).get("$in", []))
-        return Cursor([row for row in self.rows if row.get("id") in ids])
+        def matches(row):
+            return all(row.get(key) in value["$in"] if isinstance(value, dict)
+                       else row.get(key) == value for key, value in query.items())
+        return Cursor([row for row in self.rows if matches(row)])
 
 
 class DB:
     def __init__(self):
+        self.whatsapp_campaign_jobs = Collection([])
         self.closures = Collection([{
             "id": "closure-1", "days": 2, "branch_id": "all",
         }])
@@ -286,3 +289,34 @@ def test_send_then_apply_then_lost_response_retry_returns_same_job(monkeypatch):
     assert first["jobs"][0]["created"] is True
     assert second["jobs"][0]["created"] is False
     assert len(jobs_by_key) == 1
+    assert second["queued"] == 0
+    assert second["existing"] is True
+
+
+@pytest.mark.parametrize("status", ["completed", "pending", "unknown", "failed"])
+def test_existing_branch_job_is_returned_without_preview_or_send(monkeypatch, status):
+    fake_db = DB()
+    fake_db.whatsapp_campaign_jobs.rows = [{
+        "id": "existing", "branch_id": "branch-a",
+        "idempotency_key": "closure_notice_closure-1",
+        "status": status, "total": 2,
+    }]
+    monkeypatch.setattr(mod, "db", fake_db)
+
+    async def authorize(_):
+        pass
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Existing job must not rebuild, validate, or enqueue")
+
+    monkeypatch.setattr(mod, "_require_current_admin", authorize)
+    monkeypatch.setattr(mod, "apply_extension", forbidden)
+    monkeypatch.setattr(mod, "_closure_provider", forbidden)
+    monkeypatch.setattr(mod.whatsapp_bulk_jobs, "enqueue", forbidden)
+    result = run(mod.enqueue_closure_notices(mod.ClosureNoticeSend(
+        closure_id="closure-1", branch_id="branch-a", message="notice",
+    ), {"is_admin": True}))
+    assert result["queued"] == 0
+    assert result["existing"] is True
+    assert result["jobs"][0]["created"] is False
+    assert len(fake_db.whatsapp_campaign_jobs.rows) == 1

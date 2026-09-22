@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -138,53 +138,81 @@ export default function DayExtensionsPage() {
   const [waMessage, setWaMessage] = useState('');
   const [whatsappMode, setWhatsappMode] = useState('automatic');
   const [sendingWa, setSendingWa] = useState(false);
+  const sendInFlight = useRef(false);
+  const manualOpened = useRef(new Set());
+  const [, redrawManual] = useState(0);
+  // Same selected tenant as services/api.js X-Tenant-Slug (set by LoginPage),
+  // not an optional user property that could collapse tenants into one key.
+  const manualKey = (member) => `closure-wa-open:${localStorage.getItem('tenant_slug') || 'default'}:${previewClosure?.id}:${member.member_id}`;
+  const wasOpened = (member) => {
+    const key = manualKey(member);
+    try { return manualOpened.current.has(key) || localStorage.getItem(key) === 'opened'; }
+    catch { return manualOpened.current.has(key); }
+  };
   const [waJobs, setWaJobs] = useState([]);
   const [waJobsPollVersion, setWaJobsPollVersion] = useState(0);
   const [excludedMemberIds, setExcludedMemberIds] = useState([]);
   const [showSkippedList, setShowSkippedList] = useState(false);
   const [previewIsStale, setPreviewIsStale] = useState(false);
+  const [noticeReady, setNoticeReady] = useState(false);
+  const noticeRequest = useRef(0);
+  const refreshNoticeSummaries = useCallback(async () => {
+    const request = ++noticeRequest.current;
+    try {
+      const response = await api.dayExtensions.getClosures({ summary_only: true });
+      if (request !== noticeRequest.current) return;
+      const rows = response.data || [];
+      setClosures(current => current.map(closure => ({
+        ...closure,
+        notice_summary: rows.find(row => row.id === closure.id)?.notice_summary
+      })));
+      setWaJobs(rows.flatMap(c => c.notice_summary?.jobs || []));
+      setNoticeReady(rows.every(c => c.notice_summary && c.notice_summary.state !== 'loading'));
+    } catch (error) {
+      if (request !== noticeRequest.current) return;
+      setNoticeReady(false);
+      toast.error(t('تعذر تحديث حالة الرسائل', 'Could not refresh message status'));
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [closuresRes, logsRes, membersRes, branchesRes, activitiesRes, timesRes] = await Promise.all([
-        api.dayExtensions.getClosures(),
-        api.dayExtensions.getLogs(),
-        membersAPI.getAll({ exclude_photo: true }),
-        branchesAPI.getAll(),
-        activitiesAPI.getAll(),
-        api.dayExtensions.getAvailableTimes()
+      setNoticeReady(false);
+      const [closuresRes, branchesRes] = await Promise.all([
+        api.dayExtensions.getClosures({ include_notice_summary: false }),
+        branchesAPI.getAll()
       ]);
       setClosures(Array.isArray(closuresRes.data) ? closuresRes.data : []);
-      setLogs(Array.isArray(logsRes.data) ? logsRes.data : []);
-      setMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
+      setWaJobs((closuresRes.data || []).flatMap(c => c.notice_summary?.jobs || []));
       setBranches(Array.isArray(branchesRes.data) ? branchesRes.data : []);
-      setActivities(Array.isArray(activitiesRes.data) ? activitiesRes.data : []);
-      setAvailableTimes(Array.isArray(timesRes.data) ? timesRes.data : []);
+      refreshNoticeSummaries();
     } catch (error) {
       console.error('DayExtensions loadData error:', error);
       toast.error(t('خطأ في تحميل البيانات', 'Error loading data'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshNoticeSummaries]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => () => { noticeRequest.current += 1; }, []);
 
   useEffect(() => {
-    if (!branches.length) return;
     let cancelled = false;
-    Promise.all(branches.map(branch => {
-      const branchId = branch.id || branch._id;
-      return whatsappAPI.listBranchCloudJobs(branchId)
-        .then(response => (response.data || [])
-          .filter(job => (job.idempotency_key || '').startsWith('closure_notice_')))
-        .catch(() => []);
-    })).then(groups => {
-      if (!cancelled) setWaJobs(groups.flat());
+    const requests = [];
+    const load = (request, setter) => requests.push(request.then(response => {
+      if (!cancelled) setter(Array.isArray(response.data) ? response.data : []);
+    }));
+    if (activeTab === 'logs') load(api.dayExtensions.getLogs(), setLogs);
+    if (showManualDialog) load(membersAPI.getAll({ exclude_photo: true, picker_only: true }), setMembers);
+    if (showCreateDialog || showManualDialog) load(activitiesAPI.getAll(), setActivities);
+    if (showCreateDialog) load(api.dayExtensions.getAvailableTimes(), setAvailableTimes);
+    Promise.all(requests).catch(() => {
+      if (!cancelled) toast.error(t('خطأ في تحميل البيانات', 'Error loading data'));
     });
     return () => { cancelled = true; };
-  }, [branches]);
+  }, [activeTab, showCreateDialog, showManualDialog]);
 
   const handleCreateClosure = async () => {
     if (!newClosure.title_ar || !newClosure.start_date || !newClosure.end_date) {
@@ -230,6 +258,8 @@ export default function DayExtensionsPage() {
   };
 
   const handlePreviewExtension = async (closure) => {
+    setNoticeReady(false);
+    refreshNoticeSummaries();
     setPreviewClosure(closure);
     setPreviewResult(null);
     setExcludedMemberIds([]);
@@ -294,6 +324,7 @@ export default function DayExtensionsPage() {
   ]);
 
   const handleSendWhatsAppFromPreview = async () => {
+    if (sendInFlight.current || automaticLocked) return;
     if (!previewResult || !previewResult.extended_members?.length) {
       toast.error(t('لا يوجد مستلمون', 'No recipients'));
       return;
@@ -311,6 +342,9 @@ export default function DayExtensionsPage() {
       `ستتم إضافة ${recipientCount} رسالة إلى قائمة الإرسال التلقائي للفرع بفاصل ثلاث دقائق على الأقل. هذا ليس فتح واتساب يدويًا. الإضافة لا تعني أن الرسائل أُرسلت بعد. هل تريد المتابعة؟`,
       `Queue ${recipientCount} message(s) automatically at least three minutes apart? This does not open WhatsApp manually. Queued does not mean sent.`
     ))) return;
+    sendInFlight.current = true;
+    noticeRequest.current += 1;
+    setNoticeReady(false);
     setSendingWa(true);
     try {
       const response = await whatsappAPI.enqueueClosureNotices({
@@ -323,38 +357,41 @@ export default function DayExtensionsPage() {
       setWaJobs(current => [...jobs, ...current.filter(old => !jobs.some(job => job.id === old.id))]);
       setWaJobsPollVersion(value => value + 1);
       const skipped = response.data?.skipped_without_phone || 0;
-      toast.success(t(
+      if (response.data?.existing && !response.data?.queued) {
+        toast.info(t('قائمة موجودة بالفعل؛ لم تُضف رسائل جديدة', 'Existing queue; no new messages queued'));
+      } else toast.success(t(
         `تمت الإضافة إلى قائمة الانتظار؛ لم يتم تطبيق الترحيل${skipped ? ` (تم تخطي ${skipped} بدون جوال)` : ''}`,
         `Queued; the extension was not applied${skipped ? ` (${skipped} without a phone skipped)` : ''}`
       ));
+      await refreshNoticeSummaries();
     } catch (error) {
       toast.error(error.response?.data?.detail || t('تعذر إضافة الرسائل إلى قائمة الانتظار', 'Could not queue messages'));
     } finally {
+      sendInFlight.current = false;
       setSendingWa(false);
     }
   };
 
   useEffect(() => {
     if (!waJobs.length) return undefined;
-    const active = waJobs.filter(job => ['pending', 'processing', 'paused'].includes(job.status));
+    const active = waJobs.filter(job => ['initializing', 'pending', 'processing', 'paused'].includes(job.status));
     if (!active.length) return undefined;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
-      const refreshed = await Promise.all(active.map(job =>
-        whatsappAPI.getBranchCloudJob(job.branch_id, job.id)
-          .then(response => response.data)
-          .catch(() => job)
-      ));
       if (!cancelled) {
-        setWaJobs(current => current.map(job => refreshed.find(next => next.id === job.id) || job));
+        try {
+          await refreshNoticeSummaries();
+        } catch {
+          toast.error(t('تعذر تحديث حالة الرسائل', 'Could not refresh message status'));
+        }
         setWaJobsPollVersion(value => value + 1);
       }
-    }, 5000);
+    }, 30000);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [waJobs, waJobsPollVersion]);
+  }, [waJobs, waJobsPollVersion, refreshNoticeSummaries]);
 
   const handleConfirmApplyFromPreview = async () => {
     if (!previewClosure || !previewResult?.preview_token || previewIsStale) return;
@@ -402,8 +439,10 @@ export default function DayExtensionsPage() {
 
   const cancelWhatsAppJob = async (job) => {
     try {
-      const response = await whatsappAPI.cancelBranchCloudJob(job.branch_id, job.id);
-      setWaJobs(current => current.map(value => value.id === job.id ? response.data : value));
+      await whatsappAPI.cancelBranchCloudJob(job.branch_id, job.id);
+      // Keep existing recipient evidence locked until the authoritative summary
+      // reload completes; a raw cancellation response has no recipient_states.
+      await refreshNoticeSummaries();
       toast.success(t('أُلغي المتبقي المعلّق', 'Remaining pending messages cancelled'));
     } catch (error) {
       toast.error(error.response?.data?.detail || t('تعذر الإلغاء', 'Could not cancel'));
@@ -413,6 +452,36 @@ export default function DayExtensionsPage() {
   const closureForJob = (job) => {
     const closureId = (job.idempotency_key || '').replace(/^closure_notice_/, '');
     return closures.find(closure => closure.id === closureId);
+  };
+  const currentClosure = closures.find(c => c.id === previewClosure?.id) || previewClosure;
+  const currentNoticeReady = noticeReady && currentClosure?.notice_summary &&
+    currentClosure.notice_summary.state !== 'loading';
+  const previewJobs = waJobs.filter(job => job.idempotency_key === `closure_notice_${previewClosure?.id}`);
+  const selectedNoticeBranches = currentClosure?.branch_id && currentClosure.branch_id !== 'all'
+    ? [currentClosure.branch_id]
+    : applyBranch !== 'all' ? [applyBranch]
+      : currentClosure?.notice_summary?.scope_branch_ids || branches.map(b => b.id || b._id);
+  const automaticLocked = !currentNoticeReady || (selectedNoticeBranches.length > 0 &&
+    selectedNoticeBranches.every(id => previewJobs.some(job => job.branch_id === id)));
+  // Old jobs lack member identity. Conservatively lock manual links for their
+  // branch rather than guess which phone was accepted or may still be queued.
+  const manualQueueLocked = (member) => {
+    if (!currentNoticeReady) return true;
+    const branch = member.branch_id || members.find(m => (m.id || m._id) === member.member_id)?.branch_id;
+    return previewJobs.some(job => (!branch || job.branch_id === branch) &&
+      (!job.recipient_states || job.legacy_recipient_identity ||
+       Object.prototype.hasOwnProperty.call(job.recipient_states, member.member_id)));
+  };
+  const noticeStateLabel = (summary) => {
+    if (!noticeReady || !summary || summary.state === 'loading') return t('جارٍ التحقق من حالة الرسائل', 'Checking message status');
+    if (!summary?.jobs?.length) return t('لم يرسل — لم يُضف للقائمة', 'Not sent — not queued');
+    if (summary.state === 'zero_recipients') return t('لم يرسل — لا يوجد مستلمون', 'Not sent — zero recipients');
+    if (summary.state === 'unknown' || summary.state === 'completed_with_failures') {
+      return t('يحتاج مراجعة — لا تعاود الإرسال', 'Needs review — do not resend');
+    }
+    if (summary.state === 'pending') return t('قيد الإرسال', 'Sending in progress');
+    if (summary.state === 'completed') return t('تم الإرسال — قبول المزود فقط', 'Sent — provider acceptance only');
+    return t('يحتاج مراجعة', 'Needs review');
   };
 
   const handleManualExtension = async () => {
@@ -499,7 +568,7 @@ export default function DayExtensionsPage() {
                     {' · '}{job.status}
                   </div>
                   <div className="mt-1 text-muted-foreground">
-                    {t('معلّق', 'Pending')}: {job.pending || 0} · {t('تم', 'Sent')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
+                    {t('معلّق', 'Pending')}: {job.pending || 0} · {t('مقبول لدى المزود', 'Provider accepted')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
                   </div>
                   {job.pending > 0 && (
                     <Button size="sm" variant="outline" className="mt-2" onClick={() => cancelWhatsAppJob(job)}>
@@ -554,6 +623,23 @@ export default function DayExtensionsPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
                           <h3 className="font-bold text-lg">{closure.title_ar || ''}</h3>
+                          <Badge variant="outline">
+                            {!closure.branch_id || closure.branch_id === 'all'
+                              ? t('جميع الفروع', 'All Branches')
+                              : closure.branch_name || branches.find(b => (b.id || b._id) === closure.branch_id)?.name_ar || closure.branch_id}
+                          </Badge>
+                          <div className="w-full text-xs text-muted-foreground" data-testid={`closure-notice-status-${closure.id}`}>
+                            {t('واتساب (مستلمون):', 'WhatsApp (recipients):')}{' '}
+                            {closure.notice_summary?.jobs?.length ? <>
+                              {t('مقبول لدى المزود وليس تأكيد تسليم', 'Accepted, not confirmed delivered')}: {closure.notice_summary.sent || 0} ·{' '}
+                              {t('معلق', 'Pending')}: {closure.notice_summary.pending || 0} ·{' '}
+                              {t('فشل', 'Failed')}: {closure.notice_summary.failed || 0} ·{' '}
+                              {t('ملغى', 'Cancelled')}: {closure.notice_summary.cancelled || 0} ·{' '}
+                              {t('غير معروف — لا تعاود الإرسال', 'Unknown — do not resend')}: {closure.notice_summary.unknown || 0} ·{' '}
+                              {t('تسليم مؤكد', 'Confirmed delivered')}: {closure.notice_summary.delivered || 0}
+                              {' · '}<Badge variant="outline">{noticeStateLabel(closure.notice_summary)}</Badge>
+                            </> : noticeStateLabel(closure.notice_summary)}
+                          </div>
                           <Badge className={REASON_COLORS[closure.reason] || REASON_COLORS.other}>
                             {(language === 'ar' ? REASON_LABELS.ar : REASON_LABELS.en)[closure.reason] || closure.reason || ''}
                           </Badge>
@@ -1019,7 +1105,8 @@ export default function DayExtensionsPage() {
                                  {whatsappMode === 'manual' && (() => {
                                    const messageReady = Boolean(waMessage.trim());
                                    const personalizedMessage = personalizeClosureMessage(waMessage, m);
-                                   const manualUrl = !isExcluded && messageReady
+                                   const queueLocked = manualQueueLocked(m) || sendingWa;
+                                   const manualUrl = !queueLocked && !isExcluded && messageReady
                                      ? getManualWhatsAppUrl(m.phone, canViewPhones, personalizedMessage)
                                      : '';
                                    const reason = isExcluded
@@ -1033,7 +1120,11 @@ export default function DayExtensionsPage() {
                                          : !manualUrl
                                            ? t('رقم الجوال غير صالح', 'Invalid phone number')
                                            : '';
-                                   return manualUrl ? (
+                                   return queueLocked ? (
+                                     <span className="text-xs text-amber-800">
+                                       {t('الإرسال التلقائي مسجل؛ الفتح اليدوي مقفل لمنع التكرار', 'Automatic notice recorded; manual opening locked to prevent duplicates')}
+                                     </span>
+                                   ) : manualUrl ? (
                                      <Button
                                        asChild
                                        size="sm"
@@ -1042,6 +1133,16 @@ export default function DayExtensionsPage() {
                                      >
                                        <a
                                          href={manualUrl}
+                                         onClick={(event) => {
+                                           if (sendInFlight.current || manualQueueLocked(m)) { event.preventDefault(); return; }
+                                           if (wasOpened(m) && !window.confirm(t('فُتحت المحادثة سابقاً فقط، ولا نعرف إن أُرسلت الرسالة. إعادة الفتح؟', 'Previously opened only; sending is unverified. Reopen chat?'))) {
+                                             event.preventDefault(); return;
+                                           }
+                                           const key = manualKey(m);
+                                           manualOpened.current.add(key);
+                                           try { localStorage.setItem(key, 'opened'); } catch { /* In-memory lock remains. */ }
+                                           redrawManual(value => value + 1);
+                                         }}
                                          target="_blank"
                                          rel="noopener noreferrer"
                                          title={personalizedMessage}
@@ -1049,7 +1150,7 @@ export default function DayExtensionsPage() {
                                          data-testid={`manual-whatsapp-${m.member_id || idx}`}
                                        >
                                          <MessageCircle className="w-3.5 h-3.5 me-1" />
-                                         {t('فتح واتساب', 'Open WhatsApp')}
+                                         {wasOpened(m) ? t('فُتحت فقط — إعادة الفتح', 'Opened only — reopen') : t('فتح واتساب (ليس إرسالاً)', 'Open WhatsApp (not sent)')}
                                        </a>
                                      </Button>
                                    ) : (
@@ -1135,7 +1236,8 @@ export default function DayExtensionsPage() {
                 {whatsappMode === 'automatic' ? (
                   <Button
                     onClick={handleSendWhatsAppFromPreview}
-                    disabled={previewing || sendingWa || !previewResult || !(previewResult.extended_members || []).some(m => m.phone)}
+                    disabled={automaticLocked || previewing || sendingWa || !previewResult || !(previewResult.extended_members || []).some(m => m.phone)}
+                    title={automaticLocked ? t('قائمة موجودة بالفعل؛ لن تعاد محاولة الفشل أو النتائج غير المعروفة', 'Already queued; failed or unknown jobs will not be restarted') : ''}
                     className="bg-green-600 hover:bg-green-700"
                   >
                     {sendingWa ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Send className="w-4 h-4 me-1" />}
