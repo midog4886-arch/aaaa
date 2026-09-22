@@ -21,6 +21,7 @@ security = HTTPBearer()
 # Use centralized database connection
 from database import db
 from utils.i18n import normalize_lang
+from utils.effective_periods import effective_period_map, operational_window
 
 # JWT Config for members
 MEMBER_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret') + "_member"
@@ -716,10 +717,17 @@ async def get_qr_card_data(member: dict = Depends(get_current_member)):
         {"member_id": {"$in": linked_ids}, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
     ).to_list(500)
+    effective_periods = await effective_period_map(db, invoices)
     items_by_member: Dict[str, list] = {}
     for inv in invoices:
         inv_owner = inv.get("member_id")
-        for item in inv.get("items", []):
+        for item_index, original_item in enumerate(inv.get("items", [])):
+            item = dict(original_item)
+            effective_start, effective_end = operational_window(
+                inv, original_item, item_index, effective_periods
+            )
+            item["start_date"] = effective_start
+            item["end_date"] = effective_end
             owner = item.get("member_id") or inv_owner
             if owner in linked_ids:
                 items_by_member.setdefault(owner, []).append(item)

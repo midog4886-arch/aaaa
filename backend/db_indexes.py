@@ -87,6 +87,15 @@ INDEXES = {
     ],
     "day_extensions": [
         ([("member_id", 1)], {}),
+        ([("closure_id", 1), ("member_id", 1), ("scope_type", 1), ("activity_id", 1)], {
+            "unique": True,
+            "name": "uniq_closure_member_activity",
+            "partialFilterExpression": {"scope_type": "activity"},
+        }),
+    ],
+    "subscription_effective_periods": [
+        ([("source_key", 1)], {"unique": True, "name": "uniq_effective_period_source"}),
+        ([("member_id", 1), ("activity_id", 1), ("effective_start_date", 1)], {}),
     ],
     "tournaments": [
         ([("branch_id", 1)], {}),

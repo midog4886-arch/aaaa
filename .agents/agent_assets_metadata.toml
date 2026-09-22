@@ -6,30 +6,35 @@ id = "jMHMyBDkS8RUDoIiDrcOq"
 uri = "file://frontend/android-v2.zip"
 type = "unspecified"
 title = "android-v2.zip - مشروع Android جاهز"
+logical_id = "49f82673-bcd1-46d3-abf6-1b5be629e8f7"
 
 [[outputs]]
 id = "WEaoWGz56x26Kh3fH8kkH"
 uri = "file://android-v1.0.9.zip"
 type = "unspecified"
 title = "مشروع Android - الإصدار v1.0.9 (build 10)"
+logical_id = "0019939b-1d13-4c95-9a14-75f176fe5e22"
 
 [[outputs]]
 id = "-8MEiSNhx-ZAa2NBPBXmv"
 uri = "file://MULTITENANT_SETUP.md"
 type = "text"
 title = "دليل إعداد النظام متعدد الأكاديميات"
+logical_id = "7fe06e6d-83d5-4a92-a024-5819296473ee"
 
 [[outputs]]
 id = "HOutxgKvGHHgjb8s114yG"
 uri = "file://.local/post_deploy_checklist_ar.md"
 type = "text"
 title = "قائمة اختبار ما بعد النشر"
+logical_id = "7fce46c5-ed71-4651-80ed-c976a762e87e"
 
 [[outputs]]
 id = "6llU3AUC0OxL2B80f2qUK"
 uri = "file://exports/play-store-icon-512.png"
 type = "image"
 title = "أيقونة التطبيق الجديدة (512×512 لمتجر جوجل بلاي)"
+logical_id = "d7900977-0fd4-4f21-be77-8e20900caa35"
 
 [[outputs]]
 id = "zLtvVZFwTh05kPxaU4awL"
@@ -37,6 +42,7 @@ uri = "file://exports/app-release-v5-1.0.14.aab"
 type = "unspecified"
 title = "ملف التحديث v1.0.14 — جاهز للرفع على Google Play"
 description = "اضغط لتحميل ملف AAB الموقّع، ثم ارفعه في Google Play Console → الإنتاج → إصدار جديد."
+logical_id = "923856d3-ab6d-46c7-9ea6-cadac2bad393"
 
 [[outputs]]
 id = "I1exb-hdxtGuwEqwjDMaB"
@@ -44,6 +50,7 @@ uri = "file://exports/app-release-v6-1.0.15.aab"
 type = "unspecified"
 title = "النسخة الجديدة v1.0.15 (versionCode 18)"
 description = "حمّل هذا الملف وارفعه في Google Play — رقم الإصدار الجديد 18 يتجاوز الخطأ السابق."
+logical_id = "6994e840-92d7-4177-a4ac-b933f78248a8"
 
 [[outputs]]
 id = "39peHT_sQOiobD1o_i1sa"
@@ -51,3 +58,18 @@ uri = "file://exports/app-release-v7-1.0.16.aab"
 type = "unspecified"
 title = "النسخة v1.0.16 (رمز الإصدار 20)"
 description = "حمّل هذا الملف وارفعه في Google Play Console → الإنتاج → إصدار جديد."
+logical_id = "9771a6ab-9eaf-420d-bf68-484757370126"
+
+[[outputs]]
+id = "EuR1vDCukJbRTbpwjWt1c"
+uri = "file://.local/reports/audit_default_premature_future_subscriptions_20260922.csv"
+type = "table"
+title = "تقرير فحص الاشتراكات المستقبلية — جميع الفروع"
+description = "نتائج الفحص بتاريخ ٢٢ سبتمبر ٢٠٢٦، تشمل الحالات المؤكدة والمحتملة والاشتراكات المستقبلية الطبيعية. لم تُعدّل أي بيانات."
+logical_id = "e111f5b4-afa6-48f0-a402-02684170aeb6"
+content_hash = "sha256:62ae25f9f9f171ad7be97677766d6b969ccc2dd8fa87e3cffe544c82a07fb51c"
+size = 25388
+mtime_ms = 1790056585782
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:2ddefb56-04e5-4119-9ddf-9a5677354f57/e111f5b4-afa6-48f0-a402-02684170aeb6/3b016702-d6c7-4f40-905e-94097cf660cb"
+storage_version_token = "1790056616854049"
+content_type = "text/csv"

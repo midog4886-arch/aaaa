@@ -26,6 +26,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import routes.attendance as att  # noqa: E402
+from utils.effective_periods import source_key  # noqa: E402
 
 
 SCHEDULE = "الإثنين و الأربعاء - 5:00 م"  # parses to 2 training days/week
@@ -430,3 +431,61 @@ def test_ambiguous_invoice_does_not_guess_original_end(fake_db):
     # The guard refused to guess either 8 (P1) or 12 (P2); it used the extended
     # deadline fallback, proving no wrong original end was silently selected.
     assert q["total_allowed"] == 18
+
+
+def test_same_invoice_multi_period_uses_exact_source_period_key(fake_db):
+    invoice = {
+        "id": "INV-MULTI", "status": "paid", "invoice_number": "500",
+        "items": [
+            {
+                "item_id": "period-1", "activity_id": "A", "activity_name": "Swim",
+                "start_date": "2099-05-04", "end_date": "2099-05-27",
+                "schedule": SCHEDULE, "is_product": False,
+            },
+            {
+                "item_id": "period-2", "activity_id": "A", "activity_name": "Swim",
+                "start_date": "2099-06-01", "end_date": "2099-06-24",
+                "schedule": SCHEDULE, "is_product": False,
+            },
+        ],
+    }
+    member = {
+        "id": "M1",
+        "activities": [{
+            "activity_id": "A", "activity_name": "Swim",
+            # Operational dates shifted, while purchased total remains period 1.
+            "start_date": "2099-05-11", "end_date": "2099-06-03",
+            "schedule": SCHEDULE, "status": "active",
+            "source": "invoice", "source_id": "INV-MULTI",
+            "source_period_key": source_key(invoice, invoice["items"][0], 0),
+        }],
+    }
+    fake_db(member=member, invoices=[invoice], attendance=[])
+    q = _quota()[0]
+    assert q["total_allowed"] == 8
+    assert q["start_date"] == "2099-05-11"
+    assert q["end_date"] == "2099-06-03"
+
+
+def test_original_quota_window_parses_legacy_period_field(fake_db):
+    invoice = {
+        "id": "INV-PERIOD", "status": "paid", "invoice_number": "501",
+        "items": [{
+            "item_id": "legacy-period", "activity_id": "A",
+            "activity_name": "Swim", "start_date": "", "end_date": "",
+            "period": "2099-05-04 - 2099-05-27",
+            "schedule": SCHEDULE, "is_product": False,
+        }],
+    }
+    member = {
+        "id": "M1",
+        "activities": [{
+            "activity_id": "A", "activity_name": "Swim",
+            "start_date": "2099-05-04", "end_date": "2099-06-03",
+            "schedule": SCHEDULE, "status": "active",
+            "source": "invoice", "source_id": "INV-PERIOD",
+            "source_period_key": source_key(invoice, invoice["items"][0], 0),
+        }],
+    }
+    fake_db(member=member, invoices=[invoice], attendance=[])
+    assert _quota()[0]["total_allowed"] == 8

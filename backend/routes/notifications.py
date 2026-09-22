@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
 from utils.auth import resolve_branch_filter
+from utils.effective_periods import effective_period_map, operational_window
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -1079,7 +1080,20 @@ async def get_expiring_subscriptions(
             },
         ):
             paid_invoices.append(invoice)
-        renewal_evidence = _renewal_evidence_by_activity(members, paid_invoices)
+        effective_periods = await effective_period_map(db, paid_invoices)
+        operational_invoices = []
+        for invoice in paid_invoices:
+            copy = dict(invoice)
+            copy["items"] = []
+            for item_index, original_item in enumerate(invoice.get("items") or []):
+                item = dict(original_item)
+                start, end = operational_window(
+                    invoice, original_item, item_index, effective_periods
+                )
+                item["start_date"], item["end_date"] = start, end
+                copy["items"].append(item)
+            operational_invoices.append(copy)
+        renewal_evidence = _renewal_evidence_by_activity(members, operational_invoices)
 
     # Bulk-fetch each member's latest attendance date in one aggregation
     last_attendance_map: dict = {}

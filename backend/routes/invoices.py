@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 from .common import db, get_current_user
 from utils.auth import require_branch_scope, resolve_branch_filter
 from utils.sequences import get_branch_seq_start
+from utils.effective_periods import source_key
 
 # Loyalty points function - will be set from server.py
 loyalty_award_points = None
@@ -45,6 +46,7 @@ VAT_RATE = 0.15  # 15% VAT
 # ============ MODELS ============
 
 class InvoiceItem(BaseModel):
+    item_id: Optional[str] = None
     activity_id: Optional[str] = ""
     activity_name: str
     fee: float
@@ -466,6 +468,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     all_items = []
     for item in invoice.items:
         item_dict = item.model_dump()
+        item_dict["item_id"] = item_dict.get("item_id") or str(uuid.uuid4())
         # Never trust a client-supplied per-item member_id on primary items:
         # validate it resolves to a real, branch-authorized member, otherwise
         # a caller could bypass the member-link requirement above or route
@@ -495,6 +498,7 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
             additional_members_info.append({"member_id": am.member_id, "member_name": am_name, "member_code": am_code})
             for item in am.items:
                 item_dict = item.model_dump()
+                item_dict["item_id"] = item_dict.get("item_id") or str(uuid.uuid4())
                 item_dict["member_id"] = am.member_id
                 item_dict["member_name"] = am_name
                 all_items.append(item_dict)
@@ -815,6 +819,10 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         if not member:
             continue
         existing_activities = member.get("activities", [])
+        existing_activity_ids = {
+            act.get("activity_id") for act in existing_activities
+            if act.get("activity_id")
+        }
 
         def _item_period(it):
             s = it.get("start_date", today)
@@ -825,6 +833,22 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                     s = parts[0].strip()
                     e = parts[1].strip()
             return s, e
+
+        def _is_deferred_prepaid(it):
+            """A future period must remain invoice-only until it arrives.
+
+            In particular, paying ahead must not discard the current activity
+            subdocument's compensated deadline, schedule/source/level, or its
+            current level placement. Initial purchases have no matching
+            activity and therefore continue to activate immediately.
+            """
+            start_date, _ = _item_period(it)
+            return (
+                bool(it.get("activity_id"))
+                and it.get("activity_id") in existing_activity_ids
+                and bool(start_date)
+                and start_date > today
+            )
 
         # When one invoice carries multiple periods for the SAME activity
         # (e.g. two prepaid months), only ONE can live in member.activities.
@@ -854,6 +878,17 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
 
         for item in deduped_items:
             start_date, end_date = _item_period(item)
+            item_index = next(
+                index for index, candidate in enumerate(invoice.get("items") or [])
+                if candidate is item
+            )
+            period_key = source_key(invoice, item, item_index)
+
+            # The paid invoice is the durable record for a prepaid period.
+            # utils.prepaid rolls it into member.activities once its start date
+            # arrives; doing so at payment time would erase the current period.
+            if _is_deferred_prepaid(item):
+                continue
             
             status = "active"
             if end_date:
@@ -882,7 +917,8 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                         "training_time": item.get("training_time", ""),
                         "day_times": item.get("day_times", {}),
                         "source": "invoice",
-                        "source_id": invoice_id
+                        "source_id": invoice_id,
+                        "source_period_key": period_key,
                     }
                     activity_exists = True
                     break
@@ -902,7 +938,8 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                     "training_time": item.get("training_time", ""),
                     "day_times": item.get("day_times", {}),
                     "source": "invoice",
-                    "source_id": invoice_id
+                    "source_id": invoice_id,
+                    "source_period_key": period_key,
                 })
         
         await db.members.update_one(
@@ -911,6 +948,10 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         )
         
         for item in member_items:
+            # Do not move a currently placed member to a future period's level
+            # before that prepaid period has started.
+            if _is_deferred_prepaid(item):
+                continue
             level_id = item.get("level_id")
             if level_id:
                 await db.levels.update_one(

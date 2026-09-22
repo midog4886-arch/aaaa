@@ -14,6 +14,19 @@ import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI, di
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
 import MemberAvatar from '../components/MemberAvatar';
+import AdditionalActivityRows from './renewals/AdditionalActivityRows';
+import {
+  activitySchedule,
+  localizedRenewalValidation,
+  newAdditionalActivity,
+  persistRenewalActivities,
+  renewalCouponInput,
+  renewalTotals,
+  scheduleTimeFromText,
+  shouldDeferPrimaryRenewal,
+  toInvoiceItem,
+  validateRenewalRows,
+} from './renewals/renewalActivities';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import {
@@ -259,6 +272,14 @@ const RenewalsPage = () => {
   // Catalogs for changing activity/level during renewal (lazy-loaded on dialog open)
   const [renewalActivities, setRenewalActivities] = useState([]);
   const [renewalLevels, setRenewalLevels] = useState([]);
+  const [additionalActivities, setAdditionalActivities] = useState([]);
+  const [renewalMember, setRenewalMember] = useState(null);
+  const [renewalMemberError, setRenewalMemberError] = useState('');
+  const [loadingRenewalMember, setLoadingRenewalMember] = useState(false);
+  const [renewalInvoiceLocked, setRenewalInvoiceLocked] = useState(false);
+  // Kept while this dialog remains open so retrying after a partial save never
+  // creates a second invoice or repeats already-completed member mutations.
+  const renewalProgressRef = useRef({ invoiceId: '', completed: new Set(), rows: null });
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -1003,7 +1024,7 @@ const RenewalsPage = () => {
     }
   };
 
-  const openRenewalDialog = (item) => {
+  const openRenewalDialog = async (item) => {
     setSingleRenewalSuccess(null);
     const endDate = new Date(item.end_date);
     const newStartDate = new Date(endDate);
@@ -1017,12 +1038,18 @@ const RenewalsPage = () => {
     const endStr = calcEndDate(startStr, weeks, trainingDays);
 
     setSelectedItem(item);
+    setAdditionalActivities([]);
+    setRenewalMember(null);
+    setRenewalMemberError('');
+    setLoadingRenewalMember(true);
+    renewalProgressRef.current = { invoiceId: '', completed: new Set(), rows: null };
+    setRenewalInvoiceLocked(false);
     setRenewalForm({
       start_date: startStr,
       end_date: endStr,
       weeks,
       training_days: (item.training_days && item.training_days.length > 0) ? item.training_days : trainingDays,
-      training_time: item.training_time || '',
+      training_time: item.training_time || scheduleTimeFromText(item.schedule),
       day_times: item.day_times || {},
       fee: item.fee || 0,
       notes: '',
@@ -1043,6 +1070,16 @@ const RenewalsPage = () => {
     setAppliedCoupon(null);
     setCouponDiscount(0);
     setIsRenewalDialogOpen(true);
+    try {
+      const memberRes = await membersAPI.getById(item.member_id);
+      setRenewalMember(memberRes.data);
+    } catch (error) {
+      setRenewalMemberError(language === 'ar'
+        ? 'تعذر تحميل أنشطة العضو. لا يمكن متابعة التجديد بأمان.'
+        : (error.response?.data?.detail || 'Could not load the member activities. Renewal cannot safely continue.'));
+    } finally {
+      setLoadingRenewalMember(false);
+    }
   };
 
   const clearCoupon = () => {
@@ -1052,107 +1089,100 @@ const RenewalsPage = () => {
 
   const validateRenewalCoupon = async () => {
     if (!couponCode.trim()) return;
-    const subtotal = parseFloat(renewalForm.fee) || 0;
+    const couponInput = renewalCouponInput(renewalForm, additionalActivities, selectedItem?.activity_id);
+    const subtotal = couponInput.amount;
     if (subtotal <= 0) {
       toast.error(language === 'ar' ? 'أدخل الرسوم أولاً' : 'Enter the fee first');
       return;
     }
     setValidatingCoupon(true);
     try {
-      const couponActivityId = renewalForm.activity_id || selectedItem?.activity_id;
-      const res = await discountsAPI.validate(couponCode, subtotal, couponActivityId ? [couponActivityId] : []);
+      const res = await discountsAPI.validate(couponCode, subtotal, couponInput.activityIds);
       setAppliedCoupon(res.data.discount);
       setCouponDiscount(res.data.discount_amount || 0);
       toast.success(language === 'ar' ? 'تم تطبيق كود الخصم' : 'Coupon applied');
     } catch (error) {
       clearCoupon();
-      toast.error(error.response?.data?.detail || (language === 'ar' ? 'كوبون غير صالح' : 'Invalid coupon'));
+      toast.error(language === 'ar'
+        ? 'كوبون الخصم غير صالح أو لا ينطبق على الأنشطة المحددة'
+        : (error.response?.data?.detail || 'Invalid coupon'));
     } finally {
       setValidatingCoupon(false);
     }
   };
 
   const handleRenewal = async () => {
-    if (!selectedItem) return;
+    if (!selectedItem || !renewalMember) return;
     setSaving(true);
 
     try {
-      const subtotal = parseFloat(renewalForm.fee);
-      const vatAmount = Math.round(subtotal * 0.15 * 100) / 100;
-      const discountAmount = Math.round((couponDiscount || 0) * 100) / 100;
-      const total = Math.max(Math.round((subtotal + vatAmount - discountAmount) * 100) / 100, 0);
-
-      // Use the (possibly edited) form values: activity, days/times, level.
-      const newActivityId = renewalForm.activity_id || selectedItem.activity_id || '';
-      const newActivityName = renewalForm.activity_name || selectedItem.activity_name;
-      const trainingDays = renewalForm.training_days || [];
-      const trainingTime = renewalForm.training_time || '';
-      const dayTimes = renewalForm.day_times || {};
-      // Rebuild the human-readable schedule string when days/time were edited,
-      // otherwise stale text would keep showing the old days everywhere.
-      const scheduleStr = trainingDays.length > 0
-        ? buildMemberSchedule(trainingDays, trainingTime, dayTimes)
-        : (renewalForm.schedule || selectedItem.schedule || '');
+      const draftPrimary = {
+        ...renewalForm,
+        activity_id: renewalForm.activity_id || selectedItem.activity_id || '',
+        activity_name: renewalForm.activity_name || selectedItem.activity_name,
+      };
+      const draftRows = [draftPrimary, ...additionalActivities];
+      const rows = renewalProgressRef.current.rows || draftRows;
+      const [primary, ...lockedExtras] = rows;
+      const newActivityId = primary.activity_id;
+      const newActivityName = primary.activity_name;
+      const validationError = validateRenewalRows(rows, renewalMember.activities, selectedItem.activity_id);
+      if (validationError) {
+        toast.error(localizedRenewalValidation(validationError, language));
+        return;
+      }
+      const totals = renewalTotals(primary, lockedExtras, couponDiscount);
+      const invoiceItems = rows.map(toInvoiceItem);
 
       const invoiceData = {
         member_id: selectedItem.member_id,
         customer_name_ar: selectedItem.member_name,
         customer_name: selectedItem.member_name,
         customer_phone: selectedItem.phone,
-        items: [{
-          activity_id: newActivityId,
-          activity_name: newActivityName,
-          fee: parseFloat(renewalForm.fee),
-          period: `${renewalForm.start_date} - ${renewalForm.end_date}`,
-          start_date: renewalForm.start_date,
-          end_date: renewalForm.end_date,
-          schedule: scheduleStr,
-          training_days: trainingDays,
-          training_time: trainingTime,
-          day_times: dayTimes,
-          level_id: renewalForm.level_id || '',
-          is_product: false
-        }],
-        subtotal: subtotal,
-        vat: vatAmount,
-        total: total,
-        discount: discountAmount,
+        items: invoiceItems,
+        subtotal: totals.subtotal,
+        vat: totals.vat,
+        total: totals.total,
+        discount: totals.discount,
         discount_code: appliedCoupon?.code || null,
-        status: 'paid',
         payment_method: renewalForm.payment_method,
         is_renewal: true,
         notes: renewalForm.notes || `تجديد اشتراك ${newActivityName}`
       };
 
-      const invoiceRes = await invoicesAPI.create(invoiceData);
-
-      const updatedActivity = {
-        activity_id: newActivityId,
-        activity_name: newActivityName,
-        start_date: renewalForm.start_date,
-        end_date: renewalForm.end_date,
-        fee: parseFloat(renewalForm.fee),
-        status: 'active',
-        schedule: scheduleStr,
-        training_days: trainingDays,
-        training_time: trainingTime,
-        day_times: dayTimes,
-        level_id: renewalForm.level_id || '',
-        coach_id: selectedItem.coach_id || '',
-        source: 'invoice',
-        source_id: invoiceRes.data?.id || '',
-        invoice_id: invoiceRes.data?.id,
-        renewed_from: selectedItem.end_date
-      };
-
-      // Replace the SAME activity subdoc in place (targeted by the OLD id) so
-      // an activity change doesn't stack a duplicate copy on the member.
-      await membersAPI.updateActivity(selectedItem.member_id, selectedItem.activity_id, updatedActivity);
+      const today = new Date().toISOString().slice(0, 10);
+      const result = await persistRenewalActivities({
+        progress: renewalProgressRef.current,
+        invoiceData,
+        rows,
+        createInvoice: invoicesAPI.create,
+        savePrimary: async (invoiceId, savedPrimary) => {
+          const deferred = shouldDeferPrimaryRenewal(savedPrimary.activity_id, selectedItem.activity_id, savedPrimary.start_date, today);
+          if (deferred) return;
+          await membersAPI.updateActivity(selectedItem.member_id, selectedItem.activity_id, {
+            ...toInvoiceItem(savedPrimary),
+            status: 'active',
+            coach_id: selectedItem.coach_id || '',
+            source: 'invoice',
+            source_id: invoiceId,
+            renewed_from: selectedItem.end_date,
+          });
+        },
+        addExtra: (invoiceId, extra) => membersAPI.addActivity(selectedItem.member_id, {
+          ...toInvoiceItem(extra),
+          status: 'active',
+          source: 'invoice',
+          source_id: invoiceId,
+        }),
+      });
+      const invoiceId = result.invoiceId;
+      setRenewalInvoiceLocked(true);
+      const deferredPrimary = shouldDeferPrimaryRenewal(newActivityId, selectedItem.activity_id, primary.start_date, today);
 
       // Sync level membership when the level changed during renewal
       const oldLevelId = selectedItem.level_id || '';
-      const newLevelId = renewalForm.level_id || '';
-      if (oldLevelId !== newLevelId) {
+      const newLevelId = primary.level_id || '';
+      if (!deferredPrimary && oldLevelId !== newLevelId && !renewalProgressRef.current.completed.has('primary-level')) {
         if (oldLevelId) {
           try { await levelsAPI.removeMember(oldLevelId, selectedItem.member_id); } catch (e) { console.warn('Old level detach warning:', e); }
         }
@@ -1165,6 +1195,18 @@ const RenewalsPage = () => {
             });
           } catch (e) { console.warn('Level membership sync warning:', e); }
         }
+        renewalProgressRef.current.completed.add('primary-level');
+      }
+      for (const extra of lockedExtras) {
+        if (!extra.level_id) continue;
+        const key = `level:${extra.activity_id}`;
+        if (renewalProgressRef.current.completed.has(key)) continue;
+        await levelsAPI.addMember(extra.level_id, selectedItem.member_id, {
+          activityId: extra.activity_id,
+          activityName: extra.activity_name,
+          force: true,
+        });
+        renewalProgressRef.current.completed.add(key);
       }
 
       const successfulRenewal = {
@@ -1174,20 +1216,24 @@ const RenewalsPage = () => {
         branch_id: selectedItem.branch_id,
         tenant_id: selectedItem.tenant_id,
         activity_name: newActivityName,
-        start_date: renewalForm.start_date,
-        end_date: renewalForm.end_date,
-        schedule: scheduleStr,
+        start_date: primary.start_date,
+        end_date: primary.end_date,
+        schedule: activitySchedule(primary),
       };
       toast.success(language === 'ar'
-        ? 'تم تجديد الاشتراك بنجاح. بطاقة العضوية الحالية ما زالت سارية ولا تحتاج إلى إعادة طباعة.'
-        : 'Subscription renewed successfully. The existing membership card remains valid; no reprint is needed.');
-      markRenewed(selectedItem, renewalForm.start_date, renewalForm.end_date);
+        ? 'تم إنشاء فاتورة التجديد المعلقة وحفظ الأنشطة. لم يتم تسجيلها كمدفوعة.'
+        : 'The pending renewal invoice and activities were saved. It was not marked as paid.');
+      markRenewed(selectedItem, primary.start_date, primary.end_date);
       setIsRenewalDialogOpen(false);
       setSingleRenewalSuccess(successfulRenewal);
       loadData();
     } catch (error) {
       console.error('Failed to renew subscription:', error);
-      toast.error(language === 'ar' ? 'حدث خطأ في تجديد الاشتراك' : 'Failed to renew subscription');
+      const invoiceId = renewalProgressRef.current.invoiceId;
+      if (invoiceId) setRenewalInvoiceLocked(true);
+      toast.error(invoiceId
+        ? (language === 'ar' ? `تم إنشاء الفاتورة ${invoiceId} لكن تعذر إكمال حفظ الأنشطة. صحح الخطأ ثم أعد المحاولة دون إنشاء فاتورة جديدة.` : `Invoice ${invoiceId} was created, but saving activities was incomplete. Fix the error and retry; no new invoice will be created.`)
+        : (language === 'ar' ? 'حدث خطأ في إنشاء فاتورة التجديد' : 'Failed to create the renewal invoice'));
     } finally {
       setSaving(false);
     }
@@ -1648,8 +1694,11 @@ const RenewalsPage = () => {
         </div>
       )}
 
-      <Dialog open={isRenewalDialogOpen} onOpenChange={setIsRenewalDialogOpen}>
-        <DialogContent className="max-w-md">
+      <Dialog open={isRenewalDialogOpen} onOpenChange={(open) => {
+        if (!open && renewalInvoiceLocked) return;
+        setIsRenewalDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {language === 'ar' ? 'تجديد الاشتراك' : 'Renew Subscription'}
@@ -1657,7 +1706,21 @@ const RenewalsPage = () => {
           </DialogHeader>
 
           {selectedItem && (
-            <div className="space-y-4">
+            <fieldset disabled={renewalInvoiceLocked} className="space-y-4">
+              {renewalInvoiceLocked && (
+                <div className="p-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg">
+                  {language === 'ar'
+                    ? 'تم إنشاء الفاتورة؛ تم قفل البيانات حتى تكتمل إعادة المحاولة لتجنب عدم تطابق الفاتورة.'
+                    : 'The invoice has been created. The form is locked until retry completes to prevent an invoice mismatch.'}
+                </div>
+              )}
+              {loadingRenewalMember && (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {language === 'ar' ? 'جارٍ التحقق من أنشطة العضو...' : 'Checking member activities...'}
+                </div>
+              )}
+              {renewalMemberError && <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">{renewalMemberError}</div>}
               <div className="p-3 bg-muted rounded-lg text-sm space-y-1">
                 <p><strong>{language === 'ar' ? 'العضو:' : 'Member:'}</strong> {selectedItem.member_name}</p>
                 <p><strong>{language === 'ar' ? 'النشاط الحالي:' : 'Current Activity:'}</strong> {selectedItem.activity_name}</p>
@@ -1762,7 +1825,8 @@ const RenewalsPage = () => {
                     <SelectContent>
                       <SelectItem value="__none__">{language === 'ar' ? 'بدون مستوى' : 'No level'}</SelectItem>
                       {renewalLevels
-                        .filter(l => !l.branch_id || l.branch_id === (selectedItem.branch_id || ''))
+                        .filter(l => (!l.branch_id || l.branch_id === (selectedItem.branch_id || ''))
+                          && (!l.activity_id || l.activity_id === renewalForm.activity_id))
                         .slice()
                         .sort((a, b) => `${a.activity_name || ''}`.localeCompare(`${b.activity_name || ''}`, 'ar') || (a.level_number || 0) - (b.level_number || 0))
                         .map(l => {
@@ -1835,6 +1899,20 @@ const RenewalsPage = () => {
                 />
               </div>
 
+              <AdditionalActivityRows
+                rows={additionalActivities}
+                onChange={(rows) => {
+                  setAdditionalActivities(rows);
+                  if (appliedCoupon) clearCoupon();
+                }}
+                createRow={() => ({ ...newAdditionalActivity(renewalForm.start_date), _key: `${Date.now()}-${additionalActivities.length}` })}
+                activities={renewalActivities}
+                levels={renewalLevels}
+                branchId={selectedItem.branch_id || ''}
+                language={language}
+                onRelevantEdit={() => { if (appliedCoupon) clearCoupon(); }}
+              />
+
               <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
                 <label className="text-sm font-medium mb-1 block text-purple-700">
                   {language === 'ar' ? 'كود الخصم (اختياري)' : 'Discount Coupon (optional)'}
@@ -1899,15 +1977,17 @@ const RenewalsPage = () => {
                 />
               </div>
 
-              {renewalForm.fee > 0 && (
+              {renewalTotals(renewalForm, additionalActivities).subtotal > 0 && (() => {
+                const totals = renewalTotals(renewalForm, additionalActivities, couponDiscount);
+                return (
                 <div className="p-3 bg-green-50 rounded-lg text-sm space-y-1">
                   <div className="flex justify-between">
                     <span>{language === 'ar' ? 'المبلغ:' : 'Subtotal:'}</span>
-                    <span>{parseFloat(renewalForm.fee).toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                    <span>{totals.subtotal.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>{language === 'ar' ? 'الضريبة (15%):' : 'VAT (15%):'}</span>
-                    <span>{(parseFloat(renewalForm.fee) * 0.15).toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                    <span>{totals.vat.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
                   </div>
                   {couponDiscount > 0 && (
                     <div className="flex justify-between text-purple-700">
@@ -1917,20 +1997,21 @@ const RenewalsPage = () => {
                   )}
                   <div className="flex justify-between font-bold border-t pt-1">
                     <span>{language === 'ar' ? 'الإجمالي:' : 'Total:'}</span>
-                    <span>{Math.max(parseFloat(renewalForm.fee) * 1.15 - (couponDiscount || 0), 0).toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
+                    <span>{totals.total.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</span>
                   </div>
                 </div>
-              )}
-            </div>
+                );
+              })()}
+            </fieldset>
           )}
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsRenewalDialogOpen(false)}>
+            <Button variant="outline" disabled={renewalInvoiceLocked} onClick={() => setIsRenewalDialogOpen(false)}>
               {language === 'ar' ? 'إلغاء' : 'Cancel'}
             </Button>
             <Button
               onClick={handleRenewal}
-              disabled={saving}
+              disabled={saving || loadingRenewalMember || !!renewalMemberError || !renewalMember}
               className="bg-orange-500 hover:bg-orange-600 text-white"
             >
               {saving && <Loader2 className="w-4 h-4 me-2 animate-spin" />}

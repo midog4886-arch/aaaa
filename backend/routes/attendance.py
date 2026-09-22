@@ -9,6 +9,9 @@ import asyncio
 
 from .common import db, get_current_user
 from utils.auth import resolve_branch_filter
+from utils.effective_periods import (
+    effective_period_map, operational_window, original_window, source_key,
+)
 
 
 async def send_attendance_push(member_id: str, member_name: str, activity_name: str, check_in_time: str):
@@ -412,8 +415,9 @@ async def get_member_schedule_days(member_id: str, activity_id: str) -> list:
         {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
     ).to_list(100)
+    effective_periods = await effective_period_map(db, invoices)
     for inv in invoices:
-        for item in inv.get("items", []):
+        for item_index, item in enumerate(inv.get("items", [])):
             if item.get("activity_id") == activity_id:
                 end_date = item.get("end_date", "")
                 if end_date and end_date < today_str:
@@ -653,6 +657,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
         {"_id": 0}
     ).to_list(100)
+    effective_periods = await effective_period_map(db, invoices)
 
     # Map the original (unextended) end date for each subscription so the session
     # total can be computed from what the member actually paid for, even when
@@ -662,22 +667,25 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     orig_end_by_src_start_sched = {}  # (invoice_id, start_date, schedule) -> end_date
     orig_end_by_src_start = {}     # (invoice_id, start_date) -> end_date OR None if ambiguous
     aids_by_src_start_sched = {}   # (invoice_id, start_date, schedule) -> {activity_ids}
+    orig_window_by_period_key = {}
     for inv in invoices:
         inv_id = inv.get("id", "")
-        for item in inv.get("items", []):
+        for item_index, item in enumerate(inv.get("items", [])):
             if item.get("is_product"):
                 continue
             aid = item.get("activity_id", "")
-            oend = str(item.get("end_date") or "")[:10]
+            original_start, oend = original_window(item)
             if not oend:
                 continue
             if aid:
                 # Keep the original START too: when a subscription is postponed
                 # (both start and end shifted), the paid total must come from the
                 # original window LENGTH, not from (new start → original end).
-                original_start = str(item.get("start_date") or "")[:10]
                 orig_end_by_source[(inv_id, aid)] = (original_start, oend)
                 orig_end_by_activity[aid] = (original_start, oend)
+            orig_window_by_period_key[source_key(inv, item, item_index)] = (
+                str(item.get("start_date") or "")[:10], oend
+            )
             # Also index by (invoice, start_date). The member.activities entry is
             # linked to its invoice via source_id, but its activity_id often does
             # NOT match the invoiced item's activity_id (level-based assignment
@@ -687,7 +695,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             # diverge. schedule disambiguates multi-activity invoices that share a
             # start_date; the looser (invoice, start_date) key is flagged ambiguous
             # (None) when two items under it carry different end dates.
-            istart = str(item.get("start_date") or "")[:10]
+            istart = original_start
             if not istart:
                 continue
             isched = item.get("schedule", "")
@@ -718,13 +726,16 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             continue
         quota_end = None
         quota_start = None
+        period_pair = orig_window_by_period_key.get(act.get("source_period_key"))
+        if period_pair:
+            quota_start, quota_end = period_pair
         if act.get("source") == "invoice" and act.get("source_id"):
             source_id = act.get("source_id")
             act_start = str(act.get("start_date") or "")[:10]
             # 1) Exact (invoice, activity_id) match — carries the original start
             #    too, covering postponed subscriptions where BOTH dates moved.
             pair = orig_end_by_source.get((source_id, item_activity_id))
-            if pair:
+            if pair and not quota_end:
                 quota_start, quota_end = pair[0] or None, pair[1]
             # 2) Same invoice but activity_id diverged (level-based assignment):
             #    join on the never-rewritten start_date + schedule so the total
@@ -777,7 +788,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     #       when the same activity exists in both sources with different
     #       (stale invoice vs extended activity) end dates. ────────────────────
     for inv in invoices:
-        for item in inv.get("items", []):
+        for item_index, item in enumerate(inv.get("items", [])):
             if item.get("is_product"):
                 continue
             item_activity_id = item.get("activity_id", "")
@@ -785,14 +796,19 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
                 continue
             if item_activity_id in produced_aids:
                 continue
-            start = item.get("start_date", "") or inv.get("created_at", "")[:10]
+            effective_start, effective_end = operational_window(
+                inv, item, item_index, effective_periods
+            )
+            start = effective_start or inv.get("created_at", "")[:10]
             await _process_subscription(
                 item_activity_id,
                 item.get("activity_name", ""),
                 start,
-                item.get("end_date", ""),
+                effective_end,
                 item.get("schedule", ""),
-                inv.get("invoice_number", "")
+                inv.get("invoice_number", ""),
+                quota_end_date=item.get("end_date", ""),
+                quota_start_date=item.get("start_date", ""),
             )
 
     # ── 3. Surface the latest EXPIRED subscription for activities that have no

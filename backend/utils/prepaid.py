@@ -18,6 +18,8 @@ Rules (see member-activities dedupe + session-quota memories):
 
 from datetime import datetime, timezone
 
+from utils.effective_periods import effective_period_map, operational_window, source_key
+
 
 def _item_window(item):
     start = item.get("start_date") or ""
@@ -54,6 +56,7 @@ async def roll_forward_member_prepaid(db, member, today=None):
     ).to_list(200)
     if not invoices:
         return []
+    effective_periods = await effective_period_map(db, invoices)
 
     changes = []
     for act in acts:
@@ -63,15 +66,18 @@ async def roll_forward_member_prepaid(db, member, today=None):
         cur_end = act.get("end_date") or ""
         best = None
         best_inv = None
+        best_index = None
+        best_window = None
+        active_source_key = act.get("source_period_key") or ""
         for inv in invoices:
-            for it in inv.get("items") or []:
+            for index, it in enumerate(inv.get("items") or []):
                 if it.get("is_product"):
                     continue
                 if (it.get("member_id") or inv.get("member_id")) != member.get("id"):
                     continue
                 if it.get("activity_id") != aid:
                     continue
-                s, e = _item_window(it)
+                s, e = operational_window(inv, it, index, effective_periods)
                 if not s or not e:
                     continue
                 # Only prepaid windows that have ARRIVED and represent a NEW
@@ -85,12 +91,22 @@ async def roll_forward_member_prepaid(db, member, today=None):
                     continue
                 if s <= cur_end:
                     continue
-                if best is None or e > _item_window(best)[1]:
+                candidate_key = source_key(inv, it, index)
+                if candidate_key == active_source_key:
+                    continue
+                # Consume the earliest arrived period. Choosing the furthest end
+                # skips intermediate prepaid months and loses their quota.
+                if best is None or (s, e, candidate_key) < (
+                    best_window[0], best_window[1],
+                    source_key(best_inv, best, best_index),
+                ):
                     best = it
                     best_inv = inv
+                    best_index = index
+                    best_window = (s, e)
         if best is None:
             continue
-        s, e = _item_window(best)
+        s, e = best_window
         change = {
             "activity_id": aid,
             "from": {"start_date": act.get("start_date"), "end_date": cur_end},
@@ -102,6 +118,7 @@ async def roll_forward_member_prepaid(db, member, today=None):
         act["status"] = "active" if e >= today else "expired"
         act["source"] = "invoice"
         act["source_id"] = best_inv.get("id")
+        act["source_period_key"] = source_key(best_inv, best, best_index)
         # Carry schedule fields only when the prepaid item defines them —
         # otherwise keep the member's current (possibly admin-edited) schedule.
         for f in ("schedule", "training_days", "training_time", "day_times", "level_id"):
@@ -114,6 +131,35 @@ async def roll_forward_member_prepaid(db, member, today=None):
         await db.members.update_one(
             {"id": member.get("id")},
             {"$set": {"activities": acts}},
+        )
+    # Deferred periods were intentionally not placed at payment time. Reconcile
+    # every source-bound active period, not only a just-changed one, so retrying
+    # after a placement write failure repairs the missing evidence.
+    for activated in acts:
+        if not (
+            activated.get("level_id")
+            and activated.get("source") == "invoice"
+            and activated.get("source_id")
+            and activated.get("source_period_key")
+        ):
+            continue
+        level_id = activated["level_id"]
+        await db.levels.update_one(
+            {"id": level_id},
+            {"$addToSet": {"members": member.get("id")}},
+        )
+        await db.level_subscriptions.update_one(
+            {"member_id": member.get("id"), "level_id": level_id},
+            {"$set": {
+                "member_id": member.get("id"),
+                "level_id": level_id,
+                "activity_id": activated.get("activity_id"),
+                "start_date": activated.get("start_date", ""),
+                "end_date": activated.get("end_date", ""),
+                "invoice_id": activated.get("source_id"),
+                "source_period_key": activated.get("source_period_key", ""),
+            }},
+            upsert=True,
         )
     return changes
 

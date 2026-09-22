@@ -122,6 +122,7 @@ const previewMembers = [
 ];
 
 const preview = {
+  preview_token: 'preview-token-1',
   extended_count: previewMembers.length,
   extended_members: previewMembers,
   skipped_count: 0,
@@ -187,6 +188,7 @@ test('manual mode does not couple opening chats to applying the extension', asyn
     branch_id: 'branch-a',
     dry_run: false,
     excluded_member_ids: [],
+    preview_token: 'preview-token-1',
   }));
   expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
 });

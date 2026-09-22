@@ -11,6 +11,7 @@ real DB. Covers:
 import asyncio
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -94,6 +95,10 @@ class _FakeCollection:
         for d in self.docs:
             if self._matches(d, query):
                 d.update(update.get("$set", {}))
+                for key, value in update.get("$addToSet", {}).items():
+                    values = d.setdefault(key, [])
+                    if value not in values:
+                        values.append(value)
                 return _Result(1)
         if upsert:
             doc = {k: v for k, v in query.items() if not isinstance(v, dict)}
@@ -236,3 +241,107 @@ def test_pay_unknown_invoice_404(db):
     with pytest.raises(HTTPException) as e:
         run(inv_mod.pay_invoice("ghost", admin()))
     assert e.value.status_code == 404
+
+
+def _date(days):
+    return (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
+
+
+def _activity_item(**over):
+    item = {
+        "activity_id": "swim",
+        "activity_name": "Swim",
+        "start_date": _date(1),
+        "end_date": _date(30),
+        "period": "",
+        "fee": 100,
+        "schedule": "new schedule",
+        "level_id": "future-level",
+        "training_days": ["Monday"],
+        "training_time": "18:00",
+        "day_times": {"Monday": "18:00"},
+        "is_product": False,
+    }
+    item.update(over)
+    return item
+
+
+def test_pay_future_same_activity_preserves_current_subscription_and_placement(
+        db, push_calls, whatsapp_calls):
+    """Exercise the real pay handler: a prepaid renewal stays on the paid
+    invoice and cannot erase a freeze-compensated current activity."""
+    current = {
+        "activity_id": "swim",
+        "activity_name": "Current swim",
+        "start_date": _date(-20),
+        # Represents a deadline extended by freeze compensation.
+        "end_date": _date(10),
+        "fee": 80,
+        "status": "active",
+        "coach_id": "coach-current",
+        "level_id": "current-level",
+        "schedule": "current schedule",
+        "training_days": ["Sunday"],
+        "training_time": "17:00",
+        "day_times": {"Sunday": "17:00"},
+        "source": "registration",
+        "source_id": "registration-1",
+    }
+    future_item = _activity_item(start_date=_date(11), end_date=_date(40))
+    db.members.docs.append({"id": "m1", "activities": [dict(current)]})
+    db.levels.docs.extend([
+        {"id": "current-level", "members": ["m1"]},
+        {"id": "future-level", "members": []},
+    ])
+    db.invoices.docs.append(_invoice(
+        member_id="m1", is_renewal=True, items=[future_item]))
+
+    run(inv_mod.pay_invoice("inv1", admin()))
+
+    assert db.invoices.docs[0]["status"] == "paid"
+    assert db.invoices.docs[0]["items"][0] == future_item
+    assert db.members.docs[0]["activities"] == [current]
+    assert db.levels.docs[0]["members"] == ["m1"]
+    assert db.levels.docs[1]["members"] == []
+    assert db.level_subscriptions.docs == []
+
+
+def test_pay_future_initial_purchase_still_activates_and_places_member(
+        db, push_calls, whatsapp_calls):
+    item = _activity_item()
+    db.members.docs.append({"id": "m1", "activities": []})
+    db.levels.docs.append({"id": "future-level", "members": []})
+    db.invoices.docs.append(_invoice(member_id="m1", items=[item]))
+
+    run(inv_mod.pay_invoice("inv1", admin()))
+
+    activity = db.members.docs[0]["activities"][0]
+    assert activity["start_date"] == item["start_date"]
+    assert activity["end_date"] == item["end_date"]
+    assert activity["source"] == "invoice"
+    assert activity["source_id"] == "inv1"
+    assert activity["source_period_key"]
+    assert db.levels.docs[0]["members"] == ["m1"]
+    assert db.level_subscriptions.docs[0]["invoice_id"] == "inv1"
+
+
+def test_pay_arrived_expired_renewal_keeps_existing_overwrite_behavior(
+        db, push_calls, whatsapp_calls):
+    old = _activity_item(
+        start_date=_date(-60), end_date=_date(-31),
+        level_id="old-level", schedule="old schedule")
+    arrived = _activity_item(
+        start_date=_date(-30), end_date=_date(-1),
+        level_id="", schedule="arrived schedule")
+    db.members.docs.append({"id": "m1", "activities": [old]})
+    db.invoices.docs.append(_invoice(
+        member_id="m1", is_renewal=True, items=[arrived]))
+
+    run(inv_mod.pay_invoice("inv1", admin()))
+
+    activity = db.members.docs[0]["activities"][0]
+    assert activity["start_date"] == arrived["start_date"]
+    assert activity["end_date"] == arrived["end_date"]
+    assert activity["status"] == "expired"
+    assert activity["schedule"] == "arrived schedule"
+    assert activity["source_id"] == "inv1"

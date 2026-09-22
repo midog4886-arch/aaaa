@@ -4,10 +4,17 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uuid
 import re
+import hashlib
+import json
+import math
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
 from services import whatsapp_bulk_jobs
+from utils.effective_periods import (
+    effective_period_map, invoice_item_key, operational_window, original_window,
+    source_key,
+)
 
 router = APIRouter(prefix="/day-extensions", tags=["day-extensions"])
 
@@ -173,6 +180,7 @@ class ExtensionApply(BaseModel):
     branch_id: Optional[str] = None
     dry_run: Optional[bool] = False
     excluded_member_ids: Optional[List[str]] = []
+    preview_token: Optional[str] = None
 
 class ManualExtension(BaseModel):
     member_id: str
@@ -420,6 +428,600 @@ async def extend_freezes_for_closure(closure: dict, member_ids: list, applied_by
     return result
 
 
+def _dates_between(start: datetime, end: datetime):
+    current = start
+    while current <= end:
+        yield current
+        current += timedelta(days=1)
+
+
+def _scheduled_count(start: str, end: str, days: set[int]) -> int:
+    try:
+        lo = datetime.strptime(start, "%Y-%m-%d")
+        hi = datetime.strptime(end, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return 0
+    # Match attendance quota's purchased-total rule. Operational dates may offer
+    # extra alternatives, but moving a period must retain the paid allowance.
+    return max(1, math.ceil((hi - lo).days / 7)) * len(days)
+
+
+def _nth_scheduled_on_or_after(start: datetime, count: int, days: set[int]) -> datetime:
+    if count <= 0 or not days:
+        raise ValueError("A positive quota and known schedule are required")
+    current = start
+    found = 0
+    for _ in range(3700):
+        if current.weekday() in days:
+            found += 1
+            if found == count:
+                return current
+        current += timedelta(days=1)
+    raise ValueError("Could not place subscription period")
+
+
+def _next_scheduled_str(after: str, days: set[int]) -> str:
+    current = datetime.strptime(after, "%Y-%m-%d") + timedelta(days=1)
+    for _ in range(14):
+        if current.weekday() in days:
+            return current.strftime("%Y-%m-%d")
+        current += timedelta(days=1)
+    raise ValueError("Could not find next training occurrence")
+
+
+def _weekday_number(value) -> Optional[int]:
+    if isinstance(value, int) and 0 <= value <= 6:
+        return value
+    text = str(value or "").strip().lower()
+    english = {
+        "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+        "friday": 4, "saturday": 5, "sunday": 6,
+    }
+    if text in english:
+        return english[text]
+    parsed = parse_schedule_days(text)
+    return next(iter(parsed)) if len(parsed) == 1 else None
+
+
+def _normalize_time(value) -> str:
+    text = str(value or "").strip()
+    for arabic, western in zip("٠١٢٣٤٥٦٧٨٩", "0123456789"):
+        text = text.replace(arabic, western)
+    text = re.sub(r"\s+", " ", text).lower()
+    match = re.search(r"(?<!\d)(\d{1,2})(?::(\d{1,2}))?", text)
+    if not match:
+        return text
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    is_pm = "pm" in text or "م" in text or "مساء" in text
+    is_am = "am" in text or "ص" in text or "صباح" in text
+    if is_pm and hour < 12:
+        hour += 12
+    elif is_am and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return text
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _activity_schedule(activity: dict, source_items: list) -> tuple[set[int], dict[int, str], str]:
+    """Structured fields are authoritative; invoice fields are fallback only."""
+    source = activity
+    if not (activity.get("training_days") or activity.get("day_times")):
+        candidates = [
+            item for _inv, _index, item in source_items
+            if item.get("training_days") or item.get("day_times")
+        ]
+        if len(candidates) == 1:
+            source = candidates[0]
+    raw_days = source.get("training_days") or []
+    day_times = source.get("day_times") or {}
+    days = {_weekday_number(day) for day in raw_days}
+    days.discard(None)
+    per_day_times = {}
+    for day, value in day_times.items():
+        weekday = _weekday_number(day)
+        if weekday is not None:
+            per_day_times[weekday] = _normalize_time(value)
+    if not days and per_day_times:
+        days = set(per_day_times)
+    schedule = source.get("schedule") or ""
+    if not days:
+        days = parse_schedule_days(schedule)
+    common_time = _normalize_time(source.get("training_time") or parse_schedule_time(schedule))
+    for day in days:
+        if day not in per_day_times and common_time:
+            per_day_times[day] = common_time
+    return days, per_day_times, schedule
+
+
+def _preview_token(plan: dict) -> str:
+    stable = {
+        "closure_id": plan["closure_id"],
+        "closure_version": plan["closure_version"],
+        "branch_id": plan["branch_id"],
+        "excluded_member_ids": plan["excluded_member_ids"],
+        "members": plan["public_members"],
+        "skipped": plan["skipped_members"],
+        "source_fingerprint": plan["source_fingerprint"],
+    }
+    return hashlib.sha256(
+        json.dumps(stable, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, session=None) -> dict:
+    """Build the exact read-only plan used by both preview and apply."""
+    try:
+        closure_start = datetime.strptime(closure["start_date"], "%Y-%m-%d")
+        closure_end = datetime.strptime(closure["end_date"], "%Y-%m-%d")
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=400, detail="Closure has invalid dates")
+
+    closure_branch = closure.get("branch_id") or "all"
+    branch_id = closure_branch if closure_branch != "all" else (data.branch_id or "all")
+    query = {
+        "activities": {"$elemMatch": {
+            "start_date": {"$lte": closure["end_date"]},
+            "end_date": {"$gte": closure["start_date"]},
+        }}
+    }
+    if branch_id != "all":
+        query["branch_id"] = branch_id
+    session_arg = {"session": session} if session is not None else {}
+    members = await db.members.find(query, **session_arg).to_list(10000)
+    excluded = sorted(set(data.excluded_member_ids or []))
+    members = [m for m in members if m.get("id") not in excluded]
+    member_ids = [m.get("id") for m in members if m.get("id")]
+
+    invoices = await db.invoices.find({
+        "status": "paid",
+        "$or": [
+            {"member_id": {"$in": member_ids}},
+            {"items.member_id": {"$in": member_ids}},
+        ],
+    }, {"_id": 0}, **session_arg).to_list(50000)
+    periods = await effective_period_map(db, invoices, session=session)
+    paid_by_member = {}
+    for inv in invoices:
+        for index, item in enumerate(inv.get("items") or []):
+            owner = item.get("member_id") or inv.get("member_id")
+            if owner in member_ids and not item.get("is_product"):
+                paid_by_member.setdefault(owner, []).append((inv, index, item))
+    try:
+        level_collection = db.level_subscriptions
+    except AttributeError:
+        level_subscriptions = []
+    else:
+        level_subscriptions = await level_collection.find(
+            {"member_id": {"$in": member_ids}},
+            {"_id": 1, "id": 1, "member_id": 1, "level_id": 1, "activity_id": 1,
+             "start_date": 1, "end_date": 1},
+            **session_arg,
+        ).to_list(50000)
+    level_subs_by_member = {}
+    for subscription in level_subscriptions:
+        level_subs_by_member.setdefault(subscription.get("member_id"), []).append(subscription)
+
+    freezes = await db.member_freezes.find({
+        "member_id": {"$in": member_ids},
+        "status": "active",
+        "start_date": {"$lte": closure["end_date"]},
+        "end_date": {"$gte": closure["start_date"]},
+    }, {"_id": 0, "member_id": 1, "start_date": 1, "end_date": 1}, **session_arg).to_list(20000)
+    frozen_dates = {}
+    for freeze in freezes:
+        try:
+            lo = max(closure_start, datetime.strptime(freeze["start_date"], "%Y-%m-%d"))
+            hi = min(closure_end, datetime.strptime(freeze["end_date"], "%Y-%m-%d"))
+            frozen_dates.setdefault(freeze["member_id"], set()).update(
+                day.strftime("%Y-%m-%d") for day in _dates_between(lo, hi)
+            )
+        except (KeyError, ValueError):
+            continue
+
+    prior = await db.day_extensions.find({
+        "member_id": {"$in": member_ids},
+        "compensated_dates": {"$exists": True},
+    }, {"_id": 0, "member_id": 1, "activity_id": 1, "compensated_dates": 1}, **session_arg).to_list(50000)
+    compensated = {}
+    for row in prior:
+        compensated.setdefault((row.get("member_id"), row.get("activity_id")), set()).update(
+            row.get("compensated_dates") or []
+        )
+
+    branch_ids = list({m.get("branch_id") for m in members if m.get("branch_id")})
+    branch_docs = await db.branches.find(
+        {"id": {"$in": branch_ids}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1},
+        **session_arg,
+    ).to_list(len(branch_ids) or 1)
+    branch_names = {
+        b["id"]: b.get("name_ar") or b.get("name") or "" for b in branch_docs
+    }
+    activity_filter = set(closure.get("activity_ids") or [])
+    if closure.get("activity_id"):
+        activity_filter.add(closure["activity_id"])
+    affected_times = {
+        _normalize_time(value) for value in (closure.get("affected_times") or [])
+    }
+    specific_times = closure.get("stop_type") == "specific_times" and affected_times
+    writes = []
+    public_members = []
+    skipped_members = []
+    for member in members:
+        mid = member.get("id")
+        original_activities = member.get("activities") or []
+        activities = [dict(a) for a in original_activities]
+        activity_changes = []
+        deferred = []
+        records = []
+        effective_rows = {}
+        level_updates = []
+        warnings = []
+        paid_items = paid_by_member.get(mid, [])
+        for act in activities:
+            if act.get("status", "active") not in ("active", "expired"):
+                continue
+            aid = act.get("activity_id") or ""
+            if closure.get("scope", "all") == "specific" and activity_filter and aid not in activity_filter:
+                continue
+            astart = str(act.get("start_date") or "")[:10]
+            aend = str(act.get("end_date") or "")[:10]
+            if not astart or not aend or astart > closure["end_date"] or aend < closure["start_date"]:
+                continue
+            # An activity is paid only when an owned paid item binds to it/source.
+            bound = []
+            for row in paid_items:
+                inv, _index, item = row
+                exact_activity = item.get("activity_id") == aid
+                source_bound = (
+                    act.get("source_id")
+                    and inv.get("id") == act.get("source_id")
+                    and original_window(item)[0] == astart
+                    and (
+                        not act.get("schedule")
+                        or item.get("schedule") == act.get("schedule")
+                    )
+                )
+                if exact_activity or source_bound:
+                    bound.append(row)
+            if not bound:
+                warnings.append(f"{act.get('activity_name') or aid}: no paid source period")
+                continue
+            current_bound = [
+                r for r in bound
+                if (
+                    (act.get("source_id") and r[0].get("id") == act.get("source_id"))
+                    or original_window(r[2])[0] == astart
+                )
+            ]
+            days, times_by_day, schedule = _activity_schedule(act, current_bound)
+            if not days:
+                warnings.append(f"{act.get('activity_name') or aid}: unknown schedule; skipped")
+                continue
+            missed_dates = []
+            had_affected_time = not specific_times
+            for day in _dates_between(closure_start, closure_end):
+                date = day.strftime("%Y-%m-%d")
+                if date < astart or date > aend or day.weekday() not in days:
+                    continue
+                if specific_times:
+                    occurrence_time = times_by_day.get(day.weekday())
+                    if not occurrence_time or occurrence_time not in affected_times:
+                        continue
+                    had_affected_time = True
+                if date in frozen_dates.get(mid, set()):
+                    continue
+                if date in compensated.get((mid, aid), set()):
+                    continue
+                missed_dates.append(date)
+            if not missed_dates:
+                if specific_times and not had_affected_time:
+                    warnings.append(
+                        f"{act.get('activity_name') or aid}: training time is not affected"
+                    )
+                continue
+            act_before = dict(act)
+            change_checkpoint = len(activity_changes)
+            record_checkpoint = len(records)
+            deferred_checkpoint = len(deferred)
+            effective_checkpoint = dict(effective_rows)
+            level_checkpoint = len(level_updates)
+            activity_invalid = False
+            old_end = aend
+            new_end = find_new_end_date(
+                datetime.strptime(old_end, "%Y-%m-%d"), len(missed_dates), days
+            ).strftime("%Y-%m-%d")
+            act["end_date"] = new_end
+            if act.get("period") and " - " in act["period"]:
+                act["period"] = f"{act['period'].split(' - ')[0]} - {new_end}"
+            name = act.get("activity_name") or act.get("name") or ""
+            activity_changes.append({
+                "activity_id": aid, "activity_name": name,
+                "old_end_date": old_end, "new_end_date": new_end,
+                "missed_sessions": len(missed_dates),
+            })
+            records.append({
+                "id": str(uuid.uuid4()), "scope_type": "activity",
+                "closure_id": closure["id"], "closure_title": closure.get("title_ar") or closure.get("title_en") or "",
+                "member_id": mid, "member_name": member.get("name_ar") or member.get("name") or "",
+                "member_code": member.get("member_code") or "", "branch_id": member.get("branch_id") or "",
+                "activity_id": aid, "activity_name": name, "old_end_date": old_end,
+                "new_end_date": new_end, "missed_sessions": len(missed_dates),
+                "compensated_dates": missed_dates, "schedule": schedule,
+                "mode": "training_days",
+            })
+            for subscription in level_subs_by_member.get(mid, []):
+                sub_start = str(subscription.get("start_date") or "")[:10]
+                sub_end = str(subscription.get("end_date") or "")[:10]
+                same_binding = (
+                    subscription.get("activity_id") == aid
+                    or (
+                        act.get("level_id")
+                        and subscription.get("level_id") == act.get("level_id")
+                    )
+                )
+                if (
+                    same_binding and sub_start and sub_end
+                    and sub_start <= closure["end_date"]
+                    and sub_end >= closure["start_date"]
+                ):
+                    try:
+                        shifted_level_end = find_new_end_date(
+                            datetime.strptime(sub_end, "%Y-%m-%d"),
+                            len(missed_dates), days,
+                        ).strftime("%Y-%m-%d")
+                    except ValueError:
+                        warnings.append(f"{name}: invalid level subscription dates")
+                        continue
+                    level_updates.append({
+                        "_id": subscription.get("_id"),
+                        "id": subscription.get("id"),
+                        "old_end_date": sub_end,
+                        "new_end_date": shifted_level_end,
+                    })
+
+            # Bind the current source's operational deadline without changing its
+            # immutable invoice item, then cascade only genuinely overlapping paid
+            # future periods for this member/activity.
+            current_source = None
+            for row in bound:
+                inv, index, item = row
+                pstart, pend = operational_window(inv, item, index, periods)
+                if pstart <= astart <= pend or inv.get("id") == act.get("source_id"):
+                    current_source = row
+                    break
+            if current_source:
+                inv, index, item = current_source
+                key = source_key(inv, item, index)
+                effective_rows[key] = {
+                    "source_key": key, "source_invoice_id": inv.get("id"),
+                    "source_item_id": invoice_item_key(inv, item, index),
+                    "member_id": mid, "activity_id": aid,
+                    "original_start_date": original_window(item)[0],
+                    "original_end_date": original_window(item)[1],
+                    "effective_start_date": astart, "effective_end_date": new_end,
+                    "schedule": schedule, "source_bound_quota": True,
+                }
+            preceding_end = new_end
+            future = []
+            source_activity_ids = {aid} | {
+                row[2].get("activity_id") for row in bound if row[2].get("activity_id")
+            }
+            for inv, index, item in paid_items:
+                if item.get("activity_id") not in source_activity_ids:
+                    continue
+                pstart, pend = operational_window(inv, item, index, periods)
+                if not pstart or not pend:
+                    if inv.get("id") != act.get("source_id"):
+                        warnings.append(
+                            f"{name}: deferred period has invalid dates; member skipped"
+                        )
+                        activity_invalid = True
+                    continue
+                if pstart <= astart:
+                    continue
+                future.append((pstart, pend, inv, index, item))
+            future.sort(key=lambda row: (row[0], row[1], str(row[2].get("id"))))
+            for pstart, pend, inv, index, item in future:
+                if pstart > preceding_end:
+                    preceding_end = pend
+                    continue
+                period_days, _period_times, _period_schedule = _activity_schedule(
+                    item, []
+                )
+                if not period_days:
+                    has_explicit_schedule = bool(
+                        item.get("training_days") or item.get("day_times")
+                        or item.get("schedule")
+                    )
+                    if not has_explicit_schedule:
+                        period_days = days
+                quota = _scheduled_count(
+                    original_window(item)[0] or pstart,
+                    original_window(item)[1] or pend,
+                    period_days,
+                )
+                if not period_days or quota <= 0:
+                    warnings.append(
+                        f"{name}: deferred period has unknown schedule; member skipped"
+                    )
+                    activity_invalid = True
+                    break
+                new_start = _next_scheduled_str(preceding_end, period_days)
+                new_end_dt = _nth_scheduled_on_or_after(
+                    datetime.strptime(new_start, "%Y-%m-%d"), quota, period_days
+                )
+                new_period_end = new_end_dt.strftime("%Y-%m-%d")
+                key = source_key(inv, item, index)
+                effective_rows[key] = {
+                    "source_key": key, "source_invoice_id": inv.get("id"),
+                    "source_item_id": invoice_item_key(inv, item, index),
+                    "member_id": mid, "activity_id": aid,
+                    "original_start_date": original_window(item)[0],
+                    "original_end_date": original_window(item)[1],
+                    "effective_start_date": new_start, "effective_end_date": new_period_end,
+                    "schedule": item.get("schedule") or schedule,
+                    "source_bound_quota": True,
+                }
+                deferred.append({
+                    "activity_id": aid, "activity_name": name,
+                    "invoice_id": inv.get("id"), "old_start_date": pstart,
+                    "old_end_date": pend, "new_start_date": new_start,
+                    "new_end_date": new_period_end,
+                })
+                preceding_end = new_period_end
+            if activity_invalid:
+                act.clear()
+                act.update(act_before)
+                del activity_changes[change_checkpoint:]
+                del records[record_checkpoint:]
+                del deferred[deferred_checkpoint:]
+                effective_rows = effective_checkpoint
+                del level_updates[level_checkpoint:]
+                continue
+
+        if activity_changes:
+            public = {
+                "member_id": mid, "id": mid,
+                "name": member.get("name_ar") or member.get("name") or "",
+                "guardian_name": member.get("guardian_name_ar") or member.get("guardian_name") or "",
+                "phone": member.get("phone") or "",
+                "branch_id": member.get("branch_id") or "",
+                "branch_name": branch_names.get(member.get("branch_id"), ""),
+                "activity_changes": activity_changes,
+                "deferred_periods": deferred,
+                "warnings": warnings,
+                "details": [{
+                    "activity": c["activity_name"], "old_end": c["old_end_date"],
+                    "new_end": c["new_end_date"], "missed_sessions": c["missed_sessions"],
+                } for c in activity_changes],
+            }
+            public_members.append(public)
+            writes.append({
+                "member_id": mid, "old_activities": original_activities,
+                "activities": activities, "records": records,
+                "effective_rows": list(effective_rows.values()),
+                "level_updates": level_updates, "public": public,
+            })
+        elif warnings:
+            skipped_members.append({
+                "member_id": mid,
+                "name": member.get("name_ar") or member.get("name") or "",
+                "reason": "; ".join(warnings),
+            })
+    plan = {
+        "closure_id": closure["id"],
+        "closure_version": {
+            key: closure.get(key) for key in (
+                "start_date", "end_date", "scope", "activity_ids", "activity_id",
+                "affected_times", "stop_type", "branch_id", "applied",
+            )
+        },
+        "branch_id": branch_id, "excluded_member_ids": excluded,
+        "writes": writes, "public_members": public_members,
+        "skipped_members": skipped_members,
+        "source_fingerprint": hashlib.sha256(json.dumps({
+            "members": [
+                {"id": m.get("id"), "branch_id": m.get("branch_id"),
+                 "activities": m.get("activities") or []}
+                for m in members
+            ],
+            "invoices": invoices,
+            "freezes": freezes,
+            "prior_extensions": prior,
+            "effective_periods": sorted(periods.values(), key=lambda row: row.get("source_key", "")),
+            "level_subscriptions": level_subscriptions,
+        }, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest(),
+    }
+    plan["preview_token"] = _preview_token(plan)
+    return plan
+
+
+async def _commit_safe_extension_plan(
+    data: ExtensionApply, closure: dict, user: dict, expected_token: str
+):
+    """Commit all operational dates and records in one Mongo transaction."""
+    client = getattr(db, "_client", None)
+    if client is None or not hasattr(client, "start_session"):
+        raise HTTPException(status_code=503, detail="Atomic transactions are unavailable")
+    async with await client.start_session() as session:
+        async with session.start_transaction():
+            transactional_closure = await db.closures.find_one(
+                {"id": closure["id"]}, session=session
+            )
+            if not transactional_closure or transactional_closure.get("applied"):
+                raise HTTPException(status_code=409, detail="Closure was already applied")
+            plan = await _build_safe_extension_plan(
+                data, transactional_closure, session=session
+            )
+            if plan["preview_token"] != expected_token:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Preview sources changed; preview and confirm again",
+                )
+            lock = await db.closures.update_one(
+                {"id": closure["id"], "applied": {"$ne": True}},
+                {"$set": {"apply_in_progress": True}},
+                session=session,
+            )
+            if not lock.modified_count:
+                raise HTTPException(status_code=409, detail="Closure was already applied")
+            now = datetime.now(timezone.utc).isoformat()
+            for write in plan["writes"]:
+                result = await db.members.update_one(
+                    {"id": write["member_id"], "activities": write["old_activities"]},
+                    {"$set": {"activities": write["activities"]}},
+                    session=session,
+                )
+                if result.modified_count != 1:
+                    raise HTTPException(status_code=409, detail="Member subscriptions changed; preview again")
+                for level_update in write["level_updates"]:
+                    identity = (
+                        {"_id": level_update["_id"]}
+                        if level_update.get("_id") is not None
+                        else {"id": level_update.get("id")}
+                    )
+                    identity["member_id"] = write["member_id"]
+                    identity["end_date"] = level_update["old_end_date"]
+                    level_result = await db.level_subscriptions.update_one(
+                        identity,
+                        {"$set": {"end_date": level_update["new_end_date"]}},
+                        session=session,
+                    )
+                    if level_result.modified_count != 1:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="Level subscription changed; preview again",
+                        )
+                for record in write["records"]:
+                    record.update({"applied_by": user.get("username", ""), "applied_at": now})
+                    await db.day_extensions.insert_one(record, session=session)
+                for row in write["effective_rows"]:
+                    row.update({"updated_at": now, "updated_by_closure_id": closure["id"]})
+                    await db.subscription_effective_periods.replace_one(
+                        {"source_key": row["source_key"]}, row, upsert=True, session=session
+                    )
+            affected = [write["public"] for write in plan["writes"]]
+            await db.closures.update_one(
+                {"id": closure["id"], "apply_in_progress": True},
+                {"$set": {
+                    "applied": True, "applied_count": len(affected),
+                    "applied_at": now, "applied_by": user.get("username", ""),
+                    "affected_members": affected, "freezes_extended": False,
+                }, "$unset": {"apply_in_progress": ""}},
+                session=session,
+            )
+            await db.extension_logs.insert_one({
+                "id": str(uuid.uuid4()), "type": "closure",
+                "closure_id": closure["id"], "closure_title": closure.get("title_ar", ""),
+                "members_count": len(affected), "branch_id": plan["branch_id"],
+                "scope": closure.get("scope", "all"), "applied_by": user.get("username", ""),
+                "created_at": now, "affected_members": affected,
+            }, session=session)
+    return plan
+
+
 @router.post("/apply")
 async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     await _require_current_admin(user)
@@ -429,441 +1031,73 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
     if not closure:
         raise HTTPException(status_code=404, detail="Closure not found")
 
-    scope = closure.get("scope", "all")
-    activity_id = closure.get("activity_id")
-    activity_ids = closure.get("activity_ids", [])
-    if not activity_ids and activity_id:
-        activity_ids = [activity_id]
-    affected_times = closure.get("affected_times", [])
-    closure_start = datetime.strptime(closure["start_date"], '%Y-%m-%d')
-    closure_end = datetime.strptime(closure["end_date"], '%Y-%m-%d')
-    closure_weekdays = get_closure_weekdays(closure_start, closure_end)
-    fallback_days = data.days
-
-    closure_start_str = closure["start_date"]
-    query = {"activities": {"$elemMatch": {"end_date": {"$gte": closure_start_str}}}}
-    closure_branch = closure.get("branch_id", "all") or "all"
-    if closure_branch and closure_branch != "all":
-        apply_branch = closure_branch
-    else:
-        apply_branch = data.branch_id or "all"
-    if apply_branch and apply_branch != "all":
-        query["branch_id"] = apply_branch
-
-    # Once applied, the normal calculator intentionally finds no work because
-    # day-extension records already exist. Its saved result is the authoritative
-    # preview source instead; only identity/contact/branch fields are refreshed.
-    if data.dry_run and closure.get("applied"):
-        excluded_ids = set(data.excluded_member_ids or [])
+    # Applied retries are idempotent and never recompute against later state.
+    if closure.get("applied"):
+        excluded = set(data.excluded_member_ids or [])
         saved = [
-            item for item in (closure.get("affected_members") or [])
-            if item.get("member_id") and item.get("member_id") not in excluded_ids
+            row for row in (closure.get("affected_members") or [])
+            if row.get("member_id") not in excluded
+            and (
+                (closure.get("branch_id") or "all") != "all"
+                or not data.branch_id or data.branch_id == "all"
+                or row.get("branch_id") == data.branch_id
+            )
         ]
-        member_ids = [item["member_id"] for item in saved]
-        current_members = {
-            member["id"]: member
-            for member in await db.members.find(
-                {"id": {"$in": member_ids}},
-                {"_id": 0, "id": 1, "name": 1, "name_ar": 1,
-                 "guardian_name": 1, "guardian_name_ar": 1,
-                 "phone": 1, "branch_id": 1},
-            ).to_list(10000)
-        }
-        refreshed = []
-        for saved_item in saved:
-            member = current_members.get(saved_item["member_id"])
-            if not member:
-                continue
-            if apply_branch != "all" and member.get("branch_id") != apply_branch:
-                continue
-            refreshed.append({
-                **saved_item,
-                "id": member["id"],
-                "member_id": member["id"],
-                "name": member.get("name_ar") or member.get("name") or "",
-                "guardian_name": (
-                    member.get("guardian_name_ar")
-                    or member.get("guardian_name")
-                    or ""
-                ),
-                "phone": member.get("phone") or "",
-                "branch_id": member.get("branch_id") or "",
-            })
+        saved_token = hashlib.sha256(json.dumps(
+            {"closure_id": closure["id"], "applied_at": closure.get("applied_at"),
+             "members": saved, "excluded_member_ids": sorted(excluded)},
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
         return {
-            "message": f"Applied closure affected {len(refreshed)} members",
-            "dry_run": True,
-            "applied": True,
-            "extended_count": len(refreshed),
-            "extended_members": refreshed,
-            "skipped_count": 0,
-            "skipped_members": [],
+            "message": f"Extended {len(saved)} members", "extended_count": len(saved),
+            "days": data.days,
+            "extended_members": saved, "affected_members": saved,
+            "members": saved, "skipped_count": 0, "skipped_members": [],
+            "applied": True, "dry_run": bool(data.dry_run),
+            "preview_token": saved_token if data.dry_run else None,
         }
-
-    members = await db.members.find(query).to_list(10000)
-    extended_count = 0
-    extended_members = []
-    skipped_members = []
-
-    existing_ext_keys = set()
-    try:
-        async for ext in db.day_extensions.find(
-            {"closure_id": data.closure_id},
-            {"member_id": 1, "activity_id": 1, "scope_type": 1, "level_subscription_id": 1, "_id": 0}
-        ):
-            stype = ext.get("scope_type") or "activity"
-            mid = ext.get("member_id") or ""
-            if stype == "level_sub":
-                existing_ext_keys.add((stype, mid, ext.get("level_subscription_id") or ""))
-            else:
-                existing_ext_keys.add((stype, mid, ext.get("activity_id") or ""))
-    except Exception:
-        pass
-
-    all_invoices = await db.invoices.find(
-        {"items.schedule": {"$exists": True, "$ne": ""}}
-    ).sort("created_at", -1).to_list(50000)
-    member_schedules = {}
-    for inv in all_invoices:
-        m_id = inv.get("member_id", "")
-        for item in (inv.get("items") or []):
-            schedule = item.get("schedule", "")
-            act_id = item.get("activity_id", "")
-            if schedule and m_id:
-                key = f"{m_id}_{act_id}"
-                if key not in member_schedules:
-                    member_schedules[key] = schedule
-                gen_key = f"{m_id}_general"
-                if gen_key not in member_schedules:
-                    member_schedules[gen_key] = schedule
-
-    excluded_ids = set(data.excluded_member_ids or [])
-    for member in members:
-        if member.get("id") in excluded_ids:
-            continue
-        activities = member.get("activities", [])
-        updated = False
-        old_end_dates = {}
-        new_end_dates = {}
-        missed_info = {}
-
-        for act in activities:
-            act_end = act.get("end_date", "")
-            if not act_end or act_end < closure_start_str:
-                continue
-            if scope == "specific" and activity_ids:
-                if act.get("activity_id") not in activity_ids:
-                    continue
-
-            act_id = act.get("activity_id", "")
-            act_name = act.get("activity_name", act.get("name", ""))
-            m_id = member.get("id", "")
-
-            if ("activity", m_id, act_id) in existing_ext_keys:
-                continue
-
-            schedule_key = f"{m_id}_{act_id}"
-            gen_key = f"{m_id}_general"
-            schedule_text = member_schedules.get(schedule_key, member_schedules.get(gen_key, ""))
-            member_training_days = parse_schedule_days(schedule_text)
-            member_time = parse_schedule_time(schedule_text)
-
-            if affected_times and len(affected_times) > 0 and closure.get("stop_type") == "specific_times":
-                if member_time is None:
-                    missed_info[act_name] = {
-                        "missed_sessions": 0,
-                        "training_days": ", ".join([ARABIC_DAY_NAMES.get(d, "") for d in sorted(member_training_days)]) if member_training_days else "غير محدد",
-                        "schedule": schedule_text,
-                        "member_time": None,
-                        "skipped": True,
-                        "skip_reason": "لا يوجد موعد محدد في الجدول"
-                    }
-                    continue
-                if member_time not in affected_times:
-                    missed_info[act_name] = {
-                        "missed_sessions": 0,
-                        "training_days": ", ".join([ARABIC_DAY_NAMES.get(d, "") for d in sorted(member_training_days)]) if member_training_days else "غير محدد",
-                        "schedule": schedule_text,
-                        "member_time": member_time,
-                        "skipped": True,
-                        "skip_reason": f"الموعد {member_time} غير متأثر"
-                    }
-                    continue
-
-            try:
-                end_date = datetime.strptime(act["end_date"], '%Y-%m-%d')
-                old_end_dates[act_name] = act["end_date"]
-
-                _ext_record = None
-                if member_training_days:
-                    missed = count_missed_sessions(closure_start, closure_end, member_training_days)
-                    day_names = [ARABIC_DAY_NAMES.get(d, "") for d in sorted(member_training_days)]
-                    if missed > 0:
-                        new_end = find_new_end_date(end_date, missed, member_training_days)
-                        act["end_date"] = new_end.strftime('%Y-%m-%d')
-                        new_end_dates[act_name] = act["end_date"]
-                        missed_info[act_name] = {
-                            "missed_sessions": missed,
-                            "training_days": ", ".join(day_names),
-                            "schedule": schedule_text
-                        }
-                        if act.get("period") and " - " in act["period"]:
-                            parts = act["period"].split(" - ")
-                            act["period"] = f"{parts[0]} - {new_end.strftime('%Y-%m-%d')}"
-                        updated = True
-                        _ext_record = {
-                            "missed": missed,
-                            "old_end": old_end_dates[act_name],
-                            "new_end": act["end_date"],
-                            "schedule": schedule_text,
-                            "training_days": ", ".join(day_names),
-                            "mode": "training_days",
-                        }
-                    else:
-                        missed_info[act_name] = {
-                            "missed_sessions": 0,
-                            "training_days": ", ".join(day_names),
-                            "schedule": schedule_text,
-                            "skipped": True
-                        }
-                else:
-                    days_to_add = int(fallback_days) if fallback_days == int(fallback_days) else fallback_days
-                    new_end = end_date + timedelta(days=int(round(days_to_add)))
-                    act["end_date"] = new_end.strftime('%Y-%m-%d')
-                    new_end_dates[act_name] = act["end_date"]
-                    missed_info[act_name] = {
-                        "missed_sessions": int(round(fallback_days)),
-                        "training_days": "غير محدد",
-                        "schedule": ""
-                    }
-                    if act.get("period") and " - " in act["period"]:
-                        parts = act["period"].split(" - ")
-                        act["period"] = f"{parts[0]} - {new_end.strftime('%Y-%m-%d')}"
-                    updated = True
-                    _ext_record = {
-                        "missed": int(round(fallback_days)),
-                        "old_end": old_end_dates[act_name],
-                        "new_end": act["end_date"],
-                        "schedule": "",
-                        "training_days": "غير محدد",
-                        "mode": "fallback_days",
-                    }
-
-                if _ext_record and not data.dry_run:
-                    try:
-                        await db.day_extensions.insert_one({
-                            "id": str(uuid.uuid4()),
-                            "scope_type": "activity",
-                            "closure_id": data.closure_id,
-                            "closure_title": closure.get("title_ar", "") or closure.get("title_en", ""),
-                            "member_id": m_id,
-                            "member_name": member.get("name_ar") or member.get("name", ""),
-                            "member_code": member.get("member_code", ""),
-                            "branch_id": member.get("branch_id", ""),
-                            "activity_id": act_id,
-                            "activity_name": act_name,
-                            "old_end_date": _ext_record["old_end"],
-                            "new_end_date": _ext_record["new_end"],
-                            "missed_sessions": _ext_record["missed"],
-                            "schedule": _ext_record["schedule"],
-                            "training_days": _ext_record["training_days"],
-                            "mode": _ext_record["mode"],
-                            "applied_by": user.get("username", ""),
-                            "applied_at": datetime.now(timezone.utc).isoformat(),
-                        })
-                        existing_ext_keys.add(("activity", m_id, act_id))
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-
-        if updated:
-            if not data.dry_run:
-                await db.members.update_one(
-                    {"id": member["id"]},
-                    {"$set": {"activities": activities}}
-                )
-
-            sub_query = {"member_id": member["id"]}
-            if scope == "specific" and activity_ids:
-                sub_query["activity_id"] = {"$in": activity_ids}
-            subs = await db.level_subscriptions.find(sub_query).to_list(100)
-            for sub in subs:
-                if sub.get("end_date"):
-                    try:
-                        sub_act_id = sub.get("activity_id", "")
-                        sub_uid = sub.get("id") or str(sub.get("_id", ""))
-                        if ("level_sub", member["id"], sub_uid) in existing_ext_keys:
-                            continue
-                        s_key = f"{member['id']}_{sub_act_id}"
-                        s_gen_key = f"{member['id']}_general"
-                        s_text = member_schedules.get(s_key, member_schedules.get(s_gen_key, ""))
-                        s_days = parse_schedule_days(s_text)
-                        sub_end = datetime.strptime(sub["end_date"], '%Y-%m-%d')
-                        _s_missed = 0
-                        _s_mode = "fallback_days"
-                        if s_days:
-                            s_missed = count_missed_sessions(closure_start, closure_end, s_days)
-                            if s_missed > 0:
-                                new_sub_end = find_new_end_date(sub_end, s_missed, s_days)
-                                _s_missed = s_missed
-                                _s_mode = "training_days"
-                            else:
-                                continue
-                        else:
-                            new_sub_end = sub_end + timedelta(days=int(round(fallback_days)))
-                            _s_missed = int(round(fallback_days))
-                        if not data.dry_run:
-                            old_sub_end = sub["end_date"]
-                            new_sub_end_str = new_sub_end.strftime('%Y-%m-%d')
-                            await db.level_subscriptions.update_one(
-                                {"_id": sub["_id"]},
-                                {"$set": {"end_date": new_sub_end_str}}
-                            )
-                            try:
-                                await db.day_extensions.insert_one({
-                                    "id": str(uuid.uuid4()),
-                                    "scope_type": "level_sub",
-                                    "closure_id": data.closure_id,
-                                    "closure_title": closure.get("title_ar", "") or closure.get("title_en", ""),
-                                    "member_id": member["id"],
-                                    "member_name": member.get("name_ar") or member.get("name", ""),
-                                    "branch_id": member.get("branch_id", ""),
-                                    "activity_id": sub_act_id,
-                                    "level_subscription_id": sub_uid,
-                                    "old_end_date": old_sub_end,
-                                    "new_end_date": new_sub_end_str,
-                                    "missed_sessions": _s_missed,
-                                    "mode": _s_mode,
-                                    "applied_by": user.get("username", ""),
-                                    "applied_at": datetime.now(timezone.utc).isoformat(),
-                                })
-                                existing_ext_keys.add(("level_sub", member["id"], sub_uid))
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-
-            extended_count += 1
-            member_info = {
-                "name": member.get("name_ar", member.get("name", "")),
-                "phone": member.get("phone", ""),
-                "member_id": member.get("id", ""),
-                "id": member.get("id", ""),
-                "branch_id": member.get("branch_id", ""),
-                "guardian_name": member.get("guardian_name_ar") or member.get("guardian_name") or "",
-            }
-            details = []
-            for a_name in new_end_dates:
-                info = missed_info.get(a_name, {})
-                details.append({
-                    "activity": a_name,
-                    "old_end": old_end_dates.get(a_name, ""),
-                    "new_end": new_end_dates.get(a_name, ""),
-                    "missed_sessions": info.get("missed_sessions", 0),
-                    "training_days": info.get("training_days", ""),
-                    "schedule": info.get("schedule", "")
-                })
-            member_info["details"] = details
-            extended_members.append(member_info)
-        else:
-            skipped_acts = [a for a, info in missed_info.items() if info.get("skipped")]
-            if skipped_acts:
-                skip_info = missed_info[skipped_acts[0]]
-                skip_reason = skip_info.get("skip_reason", "لا يوجد تقاطع مع أيام الإغلاق")
-                member_t = skip_info.get("member_time")
-                skipped_members.append({
-                    "name": member.get("name_ar", member.get("name", "")),
-                    "training_days": skip_info.get("training_days", ""),
-                    "member_time": f"الساعة {member_t}" if member_t else "",
-                    "reason": skip_reason
-                })
-
+    if not data.dry_run and not data.preview_token:
+        raise HTTPException(
+            status_code=409,
+            detail="Preview is required before applying this closure",
+        )
+    plan = await _build_safe_extension_plan(data, closure)
+    token = plan["preview_token"]
     if data.dry_run:
         return {
-            "message": f"Preview: would extend {extended_count} members",
-            "dry_run": True,
-            "extended_count": extended_count,
-            "extended_members": extended_members,
-            "skipped_count": len(skipped_members),
-            "skipped_members": skipped_members
+            "message": f"Preview: would extend {len(plan['public_members'])} members",
+            "dry_run": True, "preview_token": token, "days": data.days,
+            "extended_count": len(plan["public_members"]),
+            "extended_members": plan["public_members"],
+            "affected_members": plan["public_members"],
+            "members": plan["public_members"],
+            "skipped_count": len(plan["skipped_members"]),
+            "skipped_members": plan["skipped_members"],
         }
-
-    slim_affected = []
-    for em in extended_members:
-        slim_affected.append({
-            "member_id": em.get("member_id", ""),
-            "id": em.get("member_id", ""),
-            "name": em.get("name", ""),
-            "guardian_name": em.get("guardian_name", ""),
-            "phone": em.get("phone", ""),
-            "branch_id": em.get("branch_id", ""),
-            "details": em.get("details", []),
-        })
-
-    freeze_ext_result = {"extended": 0, "skipped": 0}
+    if data.preview_token and data.preview_token != token:
+        raise HTTPException(status_code=409, detail="Preview is stale; preview and confirm again")
     try:
-        ext_member_ids = [em.get("member_id", "") for em in extended_members if em.get("member_id")]
-        freeze_ext_result = await extend_freezes_for_closure(closure, ext_member_ids, user.get("username", ""))
-    except Exception as _fe:
-        pass
-
-    await db.closures.update_one(
-        {"id": data.closure_id},
-        {"$set": {
-            "applied": True,
-            "applied_count": extended_count,
-            "applied_at": datetime.now(timezone.utc).isoformat(),
-            "applied_by": user.get("username", ""),
-            "affected_members": slim_affected,
-            "freezes_extended": True,
-            "freezes_extended_count": freeze_ext_result.get("extended", 0),
-        }}
-    )
-    log_entry = {
-        "id": str(uuid.uuid4()),
-        "type": "closure",
-        "closure_id": data.closure_id,
-        "closure_title": closure.get("title_ar", ""),
-        "days": data.days,
-        "members_count": extended_count,
-        "branch_id": data.branch_id,
-        "scope": scope,
-        "activity_name": ", ".join(closure.get("activity_names", [])) or closure.get("activity_name", ""),
-        "stop_type": closure.get("stop_type", "full_day"),
-        "stop_hours": closure.get("stop_hours", 0),
-        "applied_by": user.get("username", ""),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "affected_members": slim_affected,
-    }
-    await db.extension_logs.insert_one(log_entry)
-
-    try:
-        from utils.audit import log_audit
-        await log_audit(
-            actor=user,
-            action="day_extension.apply",
-            entity_type="closure",
-            entity_id=data.closure_id,
-            entity_name=closure.get("title_ar", ""),
-            after={
-                "days": data.days,
-                "extended_count": extended_count,
-                "skipped_count": len(skipped_members),
-                "branch_id": data.branch_id,
-                "scope": scope,
-            },
-        )
-    except Exception:
-        pass
-
+        plan = await _commit_safe_extension_plan(data, closure, user, token)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Concurrent confirmations race on the closure lock / unique extension
+        # key. Surface a reconfirmation conflict; all other database errors remain
+        # visible and the transaction has already rolled back.
+        if getattr(exc, "code", None) in (11000, 112, 251):
+            raise HTTPException(
+                status_code=409, detail="Subscriptions changed concurrently; preview again"
+            ) from exc
+        raise
     return {
-        "message": f"Extended {extended_count} members",
-        "extended_count": extended_count,
-        "extended_members": extended_members,
-        "skipped_count": len(skipped_members),
-        "skipped_members": skipped_members
+        "message": f"Extended {len(plan['public_members'])} members",
+        "days": data.days,
+        "extended_count": len(plan["public_members"]),
+        "extended_members": plan["public_members"],
+        "affected_members": plan["public_members"],
+        "skipped_count": len(plan["skipped_members"]),
+        "skipped_members": plan["skipped_members"],
     }
-
 
 def _personalize_closure_notice(template: str, member: dict) -> str:
     detail = ((member.get("details") or [{}])[0]) or {}

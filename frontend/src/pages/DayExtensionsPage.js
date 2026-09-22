@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import {
   CalendarOff, Plus, Trash2, Play, Clock, User, Users,
   CalendarDays, CheckCircle, History, Loader2, MessageCircle, Send,
-  ChevronDown, ChevronUp, Phone
+  ChevronDown, ChevronUp, Phone, AlertTriangle
 } from 'lucide-react';
 
 const REASON_LABELS = {
@@ -53,7 +53,15 @@ const getManualWhatsAppUrl = (phone, canViewPhones, message) => {
 // Keep browser-opened notices in lockstep with the automatic closure queue's
 // personalization. The queue appends this English evidence section too.
 const personalizeClosureMessage = (template, member) => {
-  const detail = ((member?.details || [{}])[0]) || {};
+  const changes = member?.activity_changes?.length
+    ? member.activity_changes.map(change => ({
+        activity: change.activity_name,
+        missed_sessions: change.missed_sessions,
+        old_end: change.old_end_date,
+        new_end: change.new_end_date
+      }))
+    : (member?.details || []);
+  const detail = (changes[0] || {});
   const values = {
     name: member?.name || '',
     days: detail.missed_sessions || '',
@@ -71,7 +79,7 @@ const personalizeClosureMessage = (template, member) => {
       'Subscription extension notice',
       `Member: ${values.name}`
     ];
-    (member?.details || []).forEach(item => {
+    changes.forEach(item => {
       lines.push(
         `Activity: ${item.activity || '—'}`,
         `Sessions to compensate: ${item.missed_sessions || 0}`,
@@ -134,6 +142,7 @@ export default function DayExtensionsPage() {
   const [waJobsPollVersion, setWaJobsPollVersion] = useState(0);
   const [excludedMemberIds, setExcludedMemberIds] = useState([]);
   const [showSkippedList, setShowSkippedList] = useState(false);
+  const [previewIsStale, setPreviewIsStale] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -215,41 +224,6 @@ export default function DayExtensionsPage() {
     }
   };
 
-  const handleApplyExtension = async (closure) => {
-    const days = closure.days;
-    const actNames = (closure.activity_names || []).filter(Boolean);
-    const scopeText = closure.scope === 'specific'
-      ? ` (${actNames.length > 0 ? actNames.join('، ') : closure.activity_name || t('أنشطة محددة', 'specific activities')})`
-      : '';
-    if (!window.confirm(t(
-      `هل تريد ترحيل ${days} يوم لجميع المشتركين النشطين${scopeText}؟`,
-      `Extend all active members by ${days} days${scopeText}?`
-    ))) return;
-    setApplying(true);
-    try {
-      const res = await api.dayExtensions.applyExtension({
-        closure_id: closure.id,
-        days: days,
-        branch_id: applyBranch
-      });
-      const result = res.data || res;
-      setApplyResult({
-        days: days,
-        closureTitle: closure.title_ar || closure.title_en || '',
-        extended_count: result.extended_count || 0,
-        extended_members: result.extended_members || [],
-        skipped_count: result.skipped_count || 0,
-        skipped_members: result.skipped_members || []
-      });
-      setShowResultDialog(true);
-      loadData();
-    } catch (error) {
-      toast.error(t('خطأ في الترحيل', 'Error applying extension'));
-    } finally {
-      setApplying(false);
-    }
-  };
-
   const buildDefaultMessage = (closure) => {
     const title = closure.title_ar || closure.title_en || '';
     return `السلام عليكم {name}،\nنود إفادتكم بأنه نظراً لـ "${title}" بتاريخ ${closure.start_date} → ${closure.end_date}، تم ترحيل اشتراككم {days} يوم/أيام.\nتاريخ الانتهاء الجديد: {new_end}\nشكراً لكم 🏆\nأكاديمية أداء الأبطال`;
@@ -259,6 +233,7 @@ export default function DayExtensionsPage() {
     setPreviewClosure(closure);
     setPreviewResult(null);
     setExcludedMemberIds([]);
+    setPreviewIsStale(false);
     setShowSkippedList(false);
     setWaMessage(buildDefaultMessage(closure));
     setWhatsappMode('automatic');
@@ -269,7 +244,8 @@ export default function DayExtensionsPage() {
         closure_id: closure.id,
         days: closure.days,
         branch_id: applyBranch,
-        dry_run: true
+        dry_run: true,
+        excluded_member_ids: []
       });
       setPreviewResult(res.data || res);
     } catch (error) {
@@ -279,6 +255,43 @@ export default function DayExtensionsPage() {
       setPreviewing(false);
     }
   };
+
+  const refreshPreview = useCallback(async (closure, branchId, exclusions) => {
+    if (!closure) return;
+    setPreviewing(true);
+    setPreviewIsStale(false);
+    try {
+      const res = await api.dayExtensions.applyExtension({
+        closure_id: closure.id,
+        days: closure.days,
+        branch_id: branchId,
+        dry_run: true,
+        excluded_member_ids: exclusions
+      });
+      setPreviewResult(res.data || res);
+    } catch (error) {
+      setPreviewResult(null);
+      toast.error(t('تعذر تحديث المعاينة. حاول مرة أخرى.', 'Could not refresh the preview. Try again.'));
+    } finally {
+      setPreviewing(false);
+    }
+  }, [language]);
+
+  useEffect(() => {
+    if (!showPreviewDialog || !previewClosure) return undefined;
+    // Opening the dialog performs the first request itself. Subsequent selection
+    // changes must produce a new token before applying.
+    if (!previewResult && previewing) return undefined;
+    const timer = window.setTimeout(() => {
+      refreshPreview(previewClosure, applyBranch, excludedMemberIds);
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [
+    applyBranch,
+    excludedMemberIds,
+    previewClosure?.start_date,
+    previewClosure?.end_date
+  ]);
 
   const handleSendWhatsAppFromPreview = async () => {
     if (!previewResult || !previewResult.extended_members?.length) {
@@ -344,7 +357,11 @@ export default function DayExtensionsPage() {
   }, [waJobs, waJobsPollVersion]);
 
   const handleConfirmApplyFromPreview = async () => {
-    if (!previewClosure) return;
+    if (!previewClosure || !previewResult?.preview_token || previewIsStale) return;
+    if (!window.confirm(t(
+      'سيتم الآن تعديل تواريخ الاشتراكات وترحيل الفترات المدفوعة المتداخلة. لن تتغير الفواتير أو إجمالي المبالغ المدفوعة. هل تريد التطبيق؟',
+      'This will now change subscription dates and postpone overlapping prepaid periods. Invoices and paid totals will not change. Apply now?'
+    ))) return;
     setApplying(true);
     try {
       const res = await api.dayExtensions.applyExtension({
@@ -352,7 +369,8 @@ export default function DayExtensionsPage() {
         days: previewClosure.days,
         branch_id: applyBranch,
         dry_run: false,
-        excluded_member_ids: excludedMemberIds
+        excluded_member_ids: excludedMemberIds,
+        preview_token: previewResult.preview_token
       });
       const result = res.data || res;
       setApplyResult({
@@ -367,7 +385,16 @@ export default function DayExtensionsPage() {
       setShowResultDialog(true);
       loadData();
     } catch (error) {
-      toast.error(t('خطأ في الترحيل', 'Error applying extension'));
+      if (error.response?.status === 409) {
+        setPreviewIsStale(true);
+        setPreviewResult(current => current ? { ...current, preview_token: null } : current);
+        toast.error(t(
+          'انتهت صلاحية المعاينة أو تغيرت البيانات. حدّث المعاينة ثم راجعها قبل التطبيق.',
+          'The preview is stale or data changed. Refresh and review it before applying.'
+        ));
+      } else {
+        toast.error(error.response?.data?.detail || t('خطأ في الترحيل', 'Error applying extension'));
+      }
     } finally {
       setApplying(false);
     }
@@ -684,9 +711,9 @@ export default function DayExtensionsPage() {
                         </Button>
                         {!closure.applied && (
                           <>
-                            <Button onClick={() => handleApplyExtension(closure)} disabled={applying} className="bg-green-600 hover:bg-green-700">
-                              {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
-                              {t('ترحيل للجميع', 'Apply to All')}
+                            <Button onClick={() => handlePreviewExtension(closure)} disabled={applying || previewing} className="bg-green-600 hover:bg-green-700">
+                              {previewing ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
+                              {t('معاينة قبل الترحيل', 'Preview before applying')}
                             </Button>
                             <Button variant="ghost" size="sm" className="text-red-500" onClick={() => handleDeleteClosure(closure.id)}>
                               <Trash2 className="w-4 h-4" />
@@ -761,7 +788,7 @@ export default function DayExtensionsPage() {
 
         {showPreviewDialog && (
           <Dialog open={showPreviewDialog} onOpenChange={(o) => { if (!o) { setShowPreviewDialog(false); setPreviewClosure(null); setPreviewResult(null); setExcludedMemberIds([]); } }}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-[calc(100vw-1rem)] min-w-0 max-w-3xl max-h-[calc(100dvh-1rem)] overflow-x-hidden overflow-y-auto [&>*]:min-w-0">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Users className="w-5 h-5 text-blue-600" />
@@ -775,7 +802,55 @@ export default function DayExtensionsPage() {
                   <p className="text-sm text-muted-foreground mt-2">{t('جارٍ حساب المشتركين المتأثرين...', 'Calculating affected members...')}</p>
                 </div>
               ) : previewResult ? (
-                <div className="space-y-4">
+                <div className="min-w-0 space-y-4">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                    <p className="font-semibold">
+                      {t('المعاينة فقط — لم يتم تطبيق أي تغيير بعد', 'Preview only — no changes have been applied')}
+                    </p>
+                    <p className="mt-1">
+                      {t(
+                        'سيُعوّض الاشتراك الحالي أولاً، ثم تُرحّل أي فترة مدفوعة متداخلة مع الحفاظ على الفواتير وإجمالي المبالغ المدفوعة دون تغيير.',
+                        'The current subscription is compensated first, then any overlapping prepaid period is postponed. Invoices and paid totals remain unchanged.'
+                      )}
+                    </p>
+                  </div>
+                  {branches.length > 1 && (
+                    <div className="grid gap-1 sm:max-w-sm">
+                      <Label htmlFor="closure-preview-branch">
+                        {t('الفرع المشمول في المعاينة', 'Branch included in preview')}
+                      </Label>
+                      <select
+                        id="closure-preview-branch"
+                        className="w-full rounded-md border bg-white px-3 py-2 text-sm"
+                        value={applyBranch}
+                        onChange={(event) => setApplyBranch(event.target.value)}
+                        disabled={previewing || applying}
+                      >
+                        <option value="all">{t('جميع الفروع', 'All Branches')}</option>
+                        {branches.map(branch => (
+                          <option key={branch.id || branch._id} value={branch.id || branch._id}>
+                            {branch.name_ar || branch.name || branch.name_en || ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {previewIsStale && (
+                    <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                      <p className="font-semibold">
+                        {t('المعاينة لم تعد صالحة. يجب تحديثها ومراجعتها من جديد.', 'This preview is no longer valid. Refresh and review it again.')}
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 border-red-300"
+                        onClick={() => refreshPreview(previewClosure, applyBranch, excludedMemberIds)}
+                      >
+                        {t('تحديث المعاينة', 'Refresh preview')}
+                      </Button>
+                    </div>
+                  )}
                   {(() => {
                     const allMembers = previewResult.extended_members || [];
                     const activeMembers = allMembers.filter(m => !excludedMemberIds.includes(m.member_id));
@@ -862,19 +937,38 @@ export default function DayExtensionsPage() {
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <Label className="text-sm font-medium">{t('قائمة المشتركين', 'Members List')}</Label>
+                      <Label className="text-sm font-medium">{t('التغييرات حسب الفرع والعضو', 'Changes by branch and member')}</Label>
                       {excludedMemberIds.length > 0 && (
                         <button type="button" className="text-xs text-primary hover:underline" onClick={() => setExcludedMemberIds([])}>
                           {t('استعادة المستبعدين', 'Restore excluded')} ({excludedMemberIds.length})
                         </button>
                       )}
                     </div>
-                    <div className="max-h-[240px] overflow-y-auto border rounded-lg divide-y">
+                    <div className="max-w-full min-w-0 max-h-[420px] overflow-x-hidden overflow-y-auto border rounded-lg divide-y" data-testid="closure-impact-preview">
                       {(previewResult.extended_members || []).length === 0 ? (
                         <p className="p-4 text-center text-sm text-muted-foreground">{t('لا يوجد مشتركون متأثرون', 'No affected members')}</p>
                       ) : (
-                        (previewResult.extended_members || []).map((m, idx) => {
-                          const det = (m.details && m.details[0]) || {};
+                        Object.entries((previewResult.extended_members || []).reduce((groups, member) => {
+                          const key = member.branch_id || 'unknown';
+                          if (!groups[key]) groups[key] = {
+                            name: member.branch_name || t('فرع غير محدد', 'Unknown branch'),
+                            members: []
+                          };
+                          groups[key].members.push(member);
+                          return groups;
+                        }, {})).map(([branchId, group]) => (
+                          <div key={branchId} className="divide-y">
+                            <div className="sticky top-0 z-10 bg-slate-100 px-3 py-2 text-sm font-bold">
+                              {t('الفرع:', 'Branch:')} {group.name} ({group.members.length})
+                            </div>
+                            {group.members.map((m, idx) => {
+                          const activityChanges = m.activity_changes || (m.details || []).map(detail => ({
+                            activity_id: detail.activity_id,
+                            activity_name: detail.activity,
+                            old_end_date: detail.old_end,
+                            new_end_date: detail.new_end,
+                            missed_sessions: detail.missed_sessions
+                          }));
                           const isExcluded = excludedMemberIds.includes(m.member_id);
                           const toggleExclude = () => {
                             setExcludedMemberIds(prev => prev.includes(m.member_id)
@@ -882,22 +976,39 @@ export default function DayExtensionsPage() {
                               : [...prev, m.member_id]);
                           };
                           return (
-                            <div key={idx} className={`flex items-center justify-between p-2 text-sm hover:bg-muted/30 ${isExcluded ? 'opacity-50 bg-red-50/40' : ''}`}>
+                            <div key={m.member_id || idx} className={`min-w-0 p-3 text-sm hover:bg-muted/30 ${isExcluded ? 'opacity-50 bg-red-50/40' : ''}`}>
+                              <div className="flex flex-col items-stretch justify-between gap-2 sm:flex-row sm:items-start">
                               <div className="flex-1 min-w-0">
                                 <p className={`font-medium ${isExcluded ? 'line-through text-muted-foreground' : ''}`}>
                                   {m.name || '-'}
                                   {m.guardian_name ? <span className="text-xs text-muted-foreground font-normal ms-2">· {t('ولي الأمر:', 'Guardian:')} {m.guardian_name}</span> : null}
                                 </p>
-                                <p className="text-xs text-muted-foreground truncate">
-                                  {det.activity ? `${det.activity} · ` : ''}
-                                  {det.old_end && det.new_end ? `${det.old_end} → ${det.new_end}` : ''}
-                                  {det.missed_sessions ? ` (${det.missed_sessions} ${t('يوم', 'd')})` : ''}
-                                </p>
-                                {det.training_days ? (
-                                  <p className="text-xs text-blue-700 mt-0.5">
-                                    {t('أيام الاشتراك:', 'Training days:')} {det.training_days}
-                                  </p>
-                                ) : null}
+                                <div className="mt-2 space-y-1">
+                                  {activityChanges.map((change, changeIndex) => (
+                                    <div key={`${change.activity_id || change.activity_name}-${changeIndex}`} className="min-w-0 break-words rounded bg-blue-50 p-2 text-xs">
+                                      <span className="font-semibold">{change.activity_name || t('نشاط غير محدد', 'Unknown activity')}</span>
+                                      <span className="mx-1">·</span>
+                                      {t('نهاية الاشتراك:', 'Subscription end:')} {change.old_end_date || '—'} → <strong>{change.new_end_date || '—'}</strong>
+                                      <span className="ms-2">{t('حصص فائتة:', 'Missed sessions:')} {change.missed_sessions ?? '—'}</span>
+                                    </div>
+                                  ))}
+                                  {(m.deferred_periods || []).map((period, periodIndex) => (
+                                    <div key={`${period.invoice_id || period.activity_id}-${periodIndex}`} className="min-w-0 break-words rounded border border-purple-200 bg-purple-50 p-2 text-xs">
+                                      <p className="font-semibold text-purple-900">
+                                        {t('فترة مدفوعة مؤجلة', 'Prepaid period postponed')} · {period.activity_name || t('نشاط غير محدد', 'Unknown activity')}
+                                      </p>
+                                      <p>{t('البداية:', 'Start:')} {period.old_start_date || '—'} → <strong>{period.new_start_date || '—'}</strong></p>
+                                      <p>{t('النهاية:', 'End:')} {period.old_end_date || '—'} → <strong>{period.new_end_date || '—'}</strong></p>
+                                      {period.invoice_id && <p className="break-all text-muted-foreground">{t('رقم الفاتورة:', 'Invoice:')} {period.invoice_id}</p>}
+                                    </div>
+                                  ))}
+                                  {(m.warnings || []).map((warning, warningIndex) => (
+                                    <p key={warningIndex} className="flex min-w-0 items-start gap-1 break-words rounded bg-amber-50 p-2 text-xs text-amber-900">
+                                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                      {t('تنبيه جدول غير معروف:', 'Unknown schedule warning:')} {warning}
+                                    </p>
+                                  ))}
+                                </div>
                               </div>
                                <div className="flex items-center gap-2 ms-2 flex-wrap justify-end">
                                  <span className="text-xs text-muted-foreground" dir="ltr">
@@ -971,9 +1082,12 @@ export default function DayExtensionsPage() {
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
                               )}
+                              </div>
                             </div>
                           );
-                        })
+                            })}
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>
@@ -1014,7 +1128,7 @@ export default function DayExtensionsPage() {
                 </div>
               ) : null}
 
-              <DialogFooter className="flex-col sm:flex-row gap-2">
+              <DialogFooter className="sticky bottom-0 z-20 -mx-6 -mb-6 min-w-0 flex-col gap-2 border-t bg-background px-6 py-4 sm:flex-row">
                 <Button variant="outline" onClick={() => setShowPreviewDialog(false)} disabled={sendingWa || applying}>
                   {t('إغلاق', 'Close')}
                 </Button>
@@ -1038,7 +1152,7 @@ export default function DayExtensionsPage() {
                 {!previewClosure?.applied && (
                   <Button
                     onClick={handleConfirmApplyFromPreview}
-                    disabled={previewing || applying || !previewResult || !previewResult.extended_count}
+                    disabled={previewing || applying || !previewResult || !previewResult.extended_count || !previewResult.preview_token || previewIsStale}
                     className="bg-primary"
                   >
                     {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}
@@ -1356,22 +1470,22 @@ export default function DayExtensionsPage() {
 
         {showResultDialog && applyResult && (
           <Dialog open={showResultDialog} onOpenChange={setShowResultDialog}>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogContent className="w-[calc(100vw-1rem)] min-w-0 max-w-2xl max-h-[calc(100dvh-1rem)] overflow-x-hidden overflow-y-auto [&>*]:min-w-0">
               <DialogHeader>
                 <DialogTitle className="text-center">
                   <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
                   <div className="text-xl">{t('تم الترحيل بنجاح', 'Extension Applied Successfully')}</div>
                 </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
                   <p className="text-lg font-bold text-green-800">
                     {t(`${applyResult.closureTitle}`, applyResult.closureTitle)}
                   </p>
                   <p className="text-green-700 mt-1">
                     {t(
-                      `تم ترحيل ${applyResult.days} يوم لـ ${applyResult.extended_count} مشترك`,
-                      `Extended ${applyResult.extended_count} members by ${applyResult.days} days`
+                      `تم تطبيق التعويض لـ ${applyResult.extended_count} مشترك حسب أيام التدريب الفعلية`,
+                      `Compensation applied to ${applyResult.extended_count} members according to their actual training days`
                     )}
                   </p>
                 </div>
@@ -1382,8 +1496,8 @@ export default function DayExtensionsPage() {
                       <Users className="w-5 h-5 inline me-1" />
                       {t('المشتركين المتأثرين', 'Affected Members')} ({applyResult.extended_count})
                     </h3>
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="w-full text-sm">
+                    <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-lg border">
+                      <table className="min-w-[680px] w-full text-sm">
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="p-2 text-right">#</th>
@@ -1454,7 +1568,7 @@ export default function DayExtensionsPage() {
                   </div>
                 )}
               </div>
-              <DialogFooter>
+               <DialogFooter className="sticky bottom-0 z-20 -mx-6 -mb-6 border-t bg-background px-6 py-4">
                 <Button onClick={() => setShowResultDialog(false)} className="bg-orange-500 hover:bg-orange-600">
                   {t('إغلاق', 'Close')}
                 </Button>

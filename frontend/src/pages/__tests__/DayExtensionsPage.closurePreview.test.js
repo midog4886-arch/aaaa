@@ -1,0 +1,224 @@
+import React from 'react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+const mockApi = {
+  dayExtensions: {
+    getClosures: jest.fn(),
+    getLogs: jest.fn(),
+    getAvailableTimes: jest.fn(),
+    applyExtension: jest.fn(),
+  },
+};
+const mockMembersAPI = { getAll: jest.fn() };
+const mockBranchesAPI = { getAll: jest.fn() };
+const mockActivitiesAPI = { getAll: jest.fn() };
+const mockWhatsappAPI = {
+  listBranchCloudJobs: jest.fn(),
+  enqueueClosureNotices: jest.fn(),
+  getBranchCloudJob: jest.fn(),
+  cancelBranchCloudJob: jest.fn(),
+};
+
+jest.mock('../../services/api', () => ({
+  __esModule: true,
+  default: mockApi,
+  membersAPI: mockMembersAPI,
+  branchesAPI: mockBranchesAPI,
+  activitiesAPI: mockActivitiesAPI,
+  whatsappAPI: mockWhatsappAPI,
+}));
+jest.mock('../../contexts/LanguageContext', () => ({
+  useLanguage: () => ({ language: 'en' }),
+}));
+jest.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({
+    selectedBranchId: 'branch-a',
+    isAdmin: true,
+    user: { is_admin: true, permissions: ['member-phones'] },
+  }),
+}));
+jest.mock('../../components/Layout', () => ({
+  Layout: ({ children }) => <div>{children}</div>,
+}));
+jest.mock('../../components/ui/dialog', () => ({
+  Dialog: ({ open, children }) => (open ? <div role="dialog">{children}</div> : null),
+  DialogContent: ({ children }) => <div>{children}</div>,
+  DialogHeader: ({ children }) => <div>{children}</div>,
+  DialogTitle: ({ children }) => <h2>{children}</h2>,
+  DialogFooter: ({ children }) => <div>{children}</div>,
+}));
+jest.mock('../../utils/whatsapp', () => ({
+  whatsappChatUrl: jest.fn(() => ''),
+}));
+const mockToast = { error: jest.fn(), success: jest.fn() };
+jest.mock('sonner', () => ({ toast: mockToast }));
+
+const closure = {
+  id: 'closure-1',
+  title_ar: 'إغلاق',
+  title_en: 'Holiday',
+  start_date: '2026-01-01',
+  end_date: '2026-01-02',
+  days: 2,
+  applied: false,
+};
+
+const previewMembers = [
+  {
+    member_id: 'member-1',
+    name: 'Sara',
+    branch_id: 'branch-a',
+    branch_name: 'North branch',
+    activity_changes: [{
+      activity_id: 'swim',
+      activity_name: 'Swimming',
+      old_end_date: '2026-02-01',
+      new_end_date: '2026-02-08',
+      missed_sessions: 3,
+    }],
+    deferred_periods: [{
+      activity_id: 'swim',
+      activity_name: 'Swimming',
+      invoice_id: 'INV-22',
+      old_start_date: '2026-02-02',
+      old_end_date: '2026-03-01',
+      new_start_date: '2026-02-09',
+      new_end_date: '2026-03-08',
+    }],
+    warnings: [],
+  },
+  {
+    member_id: 'member-2',
+    name: 'Omar',
+    branch_id: 'branch-b',
+    branch_name: 'South branch',
+    activity_changes: [{
+      activity_id: 'gym',
+      activity_name: 'Gym',
+      old_end_date: '2026-02-05',
+      new_end_date: '2026-02-07',
+      missed_sessions: 2,
+    }],
+    deferred_periods: [],
+    warnings: ['Training schedule is unknown'],
+  },
+];
+
+const preview = (token = 'preview-token-1') => ({
+  preview_token: token,
+  extended_count: previewMembers.length,
+  extended_members: previewMembers,
+  skipped_count: 0,
+  skipped_members: [],
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockApi.dayExtensions.getClosures.mockResolvedValue({ data: [closure] });
+  mockApi.dayExtensions.getLogs.mockResolvedValue({ data: [] });
+  mockApi.dayExtensions.getAvailableTimes.mockResolvedValue({ data: [] });
+  mockMembersAPI.getAll.mockResolvedValue({ data: [] });
+  mockBranchesAPI.getAll.mockResolvedValue({
+    data: [
+      { id: 'branch-a', name_ar: 'North branch' },
+      { id: 'branch-b', name_ar: 'South branch' },
+    ],
+  });
+  mockActivitiesAPI.getAll.mockResolvedValue({ data: [] });
+  mockWhatsappAPI.listBranchCloudJobs.mockResolvedValue({ data: [] });
+  mockApi.dayExtensions.applyExtension.mockImplementation(payload => (
+    Promise.resolve({ data: payload.dry_run ? preview('preview-token-1') : { extended_count: 2 } })
+  ));
+  window.confirm = jest.fn(() => true);
+});
+
+const DayExtensionsPage = require('../DayExtensionsPage').default;
+
+test('groups closure impacts by branch and shows activity and postponed prepaid dates', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<DayExtensionsPage />);
+
+  await user.click((await screen.findAllByRole('button', { name: /Preview & WhatsApp/i }))[0]);
+
+  expect(await screen.findByText(/Branch: North branch/)).toBeInTheDocument();
+  expect(screen.getByText(/Branch: South branch/)).toBeInTheDocument();
+  expect(screen.getAllByText(/Subscription end:/)[0]).toHaveTextContent('2026-02-01 → 2026-02-08');
+  expect(screen.getByText(/Prepaid period postponed/)).toBeInTheDocument();
+  expect(screen.getByText(/Start:/)).toHaveTextContent('2026-02-02 → 2026-02-09');
+  expect(screen.getByText(/End:/)).toHaveTextContent('2026-03-01 → 2026-03-08');
+  expect(screen.getByText(/Invoices and paid totals remain unchanged/)).toBeInTheDocument();
+  expect(screen.getByText(/Unknown schedule warning:/)).toBeInTheDocument();
+
+  expect(mockApi.dayExtensions.applyExtension).toHaveBeenCalledTimes(1);
+  expect(mockApi.dayExtensions.applyExtension).toHaveBeenCalledWith({
+    closure_id: 'closure-1',
+    days: 2,
+    branch_id: 'branch-a',
+    dry_run: true,
+    excluded_member_ids: [],
+  });
+});
+
+test('refreshes after exclusions and applies only with the latest exact preview token', async () => {
+  let previewNumber = 0;
+  mockApi.dayExtensions.applyExtension.mockImplementation(payload => {
+    if (payload.dry_run) {
+      previewNumber += 1;
+      return Promise.resolve({ data: preview(`preview-token-${previewNumber}`) });
+    }
+    return Promise.resolve({ data: { extended_count: 1 } });
+  });
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<DayExtensionsPage />);
+  await user.click((await screen.findAllByRole('button', { name: /Preview & WhatsApp/i }))[0]);
+  await screen.findByText('Sara');
+
+  await user.selectOptions(screen.getByLabelText('Branch included in preview'), 'branch-b');
+  await waitFor(() => expect(mockApi.dayExtensions.applyExtension).toHaveBeenCalledWith({
+    closure_id: 'closure-1',
+    days: 2,
+    branch_id: 'branch-b',
+    dry_run: true,
+    excluded_member_ids: [],
+  }));
+  await user.click(screen.getAllByTitle('Exclude')[0]);
+  await waitFor(() => expect(mockApi.dayExtensions.applyExtension).toHaveBeenCalledWith({
+    closure_id: 'closure-1',
+    days: 2,
+    branch_id: 'branch-b',
+    dry_run: true,
+    excluded_member_ids: ['member-1'],
+  }));
+  await waitFor(() => expect(screen.getByRole('button', { name: /Confirm Extension/i })).toBeEnabled());
+  await user.click(screen.getByRole('button', { name: /Confirm Extension/i }));
+
+  await waitFor(() => expect(mockApi.dayExtensions.applyExtension).toHaveBeenLastCalledWith({
+    closure_id: 'closure-1',
+    days: 2,
+    branch_id: 'branch-b',
+    dry_run: false,
+    excluded_member_ids: ['member-1'],
+    preview_token: 'preview-token-3',
+  }));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Invoices and paid totals will not change'));
+  expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
+});
+
+test('409 stale preview is not reported as success and requires refresh before retry', async () => {
+  mockApi.dayExtensions.applyExtension.mockImplementation(payload => {
+    if (payload.dry_run) return Promise.resolve({ data: preview() });
+    return Promise.reject({ response: { status: 409 } });
+  });
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<DayExtensionsPage />);
+  await user.click((await screen.findAllByRole('button', { name: /Preview & WhatsApp/i }))[0]);
+  await screen.findByText('Sara');
+  await user.click(screen.getByRole('button', { name: /Confirm Extension/i }));
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('preview is no longer valid');
+  expect(screen.getByRole('button', { name: /Confirm Extension/i })).toBeDisabled();
+  expect(mockToast.success).not.toHaveBeenCalled();
+  expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Refresh and review'));
+  expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
+});
