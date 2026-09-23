@@ -27,6 +27,7 @@ from utils.auth import (
     require_branch_scope,
     resolve_branch_filter,
 )
+from utils.training_closures import closures_for_date, training_day_closed
 from utils.tenant import (
     DEFAULT_TENANT_SLUG,
     get_current_tenant,
@@ -1498,6 +1499,31 @@ async def send_class_reminder_whatsapp_notice(
     provider = _branch_provider(config)
     if not (phone and branch_id and config and config.get("enabled")):
         return False
+    # Re-read after configuration lookup: a closure may have been created while
+    # this agenda waited behind other recipients. No provider call precedes this.
+    closures = await closures_for_date(_db, class_time.astimezone(RIYADH_TZ).date().isoformat())
+    daily_classes = member.get("_daily_classes") or []
+    if daily_classes:
+        daily_classes = [
+            entry for entry in daily_classes
+            if not training_day_closed(closures, branch_id, entry.get("activity_id"))
+        ]
+        if not daily_classes:
+            return False
+        class_time = daily_classes[0]["class_time"]
+        activity_name = daily_classes[0]["activity_name"]
+        reminder_now = member.get("_reminder_now")
+        if reminder_now is not None:
+            reminder_time = class_time - timedelta(hours=2)
+            if not (reminder_time <= reminder_now < reminder_time + timedelta(minutes=5)):
+                return False
+    else:
+        activity_id = next((
+            act.get("activity_id") for act in member.get("activities", [])
+            if act.get("activity_name") == activity_name
+        ), None)
+        if training_day_closed(closures, branch_id, activity_id):
+            return False
     name = member.get("name_ar") or member.get("name") or ""
     time_text = class_time.strftime("%I:%M %p").lstrip("0").replace("AM", "ص").replace("PM", "م")
     time_text_en = class_time.strftime("%I:%M %p").lstrip("0")
@@ -1514,7 +1540,6 @@ async def send_class_reminder_whatsapp_notice(
         f"Time: {time_text_en}\n"
         f"Branch: {branch_name}",
     )
-    daily_classes = member.get("_daily_classes") or []
     if len(daily_classes) > 1:
         ar_lines, en_lines = [], []
         for entry in daily_classes:
@@ -1635,6 +1660,7 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
     else:
         current = current.astimezone(RIYADH_TZ)
     target_date = (current + timedelta(hours=2)).date()
+    closures = await closures_for_date(_db, target_date.isoformat())
     branch_rows = await _db["branches"].find(
         {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
     ).to_list(length=None)
@@ -1656,6 +1682,8 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         if not branch_id or not phone:
             continue
         for activity in member.get("activities") or []:
+            if training_day_closed(closures, branch_id, activity.get("activity_id")):
+                continue
             if not _activity_is_current(activity, target_date):
                 continue
             class_time = _class_occurrence_for_date(activity, target_date)
@@ -1665,6 +1693,7 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
             group = groups.setdefault((branch_id, phone), {"member": member, "entries": {}})
             legacy_key = f"{member.get('id')}:{activity_key}:{class_time.isoformat()}"
             group["entries"][legacy_key] = {
+                "activity_id": activity.get("activity_id"),
                 "activity_name": activity.get("activity_name") or "التدريب",
                 "class_time": class_time, "member_id": member.get("id"),
                 "member_name": member.get("name_ar") or member.get("name") or "",
@@ -1696,7 +1725,7 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         except DuplicateKeyError:
             continue
         success = await send_class_reminder_whatsapp_notice(
-            {**group["member"], "_daily_classes": entries},
+            {**group["member"], "_daily_classes": entries, "_reminder_now": current},
             entries[0]["activity_name"], first_time, branch_names.get(branch_id, ""),
         )
         if success:

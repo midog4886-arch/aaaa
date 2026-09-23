@@ -27,6 +27,12 @@ An uncertain provider outcome must not automatically retry. Stop the lane for ex
 
 Day-extension notices should have one explicit send action, separate from applying subscription changes.
 
+Invalid contact numbers exclude only notice delivery, never subscription compensation.
+
+**Why:** a single malformed stored number blocked an entire closure-notice batch. Compensating a missed class does not depend on the guardian's contact details.
+
+**How to apply:** disclose skipped recipients and validate eligible counts; preserve fail-before-enqueue behavior for authorization or missing-member failures. Never repair phone numbers by guessing.
+
 **Why:** An automatic post-apply notice alongside preview sending would duplicate notifications and bypass the shared paced queue.
 
 **How to apply:** Do not restore automatic post-apply sending without a shared event-level deduplication design. Preserve the ability to send notices before or after applying an extension.

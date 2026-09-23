@@ -10,6 +10,9 @@ def test_daily_message_lists_each_time_in_both_languages(monkeypatch):
     monkeypatch.setattr(mod, "_get_branch_cloud_config", AsyncMock(return_value=config))
     monkeypatch.setattr(mod, "_send_session_provider_result", sender)
     monkeypatch.setattr(mod, "_db", {
+        "closures": type("Closures", (), {
+            "find": lambda *args: type("Cursor", (), {"to_list": AsyncMock(return_value=[])})(),
+        })(),
         "whatsapp_send_log": type("Log", (), {"insert_one": AsyncMock()})(),
     })
     first = datetime(2026, 9, 7, 17, tzinfo=mod.RIYADH_TZ)

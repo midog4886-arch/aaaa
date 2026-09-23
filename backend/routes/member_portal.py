@@ -22,6 +22,7 @@ security = HTTPBearer()
 from database import db
 from utils.i18n import normalize_lang
 from utils.effective_periods import effective_period_map, operational_window
+from utils.training_closures import RIYADH_TZ, closures_for_date, training_day_closed
 
 # JWT Config for members
 MEMBER_JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret') + "_member"
@@ -1116,8 +1117,9 @@ async def member_mark_all_notifications_read(member: dict = Depends(get_current_
 @router.get("/training-reminders")
 async def get_training_reminders(member: dict = Depends(get_current_member)):
     """Get today's training reminders based on active subscriptions and schedules"""
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-    now = datetime.now(timezone.utc)
+    now = datetime.now(RIYADH_TZ)
+    today = now.strftime('%Y-%m-%d')
+    closures = await closures_for_date(db, today)
     
     day_names_ar = {
         0: 'الاثنين', 1: 'الثلاثاء', 2: 'الأربعاء',
@@ -1267,6 +1269,10 @@ async def get_training_reminders(member: dict = Depends(get_current_member)):
     ).to_list(20)
     
     attended_activities = {a.get("activity_id") for a in today_attendance}
+    reminders = [
+        reminder for reminder in reminders
+        if not training_day_closed(closures, member.get("branch_id"), reminder["activity_id"])
+    ]
     
     for reminder in reminders:
         reminder["already_attended"] = reminder["activity_id"] in attended_activities

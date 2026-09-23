@@ -265,3 +265,67 @@ test('manual mode does not couple opening chats to applying the extension', asyn
   }));
   expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
 });
+
+test('mixed phone validity counts only notice recipients and reports named skips', async () => {
+  const { toast } = require('sonner');
+  mockWhatsappAPI.enqueueClosureNotices.mockResolvedValue({ data: {
+    queued: 2, jobs: [], skipped_recipients: [
+      { name: 'Invalid', reason: 'invalid_phone' },
+      { name: 'Missing phone', reason: 'missing_phone' },
+    ],
+  } });
+  render(<DayExtensionsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: /Preview & WhatsApp/i }));
+  const send = await screen.findByRole('button', { name: /Send WhatsApp to All/i });
+  await waitFor(() => expect(send).toBeEnabled());
+  expect(screen.getByTestId('notice-phone-skips')).toHaveTextContent('compensation is unaffected');
+  fireEvent.click(send);
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Queue 2 message(s)'));
+  await waitFor(() => expect(toast.info).toHaveBeenCalledWith(
+    'Invalid: Invalid phone number\nMissing phone: No phone number', { duration: 15000 }
+  ));
+  expect(mockWhatsappAPI.enqueueClosureNotices).toHaveBeenCalledWith(expect.objectContaining({ excluded_member_ids: [] }));
+});
+
+test('all invalid phones prevent notice sends but remain in compensation', async () => {
+  mockApi.dayExtensions.applyExtension.mockImplementation(({ dry_run }) => Promise.resolve({
+    data: dry_run ? { ...preview, extended_members: previewMembers.slice(2), extended_count: 2 } : { extended_count: 2 },
+  }));
+  render(<DayExtensionsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: /Preview & WhatsApp/i }));
+  expect(await screen.findByRole('button', { name: /Send WhatsApp to All/i })).toBeDisabled();
+  expect(screen.getByTestId('notice-phone-skips')).toHaveTextContent('No valid phone numbers; no messages will be queued');
+  fireEvent.click(screen.getByRole('button', { name: /Confirm Extension/i }));
+  await waitFor(() => expect(mockApi.dayExtensions.applyExtension).toHaveBeenLastCalledWith(expect.objectContaining({
+    dry_run: false, excluded_member_ids: [],
+  })));
+  expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
+});
+
+test('all invalid authoritative response never displays queue success', async () => {
+  const { toast } = require('sonner');
+  mockWhatsappAPI.enqueueClosureNotices.mockResolvedValue({ data: {
+    queued: 0, jobs: [], skipped_recipients: [{ name: 'Sara', reason: 'invalid_phone' }],
+  } });
+  render(<DayExtensionsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: /Preview & WhatsApp/i }));
+  const send = await screen.findByRole('button', { name: /Send WhatsApp to All/i });
+  await waitFor(() => expect(send).toBeEnabled());
+  fireEvent.click(send);
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith('No messages queued; no valid phone numbers'));
+  expect(toast.success).not.toHaveBeenCalled();
+});
+
+test.each(['٠٥٠١٢٣٤٥٦٧', '۰۵۰۱۲۳۴۵۶۷', '501234567', '+966 50 123 4567'])(
+  'manual and automatic notice eligibility share normalization: %s', async phone => {
+    mockApi.dayExtensions.applyExtension.mockResolvedValue({ data: {
+      ...preview, extended_members: [{ ...previewMembers[0], phone }], extended_count: 1,
+    } });
+    await openManualPreview();
+    expect(screen.getByTestId('manual-whatsapp-member-1')).toHaveAttribute(
+      'href', expect.stringContaining('wa.me/966501234567')
+    );
+    expect(screen.queryByTestId('notice-phone-skips')).not.toBeInTheDocument();
+    expect(screen.getByText('Valid WhatsApp phones').nextSibling).toHaveTextContent('1');
+  }
+);

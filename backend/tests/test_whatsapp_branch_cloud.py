@@ -24,6 +24,22 @@ class _Collection:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
 
+    def find(self, query, projection=None):
+        rows = [
+            row for row in self.rows
+            if all(
+                (row.get(key, "") <= expected["$lte"] if "$lte" in expected
+                 else row.get(key, "") >= expected["$gte"])
+                if isinstance(expected, dict) and ("$lte" in expected or "$gte" in expected)
+                else row.get(key) == expected
+                for key, expected in query.items()
+            )
+        ]
+        class Cursor:
+            async def to_list(self, length=None):
+                return rows
+        return Cursor()
+
     async def find_one(self, query, projection=None):
         for row in self.rows:
             if all(

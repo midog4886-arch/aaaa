@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Textarea } from '../components/ui/textarea';
 import api, { membersAPI, branchesAPI, activitiesAPI, whatsappAPI } from '../services/api';
 import { whatsappChatUrl } from '../utils/whatsapp';
+import { normalizePhone } from '../utils/phone';
 import { toast } from 'sonner';
 import {
   CalendarOff, Plus, Trash2, Play, Clock, User, Users,
@@ -37,17 +38,8 @@ const REASON_COLORS = {
 const getManualWhatsAppUrl = (phone, canViewPhones, message) => {
   if (!canViewPhones || !phone || /[•*xX]/.test(String(phone))) return '';
   if (typeof whatsappChatUrl !== 'function') return '';
-  const rawPhone = String(phone).trim();
-  const rawDigits = rawPhone.replace(/\D/g, '');
-  const explicitInternational = rawPhone.startsWith('+') || rawDigits.startsWith('00');
-  const url = whatsappChatUrl(phone, message);
-  if (typeof url !== 'string') return '';
-  const match = url.match(/^https:\/\/wa\.me\/(\d+)(?:\?|$)/);
-  if (!match || match[1].length < 10 || match[1].length > 15) return '';
-  // Stored academy phones are Saudi local numbers (or already normalized);
-  // other country codes are accepted only when explicitly marked international.
-  if (!explicitInternational && !/^9665\d{8}$/.test(match[1])) return '';
-  return url;
+  const normalized = normalizePhone(phone);
+  return normalized ? whatsappChatUrl(normalized, message) : '';
 };
 
 // Keep browser-opened notices in lockstep with the automatic closure queue's
@@ -359,9 +351,9 @@ export default function DayExtensionsPage() {
       toast.error(t('أدخل نص الرسالة', 'Enter message text'));
       return;
     }
-    const recipientCount = previewResult.extended_members.filter(m => m.phone && !excludedMemberIds.includes(m.member_id)).length;
+    const recipientCount = previewResult.extended_members.filter(m => normalizePhone(m.phone) && !excludedMemberIds.includes(m.member_id)).length;
     if (recipientCount === 0) {
-      toast.error(t('لا يوجد أرقام جوال', 'No phone numbers'));
+      toast.error(t('لا توجد أرقام صالحة؛ لم تُضف أي رسائل', 'No valid phone numbers; no messages queued'));
       return;
     }
     if (!window.confirm(t(
@@ -382,12 +374,17 @@ export default function DayExtensionsPage() {
       const jobs = response.data?.jobs || [];
       setWaJobs(current => [...jobs, ...current.filter(old => !jobs.some(job => job.id === old.id))]);
       setWaJobsPollVersion(value => value + 1);
-      const skipped = response.data?.skipped_without_phone || 0;
+      const skipped = response.data?.skipped_recipients || [];
+      if (skipped.length) toast.info(skipped.map(member =>
+        `${member.name}: ${member.reason === 'missing_phone' ? t('بدون جوال', 'No phone number') : t('رقم الجوال غير صالح', 'Invalid phone number')}`
+      ).join('\n'), { duration: 15000 });
       if (response.data?.existing && !response.data?.queued) {
         toast.info(t('قائمة موجودة بالفعل؛ لم تُضف رسائل جديدة', 'Existing queue; no new messages queued'));
+      } else if (!response.data?.queued) {
+        toast.error(t('لم تُضف أي رسائل؛ لا توجد أرقام صالحة', 'No messages queued; no valid phone numbers'));
       } else toast.success(t(
-        `تمت الإضافة إلى قائمة الانتظار؛ لم يتم تطبيق الترحيل${skipped ? ` (تم تخطي ${skipped} بدون جوال)` : ''}`,
-        `Queued; the extension was not applied${skipped ? ` (${skipped} without a phone skipped)` : ''}`
+        `تمت الإضافة إلى قائمة الانتظار؛ لم يتم تطبيق الترحيل (تم تخطي ${skipped.length})`,
+        `Queued; the extension was not applied (${skipped.length} skipped)`
       ));
       await refreshNoticeSummaries();
     } catch (error) {
@@ -1032,8 +1029,8 @@ export default function DayExtensionsPage() {
                           <p className="text-2xl font-bold text-blue-700">{activeMembers.length}</p>
                         </div>
                         <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-center">
-                          <p className="text-xs text-muted-foreground">{t('لديهم رقم جوال', 'With phone')}</p>
-                          <p className="text-2xl font-bold text-green-700">{activeMembers.filter(m => m.phone).length}</p>
+                          <p className="text-xs text-muted-foreground">{t('أرقام صالحة لواتساب', 'Valid WhatsApp phones')}</p>
+                          <p className="text-2xl font-bold text-green-700">{activeMembers.filter(m => normalizePhone(m.phone)).length}</p>
                         </div>
                         <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-center">
                           <p className="text-xs text-muted-foreground">{t('مستبعدون يدوياً', 'Manually excluded')}</p>
@@ -1046,6 +1043,20 @@ export default function DayExtensionsPage() {
                       </div>
                     );
                   })()}
+
+                  {(previewResult.extended_members || []).some(m => !excludedMemberIds.includes(m.member_id) && !normalizePhone(m.phone)) && (
+                    <div role="status" className="p-3 rounded-lg bg-amber-50 text-amber-900" data-testid="notice-phone-skips">
+                      <p>{t('سيتم تخطي هؤلاء في إشعارات واتساب فقط؛ لا يؤثر ذلك على التعويض.', 'Skipped for WhatsApp notices only; compensation is unaffected.')}</p>
+                      {!(previewResult.extended_members || []).some(m => !excludedMemberIds.includes(m.member_id) && normalizePhone(m.phone)) && (
+                        <p>{t('لا توجد أرقام صالحة؛ لن تُضاف أي رسائل', 'No valid phone numbers; no messages will be queued')}</p>
+                      )}
+                      <ul>
+                        {(previewResult.extended_members || []).filter(m => !excludedMemberIds.includes(m.member_id) && !normalizePhone(m.phone)).map(m => (
+                          <li key={m.member_id}>{m.name || t('عضو بدون اسم', 'Unnamed member')}: {String(m.phone || '').trim() ? t('رقم الجوال غير صالح', 'Invalid phone number') : t('بدون جوال', 'No phone number')}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
                   <div>
                     <Label className="text-sm font-medium flex items-center gap-2">
@@ -1320,7 +1331,7 @@ export default function DayExtensionsPage() {
                 {whatsappMode === 'automatic' ? (
                   <Button
                     onClick={handleSendWhatsAppFromPreview}
-                    disabled={automaticLocked || previewing || sendingWa || !previewResult || !(previewResult.extended_members || []).some(m => m.phone)}
+                    disabled={automaticLocked || previewing || sendingWa || !previewResult || !(previewResult.extended_members || []).some(m => normalizePhone(m.phone) && !excludedMemberIds.includes(m.member_id))}
                     title={automaticLocked ? t('قائمة موجودة بالفعل؛ لن تعاد محاولة الفشل أو النتائج غير المعروفة', 'Already queued; failed or unknown jobs will not be restarted') : ''}
                     className="bg-green-600 hover:bg-green-700"
                   >

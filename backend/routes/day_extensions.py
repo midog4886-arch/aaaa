@@ -1355,41 +1355,38 @@ async def enqueue_closure_notices(
     }
     grouped = {}
     skipped_without_phone = 0
-    from routes import whatsapp as whatsapp_routes
+    skipped_recipients = []
+    from utils.phone import normalize_phone
     for item in preview_members:
         member = authoritative.get(item.get("member_id"))
         if not member:
-            continue
+            raise HTTPException(status_code=400, detail="Recipient no longer exists; refresh the preview. Nothing was queued")
         branch_id = member.get("branch_id")
         if branch_id in existing_by_branch:
             continue
         if not branch_id:
             raise HTTPException(
                 status_code=400,
-                detail=f"Member {member.get('id')} has no branch; nothing was queued",
+                detail="Recipient has no branch; nothing was queued",
             )
         if effective_branch != "all" and branch_id != effective_branch:
             raise HTTPException(status_code=403, detail="Recipient branch mismatch")
         phone = member.get("phone") or ""
-        if not phone:
-            skipped_without_phone += 1
+        normalized_phone = normalize_phone(phone)
+        if not normalized_phone:
+            missing = not str(phone).strip()
+            skipped_without_phone += int(missing)
+            skipped_recipients.append({
+                "name": member.get("name_ar") or member.get("name") or "Unnamed member",
+                "reason": "missing_phone" if missing else "invalid_phone",
+            })
             continue
-        if not whatsapp_routes._format_cloud_phone(phone):
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Member {member.get('id')} has an invalid WhatsApp phone; "
-                    "nothing was queued"
-                ),
-            )
         item["name"] = member.get("name_ar") or member.get("name") or ""
         message = _personalize_closure_notice(template, item)
         if not message or len(message) > 4096:
             raise HTTPException(status_code=400, detail="Personalized message is invalid")
-        grouped.setdefault(branch_id, []).append({"phone": phone, "message": message,
+        grouped.setdefault(branch_id, []).append({"phone": normalized_phone, "message": message,
                                                   "recipient_id": member["id"]})
-    if not grouped and not existing_jobs:
-        raise HTTPException(status_code=400, detail="No recipients have a phone number")
 
     # Validate every branch first so unsupported/disabled branches cannot result
     # in an avoidable partial enqueue.
@@ -1409,6 +1406,7 @@ async def enqueue_closure_notices(
         "queued": sum(job.get("recipient_count", job.get("total", 0)) for job in jobs if job["created"]),
         "existing": any(not job["created"] for job in jobs),
         "skipped_without_phone": skipped_without_phone,
+        "skipped_recipients": skipped_recipients,
         "jobs": jobs,
     }
 

@@ -103,7 +103,7 @@ def test_closure_notices_use_db_phones_split_branches_and_personalize(monkeypatc
     assert seen_preview[0].excluded_member_ids == ["m2"]
     assert len(enqueued) == 1
     assert enqueued[0][0:2] == ("branch-a", "waha")
-    assert enqueued[0][2][0]["phone"] == "0501111111"
+    assert enqueued[0][2][0]["phone"] == "966501111111"
     message = enqueued[0][2][0]["message"]
     assert message.startswith("محمد|2|2026-09-12|2026-09-10|سباحة")
     assert "New end date: 2026-09-12" in message
@@ -202,7 +202,7 @@ def test_first_send_after_apply_uses_saved_affected_members(monkeypatch):
     ))
 
     assert result["queued"] == 1
-    assert enqueued[0][2][0]["phone"] == "0501111111"
+    assert enqueued[0][2][0]["phone"] == "966501111111"
     message = enqueued[0][2][0]["message"]
     assert message.startswith("محمد 2026-09-20 2026-09-22")
     assert "Previous end date: 2026-09-20" in message
@@ -210,11 +210,12 @@ def test_first_send_after_apply_uses_saved_affected_members(monkeypatch):
     assert enqueued[0][3] == "closure_notice_closure-1"
 
 
-def test_invalid_phone_in_second_branch_prevents_every_enqueue(monkeypatch):
+@pytest.mark.parametrize("valid_phone", ["0501111111", "٠٥٠١١١١١١١", "۰۵۰۱۱۱۱۱۱۱", None])
+def test_invalid_phones_skip_only_notices(monkeypatch, valid_phone):
     fake_db = DB()
     fake_db.members = Collection([
-        {"id": "m1", "name_ar": "أ", "phone": "0501111111", "branch_id": "branch-a"},
-        {"id": "m2", "name_ar": "ب", "phone": "not-a-phone", "branch_id": "branch-b"},
+        {"id": "m1", "name_ar": "أ", "phone": valid_phone, "branch_id": "branch-a"},
+        {"id": "m2", "name_ar": "ب", "phone": "6", "branch_id": "branch-b"},
     ])
     monkeypatch.setattr(mod, "db", fake_db)
     called = []
@@ -229,22 +230,61 @@ def test_invalid_phone_in_second_branch_prevents_every_enqueue(monkeypatch):
         ]}
 
     async def provider(_branch_id):
+        assert valid_phone
         return "waha"
 
-    async def enqueue(*_args, **_kwargs):
-        called.append(True)
+    async def enqueue(branch, provider, recipients, key, **_kwargs):
+        called.extend(recipients)
+        return {"id": "job", "branch_id": branch, "total": len(recipients)}, True
 
     monkeypatch.setattr(mod, "_require_current_admin", authorize)
     monkeypatch.setattr(mod, "apply_extension", preview)
     monkeypatch.setattr(mod, "_closure_provider", provider)
     monkeypatch.setattr(mod.whatsapp_bulk_jobs, "enqueue", enqueue)
 
-    with pytest.raises(HTTPException, match="invalid WhatsApp phone"):
-        run(mod.enqueue_closure_notices(
-            mod.ClosureNoticeSend(closure_id="closure-1", message="hello"),
-            {"is_admin": True},
-        ))
-    assert called == []
+    result = run(mod.enqueue_closure_notices(
+        mod.ClosureNoticeSend(closure_id="closure-1", message="hello"),
+        {"is_admin": True},
+    ))
+    assert result["queued"] == int(bool(valid_phone))
+    assert len(called) == int(bool(valid_phone))
+    assert {"name": "ب", "reason": "invalid_phone"} in result["skipped_recipients"]
+    if not valid_phone:
+        assert result["jobs"] == []
+        assert {"name": "أ", "reason": "missing_phone"} in result["skipped_recipients"]
+    assert fake_db.members.rows[0]["phone"] == valid_phone
+    assert fake_db.members.rows[1]["phone"] == "6"
+
+@pytest.mark.parametrize("failure", ["missing_member", "missing_branch", "branch_mismatch"])
+def test_recipient_integrity_failures_still_reject_entire_batch(monkeypatch, failure):
+    fake_db = DB()
+    if failure == "missing_member":
+        fake_db.members.rows.pop()
+    elif failure == "missing_branch":
+        fake_db.members.rows[1]["branch_id"] = None
+    monkeypatch.setattr(mod, "db", fake_db)
+
+    async def authorize(_user):
+        pass
+
+    async def preview(_data, _user):
+        return {"extended_members": [
+            {"member_id": "m1", "details": [{}]},
+            {"member_id": "m2", "details": [{}]},
+        ]}
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Integrity errors must precede provider checks and queue writes")
+
+    monkeypatch.setattr(mod, "_require_current_admin", authorize)
+    monkeypatch.setattr(mod, "apply_extension", preview)
+    monkeypatch.setattr(mod, "_closure_provider", forbidden)
+    monkeypatch.setattr(mod.whatsapp_bulk_jobs, "enqueue", forbidden)
+    with pytest.raises(HTTPException):
+        run(mod.enqueue_closure_notices(mod.ClosureNoticeSend(
+            closure_id="closure-1", message="hello",
+            branch_id="branch-a" if failure == "branch_mismatch" else "all",
+        ), {"is_admin": True}))
 
 
 def test_send_then_apply_then_lost_response_retry_returns_same_job(monkeypatch):
