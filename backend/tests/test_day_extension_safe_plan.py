@@ -7,6 +7,7 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pytest
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError, OperationFailure
 from routes import day_extensions as mod
 from utils.prepaid import roll_forward_member_prepaid
 from utils.effective_periods import source_key
@@ -475,6 +476,71 @@ def test_shared_level_subscription_is_updated_once(monkeypatch):
     assert fake.level_subscriptions.rows[0]["end_date"] == "2026-09-30"
     assert len(fake.day_extensions.rows) == 2
     assert fake.closures.rows[0]["applied"]
+
+
+@pytest.mark.parametrize("different_end", [False, True])
+def test_duplicate_activity_subdocs_do_not_violate_real_compensation_index(monkeypatch, different_end):
+    person = member()
+    duplicate = copy.deepcopy(person["activities"][0])
+    duplicate["fee"] = 200
+    if different_end:
+        duplicate["end_date"] = "2026-09-30"
+    person["activities"].append(duplicate)
+    safe_member = member()
+    safe_member["id"] = "m2"
+    safe_invoice = invoice("safe", "2026-09-01", "2026-09-28")
+    safe_invoice["member_id"] = "m2"
+    fake = DB(members=[person, safe_member], invoices=[
+        invoice("current", "2026-09-01", "2026-09-28"), safe_invoice,
+    ])
+    fake.closures.rows.append(copy.deepcopy(CLOSURE))
+    original_insert = fake.day_extensions.insert_one
+
+    async def unique_insert(row, **kwargs):
+        keys = ("closure_id", "member_id", "scope_type", "activity_id")
+        if any(all(old.get(k) == row.get(k) for k in keys) for old in fake.day_extensions.rows):
+            raise DuplicateKeyError("synthetic unique compensation collision", 11000)
+        await original_insert(row, **kwargs)
+
+    fake.day_extensions.insert_one = unique_insert
+    reviewed = plan(monkeypatch, fake)
+    applied = asyncio.run(mod.apply_extension(
+        mod.ExtensionApply(closure_id="c1", days=1, preview_token=reviewed["preview_token"]),
+        {"user_id": "u1", "username": "admin", "is_admin": True},
+    ))
+    assert applied["extended_count"] == 1
+    assert applied["skipped_count"] == 1
+    assert "duplicate overlapping subscriptions" in applied["skipped_members"][0]["reason"]
+    assert fake.members.rows[0] == person
+    assert [r["member_id"] for r in fake.day_extensions.rows] == ["m2"]
+    assert fake.closures.rows[0]["applied"]
+
+
+@pytest.mark.parametrize("code, detail", [
+    (11000, "Compensation uniqueness conflict"),
+    (112, "Concurrent write conflict"),
+    (251, "Transaction was aborted"),
+])
+def test_transaction_error_codes_are_distinct_and_logs_contain_no_source_data(monkeypatch, caplog, code, detail):
+    fake = DB(members=[member()], invoices=[invoice("current", "2026-09-01", "2026-09-28")])
+    fake.closures.rows.append(copy.deepcopy(CLOSURE))
+    reviewed = plan(monkeypatch, fake)
+
+    async def fail_commit(*args):
+        raise OperationFailure("PRIVATE_SOURCE_VALUE must never be logged", code=code)
+
+    monkeypatch.setattr(mod, "_commit_safe_extension_plan", fail_commit)
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(mod.apply_extension(
+            mod.ExtensionApply(closure_id="c1", days=1, preview_token=reviewed["preview_token"]),
+            {"user_id": "u1", "username": "admin", "is_admin": True},
+        ))
+    assert caught.value.status_code == 409
+    assert caught.value.detail.startswith(detail)
+    assert f"code={code}" in caplog.text
+    assert "PRIVATE_SOURCE_VALUE" not in caplog.text
+    assert "members=1 records=1" in caplog.text
+    assert not fake.day_extensions.rows
 
 
 def test_apply_keeps_matching_level_subscription_deadline_in_sync(monkeypatch):

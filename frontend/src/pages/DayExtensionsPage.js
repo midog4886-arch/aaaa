@@ -101,6 +101,15 @@ export default function DayExtensionsPage() {
   } = useAuth();
   const canViewPhones = isAdmin || user?.is_admin === true || (user?.permissions || []).includes('member-phones');
   const t = (ar, en) => language === 'ar' ? ar : en;
+  const duplicateReason = 'duplicate overlapping subscriptions; resolve activity duplicates before compensation';
+  const hasDuplicateReason = (reason) => String(reason || '').includes('duplicate overlapping subscriptions');
+  const localizeCompensationReason = (reason) => String(reason || '').replaceAll(
+    duplicateReason,
+    t(
+      'سجلات نشاط مكررة ومتداخلة؛ يجب تصحيحها قبل التعويض. لن يتم دمجها تلقائياً.',
+      'Duplicate overlapping activity records must be corrected before compensation. They will not be merged automatically.'
+    )
+  );
 
   const [closures, setClosures] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -134,6 +143,8 @@ export default function DayExtensionsPage() {
   const [expandedClosures, setExpandedClosures] = useState({});
   const [memberSearch, setMemberSearch] = useState({});
   const [previewResult, setPreviewResult] = useState(null);
+  const hasDuplicateSubscriptions = (previewResult?.skipped_members || []).some(m => hasDuplicateReason(m.reason))
+    || (previewResult?.extended_members || []).some(m => (m.warnings || []).some(hasDuplicateReason));
   const [previewing, setPreviewing] = useState(false);
   const [waMessage, setWaMessage] = useState('');
   const [whatsappMode, setWhatsappMode] = useState('automatic');
@@ -410,10 +421,17 @@ export default function DayExtensionsPage() {
 
   const handleConfirmApplyFromPreview = async () => {
     if (!previewClosure || !previewResult?.preview_token || previewIsStale || previewing || !previewMatchesSelection) return;
+    const skippedCount = (previewResult.skipped_count || 0) + excludedMemberIds.length;
     if (!window.confirm(t(
       'سيتم الآن تعديل تواريخ الاشتراكات وترحيل الفترات المدفوعة المتداخلة. لن تتغير الفواتير أو إجمالي المبالغ المدفوعة. هل تريد التطبيق؟',
       'This will now change subscription dates and postpone overlapping prepaid periods. Invoices and paid totals will not change. Apply now?'
-    ))) return;
+    ) + '\n\n' + t(
+      `لن يتم تعويض ${skippedCount} من المشتركين المستثنين في هذه العملية.`,
+      `${skippedCount} skipped members will not be compensated in this operation.`
+    ) + (hasDuplicateSubscriptions ? '\n\n' + t(
+      'لن تُعوّض سجلات الأنشطة المكررة قبل تصحيحها، ولن يتم دمجها تلقائياً.',
+      'Duplicate activity records will not be compensated until corrected and will not be merged automatically.'
+    ) : ''))) return;
     setApplying(true);
     try {
       const res = await api.dayExtensions.applyExtension({
@@ -442,6 +460,18 @@ export default function DayExtensionsPage() {
         setPreviewResult(current => current ? { ...current, preview_token: null } : current);
         const detail = error.response?.data?.detail;
         const conflictMessages = {
+          'Compensation uniqueness conflict; review duplicate subscriptions or existing compensation': [
+            'تعارض مع سجل تعويض فريد. راجع الاشتراكات المكررة أو التعويضات السابقة قبل إعادة المعاينة.',
+            'Compensation uniqueness conflict. Review duplicate subscriptions or existing compensation before previewing again.'
+          ],
+          'Concurrent write conflict; refresh and review before confirming again': [
+            'حدث تعديل متزامن أثناء الحفظ. حدّث المعاينة وراجعها قبل التأكيد مجدداً.',
+            'Another write conflicted with saving. Refresh and review before confirming again.'
+          ],
+          'Transaction was aborted; no extension was committed; refresh and review before confirming again': [
+            'أُلغيت عملية الحفظ الذرية ولم يُحفظ الترحيل. حدّث المعاينة وراجعها قبل التأكيد مجدداً.',
+            'The transaction was aborted and no extension was committed. Refresh and review before confirming again.'
+          ],
           'Closure was already applied': [
             'تم تطبيق فترة الإغلاق بالفعل. أعد تحميل القائمة للتحقق من النتيجة.',
             'This closure was already applied. Reload the list to check the result.'
@@ -945,6 +975,14 @@ export default function DayExtensionsPage() {
                       )}
                     </p>
                   </div>
+                  {hasDuplicateSubscriptions && (
+                    <div role="alert" data-testid="duplicate-subscription-warning" className="rounded-lg border-2 border-amber-500 bg-amber-50 p-4 text-sm font-semibold text-amber-950">
+                      {t(
+                        'تنبيه: توجد سجلات نشاط مكررة ومتداخلة تتطلب التصحيح قبل التعويض. لن تُعوّض الأنشطة المكررة في هذه العملية ولن يتم دمجها تلقائياً. راجع أسباب الاستثناء وتحذيرات الأعضاء قبل التأكيد.',
+                        'Warning: duplicate overlapping activity records require correction before compensation. Duplicate activities will not be compensated in this operation and will not be merged automatically. Review skipped reasons and member warnings before confirming.'
+                      )}
+                    </div>
+                  )}
                   {branches.length > 1 && (
                     <div className="grid gap-1 sm:max-w-sm">
                       <Label htmlFor="closure-preview-branch">
@@ -1137,7 +1175,7 @@ export default function DayExtensionsPage() {
                                   {(m.warnings || []).map((warning, warningIndex) => (
                                     <p key={warningIndex} className="flex min-w-0 items-start gap-1 break-words rounded bg-amber-50 p-2 text-xs text-amber-900">
                                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                                      {t('تنبيه جدول غير معروف:', 'Unknown schedule warning:')} {warning}
+                                      {hasDuplicateReason(warning) ? t('تنبيه التعويض:', 'Compensation warning:') : t('تنبيه جدول غير معروف:', 'Unknown schedule warning:')} {localizeCompensationReason(warning)}
                                     </p>
                                   ))}
                                 </div>
@@ -1258,7 +1296,7 @@ export default function DayExtensionsPage() {
                             <div key={i} className="p-2 text-sm">
                               <p className="font-medium">{s.name || '-'}</p>
                               <p className="text-xs text-orange-700 mt-0.5">
-                                {t('السبب:', 'Reason:')} {s.reason || t('لا يوجد تقاطع مع أيام الإغلاق', 'No overlap with closure days')}
+                                {t('السبب:', 'Reason:')} {localizeCompensationReason(s.reason) || t('لم يُحدد سبب الاستثناء', 'Skip reason not provided')}
                               </p>
                               {s.training_days ? (
                                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -1697,13 +1735,14 @@ export default function DayExtensionsPage() {
                 {applyResult.skipped_members && applyResult.skipped_members.length > 0 && (
                   <div>
                     <h3 className="font-bold mb-2 text-sm text-gray-600">
-                      {t(`مشتركين لم يتأثروا (${applyResult.skipped_count}) - أيام تدريبهم لا تتقاطع مع الإغلاق`,
-                         `Unaffected members (${applyResult.skipped_count}) - training days don't overlap with closure`)}
+                      {t(`مشتركون لم يتم تعويضهم في هذه العملية (${applyResult.skipped_count})`,
+                         `Members not compensated in this operation (${applyResult.skipped_count})`)}
                     </h3>
                     <div className="flex flex-wrap gap-1">
                       {applyResult.skipped_members.map((s, i) => (
                         <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                           {s.name} {s.member_time ? `(${s.member_time})` : s.training_days ? `(${s.training_days})` : ''}
+                          {s.reason && <span className="block">{localizeCompensationReason(s.reason)}</span>}
                         </span>
                       ))}
                     </div>

@@ -7,6 +7,9 @@ import re
 import hashlib
 import json
 import math
+import logging
+import time
+from collections import Counter
 from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
@@ -19,6 +22,7 @@ from utils.effective_periods import (
 )
 
 router = APIRouter(prefix="/day-extensions", tags=["day-extensions"])
+logger = logging.getLogger(__name__)
 
 
 def require_admin(user: dict):
@@ -704,6 +708,14 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
         effective_rows = {}
         level_updates = []
         warnings = []
+        overlapping_activity_counts = Counter(
+            a.get("activity_id") or "" for a in activities
+            if a.get("status", "active") in ("active", "expired")
+            and a.get("start_date") and a.get("end_date")
+            and str(a["start_date"])[:10] <= closure["end_date"]
+            and str(a["end_date"])[:10] >= closure["start_date"]
+        )
+        duplicate_warnings = set()
         paid_items = paid_by_member.get(mid, [])
         for act in activities:
             if act.get("status", "active") not in ("active", "expired"):
@@ -714,6 +726,17 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
             astart = str(act.get("start_date") or "")[:10]
             aend = str(act.get("end_date") or "")[:10]
             if not astart or not aend or astart > closure["end_date"] or aend < closure["start_date"]:
+                continue
+            if overlapping_activity_counts[aid] > 1:
+                # The unique compensation identity is member/activity/closure.
+                # Multiple overlapping subdocs can disagree on dates or source;
+                # neither double awards nor choosing one arbitrarily is safe.
+                if aid not in duplicate_warnings:
+                    warnings.append(
+                        f"{act.get('activity_name') or aid}: duplicate overlapping "
+                        "subscriptions; resolve activity duplicates before compensation"
+                    )
+                    duplicate_warnings.add(aid)
                 continue
             # An activity is paid only when an owned paid item binds to it/source.
             bound = []
@@ -1147,17 +1170,33 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         }
     if data.preview_token and data.preview_token != token:
         raise HTTPException(status_code=409, detail="Preview is stale; preview and confirm again")
+    commit_started = time.monotonic()
     try:
         plan = await _commit_safe_extension_plan(data, closure, user, token)
     except HTTPException:
         raise
     except Exception as exc:
-        # Concurrent confirmations race on the closure lock / unique extension
-        # key. Surface a reconfirmation conflict; all other database errors remain
-        # visible and the transaction has already rolled back.
-        if getattr(exc, "code", None) in (11000, 112, 251):
+        code = getattr(exc, "code", None)
+        conflict_details = {
+            11000: "Compensation uniqueness conflict; review duplicate subscriptions or existing compensation",
+            112: "Concurrent write conflict; refresh and review before confirming again",
+            251: "Transaction was aborted; no extension was committed; refresh and review before confirming again",
+        }
+        if code in conflict_details:
+            # Never log the exception text/details: duplicate-key errors contain
+            # member/source identifiers. Counts and Mongo codes suffice to
+            # distinguish data collisions, concurrent writes and aborted txns.
+            logger.warning(
+                "closure_apply_transaction_conflict code=%s elapsed_ms=%s "
+                "members=%s records=%s effective_rows=%s level_updates=%s",
+                code, round((time.monotonic() - commit_started) * 1000),
+                len(plan["writes"]),
+                sum(len(w["records"]) for w in plan["writes"]),
+                sum(len(w["effective_rows"]) for w in plan["writes"]),
+                sum(len(w["level_updates"]) for w in plan["writes"]),
+            )
             raise HTTPException(
-                status_code=409, detail="Subscriptions changed concurrently; preview again"
+                status_code=409, detail=conflict_details[code]
             ) from exc
         raise
     return {

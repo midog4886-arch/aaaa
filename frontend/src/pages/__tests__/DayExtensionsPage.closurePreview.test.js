@@ -13,6 +13,7 @@ const mockApi = {
 const mockMembersAPI = { getAll: jest.fn() };
 const mockBranchesAPI = { getAll: jest.fn() };
 const mockActivitiesAPI = { getAll: jest.fn() };
+let mockLanguage = 'en';
 const mockWhatsappAPI = {
   listBranchCloudJobs: jest.fn(),
   enqueueClosureNotices: jest.fn(),
@@ -29,7 +30,7 @@ jest.mock('../../services/api', () => ({
   whatsappAPI: mockWhatsappAPI,
 }));
 jest.mock('../../contexts/LanguageContext', () => ({
-  useLanguage: () => ({ language: 'en' }),
+  useLanguage: () => ({ language: mockLanguage }),
 }));
 jest.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -114,6 +115,7 @@ const preview = (token = 'preview-token-1') => ({
 });
 
 beforeEach(() => {
+  mockLanguage = 'en';
   jest.clearAllMocks();
   mockApi.dayExtensions.getClosures.mockResolvedValue({ data: [closure] });
   mockApi.dayExtensions.getLogs.mockResolvedValue({ data: [] });
@@ -134,6 +136,50 @@ beforeEach(() => {
 });
 
 const DayExtensionsPage = require('../DayExtensionsPage').default;
+
+test.each([
+  ['en', 'skipped'], ['ar', 'skipped'], ['en', 'affected'], ['ar', 'affected'],
+])('makes duplicate warnings and uncompensated count explicit (%s, %s)', async (language, location) => {
+  mockLanguage = language;
+  const ar = language === 'ar';
+  const reason = 'Swimming: duplicate overlapping subscriptions; resolve activity duplicates before compensation';
+  const response = {
+    ...preview(),
+    extended_members: previewMembers.map((m, i) => ({
+      ...m, warnings: location === 'affected' && i === 0 ? [reason] : [],
+    })),
+    skipped_count: 1,
+    skipped_members: [{ member_id: 'skipped-1', name: 'Skipped member', reason: location === 'skipped' ? reason : 'No overlap' }],
+  };
+  mockApi.dayExtensions.applyExtension.mockResolvedValue({ data: response });
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<DayExtensionsPage />);
+  await user.click((await screen.findAllByRole('button', { name: ar ? 'معاينة وإرسال واتساب' : /Preview & WhatsApp/i }))[0]);
+  const warning = await screen.findByTestId('duplicate-subscription-warning');
+  expect(warning).toHaveTextContent(ar ? 'تتطلب التصحيح قبل التعويض' : 'require correction before compensation');
+  expect(warning).toHaveTextContent(ar ? 'لن يتم دمجها تلقائياً' : 'will not be merged automatically');
+  if (location === 'skipped') {
+    await user.click(screen.getByRole('button', { name: ar ? /المستثنون تلقائياً/ : /Auto-skipped/ }));
+  }
+  expect(screen.getByText(ar
+    ? /Swimming: سجلات نشاط مكررة ومتداخلة/
+    : /Swimming: Duplicate overlapping activity records/)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: ar ? 'تأكيد الترحيل' : /Confirm Extension/i }));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining(ar
+    ? 'لن يتم تعويض 1 من المشتركين المستثنين'
+    : '1 skipped members will not be compensated in this operation'));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining(ar
+    ? 'لن تُعوّض سجلات الأنشطة المكررة قبل تصحيحها'
+    : 'Duplicate activity records will not be compensated until corrected'));
+  expect(await screen.findByText(ar
+    ? 'مشتركون لم يتم تعويضهم في هذه العملية (1)'
+    : 'Members not compensated in this operation (1)')).toBeInTheDocument();
+  if (location === 'skipped') {
+    expect(screen.getByText(ar
+      ? /Swimming: سجلات نشاط مكررة ومتداخلة/
+      : /Swimming: Duplicate overlapping activity records/)).toBeInTheDocument();
+  }
+});
 
 test('groups closure impacts by branch and shows activity and postponed prepaid dates', async () => {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -244,6 +290,9 @@ test('409 stale preview is not reported as success and requires refresh before r
 });
 
 test.each([
+  ['Compensation uniqueness conflict; review duplicate subscriptions or existing compensation', 'Compensation uniqueness conflict. Review duplicate subscriptions'],
+  ['Concurrent write conflict; refresh and review before confirming again', 'Another write conflicted with saving'],
+  ['Transaction was aborted; no extension was committed; refresh and review before confirming again', 'The transaction was aborted and no extension was committed'],
   ['Level subscription changed; preview again', 'A level subscription could not be matched'],
   ['Member subscriptions changed; preview again', 'Member subscriptions could not be matched'],
   ['Closure was already applied', 'This closure was already applied'],

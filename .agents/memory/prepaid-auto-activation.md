@@ -30,6 +30,12 @@ A shared helper rolls a member's activity subdoc forward onto a prepaid invoice 
 
 **How to apply:** preserve exact conflict details in the UI and use Mongo-like predicate/matched/modified behavior in regression tests. Do not weaken atomic guards merely to suppress a 409.
 
+**Duplicate activity ambiguity:** overlapping copies of one member activity cannot independently receive closure compensation. Skip and disclose the ambiguous activity, never guess which copy's deadline wins.
+
+**Why:** live plans contained duplicate compensation identities before any writes; some copies differed only in fees, others in expiry. The database correctly rejected the entire transaction, previously mislabeled a concurrent edit.
+
+**How to apply:** review duplicate sources and attendance evidence before authorized repair. Retain compensation uniqueness. Tests must enforce actual unique keys, not just append records, and the preview must disclose omitted compensation before confirmation.
+
 **Why:** unchanged query results in different orders and invoice delivery metadata updates caused false stale-preview rejections; exclusion refresh debounce also left a short window for submitting the previous selection's token.
 
 **How to apply:** meaningful subscription/source edits must still fail transactionally with no writes. Never autoapply a refreshed preview; require review and explicit confirmation.
