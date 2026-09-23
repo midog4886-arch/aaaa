@@ -108,6 +108,7 @@ test('offers every same-phone member choice and opens the selected member', asyn
     expect(screen.getByTestId('open-matching-member-member-one')).toBeTruthy();
     expect(screen.getByTestId('open-matching-member-member/two')).toBeTruthy();
   });
+  expect(screen.getByText('أرشفة سابقة بسبب تطابق الرقم — الطلبات الآن مستقلة ويمكن استعادتها')).toBeTruthy();
   fireEvent.click(screen.getByTestId('open-matching-member-member/two'));
   expect(mockNavigate).toHaveBeenCalledWith('/admin/members?focus=member%2Ftwo');
 });

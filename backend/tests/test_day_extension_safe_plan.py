@@ -37,14 +37,17 @@ class Collection:
 
     async def update_one(self, query, update, **_kwargs):
         for row in self.rows:
-            if row.get("id") == query.get("id") and (
-                "activities" not in query or row.get("activities") == query["activities"]
-            ) and not (query.get("applied", {}).get("$ne") is True and row.get("applied") is True):
+            if all(
+                (row.get(key) != value["$ne"] if isinstance(value, dict) and "$ne" in value
+                 else row.get(key) == value)
+                for key, value in query.items()
+            ):
+                before = copy.deepcopy(row)
                 row.update(copy.deepcopy(update.get("$set") or {}))
                 for key in update.get("$unset") or {}:
                     row.pop(key, None)
-                return SimpleNamespace(modified_count=1)
-        return SimpleNamespace(modified_count=0)
+                return SimpleNamespace(matched_count=1, modified_count=int(row != before))
+        return SimpleNamespace(matched_count=0, modified_count=0)
 
     async def insert_one(self, row, **_kwargs):
         self.rows.append(copy.deepcopy(row))
@@ -152,6 +155,104 @@ def plan(monkeypatch, db, **kwargs):
     monkeypatch.setattr(mod, "db", db)
     data = mod.ExtensionApply(closure_id="c1", days=1, dry_run=True, **kwargs)
     return asyncio.run(mod._build_safe_extension_plan(data, CLOSURE))
+
+
+def test_unordered_queries_and_generated_record_ids_do_not_change_preview(monkeypatch):
+    second = member()
+    second["id"] = "m2"
+    second_invoice = invoice("second", "2026-09-01", "2026-09-28")
+    second_invoice["member_id"] = "m2"
+    fake = DB(members=[member(), second], invoices=[
+        invoice("current", "2026-09-01", "2026-09-28"), second_invoice,
+    ], freezes=[
+        {"member_id": mid, "start_date": "2026-09-22", "end_date": "2026-09-22"}
+        for mid in ("m1", "m2")
+    ])
+    before = plan(monkeypatch, fake)
+    for name in fake.collection_names:
+        getattr(fake, name).rows.reverse()
+    after = plan(monkeypatch, fake)
+    assert before["preview_token"] == after["preview_token"]
+    assert before["public_members"] == after["public_members"]
+    assert before["writes"][0]["records"][0]["id"] != after["writes"][0]["records"][0]["id"]
+
+
+def test_delivery_and_audit_metadata_do_not_invalidate_preview(monkeypatch):
+    inv = invoice("current", "2026-09-01", "2026-09-28")
+    fake = DB(members=[member()], invoices=[inv])
+    fake.subscription_effective_periods.rows.append({
+        "source_key": source_key(inv, inv["items"][0], 0),
+        "effective_start_date": "2026-09-01", "effective_end_date": "2026-09-28",
+    })
+    before = plan(monkeypatch, fake)
+    fake.invoices.rows[0].update({
+        "paid_at": "2026-09-23T10:00:00Z", "whatsapp_sent": True,
+        "updated_at": "2026-09-23T10:00:00Z",
+    })
+    fake.subscription_effective_periods.rows[0]["updated_at"] = "2026-09-23T10:00:00Z"
+    assert before["preview_token"] == plan(monkeypatch, fake)["preview_token"]
+
+
+@pytest.mark.parametrize("edit", ["subscription", "invoice", "total", "freeze", "effective", "level", "closure"])
+def test_meaningful_source_edits_rejected_inside_transaction(monkeypatch, edit):
+    inv = invoice("current", "2026-09-01", "2026-09-28")
+    fake = DB(members=[member()], invoices=[inv])
+    fake.closures.rows.append(copy.deepcopy(CLOSURE))
+    before = plan(monkeypatch, fake)
+    if edit == "subscription":
+        fake.members.rows[0]["activities"][0]["end_date"] = "2026-09-30"
+    elif edit == "invoice":
+        fake.invoices.rows[0]["items"][0]["end_date"] = "2026-09-30"
+    elif edit == "total":
+        fake.invoices.rows[0]["total"] = 200
+    elif edit == "freeze":
+        fake.member_freezes.rows.append({"member_id": "m1", "start_date": "2026-09-23", "end_date": "2026-09-23"})
+    elif edit == "effective":
+        fake.subscription_effective_periods.rows.append({
+            "source_key": source_key(inv, inv["items"][0], 0),
+            "effective_start_date": "2026-09-02", "effective_end_date": "2026-09-30",
+        })
+    elif edit == "level":
+        fake.level_subscriptions.rows.append({"id": "ls1", "member_id": "m1", "activity_id": "a1", "start_date": "2026-09-01", "end_date": "2026-09-29"})
+    else:
+        fake.closures.rows[0]["end_date"] = "2026-09-24"
+    snapshot = copy.deepcopy(fake.members.rows)
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(mod._commit_safe_extension_plan(
+            mod.ExtensionApply(closure_id="c1", days=1), CLOSURE,
+            {"username": "admin"}, before["preview_token"],
+        ))
+    assert caught.value.status_code == 409
+    assert fake.members.rows == snapshot
+    assert fake.day_extensions.rows == []
+    assert not fake.closures.rows[0]["applied"]
+
+
+def test_excluded_member_preview_commits_only_reviewed_set(monkeypatch):
+    second = member()
+    second["id"] = "m2"
+    inv2 = invoice("second", "2026-09-01", "2026-09-28")
+    inv2["member_id"] = "m2"
+    fake = DB(members=[member(), second], invoices=[
+        invoice("current", "2026-09-01", "2026-09-28"), inv2,
+    ])
+    fake.closures.rows.append(copy.deepcopy(CLOSURE))
+    all_members = plan(monkeypatch, fake)
+    reviewed = plan(monkeypatch, fake, excluded_member_ids=["m2"])
+    assert reviewed["preview_token"] != all_members["preview_token"]
+    user = {"user_id": "u1", "username": "admin", "is_admin": True}
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(mod.apply_extension(mod.ExtensionApply(
+            closure_id="c1", days=1, excluded_member_ids=["m2"],
+            preview_token=all_members["preview_token"],
+        ), user))
+    assert caught.value.status_code == 409
+    asyncio.run(mod.apply_extension(mod.ExtensionApply(
+        closure_id="c1", days=1, excluded_member_ids=["m2"],
+        preview_token=reviewed["preview_token"],
+    ), user))
+    assert [r["member_id"] for r in fake.day_extensions.rows] == ["m1"]
+    assert fake.members.rows[1]["activities"][0]["end_date"] == "2026-09-28"
 
 
 def test_actual_missed_session_extends_to_next_personal_occurrence(monkeypatch):
@@ -350,6 +451,30 @@ def test_new_apply_requires_preview_token(monkeypatch):
         ))
     assert caught.value.status_code == 409
     assert fake.members.rows[0]["activities"][0]["end_date"] == "2026-09-28"
+
+
+def test_shared_level_subscription_is_updated_once(monkeypatch):
+    person = member()
+    person["activities"][0]["level_id"] = "shared"
+    other = copy.deepcopy(person["activities"][0])
+    other["activity_id"] = "a2"
+    person["activities"].append(other)
+    inv = invoice("current", "2026-09-01", "2026-09-28")
+    inv["items"].append({**inv["items"][0], "activity_id": "a2"})
+    fake = DB(members=[person], invoices=[inv])
+    fake.level_subscriptions.rows.append({
+        "_id": "mongo-level", "id": "ls1", "member_id": "m1", "level_id": "shared",
+        "start_date": "2026-09-01", "end_date": "2026-09-28",
+    })
+    fake.closures.rows.append(copy.deepcopy(CLOSURE))
+    reviewed = plan(monkeypatch, fake)
+    asyncio.run(mod._commit_safe_extension_plan(
+        mod.ExtensionApply(closure_id="c1", days=1), CLOSURE,
+        {"username": "admin"}, reviewed["preview_token"],
+    ))
+    assert fake.level_subscriptions.rows[0]["end_date"] == "2026-09-30"
+    assert len(fake.day_extensions.rows) == 2
+    assert fake.closures.rows[0]["applied"]
 
 
 def test_apply_keeps_matching_level_subscription_deadline_in_sync(monkeypatch):

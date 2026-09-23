@@ -5,11 +5,11 @@ description: New-only authorization, phone-level contact limits and safe classif
 
 Only newly submitted public registration requests are authorized for automated follow-up. Existing requests must never be enrolled by a scheduler scan, date cutoff or backfill.
 
-Pending registration requests may be automatically archived on a normalized member-phone match in the same branch, including shared-family numbers; no invoice or waiting period is required.
+Registration requests are independent per person, including siblings sharing a guardian's phone. Never archive or convert requests based on phone matching.
 
-**Why:** The owner explicitly selected immediate same-branch phone matching after being told that siblings can share a guardian's phone. This authorizes archival, not inferred member/invoice linkage.
+**Why:** The owner superseded the previous phone-archive policy after one person's invoice archived other family members' requests. Only an explicit request-to-invoice link identifies the converted request.
 
-**How to apply:** Preserve the request in the archive, stop its follow-up, and keep other branches and terminal request states unchanged. This does not authorize outreach to old requests.
+**How to apply:** Close only the explicitly linked request. Member creation, list reads, restoration and scheduled scans must not archive shared-phone siblings. Do not bulk restore historical records or re-enroll old outreach without authorization. Retain phone-wide contact/opt-out suppression and pacing; closing one request alone is not household contact.
 
 **Why:** The user explicitly chose “نفّذ للطلبات الجديدة فقط” to avoid contacting the old pending backlog.
 

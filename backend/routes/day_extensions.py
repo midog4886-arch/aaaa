@@ -569,6 +569,13 @@ def _activity_schedule(activity: dict, source_items: list) -> tuple[set[int], di
     return days, per_day_times, schedule
 
 
+def _stable_rows(rows):
+    """Canonicalize unordered query results, not ordered subscription/item arrays."""
+    return sorted(rows, key=lambda row: json.dumps(
+        row, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")
+    ))
+
+
 def _preview_token(plan: dict) -> str:
     stable = {
         "closure_id": plan["closure_id"],
@@ -605,7 +612,10 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
     session_arg = {"session": session} if session is not None else {}
     members = await db.members.find(query, **session_arg).to_list(10000)
     excluded = sorted(set(data.excluded_member_ids or []))
-    members = [m for m in members if m.get("id") not in excluded]
+    members = sorted(
+        (m for m in members if m.get("id") not in excluded),
+        key=lambda m: str(m.get("id") or ""),
+    )
     member_ids = [m.get("id") for m in members if m.get("id")]
 
     invoices = await db.invoices.find({
@@ -615,6 +625,8 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
             {"items.member_id": {"$in": member_ids}},
         ],
     }, {"_id": 0}, **session_arg).to_list(50000)
+    # Binding and equal-date cascade tie breaking must not depend on find order.
+    invoices.sort(key=lambda inv: str(inv.get("id") or ""))
     periods = await effective_period_map(db, invoices, session=session)
     paid_by_member = {}
     for inv in invoices:
@@ -916,6 +928,14 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
                 continue
 
         if activity_changes:
+            # One level membership may be linked to multiple activities. An
+            # identical planned deadline is one CAS write, not two: after the
+            # first update, a second old-end-date predicate cannot match.
+            unique_level_updates = {}
+            for update in level_updates:
+                key = json.dumps(update, sort_keys=True, default=str)
+                unique_level_updates[key] = update
+            level_updates = list(unique_level_updates.values())
             public = {
                 "member_id": mid, "id": mid,
                 "name": member.get("name_ar") or member.get("name") or "",
@@ -961,11 +981,28 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
                  "activities": m.get("activities") or []}
                 for m in members
             ],
-            "invoices": invoices,
-            "freezes": freezes,
-            "prior_extensions": prior,
-            "effective_periods": sorted(periods.values(), key=lambda row: row.get("source_key", "")),
-            "level_subscriptions": level_subscriptions,
+            # Receipt/notice delivery and paid_at backfills do not change the
+            # purchased subscription. Retain full ordered items and financial
+            # inputs so meaningful invoice edits still require review.
+            "invoices": _stable_rows([{
+                key: inv.get(key) for key in (
+                    "id", "member_id", "status", "items", "branch_id",
+                    "subtotal", "discount", "discount_code", "vat_amount",
+                    "total", "amount_paid", "paid_amount", "remaining_amount",
+                    "payment_method", "payment_split",
+                )
+            } for inv in invoices]),
+            "freezes": _stable_rows(freezes),
+            "prior_extensions": _stable_rows(prior),
+            "effective_periods": _stable_rows([{
+                key: row.get(key) for key in (
+                    "source_key", "source_invoice_id", "source_item_id",
+                    "member_id", "activity_id", "original_start_date",
+                    "original_end_date", "effective_start_date",
+                    "effective_end_date", "schedule", "source_bound_quota",
+                )
+            } for row in periods.values()]),
+            "level_subscriptions": _stable_rows(level_subscriptions),
         }, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest(),
     }
     plan["preview_token"] = _preview_token(plan)

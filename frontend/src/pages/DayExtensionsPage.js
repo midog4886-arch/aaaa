@@ -152,8 +152,15 @@ export default function DayExtensionsPage() {
   const [waJobs, setWaJobs] = useState([]);
   const [waJobsPollVersion, setWaJobsPollVersion] = useState(0);
   const [excludedMemberIds, setExcludedMemberIds] = useState([]);
+  const previewRequest = useRef(0);
+  const [previewSelection, setPreviewSelection] = useState(null);
+  const selectionKey = (closure, branch, exclusions) => JSON.stringify([
+    closure?.id, closure?.start_date, closure?.end_date, branch, [...exclusions].sort()
+  ]);
+  const previewMatchesSelection = previewSelection === selectionKey(previewClosure, applyBranch, excludedMemberIds);
   const [showSkippedList, setShowSkippedList] = useState(false);
   const [previewIsStale, setPreviewIsStale] = useState(false);
+  const [previewConflictMessage, setPreviewConflictMessage] = useState('');
   const [noticeReady, setNoticeReady] = useState(false);
   const noticeRequest = useRef(0);
   const refreshNoticeSummaries = useCallback(async () => {
@@ -258,6 +265,7 @@ export default function DayExtensionsPage() {
   };
 
   const handlePreviewExtension = async (closure) => {
+    const request = ++previewRequest.current;
     setNoticeReady(false);
     refreshNoticeSummaries();
     setPreviewClosure(closure);
@@ -277,17 +285,21 @@ export default function DayExtensionsPage() {
         dry_run: true,
         excluded_member_ids: []
       });
+      if (request !== previewRequest.current) return;
       setPreviewResult(res.data || res);
+      setPreviewSelection(selectionKey(closure, applyBranch, []));
     } catch (error) {
+      if (request !== previewRequest.current) return;
       toast.error(t('خطأ في المعاينة', 'Preview error'));
       setShowPreviewDialog(false);
     } finally {
-      setPreviewing(false);
+      if (request === previewRequest.current) setPreviewing(false);
     }
   };
 
   const refreshPreview = useCallback(async (closure, branchId, exclusions) => {
     if (!closure) return;
+    const request = ++previewRequest.current;
     setPreviewing(true);
     setPreviewIsStale(false);
     try {
@@ -298,12 +310,15 @@ export default function DayExtensionsPage() {
         dry_run: true,
         excluded_member_ids: exclusions
       });
+      if (request !== previewRequest.current) return;
       setPreviewResult(res.data || res);
+      setPreviewSelection(selectionKey(closure, branchId, exclusions));
     } catch (error) {
+      if (request !== previewRequest.current) return;
       setPreviewResult(null);
       toast.error(t('تعذر تحديث المعاينة. حاول مرة أخرى.', 'Could not refresh the preview. Try again.'));
     } finally {
-      setPreviewing(false);
+      if (request === previewRequest.current) setPreviewing(false);
     }
   }, [language]);
 
@@ -394,7 +409,7 @@ export default function DayExtensionsPage() {
   }, [waJobs, waJobsPollVersion, refreshNoticeSummaries]);
 
   const handleConfirmApplyFromPreview = async () => {
-    if (!previewClosure || !previewResult?.preview_token || previewIsStale) return;
+    if (!previewClosure || !previewResult?.preview_token || previewIsStale || previewing || !previewMatchesSelection) return;
     if (!window.confirm(t(
       'سيتم الآن تعديل تواريخ الاشتراكات وترحيل الفترات المدفوعة المتداخلة. لن تتغير الفواتير أو إجمالي المبالغ المدفوعة. هل تريد التطبيق؟',
       'This will now change subscription dates and postpone overlapping prepaid periods. Invoices and paid totals will not change. Apply now?'
@@ -425,10 +440,40 @@ export default function DayExtensionsPage() {
       if (error.response?.status === 409) {
         setPreviewIsStale(true);
         setPreviewResult(current => current ? { ...current, preview_token: null } : current);
-        toast.error(t(
-          'انتهت صلاحية المعاينة أو تغيرت البيانات. حدّث المعاينة ثم راجعها قبل التطبيق.',
-          'The preview is stale or data changed. Refresh and review it before applying.'
-        ));
+        const detail = error.response?.data?.detail;
+        const conflictMessages = {
+          'Closure was already applied': [
+            'تم تطبيق فترة الإغلاق بالفعل. أعد تحميل القائمة للتحقق من النتيجة.',
+            'This closure was already applied. Reload the list to check the result.'
+          ],
+          'Member subscriptions changed; preview again': [
+            'تعذر مطابقة اشتراكات العضو عند الحفظ. حدّث المعاينة وراجعها قبل التأكيد مجدداً.',
+            'Member subscriptions could not be matched when saving. Refresh and review before confirming again.'
+          ],
+          'Level subscription changed; preview again': [
+            'تعذر مطابقة اشتراك المستوى عند الحفظ. حدّث المعاينة وراجعها؛ إذا تكرر الخطأ فتحقق من ارتباطات المستويات.',
+            'A level subscription could not be matched when saving. Refresh and review; if this repeats, check the level links.'
+          ],
+          'Subscriptions changed concurrently; preview again': [
+            'حدث تعارض أثناء حفظ الترحيل. لم يكتمل التطبيق. حدّث المعاينة وراجعها قبل التأكيد مجدداً.',
+            'A conflict occurred while saving the extension. Application did not complete. Refresh and review before confirming again.'
+          ],
+          'Preview is required before applying this closure': [
+            'يجب إنشاء معاينة ومراجعتها قبل تطبيق الإغلاق.',
+            'Generate and review a preview before applying this closure.'
+          ],
+        };
+        const knownSourceConflict = ['Preview is stale; preview and confirm again', 'Preview sources changed; preview and confirm again'].includes(detail);
+        const message = conflictMessages[detail]
+          ? t(...conflictMessages[detail])
+          : knownSourceConflict || !detail
+            ? t(
+              'انتهت صلاحية المعاينة أو تغيرت البيانات. حدّث المعاينة ثم راجعها قبل التطبيق.',
+              'The preview is stale or data changed. Refresh and review it before applying.'
+            )
+            : `${t('تعذر التطبيق بسبب تعارض:', 'Application conflict:')} ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`;
+        setPreviewConflictMessage(message);
+        toast.error(message);
       } else {
         toast.error(error.response?.data?.detail || t('خطأ في الترحيل', 'Error applying extension'));
       }
@@ -873,7 +918,7 @@ export default function DayExtensionsPage() {
         )}
 
         {showPreviewDialog && (
-          <Dialog open={showPreviewDialog} onOpenChange={(o) => { if (!o) { setShowPreviewDialog(false); setPreviewClosure(null); setPreviewResult(null); setExcludedMemberIds([]); } }}>
+          <Dialog open={showPreviewDialog} onOpenChange={(o) => { if (!o) { ++previewRequest.current; setShowPreviewDialog(false); setPreviewClosure(null); setPreviewResult(null); setExcludedMemberIds([]); } }}>
             <DialogContent className="w-[calc(100vw-1rem)] min-w-0 max-w-3xl max-h-[calc(100dvh-1rem)] overflow-x-hidden overflow-y-auto [&>*]:min-w-0">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
@@ -926,6 +971,7 @@ export default function DayExtensionsPage() {
                       <p className="font-semibold">
                         {t('المعاينة لم تعد صالحة. يجب تحديثها ومراجعتها من جديد.', 'This preview is no longer valid. Refresh and review it again.')}
                       </p>
+                      {previewConflictMessage && <p className="mt-1">{previewConflictMessage}</p>}
                       <Button
                         type="button"
                         size="sm"
@@ -1254,7 +1300,7 @@ export default function DayExtensionsPage() {
                 {!previewClosure?.applied && (
                   <Button
                     onClick={handleConfirmApplyFromPreview}
-                    disabled={previewing || applying || !previewResult || !previewResult.extended_count || !previewResult.preview_token || previewIsStale}
+                    disabled={previewing || applying || !previewResult || !previewResult.extended_count || !previewResult.preview_token || previewIsStale || !previewMatchesSelection}
                     className="bg-primary"
                   >
                     {applying ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Play className="w-4 h-4 me-1" />}

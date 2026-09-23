@@ -183,6 +183,8 @@ test('refreshes after exclusions and applies only with the latest exact preview 
     excluded_member_ids: [],
   }));
   await user.click(screen.getAllByTitle('Exclude')[0]);
+  // The debounce window is not permission to confirm the previous token.
+  expect(screen.getByRole('button', { name: /Confirm Extension/i })).toBeDisabled();
   await waitFor(() => expect(mockApi.dayExtensions.applyExtension).toHaveBeenCalledWith({
     closure_id: 'closure-1',
     days: 2,
@@ -205,6 +207,24 @@ test('refreshes after exclusions and applies only with the latest exact preview 
   expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
 });
 
+test('refresh after 409 never applies without another reviewed confirmation', async () => {
+  mockApi.dayExtensions.applyExtension.mockImplementation(payload => (
+    payload.dry_run
+      ? Promise.resolve({ data: preview('fresh-token') })
+      : Promise.reject({ response: { status: 409 } })
+  ));
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<DayExtensionsPage />);
+  await user.click((await screen.findAllByRole('button', { name: /Preview & WhatsApp/i }))[0]);
+  await screen.findByText('Sara');
+  await user.click(screen.getByRole('button', { name: /Confirm Extension/i }));
+  await screen.findByRole('alert');
+  await user.click(screen.getByRole('button', { name: /Refresh preview/i }));
+  await waitFor(() => expect(screen.getByRole('button', { name: /Confirm Extension/i })).toBeEnabled());
+  expect(mockApi.dayExtensions.applyExtension.mock.calls.filter(([p]) => !p.dry_run)).toHaveLength(1);
+  expect(window.confirm).toHaveBeenCalledTimes(1);
+});
+
 test('409 stale preview is not reported as success and requires refresh before retry', async () => {
   mockApi.dayExtensions.applyExtension.mockImplementation(payload => {
     if (payload.dry_run) return Promise.resolve({ data: preview() });
@@ -221,4 +241,27 @@ test('409 stale preview is not reported as success and requires refresh before r
   expect(mockToast.success).not.toHaveBeenCalled();
   expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('Refresh and review'));
   expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['Level subscription changed; preview again', 'A level subscription could not be matched'],
+  ['Member subscriptions changed; preview again', 'Member subscriptions could not be matched'],
+  ['Closure was already applied', 'This closure was already applied'],
+  ['Subscriptions changed concurrently; preview again', 'A conflict occurred while saving'],
+  ['Unexpected distinct conflict', 'Application conflict: Unexpected distinct conflict'],
+])('shows the actual 409 reason: %s', async (detail, expected) => {
+  mockApi.dayExtensions.applyExtension.mockImplementation(payload => (
+    payload.dry_run
+      ? Promise.resolve({ data: preview() })
+      : Promise.reject({ response: { status: 409, data: { detail } } })
+  ));
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<DayExtensionsPage />);
+  await user.click((await screen.findAllByRole('button', { name: /Preview & WhatsApp/i }))[0]);
+  await screen.findByText('Sara');
+  await user.click(screen.getByRole('button', { name: /Confirm Extension/i }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+  expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining(expected));
+  expect(screen.getByRole('button', { name: /Confirm Extension/i })).toBeDisabled();
+  expect(mockToast.success).not.toHaveBeenCalled();
 });

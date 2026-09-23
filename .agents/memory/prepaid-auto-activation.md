@@ -21,3 +21,15 @@ A shared helper rolls a member's activity subdoc forward onto a prepaid invoice 
 **Why:** rewriting invoices destroys purchased-quota evidence; selecting the furthest prepaid end can skip a paid month. The user explicitly approved cascading only overlapping periods, leaving separated periods unchanged.
 
 **How to apply:** preserve the exact invoice-item source identity across payment, compensation, activation and quota lookup. Closure application requires a fresh preview and atomic writes; unknown schedules must not result in guessed or partial compensation.
+
+**Preview stability:** canonicalize unordered database results and fingerprint only inputs relevant to the reviewed changes, preserving ordered invoice items. Bind frontend confirmation to the exact branch/exclusion selection.
+
+**Conflict diagnosis:** a closure 409 is not necessarily a stale token. Shared level membership across activities can produce duplicate compare-and-set writes that conflict with the transaction's own first write. Coalesce identical planned writes and retain checks for genuinely conflicting targets.
+
+**Why:** blanket stale-preview UI concealed deterministic transactional conflicts; simplified mocks that ignored full update predicates also missed them.
+
+**How to apply:** preserve exact conflict details in the UI and use Mongo-like predicate/matched/modified behavior in regression tests. Do not weaken atomic guards merely to suppress a 409.
+
+**Why:** unchanged query results in different orders and invoice delivery metadata updates caused false stale-preview rejections; exclusion refresh debounce also left a short window for submitting the previous selection's token.
+
+**How to apply:** meaningful subscription/source edits must still fail transactionally with no writes. Never autoapply a refreshed preview; require review and explicit confirmation.

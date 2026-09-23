@@ -622,9 +622,6 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     followup_fields = await registration_followups.enrollment_fields_for_new(
         branch_id, phone
     )
-    member_already_exists = await registration_followups.member_phone_exists(
-        branch_id, phone
-    )
     created_at = datetime.now(timezone.utc).isoformat()
     doc = {
         "id": str(uuid.uuid4()),
@@ -638,7 +635,7 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         "preferred_time": (payload.preferred_time or "").strip(),
         "notes": (payload.notes or "").strip(),
         "branch_id": branch_id,
-        "status": "archived" if member_already_exists else "pending",
+        "status": "pending",
         # Track where the request came from. "social_ad" = the all-branches
         # link shared in social-media ads; anything else falls back to the
         # normal public link so we never store arbitrary client-supplied values.
@@ -646,15 +643,6 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         "created_at": created_at,
         **followup_fields,
     }
-    if member_already_exists:
-        doc.update({
-            "archived_from": "pending",
-            "archived_at": created_at,
-            "archived_reason": registration_followups.MEMBER_PHONE_ARCHIVE_REASON,
-            "followup_status": "stopped",
-            "followup_stop_reason": "request_closed",
-            "followup_stopped_at": created_at,
-        })
 
     # Marketer (affiliate) referral: attach the marketer if the link carried a
     # valid, active referral code so the supervisor sees it and the discount +
@@ -715,10 +703,6 @@ async def count_pending_registration_requests(
     # states, then apply the same authoritative read normalization as the list
     # endpoint.  This deliberately performs no data migration.
     effective_branch = resolve_branch_filter(current_user, branch_filter)
-    from services import registration_followups
-    await registration_followups.reconcile_member_registration_requests(
-        effective_branch
-    )
     query: dict = {"status": {"$in": ["pending", "processed"]}}
     if effective_branch:
         query["branch_id"] = effective_branch
@@ -736,10 +720,6 @@ async def list_registration_requests(
     search: Optional[str] = None,
 ):
     effective_branch = resolve_branch_filter(current_user, branch_filter)
-    from services import registration_followups
-    await registration_followups.reconcile_member_registration_requests(
-        effective_branch
-    )
     query: dict = {}
     if effective_branch:
         query["branch_id"] = effective_branch
@@ -819,13 +799,6 @@ async def update_registration_request(
             update["archived_from"] = req.get("status") or "pending"
         update["archived_at"] = datetime.now(timezone.utc).isoformat()
     await db.registration_requests.update_one({"id": req_id}, {"$set": update})
-    if payload.status == "pending":
-        # Restoring is allowed, but policy immediately rearchives it while the
-        # same normalized phone still belongs to this branch.
-        from services import registration_followups
-        await registration_followups.archive_pending_for_member(
-            req.get("branch_id"), req.get("customer_phone")
-        )
     if payload.status in {"processed", "rejected", "archived"}:
         from services import registration_followups
         await registration_followups.stop_request(req, "request_closed")

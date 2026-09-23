@@ -220,6 +220,56 @@ def test_explicit_staff_contact_survives_later_request_processing(database):
     assert row["followup_staff_contacted_at"]
 
 
+@pytest.mark.parametrize("invoice_status", ["pending", "paid"])
+def test_processing_linked_child_preserves_same_phone_sibling(database, monkeypatch, invoice_status):
+    first = request_doc(customer_name="First child")
+    sibling = request_doc(id="r2", customer_name="Second child",
+                          customer_phone="+966501234567")
+    database.registration_requests.rows.extend([first, sibling])
+    database.members.rows.append({
+        "id": "m1", "branch_id": "b1", "phone": "0501234567",
+        "name": "First child",
+    })
+    database.invoices.rows.append({
+        "id": "i1", "branch_id": "b1", "registration_request_id": "r1",
+        "member_id": "m1", "status": invoice_status,
+    })
+    run(routes.update_registration_request(
+        "r1", routes.RegistrationRequestUpdate(status="processed"),
+        {"is_admin": False, "branch_id": "b1"},
+    ))
+    assert first["status"] == "processed"
+    assert first["followup_status"] == "stopped"
+    assert sibling["status"] == "pending"
+    assert sibling["followup_status"] == "scheduled"
+    assert database["registration_followup_stops"].rows == []
+    rows = run(routes.list_registration_requests(
+        status="pending", current_user={"is_admin": True},
+    ))
+    assert [row["id"] for row in rows] == ["r2"]
+    monkeypatch.setattr(followups, "_get_config", AsyncMock(return_value={
+        "enabled": True, "provider": "whatsflow",
+    }))
+    enqueue = AsyncMock(return_value={"id": "job-1"})
+    monkeypatch.setattr(followups.whatsapp_bulk_jobs, "enqueue", enqueue)
+    run(followups.schedule_due())
+    assert sibling["status"] == "pending"
+    assert sibling["followup_status"] != "stopped"
+    assert database["registration_followup_stops"].rows == []
+
+
+def test_scheduler_closes_only_terminal_request_not_same_phone_sibling(database, monkeypatch):
+    first = request_doc(status="processed")
+    sibling = request_doc(id="r2", customer_phone="٠٥٠١٢٣٤٥٦٧")
+    database.registration_requests.rows.extend([first, sibling])
+    monkeypatch.setattr(followups, "_get_config", AsyncMock(return_value={}))
+    run(followups.schedule_due())
+    assert first["followup_status"] == "stopped"
+    assert sibling["status"] == "pending"
+    assert sibling["followup_status"] != "stopped"
+    assert database["registration_followup_stops"].rows == []
+
+
 def test_direct_processed_transition_requires_invoice(database):
     database.registration_requests.rows.append(request_doc())
     with pytest.raises(HTTPException) as error:
@@ -597,7 +647,7 @@ def test_archived_request_stays_archived_during_read_normalization(database):
     )) == []
 
 
-def test_member_phone_reconciliation_archives_only_pending_same_branch(database):
+def test_member_phone_reconciliation_keeps_independent_requests_pending(database):
     database.members.rows.extend([
         {"id": "m1", "branch_id": "b1", "phone": "٠٠٩٦٦ ٥٠ ١٢٣ ٤٥٦٧"},
         {"id": "m2", "branch_id": "b2", "phone": "0509999999"},
@@ -610,19 +660,19 @@ def test_member_phone_reconciliation_archives_only_pending_same_branch(database)
                     customer_phone="0501234567"),
     ])
 
-    assert run(followups.reconcile_member_registration_requests()) == 1
+    assert run(followups.reconcile_member_registration_requests()) == 0
+    assert run(followups.archive_pending_for_member("b1", "0501234567")) == 0
     by_id = {row["id"]: row for row in database.registration_requests.rows}
     archived = by_id["same-branch"]
-    assert archived["status"] == "archived"
-    assert archived["archived_from"] == "pending"
-    assert archived["archived_reason"] == "member_phone_match_same_branch"
-    assert archived["followup_status"] == "stopped"
+    assert archived["status"] == "pending"
+    assert "archived_reason" not in archived
+    assert archived["followup_status"] == "scheduled"
     assert by_id["other-branch"]["status"] == "pending"
     assert by_id["other-branch"]["followup_status"] == "scheduled"
     assert by_id["already-rejected"]["status"] == "rejected"
 
 
-def test_restore_rearchives_while_member_phone_match_remains(database):
+def test_restore_stays_pending_while_member_phone_match_remains(database):
     database.members.rows.append({
         "id": "m1", "branch_id": "b1", "phone": "+966501234567"
     })
@@ -630,6 +680,8 @@ def test_restore_rearchives_while_member_phone_match_remains(database):
         status="archived",
         archived_from="pending",
         archived_reason="member_phone_match_same_branch",
+        followup_status="stopped",
+        followup_stop_reason="request_closed",
     ))
     run(routes.update_registration_request(
         "r1",
@@ -637,11 +689,18 @@ def test_restore_rearchives_while_member_phone_match_remains(database):
         {"is_admin": False, "branch_id": "b1"},
     ))
     row = database.registration_requests.rows[0]
-    assert row["status"] == "archived"
+    assert row["status"] == "pending"
     assert row["archived_reason"] == "member_phone_match_same_branch"
+    assert run(followups.reconcile_member_registration_requests()) == 0
+    assert run(routes.count_pending_registration_requests(
+        current_user={"is_admin": True},
+    )) == {"count": 1}
+    run(followups.schedule_due())
+    assert row["status"] == "pending"
+    assert row["followup_status"] == "stopped"  # restoring never re-enrolls
 
 
-def test_public_request_is_immediately_archived_when_branch_member_matches(database):
+def test_public_request_stays_pending_when_branch_member_matches(database):
     database.branches.rows.append({"id": "b1"})
     database.members.rows.append({
         "id": "m1", "branch_id": "b1", "phone": "00966 50 123 4567"
@@ -656,9 +715,9 @@ def test_public_request_is_immediately_archived_when_branch_member_matches(datab
     result = run(routes.public_create_registration("b1", payload))
     assert result["success"] is True
     row = database.registration_requests.rows[0]
-    assert row["status"] == "archived"
-    assert row["archived_reason"] == "member_phone_match_same_branch"
-    assert row["followup_status"] == "stopped"
+    assert row["status"] == "pending"
+    assert "archived_reason" not in row
+    assert row["followup_status"] == "scheduled"
     assert "invoice_id" not in row
     assert "member_id" not in row
 
@@ -674,12 +733,13 @@ def test_non_admin_list_reconciles_only_authorized_branch(database):
                     customer_phone="0509999999",
                     followup_normalized_phone="966509999999"),
     ])
-    assert run(routes.list_registration_requests(
+    rows = run(routes.list_registration_requests(
         status="pending",
         current_user={"is_admin": False, "branch_id": "b1"},
-    )) == []
+    ))
+    assert [row["id"] for row in rows] == ["b1-request"]
     by_id = {row["id"]: row for row in database.registration_requests.rows}
-    assert by_id["b1-request"]["status"] == "archived"
+    assert by_id["b1-request"]["status"] == "pending"
     assert by_id["b2-request"]["status"] == "pending"
 
 

@@ -599,11 +599,25 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     # processed.  If the link cannot be written, remove this still-unpaid
     # invoice rather than leaving an orphan that could falsely imply success.
     if registration_request:
+        from services import registration_followups
+        stopped_at = datetime.now(timezone.utc).isoformat()
+        stop_reason = registration_request.get("followup_stop_reason")
+        if stop_reason not in registration_followups.PRESERVE_ON_REQUEST_CLOSE:
+            stop_reason = (
+                "staff_contacted"
+                if registration_request.get("followup_staff_contacted_at")
+                else "request_closed"
+            )
         link_update = {
             "$set": {
                 "invoice_id": invoice_id,
                 "invoice_status": "pending",
                 "processed_at": datetime.now(timezone.utc).isoformat(),
+                # Stop only this explicitly linked request, atomically with
+                # conversion. Phone-level pacing/contact safety stays intact.
+                "followup_status": "stopped",
+                "followup_stop_reason": stop_reason,
+                "followup_stopped_at": stopped_at,
             }
         }
         if registration_request.get("status") != "archived":

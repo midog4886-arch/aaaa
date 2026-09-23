@@ -445,7 +445,17 @@ def test_create_invoice_links_registration_request_after_insert(inv, monkeypatch
         "id": "request-1",
         "branch_id": "B1",
         "status": "pending",
+        "customer_name": "First child",
+        "customer_phone": "0501234567",
+        "followup_enrolled": True,
+        "followup_status": "scheduled",
     }))
+    sibling = {
+        "id": "request-2", "branch_id": "B1", "status": "pending",
+        "customer_name": "Second child", "customer_phone": "+966501234567",
+        "followup_enrolled": True, "followup_status": "scheduled",
+    }
+    run(fdb.registration_requests.insert_one(sibling.copy()))
     model = inv_mod.InvoiceCreate(
         items=[inv_mod.InvoiceItem(
             activity_name="Ball", fee=100.0, period="", is_product=True,
@@ -461,6 +471,9 @@ def test_create_invoice_links_registration_request_after_insert(inv, monkeypatch
     assert stored_request["invoice_id"] == out.id
     assert stored_invoice["registration_request_id"] == "request-1"
     assert stored_invoice["status"] == "pending"
+    assert stored_request["followup_status"] == "stopped"
+    assert stored_request["followup_stop_reason"] == "request_closed"
+    assert run(fdb.registration_requests.find_one({"id": "request-2"}, {"_id": 0})) == sibling
 
     with pytest.raises(HTTPException) as exc:
         run(inv_mod.create_invoice(model, current_user=ADMIN))
