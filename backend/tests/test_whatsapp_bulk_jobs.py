@@ -249,6 +249,44 @@ def recipients(count=1):
     return [{"phone": f"96650000000{i}", "message": f"message {i}"} for i in range(count)]
 
 
+@pytest.mark.parametrize("response,reason", [
+    ((True, {"instance": {"state": "open"}}, None), None),
+    ((True, {"instance": {"state": "close"}}, None), "state: close"),
+    ((True, {"state": "unknown"}, None), "invalid_status_response"),
+    ((False, None, "ReadTimeout"), "ReadTimeout"),
+    ((False, None, "http_401"), "http_401"),
+])
+@pytest.mark.parametrize("legacy", [False, True])
+def test_closure_dispatch_uses_live_evidence_not_cached_connecting(queue, monkeypatch, response, reason, legacy):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from routes import whatsapp
+    db, sent, reservations, _ = queue
+    config = {
+        "provider": "whatsflow", "enabled": True, "whatsflow_instance": "test",
+        "whatsflow_api_key_encrypted": "test", "whatsflow_state": "connecting",
+    }
+    check = AsyncMock(return_value=response)
+    monkeypatch.setattr(whatsapp, "_whatsflow_client",
+                        lambda _: SimpleNamespace(connection_state=check))
+    jobs._handlers["get_config"] = AsyncMock(return_value=config)
+    jobs._handlers["validate_config"] = whatsapp._validate_bulk_job_config
+    jobs._handlers["validate_closure_config"] = whatsapp._validate_closure_job_config
+    run(jobs.enqueue("a", "whatsflow", recipients(), "closure_notice_live_status",
+                     source="campaign" if legacy else "closure_notice"))
+    result = run(jobs.process_one())
+    check.assert_awaited_once()
+    assert config["whatsflow_state"] == "connecting"
+    if reason:
+        assert result is False
+        assert sent == []
+        assert reservations == []
+        assert reason in db["whatsapp_campaign_jobs"].rows[0]["pause_reason"]
+    else:
+        assert result is True
+        assert len(sent) == 1
+
+
 def test_enqueue_is_idempotent_and_media_expands_to_durable_items(queue):
     db, *_ = queue
     first, created = run(jobs.enqueue("a", "meta_cloud", recipients(2), "stable-key-123",

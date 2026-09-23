@@ -36,7 +36,7 @@ from utils.tenant import (
     reset_current_tenant,
 )
 from services.waha import WAHAClient
-from services.whatsflow import WhatsflowClient
+from services.whatsflow import WhatsflowClient, parse_connection_state
 from services import whatsapp_media_archive
 from services import whatsapp_bulk_jobs
 from services import campaign_inbox, registration_followups
@@ -486,6 +486,7 @@ def set_database(db):
     whatsapp_bulk_jobs.configure(
         db, get_config=_get_branch_cloud_config,
         validate_config=_validate_bulk_job_config,
+        validate_closure_config=_validate_closure_job_config,
         reserve_quota=_reserve_waha_campaign_quota,
         release_quota=_release_waha_campaign_quota,
         send=_dispatch_bulk_job_item,
@@ -3392,22 +3393,15 @@ async def branch_provider_status(branch_id: str, current_user: dict = Depends(ge
     config = await _require_session_provider_branch(branch_id)
     if _branch_provider(config) == "whatsflow":
         ok, data, error = await _whatsflow_client(config).connection_state()
-        instance_data = data.get("instance") if isinstance(data, dict) else {}
-        state = instance_data.get("state") if isinstance(instance_data, dict) else None
-        state = state or (data.get("state") if isinstance(data, dict) else None)
-        state = state.lower() if isinstance(state, str) else None
-        verified = bool(ok and state in {"open", "close", "closed", "connecting"})
-        if verified:
+        status = parse_connection_state(ok, data, error)
+        if status["check_ok"]:
             await _db["whatsapp_branch_configs"].update_one(
                 {"branch_id": branch_id},
-                {"$set": {"whatsflow_state": state, "whatsflow_status_updated_at": datetime.now(timezone.utc).isoformat()}},
+                {"$set": {"whatsflow_state": status["status"], "whatsflow_status_updated_at": datetime.now(timezone.utc).isoformat()}},
             )
         return {"provider": "whatsflow", "configured": True,
-                "connected": state == "open" if verified else None,
-                "check_ok": verified,
                 "instance": config["whatsflow_instance"],
-                "status": state if verified else "unavailable",
-                "error": (error or "status_check_failed") if not ok else (None if verified else "invalid_status_response")}
+                **status}
     client = WAHAClient()
     if not client.configured:
         return {"provider": "waha", "configured": False, "connected": False, "session": config["waha_session_name"]}
@@ -8121,6 +8115,24 @@ async def _send_meta_media_template(
         phone, message, media_id, media_type, filename, config
     )
     return success
+
+
+async def _validate_closure_job_config(provider: str, config: dict) -> Optional[str]:
+    """Use current positive evidence for closures, never a speculative cache write."""
+    reason = _validate_bulk_job_config(provider, config)
+    if provider != "whatsflow" or reason not in (None, "Whatsflow is not connected"):
+        return reason
+    try:
+        status = parse_connection_state(
+            *await _whatsflow_client(config).connection_state()
+        )
+    except Exception as exc:
+        return f"Whatsflow status unavailable: {type(exc).__name__}"
+    if not status["check_ok"]:
+        return f"Whatsflow status unavailable: {status['error']}"
+    if not status["connected"]:
+        return f"Whatsflow is not connected (state: {status['status']})"
+    return None
 
 
 def _validate_bulk_job_config(provider: str, config: dict) -> Optional[str]:

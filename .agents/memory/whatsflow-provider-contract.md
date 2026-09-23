@@ -3,6 +3,12 @@ name: Whatsflow provider contract
 description: Durable boundaries for the hosted Whatsflow API provider alongside Meta, WAHA, and legacy WhatsApp.
 ---
 
+Closure sending must verify live provider status rather than treating cached connection state as current evidence.
+
+**Why:** the persisted state remained connecting while a read-only provider check returned open, blocking valid closure notice queues. The cache can lag independent of actual connectivity.
+
+**How to apply:** require a recognized positive live state at preflight and queue dispatch; unknown or failed checks must refuse sending. Never mark the cache connected speculatively or clear safety freezes to bypass the problem.
+
 Text history recovery is a provider read, not a resend or a read receipt.
 
 **Why:** Evolution 2.3.7's public source exposes a persisted-message lookup, but hosted Whatsflow retention and endpoint availability can differ. A missing local body cannot be reconstructed from a placeholder.

@@ -8,6 +8,23 @@ from urllib.parse import quote
 import httpx
 
 
+def parse_connection_state(ok: bool, data: Any, error: Optional[str]) -> dict:
+    """Interpret verified provider evidence without changing persisted state."""
+    instance = data.get("instance") if isinstance(data, dict) else None
+    state = instance.get("state") if isinstance(instance, dict) else None
+    state = state or (data.get("state") if isinstance(data, dict) else None)
+    state = state.lower() if isinstance(state, str) else None
+    verified = bool(ok and state in {"open", "close", "closed", "connecting"})
+    return {
+        "connected": state == "open" if verified else None,
+        "check_ok": verified,
+        "status": state if verified else "unavailable",
+        "error": (error or "status_check_failed") if not ok else (
+            None if verified else "invalid_status_response"
+        ),
+    }
+
+
 class WhatsflowClient:
     MAX_MEDIA_BYTES = 20 * 1024 * 1024
     MAX_HISTORY_RECORDS = 1

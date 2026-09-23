@@ -1261,7 +1261,7 @@ async def _closure_provider(branch_id: str) -> str:
             status_code=400,
             detail=f"No supported WhatsApp provider is enabled for branch {branch_id}",
         )
-    reason = whatsapp_routes._validate_bulk_job_config(provider, config)
+    reason = await whatsapp_routes._validate_closure_job_config(provider, config)
     if reason:
         raise HTTPException(status_code=400, detail=f"Branch {branch_id}: {reason}")
     if provider == "meta_cloud" and not (
@@ -1274,8 +1274,6 @@ async def _closure_provider(branch_id: str) -> str:
         )
     if provider == "waha" and config.get("waha_session_status") not in {"WORKING", "CONNECTED"}:
         raise HTTPException(status_code=400, detail=f"Branch {branch_id}: WAHA is disconnected")
-    if provider == "whatsflow" and config.get("whatsflow_state") != "open":
-        raise HTTPException(status_code=400, detail=f"Branch {branch_id}: Whatsflow is disconnected")
     return provider
 
 

@@ -1094,7 +1094,10 @@ async def _process_one_for_branch(branch_id):
         return False
     # Configuration and connectivity are checked at execution, after pacing.
     config = await _handlers["get_config"](item["branch_id"])
-    reason = _handlers["validate_config"](item["provider"], config)
+    if item.get("source") == "closure_notice" and _handlers.get("validate_closure_config"):
+        reason = await _handlers["validate_closure_config"](item["provider"], config)
+    else:
+        reason = _handlers["validate_config"](item["provider"], config)
     if reason:
         await _db["whatsapp_campaign_job_items"].update_one(
             {"id": item["id"], "status": "claimed", "claim_token": claim_token},
