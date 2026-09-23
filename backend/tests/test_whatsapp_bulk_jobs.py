@@ -291,14 +291,15 @@ def test_cancel_changes_only_pending_and_preserves_inflight(queue):
     assert result["cancelled"] == 2
 
 
-def test_uncertain_provider_exception_is_unknown_and_never_retried(queue):
+@pytest.mark.parametrize("source", ["campaign", "closure_notice"])
+def test_uncertain_provider_exception_is_unknown_and_never_retried(queue, source):
     db, sent, reservations, releases = queue
 
     async def uncertain(_item, _config, _assert_fence):
         raise TimeoutError("response lost")
 
     jobs._handlers["send"] = uncertain
-    job, _ = run(jobs.enqueue("a", "waha", recipients(), "unknown-key-123"))
+    job, _ = run(jobs.enqueue("a", "waha", recipients(), "unknown-key-123", source=source))
     assert run(jobs.process_one()) is True
     item = db["whatsapp_campaign_job_items"].rows[0]
     assert item["status"] == "unknown"
@@ -378,6 +379,52 @@ def test_slow_worker_sets_cooldown_from_completion_not_gate_acquisition(queue):
     Clock.set(completed + timedelta(seconds=179))
     assert run(jobs.process_one()) is False
     Clock.set(completed + timedelta(seconds=180))
+    assert run(jobs.process_one()) is True
+    assert len(sent) == 2
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_closure_actual_sends_share_one_minute_lane_across_jobs_and_providers(queue, legacy):
+    _db, sent, *_ = queue
+    source = "campaign" if legacy else "closure_notice"
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "closure_notice_one",
+                     source=source))
+    run(jobs.enqueue("a", "waha", recipients(), "closure_notice_two",
+                     source=source))
+    started = Clock.now()
+
+    async def slow_send(item, _config, assert_fence):
+        await assert_fence()
+        sent.append((Clock.now(), item["provider"]))
+        Clock.set(Clock.now() + timedelta(seconds=7))
+        return True
+
+    jobs._handlers["send"] = slow_send
+    assert run(jobs.process_one()) is True
+    completed = Clock.now()
+    Clock.set(completed + timedelta(seconds=59))
+    assert run(jobs.process_one()) is False
+    assert len(sent) == 1
+    Clock.set(completed + timedelta(seconds=60))
+    assert run(jobs.process_one()) is True
+    assert sent == [(started, "meta_cloud"), (completed + timedelta(seconds=60), "waha")]
+
+
+@pytest.mark.parametrize("sources", [
+    ("campaign", "closure_notice"),
+    ("closure_notice", "campaign"),
+])
+def test_mixed_closure_and_campaign_preserve_longer_campaign_spacing(queue, sources):
+    _db, sent, *_ = queue
+    for index, source in enumerate(sources):
+        run(jobs.enqueue("a", "meta_cloud", recipients(), f"mixed-{index}", source=source))
+    assert run(jobs.process_one()) is True
+    completed = Clock.now()
+    for seconds in (60, jobs.MIN_INTERVAL_SECONDS - 1):
+        Clock.set(completed + timedelta(seconds=seconds))
+        assert run(jobs.process_one()) is False
+        assert len(sent) == 1
+    Clock.set(completed + timedelta(seconds=jobs.MIN_INTERVAL_SECONDS))
     assert run(jobs.process_one()) is True
     assert len(sent) == 2
 

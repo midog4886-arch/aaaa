@@ -13,6 +13,12 @@ On 2026-09-11, the user chose a three-minute minimum after confirming that actua
 
 **How to apply:** Preserve server-side inter-message spacing when adding campaign paths or providers. Do not describe any interval as protection guaranteed to prevent WhatsApp bans.
 
+Day-extension notices have a one-minute minimum, while ordinary campaigns retain their longer interval.
+
+**Why:** On 2026-09-23 the user explicitly requested one minute between closure/extension messages, not a global campaign speedup.
+
+**How to apply:** Keep the shared branch gate and existing cooldowns. Mixed traffic must preserve the longer campaign interval; count spacing from completion, not the start of a slow send.
+
 An uncertain provider outcome must not automatically retry. Stop the lane for explicit review rather than risk duplicate delivery.
 
 **Why:** External sends are not atomic with database state. A timeout or worker crash can occur after WhatsApp accepts a message but before the app records success.

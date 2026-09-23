@@ -1363,7 +1363,7 @@ async def enqueue_closure_notices(
         # all-branches retry return the original job rather than sending twice.
         key = notice_key(closure["id"])
         job, created = await whatsapp_bulk_jobs.enqueue(
-            branch_id, providers[branch_id], recipients, key
+            branch_id, providers[branch_id], recipients, key, source="closure_notice"
         )
         jobs.append({**job, "created": created})
     return {

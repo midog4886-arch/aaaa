@@ -75,7 +75,8 @@ def test_closure_notices_use_db_phones_split_branches_and_personalize(monkeypatc
     async def provider(branch_id):
         return {"branch-a": "waha", "branch-b": "whatsflow"}[branch_id]
 
-    async def enqueue(branch_id, provider_name, recipients, key):
+    async def enqueue(branch_id, provider_name, recipients, key, *, source):
+        assert source == "closure_notice"
         enqueued.append((branch_id, provider_name, recipients, key))
         return {
             "id": "job-a", "branch_id": branch_id, "idempotency_key": key,
@@ -179,7 +180,8 @@ def test_first_send_after_apply_uses_saved_affected_members(monkeypatch):
     async def provider(_branch_id):
         return "waha"
 
-    async def enqueue(branch_id, provider_name, recipients, key):
+    async def enqueue(branch_id, provider_name, recipients, key, *, source):
+        assert source == "closure_notice"
         enqueued.append((branch_id, provider_name, recipients, key))
         return {
             "id": "same-job", "branch_id": branch_id, "idempotency_key": key,
@@ -262,7 +264,8 @@ def test_send_then_apply_then_lost_response_retry_returns_same_job(monkeypatch):
     async def provider(_branch_id):
         return "waha"
 
-    async def enqueue(branch_id, _provider, recipients, key):
+    async def enqueue(branch_id, _provider, recipients, key, *, source):
+        assert source == "closure_notice"
         scope = (branch_id, key)
         if scope not in jobs_by_key:
             jobs_by_key[scope] = {

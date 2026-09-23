@@ -19,6 +19,7 @@ from utils.tenant import for_each_active_tenant, get_current_tenant_slug
 log = logging.getLogger("whatsapp.bulk_jobs")
 _DATETIME_TYPE = datetime
 MIN_INTERVAL_SECONDS = max(180, int(os.environ.get("WHATSAPP_CAMPAIGN_INTERVAL_SECONDS", "180")))
+CLOSURE_NOTICE_INTERVAL_SECONDS = 60
 LEASE_SECONDS = 600
 BRANCH_PARALLELISM = max(
     1, int(os.environ.get("WHATSAPP_CAMPAIGN_BRANCH_WORKERS", "8"))
@@ -809,10 +810,15 @@ async def _refresh_job(job_id):
     await _db["whatsapp_campaign_jobs"].update_one({"id": job_id}, {"$set": values})
 
 
-async def _acquire_gate(branch_id, provider, now):
+def _item_interval_seconds(item):
+    return (CLOSURE_NOTICE_INTERVAL_SECONDS
+            if item.get("source") == "closure_notice" else MIN_INTERVAL_SECONDS)
+
+
+async def _acquire_gate(branch_id, provider, now, interval_seconds=MIN_INTERVAL_SECONDS):
     gates = _db["whatsapp_campaign_rate_gates"]
     # One branch-wide gate covers every automatic provider. A configuration
-    # switch must not create a fresh lane and bypass the three-minute interval.
+    # switch must not create a fresh lane and bypass the applicable interval.
     key = branch_id
     try:
         await gates.update_one({"_id": key}, {"$setOnInsert": {
@@ -824,6 +830,8 @@ async def _acquire_gate(branch_id, provider, now):
     doc = await gates.find_one_and_update(
         {"_id": key, "frozen": {"$ne": True},
          "next_allowed_at": {"$lte": now},
+         "$or": [{"last_completed_at": {"$exists": False}},
+                 {"last_completed_at": {"$lte": now - timedelta(seconds=interval_seconds)}}],
          "lease_until": {"$exists": False}},
         {"$set": {"lease_token": token, "lease_until": now + timedelta(seconds=LEASE_SECONDS),
                   "updated_at": now}},
@@ -840,7 +848,8 @@ async def _freeze_lane(item, reason, now):
 async def _release_lane(item, lane_token, completed_at):
     result = await _db["whatsapp_campaign_rate_gates"].update_one(
         {"_id": item["branch_id"], "lease_token": lane_token},
-        {"$set": {"next_allowed_at": completed_at + timedelta(seconds=MIN_INTERVAL_SECONDS),
+        {"$set": {"next_allowed_at": completed_at + timedelta(seconds=_item_interval_seconds(item)),
+                  "last_completed_at": completed_at,
                   "updated_at": completed_at},
          "$unset": {"lease_token": "", "lease_until": ""}})
     return getattr(result, "matched_count", 1) == 1
@@ -1054,8 +1063,14 @@ async def _process_one_for_branch(branch_id):
     if parent.get("cancel_requested"):
         await _cancel_owned_item(item, now)
         return False
+    # Older closure jobs predate the explicit source. Recognize their existing
+    # server-generated key without rewriting queue records or shortening a
+    # cooldown already stored on the shared gate.
+    if str(parent.get("idempotency_key") or "").startswith("closure_notice_"):
+        item = {**item, "source": "closure_notice"}
     gate, lane_token = await _acquire_gate(
-        item["branch_id"], item["provider"], datetime.now(timezone.utc))
+        item["branch_id"], item["provider"], datetime.now(timezone.utc),
+        _item_interval_seconds(item))
     if not gate:
         gate_doc = await _db["whatsapp_campaign_rate_gates"].find_one(
             {"_id": item["branch_id"]})

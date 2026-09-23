@@ -354,8 +354,8 @@ export default function DayExtensionsPage() {
       return;
     }
     if (!window.confirm(t(
-      `ستتم إضافة ${recipientCount} رسالة إلى قائمة الإرسال التلقائي للفرع بفاصل ثلاث دقائق على الأقل. هذا ليس فتح واتساب يدويًا. الإضافة لا تعني أن الرسائل أُرسلت بعد. هل تريد المتابعة؟`,
-      `Queue ${recipientCount} message(s) automatically at least three minutes apart? This does not open WhatsApp manually. Queued does not mean sent.`
+      `ستتم إضافة ${recipientCount} رسالة إلى قائمة الإرسال التلقائي للفرع بفاصل دقيقة واحدة على الأقل، وقد يزيد الانتظار بسبب رسائل أخرى أو قيود الإرسال. هذا ليس فتح واتساب يدويًا. الإضافة لا تعني أن الرسائل أُرسلت بعد. هل تريد المتابعة؟`,
+      `Queue ${recipientCount} message(s) automatically at least one minute apart? Other queued messages or sending limits may increase the wait. This does not open WhatsApp manually. Queued does not mean sent.`
     ))) return;
     sendInFlight.current = true;
     noticeRequest.current += 1;
