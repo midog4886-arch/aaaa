@@ -97,6 +97,83 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+test('selects, saves and reloads expired audience from fresh branch preview without sending', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  whatsappAPI.previewCampaignAudience.mockResolvedValue({
+    data: { count: 1, recipients: [{ phone: '966500000002', name: 'Expired member', member_id: 'expired-1' }] },
+  });
+  whatsappAPI.createCampaign.mockResolvedValue({ data: { id: 'expired-draft' } });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+  await screen.findByRole('button', { name: /Welcome draft/i });
+  await user.click(screen.getAllByRole('combobox')[0]);
+  await user.click(await screen.findByRole('option', { name: 'Expired branch members' }));
+  await waitFor(() => expect(whatsappAPI.previewCampaignAudience)
+    .toHaveBeenCalledWith('branch-a', 'expired_members'));
+  expect(await screen.findByText(/Preview: 1 recipient/)).toBeInTheDocument();
+  await user.type(screen.getByPlaceholderText(/Back-to-training offer/i), 'Expired draft');
+  await user.click(screen.getByRole('button', { name: /Save draft/i }));
+  await waitFor(() => expect(whatsappAPI.createCampaign).toHaveBeenCalled());
+  const saved = whatsappAPI.createCampaign.mock.calls[0][0];
+  expect(saved.get('audience')).toBe('expired_members');
+  expect(saved.get('recipients_json')).toBe('[]');
+
+  whatsappAPI.getCampaign.mockResolvedValueOnce({
+    data: { id: 'campaign-1', name: 'Expired draft', message: 'Hello {name}',
+      audience: 'expired_members', recipients: [{ phone: '966599999999', name: 'Stale' }] },
+  });
+  await user.click(screen.getByRole('button', { name: /Welcome draft/i }));
+  await waitFor(() => expect(whatsappAPI.previewCampaignAudience).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText('966599999999')).not.toBeInTheDocument();
+  expect(screen.getAllByRole('combobox')[0]).toHaveTextContent('Expired branch members');
+  await user.click(screen.getByRole('button', { name: /Save draft/i }));
+  await waitFor(() => expect(whatsappAPI.updateCampaign).toHaveBeenCalled());
+  expect(whatsappAPI.updateCampaign.mock.calls[0][1].get('audience')).toBe('expired_members');
+  expect(whatsappAPI.sendBranchCloudBulk).not.toHaveBeenCalled();
+  expect(whatsappAPI.sendBranchCloudBulkMedia).not.toHaveBeenCalled();
+});
+
+test.each([false, true])('expired audience uses reviewed recipients in confirmed send (attachment=%s)', async (withAttachment) => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  window.confirm = jest.fn(() => false);
+  Object.defineProperty(global, 'crypto', {
+    configurable: true, value: { randomUUID: jest.fn(() => 'expired-send-key') },
+  });
+  whatsappAPI.getCampaign.mockResolvedValueOnce({
+    data: {
+      id: 'campaign-1', name: 'Expired draft', message: 'Hello {name}', audience: 'expired_members',
+      has_attachment: withAttachment,
+      attachments: withAttachment ? [{ attachment_name: 'offer.png', attachment_type: 'image/png' }] : [],
+    },
+  });
+  whatsappAPI.getCampaignAttachment.mockResolvedValue({
+    data: new Blob(['image'], { type: 'image/png' }),
+  });
+  whatsappAPI.previewCampaignAudience.mockResolvedValue({
+    data: { count: 1, recipients: [{ phone: '966500000002', name: 'Expired member', member_id: 'expired-1' }] },
+  });
+  const api = withAttachment ? whatsappAPI.sendBranchCloudBulkMedia : whatsappAPI.sendBranchCloudBulk;
+  api.mockResolvedValue({ data: { id: 'expired-job', status: 'pending', total: 1, pending: 1 } });
+  const WhatsAppBulkPage = require('../WhatsAppBulkPage').default;
+  render(<WhatsAppBulkPage />);
+  await user.click(await screen.findByRole('button', { name: /Welcome draft/i }));
+  const send = await screen.findByRole('button', { name: /Send 1 message.* to 1/i });
+  await waitFor(() => expect(send).toBeEnabled());
+  expect(api).not.toHaveBeenCalled();
+  await user.click(send);
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/At least 3 minutes/));
+  expect(api).not.toHaveBeenCalled();
+  window.confirm.mockReturnValue(true);
+  await user.click(send);
+  await waitFor(() => expect(api).toHaveBeenCalledTimes(1));
+  const recipients = withAttachment
+    ? JSON.parse(api.mock.calls[0][0].get('recipients_json'))
+    : api.mock.calls[0][1];
+  expect(recipients).toEqual([{
+    phone: '966500000002', message: 'Hello Expired member', name: 'Expired member', member_id: 'expired-1',
+  }]);
+});
+
 test.each([
   [[{loc: ['body', 'recipients'], msg: 'Invalid recipients', type: 'value_error'}], 'Invalid recipients'],
   [{error: 'Branch is unavailable'}, 'Branch is unavailable'],

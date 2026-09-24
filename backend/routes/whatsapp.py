@@ -7180,10 +7180,80 @@ def _validate_proposed_send_at(value: str) -> str:
     return proposed
 
 
+def _campaign_end_date(value):
+    """Unknown/malformed dates must never qualify a member for expiry outreach."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date() if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) else None
+    except ValueError:
+        return None
+
+
+async def _campaign_expired_members(branch_id: str) -> list[dict]:
+    # _db is the tenant-aware database; never activate/modify subscriptions here.
+    from utils.effective_periods import effective_period_map, operational_window
+
+    today = datetime.now(RIYADH_TZ).date()
+    candidates = {}
+    async for member in _db["members"].find(
+        {"branch_id": branch_id},
+        {"_id": 0, "id": 1, "phone": 1, "name": 1, "name_ar": 1, "activities": 1},
+    ):
+        activities = member.get("activities")
+        if not isinstance(activities, list) or not activities:
+            continue
+        ends = [
+            _campaign_end_date(activity.get("end_date")) if isinstance(activity, dict) else None
+            for activity in activities
+        ]
+        if member.get("id") and all(end is not None and end < today for end in ends):
+            candidates[member["id"]] = member
+    if not candidates:
+        return []
+
+    # Paid later periods can exist only on invoices until activation. Honor
+    # their operational (closure-shifted) dates without mutating either source.
+    invoices = await _db["invoices"].find(
+        {
+            "branch_id": branch_id, "status": "paid",
+            "$or": [
+                {"member_id": {"$in": list(candidates)}},
+                {"items.member_id": {"$in": list(candidates)}},
+            ],
+        },
+        {"_id": 0, "id": 1, "member_id": 1, "items": 1},
+    ).to_list(length=None)
+    periods = await effective_period_map(_db, invoices)
+    for invoice in invoices:
+        for index, item in enumerate(invoice.get("items") or []):
+            member_id = item.get("member_id") or invoice.get("member_id")
+            member = candidates.get(member_id)
+            if not member or item.get("is_product"):
+                continue
+            start, end = operational_window(invoice, item, index, periods)
+            start, end = _campaign_end_date(start), _campaign_end_date(end)
+            # Do not resurrect a same-period purchased end that operational
+            # attendance legitimately pulled back. Only a genuinely later
+            # period is renewal evidence. Unknown purchased dates fail closed.
+            current_ends = [
+                _campaign_end_date(activity.get("end_date"))
+                for activity in member["activities"]
+                if activity.get("activity_id") == item.get("activity_id")
+            ]
+            if start is None or end is None or end < start or (
+                end >= today and (not current_ends or start > max(current_ends))
+            ):
+                candidates.pop(member_id, None)
+    return list(candidates.values())
+
+
 async def _campaign_audience_recipients(branch_id: str, audience: str) -> list[dict]:
     if audience == "pasted":
         return []
-    if audience == "registration_requests":
+    if audience == "expired_members":
+        rows = await _campaign_expired_members(branch_id)
+    elif audience == "registration_requests":
         query = {"branch_id": branch_id, "status": "pending"}
         collection = _db["registration_requests"]
     elif audience in {"active_members", "all_members"}:
@@ -7204,23 +7274,31 @@ async def _campaign_audience_recipients(branch_id: str, audience: str) -> list[d
         collection = _db["members"]
     else:
         raise HTTPException(status_code=400, detail="Invalid campaign audience")
-    cursor = collection.find(
-        query,
-        {"_id": 0, "phone": 1, "name": 1, "name_ar": 1, "customer_phone": 1, "customer_name": 1},
-    ).limit(
-        CAMPAIGN_MAX_PASTED_RECIPIENTS
-    )
-    rows = await cursor.to_list(length=CAMPAIGN_MAX_PASTED_RECIPIENTS)
+    if audience != "expired_members":
+        cursor = collection.find(
+            query,
+            {"_id": 0, "phone": 1, "name": 1, "name_ar": 1, "customer_phone": 1, "customer_name": 1},
+        ).limit(
+            CAMPAIGN_MAX_PASTED_RECIPIENTS
+        )
+        rows = await cursor.to_list(length=CAMPAIGN_MAX_PASTED_RECIPIENTS)
     recipients, seen = [], set()
     for row in rows:
-        phone = re.sub(r"\D", "", str(row.get("phone") or row.get("customer_phone") or ""))
+        raw_phone = row.get("phone") or row.get("customer_phone") or ""
+        phone = (
+            normalize_phone(raw_phone) if audience == "expired_members"
+            else re.sub(r"\D", "", str(raw_phone))
+        )
         if len(phone) < 9 or len(phone) > 15 or phone in seen:
             continue
         seen.add(phone)
         recipients.append({
             "phone": phone,
             "name": row.get("name_ar") or row.get("name") or row.get("customer_name") or "",
+            **({"member_id": row["id"]} if audience == "expired_members" else {}),
         })
+        if len(recipients) >= CAMPAIGN_MAX_PASTED_RECIPIENTS:
+            break
     return recipients
 
 
@@ -7347,7 +7425,7 @@ async def create_campaign(
     campaign_name = name.strip()
     if not campaign_name or len(campaign_name) > 160 or len(message) > 4096:
         raise HTTPException(status_code=400, detail="Campaign name or message is invalid")
-    if audience not in {"pasted", "registration_requests", "active_members", "all_members"}:
+    if audience not in {"pasted", "registration_requests", "active_members", "all_members", "expired_members"}:
         raise HTTPException(status_code=400, detail="Invalid campaign audience")
     recipients = _parse_campaign_recipients(recipients_json) if audience == "pasted" else []
     now = datetime.now(timezone.utc).isoformat()
@@ -7401,7 +7479,7 @@ async def update_campaign(
     campaign_name = name.strip()
     if not campaign_name or len(campaign_name) > 160 or len(message) > 4096:
         raise HTTPException(status_code=400, detail="Campaign name or message is invalid")
-    if audience not in {"pasted", "registration_requests", "active_members", "all_members"}:
+    if audience not in {"pasted", "registration_requests", "active_members", "all_members", "expired_members"}:
         raise HTTPException(status_code=400, detail="Invalid campaign audience")
     update = {
         "name": campaign_name, "message": message, "audience": audience,

@@ -17,7 +17,20 @@ def run(coro):
 
 
 def matches(doc, query):
-    return all(doc.get(key) == value for key, value in (query or {}).items())
+    for key, value in (query or {}).items():
+        if key == "$or":
+            if not any(matches(doc, clause) for clause in value):
+                return False
+        elif isinstance(value, dict) and "$in" in value:
+            values = (
+                [item.get("member_id") for item in doc.get("items", [])]
+                if key == "items.member_id" else [doc.get(key)]
+            )
+            if not any(item in value["$in"] for item in values):
+                return False
+        elif doc.get(key) != value:
+            return False
+    return True
 
 
 class Cursor:
@@ -154,6 +167,134 @@ def test_campaign_tenant_isolation(campaign_env):
     assert tenant_b["id"] != tenant_a["id"]
     tenant["slug"] = "tenant-a"
     assert [row["name"] for row in run(whatsapp.list_campaigns("branch-a", ADMIN))] == ["Tenant A"]
+
+
+def test_expired_audience_dates_branch_phones_and_stale_status(campaign_env, monkeypatch):
+    from datetime import datetime
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            # Already tomorrow in Riyadh, while UTC is still the previous day.
+            return datetime(2026, 9, 12, 0, 30, tzinfo=whatsapp.RIYADH_TZ)
+
+    monkeypatch.setattr(whatsapp, "datetime", Clock)
+    db, _ = campaign_env
+    cases = [
+        ("expired", ["2026-09-11", "2026-08-01"], "active"),
+        ("today", ["2026-09-12"], "expired"),
+        ("mixed", ["2026-09-11", "2026-10-01"], "expired"),
+        ("future", ["2026-10-01"], "expired"),
+        ("unknown", ["2026-09-11", None], "expired"),
+        ("empty", [], "expired"),
+        ("invalid", ["2026-02-30"], "expired"),
+        ("blank", [""], "expired"),
+    ]
+    for index, (member_id, ends, status) in enumerate(cases):
+        db["members"].rows.append({
+            "id": member_id, "branch_id": "branch-a", "phone": f"96650000000{index}",
+            "activities": [{"activity_id": "a", "end_date": end, "status": status} for end in ends],
+        })
+    db["members"].rows.extend([
+        {"id": "other", "branch_id": "branch-b", "phone": "966599999999",
+         "activities": [{"end_date": "2020-01-01"}]},
+        {"id": "duplicate", "branch_id": "branch-a", "phone": "+966 500000000",
+         "activities": [{"end_date": "2020-01-01"}]},
+        {"id": "bad-phone", "branch_id": "branch-a", "phone": "123",
+         "activities": [{"end_date": "2020-01-01"}]},
+    ])
+    result = run(whatsapp.campaign_audience_preview("branch-a", "expired_members", ADMIN))
+    assert result == {"count": 1, "recipients": [
+        {"phone": "966500000000", "name": "", "member_id": "expired"},
+    ]}
+    staff = {"is_admin": False, "permissions": ["messages"], "branch_id": "branch-b"}
+    with pytest.raises(HTTPException) as exc:
+        run(whatsapp.campaign_audience_preview("branch-a", "expired_members", staff))
+    assert exc.value.status_code == 403
+
+
+def test_expired_audience_respects_paid_future_effective_and_family_periods(campaign_env, monkeypatch):
+    from utils.effective_periods import source_key
+    import utils.effective_periods as effective
+
+    db, _ = campaign_env
+    for member_id in ["future", "effective", "same-period", "partial", "family-payer", "family-child", "unknown"]:
+        db["members"].rows.append({
+            "id": member_id, "branch_id": "branch-a", "phone": f"9665000000{len(db['members'].rows):02}",
+            "activities": [{"activity_id": "a", "end_date": "2020-01-31"}],
+        })
+    def invoice(member_id, start, end, **extra):
+        return {"id": member_id, "branch_id": "branch-a", "status": "paid", "member_id": member_id,
+                "items": [{"activity_id": "a", "start_date": start, "end_date": end}], **extra}
+    shifted = invoice("effective", "2020-02-01", "2020-02-28")
+    db["invoices"].rows = [
+        invoice("future", "2099-01-01", "2099-02-01"),
+        shifted,
+        invoice("same-period", "2020-01-01", "2099-02-01"),
+        invoice("partial", "2099-01-01", "2099-02-01", status="partial"),
+        invoice("family-payer", "", "", items=[{
+            "member_id": "family-child", "activity_id": "a",
+            "start_date": "2099-01-01", "end_date": "2099-02-01",
+        }]),
+        invoice("unknown", "", ""),
+        invoice("unrelated", "2099-01-01", "2099-02-01"),
+        invoice("other-payer", "", "", items=[{
+            "member_id": "partial", "activity_id": "a",
+            "start_date": "2020-01-01", "end_date": "2020-01-31",
+        }]),
+    ]
+    async def periods(_db, invoices):
+        assert all(inv["branch_id"] == "branch-a" for inv in invoices)
+        assert "unrelated" not in {inv["id"] for inv in invoices}
+        assert "other-payer" in {inv["id"] for inv in invoices}
+        return {source_key(shifted, shifted["items"][0], 0): {
+            "effective_start_date": "2099-01-01", "effective_end_date": "2099-02-01",
+        }}
+    monkeypatch.setattr(effective, "effective_period_map", periods)
+    result = run(whatsapp.campaign_audience_preview("branch-a", "expired_members", ADMIN))
+    assert {row["member_id"] for row in result["recipients"]} == {"same-period", "partial", "family-payer"}
+    assert db["members"].rows[0]["activities"][0]["end_date"] == "2020-01-31"
+    assert shifted["items"][0]["end_date"] == "2020-02-28"
+
+
+def test_expired_audience_canonicalizes_sibling_phones_before_cap(campaign_env, monkeypatch):
+    db, _ = campaign_env
+    monkeypatch.setattr(whatsapp, "CAMPAIGN_MAX_PASTED_RECIPIENTS", 2)
+    for index, phone in enumerate([
+        "0500000001", "+966 50 000 0001", "٠٥٠٠٠٠٠٠٠١",
+        "00966500000001", "123", "00000000000", "٠٥٠٠٠٠٠٠٠٢",
+        "966500000003",
+    ]):
+        db["members"].rows.append({
+            "id": f"sibling-{index}", "branch_id": "branch-a", "phone": phone,
+            "activities": [{"end_date": "2020-01-01"}],
+        })
+    result = run(whatsapp.campaign_audience_preview("branch-a", "expired_members", ADMIN))
+    assert result["count"] == 2
+    assert [row["phone"] for row in result["recipients"]] == ["966500000001", "966500000002"]
+    assert [row["member_id"] for row in result["recipients"]] == ["sibling-0", "sibling-6"]
+
+
+def test_expired_draft_create_edit_load_does_not_enqueue(campaign_env):
+    db, tenant = campaign_env
+    created = run(whatsapp.create_campaign(
+        branch_id="branch-a", name="Expired", message="Hello", audience="expired_members",
+        proposed_send_at="", default_name="", recipients_json="[]", attachment=None,
+        current_user=ADMIN,
+    ))
+    assert created["audience"] == "expired_members"
+    assert created["recipients"] == []
+    run(whatsapp.update_campaign(
+        created["id"], branch_id="branch-a", name="Edited", message="Hello",
+        audience="expired_members", proposed_send_at="", default_name="", recipients_json="[]",
+        remove_attachment=False, attachment=None, current_user=ADMIN,
+    ))
+    assert run(whatsapp.get_campaign(created["id"], "branch-a", ADMIN))["audience"] == "expired_members"
+    tenant["slug"] = "tenant-b"
+    with pytest.raises(HTTPException) as exc:
+        run(whatsapp.get_campaign(created["id"], "branch-a", ADMIN))
+    assert exc.value.status_code == 404
+    assert not any("job" in name for name in db.collections)
 
 
 def test_campaign_permission_and_phone_privacy_use_current_db_user(campaign_env):

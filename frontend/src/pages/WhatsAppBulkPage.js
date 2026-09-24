@@ -312,7 +312,7 @@ export default function WhatsAppBulkPage() {
         id: row.id,
         recipient_id: row.recipient_id,
         member_id: row.member_id || (
-          ['active_members', 'all_members'].includes(nextAudience) ? row.id : undefined
+          ['active_members', 'all_members', 'expired_members'].includes(nextAudience) ? row.id : undefined
         ),
       }))));
       setDynamicAudienceBranch(requestedBranch);
@@ -733,6 +733,7 @@ export default function WhatsAppBulkPage() {
                       <SelectItem value="pasted">{t('الأرقام الملصقة', 'Pasted numbers')}</SelectItem>
                       <SelectItem value="registration_requests">{t('طلبات التسجيل المعلقة', 'Pending registration requests')}</SelectItem>
                       <SelectItem value="active_members">{t('أعضاء الفرع النشطون', 'Active branch members')}</SelectItem>
+                      <SelectItem value="expired_members">{t('أعضاء الفرع المنتهية جميع اشتراكاتهم', 'Expired branch members')}</SelectItem>
                       <SelectItem value="all_members">{t('كل أعضاء الفرع', 'All branch members')}</SelectItem>
                     </SelectContent>
                   </Select>
@@ -795,7 +796,9 @@ export default function WhatsAppBulkPage() {
                         <p className="text-xs text-muted-foreground mt-1">
                           {draft.audience === 'pasted'
                             ? t(`${draft.recipient_count || 0} رقم`, `${draft.recipient_count || 0} numbers`)
-                            : t('جمهور ديناميكي', 'Dynamic audience')}
+                            : draft.audience === 'expired_members'
+                              ? t('أعضاء الفرع المنتهية جميع اشتراكاتهم', 'Expired branch members')
+                              : t('جمهور ديناميكي', 'Dynamic audience')}
                           {draft.has_attachment ? ` · ${t('مرفق', 'attachment')}` : ''}
                         </p>
                       </button>
