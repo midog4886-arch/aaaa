@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { toast } from 'sonner';
 import { invoicesAPI, creditNotesAPI, exportAPI } from '../../../services/api';
 import { COMPANY_INFO } from '../constants';
 import { verifyOperationPassword } from '../../../utils/operationPassword';
 
 export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchName, setInvoices }) => {
+  // Never issue another payment from this screen after the backend reports
+  // payment already recorded but a concurrent subscription sync conflict.
+  const paymentRecordedConflicts = useRef(new Set());
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [qrCode, setQrCode] = useState(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
@@ -30,6 +33,12 @@ export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchNam
   };
 
   const handleMarkPaid = async (id) => {
+    if (paymentRecordedConflicts.current.has(id)) {
+      toast.error(language === 'ar'
+        ? 'تم تسجيل الدفع لهذه الفاتورة. لا تكرر الدفع؛ حدّث الفاتورة وراجع الاشتراك.'
+        : 'Payment was recorded. Do not pay again; refresh the invoice and review the subscription.');
+      return;
+    }
     try {
       const res = await invoicesAPI.pay(id);
       const loyaltyAwarded = res.data?.loyalty_awarded || [];
@@ -62,7 +71,24 @@ export const useInvoiceActions = ({ loadData, language, t, isAdmin, getBranchNam
         ? { ...prev, status: 'paid', paid_at: new Date().toISOString() }
         : prev);
       loadQRCode(id, 'paid');
-    } catch { toast.error(t('error')); }
+    } catch (error) {
+      if (error?.paymentRecordedSubscriptionConflict) {
+        paymentRecordedConflicts.current.add(id);
+        toast.error(error.response.data.detail);
+        // Refresh from the invoice itself: payment may be recorded even though
+        // the pay request returned 409. Never infer a completed subscription.
+        try {
+          const latest = await invoicesAPI.getById(id);
+          if (latest.data?.status === 'paid') {
+            setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, ...latest.data } : inv));
+            setSelectedInvoice(prev => prev?.id === id ? { ...prev, ...latest.data } : prev);
+          }
+        } catch (_) { /* keep the block: verification is unavailable */ }
+        loadData();
+      } else {
+        toast.error(t('error'));
+      }
+    }
   };
 
   const handleRestoreInvoice = async (id) => {

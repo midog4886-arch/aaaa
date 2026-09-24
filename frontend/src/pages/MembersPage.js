@@ -15,6 +15,8 @@ import { Button } from '../components/ui/button';
 import ProfileOverview from '../components/member-profile/ProfileOverview';
 import ProfileFeed from '../components/member-profile/ProfileFeed';
 import MemberEditHistoryDialog from '../components/members/MemberEditHistoryDialog';
+import ScheduleChangeReviewDialog from '../components/members/ScheduleChangeReviewDialog';
+import { activityWeekdaysChanged, scheduleChangeError } from '../utils/memberScheduleChange';
  
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -253,6 +255,21 @@ export const MembersPage = () => {
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [editActivityForm, setEditActivityForm] = useState({});
   const [editActivitySaving, setEditActivitySaving] = useState(false);
+  const [scheduleChangeMode, setScheduleChangeMode] = useState('future_only');
+  const [scheduleChangeReason, setScheduleChangeReason] = useState('');
+  const [editNotifyWhatsapp, setEditNotifyWhatsapp] = useState(true);
+  const [scheduleChangeReview, setScheduleChangeReview] = useState(null);
+  const schedulePreviewInputKeyRef = useRef('');
+  const scheduleInputKey = JSON.stringify({
+    memberId: selectedMember?.id, activityId: editingActivityId,
+    form: editActivityForm, mode: scheduleChangeMode, reason: scheduleChangeReason,
+    notifyWhatsapp: editNotifyWhatsapp,
+  });
+  schedulePreviewInputKeyRef.current = scheduleInputKey;
+  useEffect(() => {
+    // A preview is only valid for the exact form and mode it was requested for.
+    setScheduleChangeReview(null);
+  }, [scheduleInputKey]);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
@@ -652,7 +669,10 @@ export const MembersPage = () => {
       let memberId = selectedMember?.id;
       
       if (selectedMember) {
-        await membersAPI.update(selectedMember.id, data);
+        // A profile-only edit must not resend stale subscription snapshots.
+        // Schedule changes use the dedicated activity preview/confirm flow.
+        const { activities: _unchangedActivities, ...profileData } = data;
+        await membersAPI.update(selectedMember.id, profileData);
         toast.success(t('success'));
       } else {
         const response = await membersAPI.create(data);
@@ -776,53 +796,103 @@ export const MembersPage = () => {
     }
   };
 
+  const finishEditActivity = async (oldLevelId, newLevelId) => {
+    if (oldLevelId !== newLevelId) {
+      try {
+        if (oldLevelId) await levelsAPI.removeMember(oldLevelId, selectedMember.id);
+        if (newLevelId) await levelsAPI.addMember(newLevelId, selectedMember.id);
+      } catch (lvlErr) {
+        console.warn('Level update warning:', lvlErr);
+      }
+    }
+    toast.success(language === 'ar' ? 'تم تحديث النشاط' : 'Activity updated');
+    const updated = await membersAPI.getById(selectedMember.id);
+    setSelectedMember(updated.data);
+    setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...updated.data } : m));
+    setEditingActivityId(null);
+    setEditActivityForm({});
+    setEditMemberLevelSelectorState(null);
+    setScheduleChangeReview(null);
+    setScheduleChangeMode('future_only');
+    setScheduleChangeReason('');
+    setEditNotifyWhatsapp(true);
+  };
+
   // Save edited activity directly (without invoice)
   const handleSaveEditActivity = async () => {
     if (!selectedMember || !editingActivityId) return;
     setEditActivitySaving(true);
     try {
-      const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-      const formatSchedule = (days, time) => {
-        if (!days || days.length === 0) return time || '';
-        const sorted = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
-        let daysStr;
-        if (sorted.length === 1) { daysStr = sorted[0]; }
-        else { const last = sorted.pop(); daysStr = sorted.join('، ') + ' و ' + last; }
-        return time ? `${daysStr} - ${time}` : daysStr;
-      };
-
       // Find the original activity to detect level change
       const originalActivity = (selectedMember.activities || []).find(a => a.activity_id === editingActivityId);
+      if (!originalActivity) {
+        toast.error(language === 'ar' ? 'لم يعد الاشتراك موجوداً؛ حدّث الملف' : 'Subscription changed; refresh the profile');
+        return;
+      }
       const oldLevelId = originalActivity?.level_id || '';
       const newLevelId = editActivityForm.level_id || '';
 
       const payload = {
+        ...originalActivity,
         ...editActivityForm,
         fee: parseFloat(editActivityForm.fee) || 0,
-        schedule: editActivityForm.schedule || formatSchedule(editActivityForm.training_days || [], editActivityForm.training_time || '')
+        schedule: editActivityForm.schedule || buildMemberSchedule(editActivityForm.training_days || [], editActivityForm.training_time || '', editActivityForm.day_times || {})
       };
-      await membersAPI.updateActivity(selectedMember.id, editingActivityId, payload);
-
-      // Handle level change: remove from old level, add to new level
-      if (oldLevelId !== newLevelId) {
-        try {
-          if (oldLevelId) await levelsAPI.removeMember(oldLevelId, selectedMember.id);
-          if (newLevelId) await levelsAPI.addMember(newLevelId, selectedMember.id);
-        } catch (lvlErr) {
-          console.warn('Level update warning:', lvlErr);
+      if (activityWeekdaysChanged(originalActivity, payload) || scheduleChangeMode === 'retrospective_correction') {
+        if (originalActivity.start_date !== payload.start_date || originalActivity.end_date !== payload.end_date || oldLevelId !== newLevelId || originalActivity.activity_id !== payload.activity_id) {
+          toast.error(language === 'ar'
+            ? 'عدّل أيام التدريب وحدها أولاً. تغيير الفترة أو النشاط أو المستوى يحتاج معاملة مستقلة.'
+            : 'Change weekdays separately from the dates, activity, or level.');
+          return;
         }
+        if (scheduleChangeMode === 'retrospective_correction' && !scheduleChangeReason.trim()) {
+          toast.error(language === 'ar' ? 'أدخل سبب تصحيح الموعد السابق' : 'Enter a reason for correcting the previous schedule');
+          return;
+        }
+        const request = { activity: payload, mode: scheduleChangeMode, reason: scheduleChangeReason.trim(), notify_whatsapp: editNotifyWhatsapp };
+        const inputKey = schedulePreviewInputKeyRef.current;
+        const res = await membersAPI.previewActivityScheduleChange(selectedMember.id, editingActivityId, request);
+        if (schedulePreviewInputKeyRef.current !== inputKey) return;
+        if (!res.data?.preview_token) {
+          throw new Error('Schedule preview response has no confirmation token');
+        }
+        setScheduleChangeReview({
+          memberId: selectedMember.id, activityId: editingActivityId, request, inputKey,
+          preview: res.data,
+        });
+        return; // Preview is read-only. The separate confirmation is the only write.
       }
-
-      toast.success(language === 'ar' ? 'تم تحديث النشاط' : 'Activity updated');
-      const updated = await membersAPI.getById(selectedMember.id);
-      setSelectedMember(updated.data);
-      setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...updated.data } : m));
-      setEditingActivityId(null);
-      setEditActivityForm({});
-      setEditMemberLevelSelectorState(null);
+      await membersAPI.updateActivity(selectedMember.id, editingActivityId, payload, { notifyWhatsapp: editNotifyWhatsapp });
+      await finishEditActivity(oldLevelId, newLevelId);
     } catch (err) {
-      console.error(err);
-      toast.error(language === 'ar' ? 'فشل التحديث' : 'Update failed');
+      toast.error(scheduleChangeError(err, language));
+    } finally {
+      setEditActivitySaving(false);
+    }
+  };
+
+  const confirmScheduleChange = async () => {
+    const review = scheduleChangeReview;
+    if (!review || editActivitySaving) return;
+    if (review.inputKey !== schedulePreviewInputKeyRef.current) {
+      setScheduleChangeReview(null);
+      toast.error(language === 'ar' ? 'تغيّر النموذج؛ راجع التعديل مجدداً' : 'The form changed; review again');
+      return;
+    }
+    setEditActivitySaving(true);
+    try {
+      await membersAPI.confirmActivityScheduleChange(review.memberId, review.activityId, {
+        ...review.request, preview_token: review.preview.preview_token,
+      }, { notifyWhatsapp: review.request.notify_whatsapp });
+      await finishEditActivity(
+        (selectedMember.activities || []).find(a => a.activity_id === review.activityId)?.level_id || '',
+        review.request.activity.level_id || '',
+      );
+    } catch (err) {
+      setScheduleChangeReview(null);
+      toast.error(err?.response?.status === 409
+        ? (language === 'ar' ? 'تغيرت بيانات الاشتراك؛ اعرض مراجعة جديدة قبل الحفظ' : 'Subscription changed; preview again before saving')
+        : scheduleChangeError(err, language));
     } finally {
       setEditActivitySaving(false);
     }
@@ -3547,15 +3617,18 @@ export const MembersPage = () => {
                                     size="sm"
                                     variant="outline"
                                     className="border-blue-400 text-blue-600 hover:bg-blue-50 h-8 px-2"
+                                    data-testid={`edit-member-activity-${activity.activity_id}`}
                                     onClick={() => {
                                       if (isEditing) {
                                         setEditingActivityId(null);
                                         setEditActivityForm({});
                                         setEditMemberLevelSelectorState(null);
+                                        setScheduleChangeReview(null);
                                       } else {
                                         if (!levelsLoaded) loadLevels();
                                         setEditingActivityId(activity.activity_id);
                                         setEditActivityForm({
+                                          ...activity,
                                           activity_id: activity.activity_id,
                                           activity_name: activity.activity_name,
                                           start_date: activity.start_date || '',
@@ -3571,6 +3644,9 @@ export const MembersPage = () => {
                                           source: activity.source || '',
                                           source_id: activity.source_id || ''
                                         });
+                                        setScheduleChangeMode('future_only');
+                                        setScheduleChangeReason('');
+                                        setEditNotifyWhatsapp(true);
                                       }
                                     }}
                                   >
@@ -3813,12 +3889,53 @@ export const MembersPage = () => {
                                     onChange={(patch) => setEditActivityForm({ ...editActivityForm, ...patch })}
                                     language={language}
                                   />
+                                  {!activityWeekdaysChanged(activity, editActivityForm) && (
+                                    <label className="flex items-center gap-2 text-sm">
+                                      <input
+                                        type="checkbox"
+                                        checked={scheduleChangeMode === 'retrospective_correction'}
+                                        onChange={e => setScheduleChangeMode(e.target.checked ? 'retrospective_correction' : 'future_only')}
+                                        data-testid="correct-existing-schedule"
+                                      />
+                                      {language === 'ar'
+                                        ? 'تصحيح خصم حصص خارج الموعد بعد تغيير أيام التدريب سابقاً'
+                                        : 'Correct old off-schedule deductions after a previous weekday change'}
+                                    </label>
+                                  )}
+                                  {(activityWeekdaysChanged(activity, editActivityForm) || scheduleChangeMode === 'retrospective_correction') && (
+                                    <fieldset className="space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm" data-testid="schedule-change-options">
+                                      <legend className="font-semibold">{language === 'ar' ? 'طريقة تغيير أيام التدريب' : 'How to change training days'}</legend>
+                                      <label className="flex gap-2 items-start">
+                                        <input type="radio" name="schedule-change-mode" value="future_only" checked={scheduleChangeMode === 'future_only'} onChange={() => setScheduleChangeMode('future_only')} />
+                                        <span>{language === 'ar' ? 'تغيير من اليوم — لا أعيد تصنيف الحضور السابق' : 'Change from today — keep past attendance classification'}</span>
+                                      </label>
+                                      <label className="flex gap-2 items-start">
+                                        <input type="radio" name="schedule-change-mode" value="retrospective_correction" checked={scheduleChangeMode === 'retrospective_correction'} onChange={() => setScheduleChangeMode('retrospective_correction')} />
+                                        <span>{language === 'ar' ? 'تصحيح موعد سابق كان مسجلاً بالخطأ — راجع خصوماته' : 'Correct a previously incorrect schedule — review past deductions'}</span>
+                                      </label>
+                                      {scheduleChangeMode === 'retrospective_correction' && (
+                                        <Input
+                                          value={scheduleChangeReason}
+                                          onChange={e => setScheduleChangeReason(e.target.value)}
+                                          placeholder={language === 'ar' ? 'سبب تصحيح الموعد السابق (مطلوب)' : 'Reason for correcting the previous schedule (required)'}
+                                          aria-label={language === 'ar' ? 'سبب تصحيح الموعد' : 'Correction reason'}
+                                        />
+                                      )}
+                                      <p className="text-xs text-amber-800">{language === 'ar'
+                                        ? 'يُراجع الخصم القديم حتى إذا لم تتغير الأيام الحالية. ستظهر معاينة لتاريخ الانتهاء والحصص قبل الحفظ؛ الغياب لا يمنح تمديداً تلقائياً.'
+                                        : 'Old deductions can be reviewed even if weekdays are unchanged. Preview expiry and sessions before saving; missed sessions are not automatically extended.'}</p>
+                                    </fieldset>
+                                  )}
+                                  <label className="flex items-center gap-2 text-xs">
+                                    <input type="checkbox" checked={editNotifyWhatsapp} onChange={e => setEditNotifyWhatsapp(e.target.checked)} />
+                                    {language === 'ar' ? 'إرسال إشعار واتساب بتغيير الموعد' : 'Send WhatsApp schedule notification'}
+                                  </label>
                                   <div className="flex gap-2 justify-end pt-1">
-                                    <Button size="sm" variant="outline" onClick={() => { setEditingActivityId(null); setEditActivityForm({}); }}>
+                                    <Button size="sm" variant="outline" onClick={() => { setEditingActivityId(null); setEditActivityForm({}); setScheduleChangeReview(null); }}>
                                       {language === 'ar' ? 'إلغاء' : 'Cancel'}
                                     </Button>
                                     <Button size="sm" onClick={handleSaveEditActivity} disabled={editActivitySaving} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                      {editActivitySaving ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ التعديل' : 'Save Changes')}
+                                      {editActivitySaving ? (language === 'ar' ? 'جاري المراجعة...' : 'Reviewing...') : (activityWeekdaysChanged(activity, editActivityForm) || scheduleChangeMode === 'retrospective_correction' ? (language === 'ar' ? 'مراجعة التعديل' : 'Review change') : (language === 'ar' ? 'حفظ التعديل' : 'Save Changes'))}
                                     </Button>
                                   </div>
                                 </div>
@@ -5671,6 +5788,13 @@ export const MembersPage = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <ScheduleChangeReviewDialog
+          review={scheduleChangeReview}
+          busy={editActivitySaving}
+          language={language}
+          onCancel={() => setScheduleChangeReview(null)}
+          onConfirm={confirmScheduleChange}
+        />
       </div>
     </Layout>
   );

@@ -1829,8 +1829,16 @@ async def create_registration_form(
     # Add activities to member and add member to levels
     if member_id:
         activities_to_add = []
+        current_form_member = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
         for item in form.items:
             item_dict = item.dict() if hasattr(item, 'dict') else item
+            if any(a.get("activity_id") == item_dict.get("activity_id")
+                   and a.get("source_id") == form_doc["id"]
+                   and a.get("start_date") == item_dict.get("start_date")
+                   for a in (current_form_member or {}).get("activities") or []):
+                # A form replay is not authorization to replace an operational
+                # schedule or re-extend an attendance-adjusted deadline.
+                continue
             activity_id = item_dict.get("activity_id")
             level_id = item_dict.get("level_id")
             start_date = item_dict.get("start_date", "")
@@ -1916,6 +1924,11 @@ async def create_registration_form(
             am_activities_to_add = []
             for item in am.items:
                 item_dict = item.dict() if hasattr(item, 'dict') else item
+                if any(a.get("activity_id") == item_dict.get("activity_id")
+                       and a.get("source_id") == form_doc["id"]
+                       and a.get("start_date") == item_dict.get("start_date")
+                       for a in am_member.get("activities") or []):
+                    continue
                 activity_id = item_dict.get("activity_id")
                 level_id = item_dict.get("level_id")
                 start_date = item_dict.get("start_date", "")

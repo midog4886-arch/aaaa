@@ -1,7 +1,7 @@
 """Members routes"""
 from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 import logging
 import re
 import uuid
@@ -591,8 +591,21 @@ async def update_member(member_id: str, member: MemberUpdate, current_user: dict
         raise HTTPException(status_code=400, detail="No data to update")
 
     before = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
+    if before and "activities" in update_data:
+        from utils.schedule_changes import protect_schedule_edit
+        for after in update_data["activities"]:
+            for old in before.get("activities") or []:
+                if old.get("activity_id") == after.get("activity_id"):
+                    protect_schedule_edit(old, after)
+                    if old.get("source_id") == after.get("source_id") and old.get("start_date") == after.get("start_date"):
+                        for key in ("source_period_key", "schedule_reconciliation"):
+                            if key in old:
+                                after[key] = old[key]
+    update_query = _scoped_member_query(member_id, current_user)
+    if before and "activities" in update_data:
+        update_query["activities"] = before.get("activities") or []
     result = await db.members.find_one_and_update(
-        _scoped_member_query(member_id, current_user),
+        update_query,
         {"$set": update_data},
         return_document=True
     )
@@ -1162,6 +1175,47 @@ async def reject_profile_change_request(
     }
 
 
+class ScheduleChangeRequest(BaseModel):
+    activity: MemberActivity
+    mode: Literal["future_only", "retrospective_correction"]
+    reason: str = ""
+    preview_token: Optional[str] = None
+
+
+@router.post("/{member_id}/activities/{activity_id}/schedule-change/preview")
+async def preview_schedule_change(member_id: str, activity_id: str, data: ScheduleChangeRequest,
+                                  current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "members-edit")
+    from utils.schedule_changes import build_plan
+    from utils.subscription_dates import validate_subscription_windows
+    validate_subscription_windows([data.activity])
+    member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0})
+    if not member:
+        raise HTTPException(404, detail="Member not found")
+    return (await build_plan(db, member, activity_id, data.model_dump()))["public"]
+
+
+@router.post("/{member_id}/activities/{activity_id}/schedule-change/confirm")
+async def confirm_schedule_change(member_id: str, activity_id: str, data: ScheduleChangeRequest,
+                                  current_user: dict = Depends(get_current_user),
+                                  notify_whatsapp: bool = Query(True)):
+    await require_permission(current_user, "members-edit")
+    from utils.schedule_changes import commit_plan
+    from utils.subscription_dates import validate_subscription_windows
+    validate_subscription_windows([data.activity])
+    member, plan = await commit_plan(db, _scoped_member_query(member_id, current_user),
+                                     activity_id, data.model_dump(), current_user)
+    invalidate_dashboard_caches()
+    try:
+        await _notify_schedule_change(
+            member_id=member_id, member_doc=member, before_act=plan["before"],
+            after_act=plan["after"], notify_whatsapp=notify_whatsapp is not False,
+        )
+    except Exception:
+        logger.exception("Schedule change notification failed after committed change")
+    return {"message": "Activity updated", **plan["public"]}
+
+
 @router.put("/{member_id}/activities/{activity_id}")
 async def update_member_activity(member_id: str, activity_id: str, activity: MemberActivity, current_user: dict = Depends(get_current_user), notify_whatsapp: bool = Query(True)):
     """Update a member's activity"""
@@ -1179,9 +1233,18 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
             if a.get("activity_id") == activity_id:
                 before_act = a
                 break
+    from utils.schedule_changes import protect_schedule_edit
+    after_activity = activity.model_dump()
+    protect_schedule_edit(before_act, after_activity)
+    if before_act and before_act.get("source_id") == after_activity.get("source_id") and before_act.get("start_date") == after_activity.get("start_date"):
+        for key in ("source_period_key", "schedule_reconciliation"):
+            if key in before_act:
+                after_activity[key] = before_act[key]
+    if before_member:
+        scoped["activities"] = before_member.get("activities") or []
     result = await db.members.update_one(
         scoped,
-        {"$set": {"activities.$": activity.model_dump()}}
+        {"$set": {"activities.$": after_activity}}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Member or activity not found")

@@ -5,6 +5,7 @@ from typing import List, Optional, Dict
 import uuid
 import asyncio
 import logging
+import copy
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -832,7 +833,8 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         member = await db.members.find_one({"id": mid})
         if not member:
             continue
-        existing_activities = member.get("activities", [])
+        original_activities = copy.deepcopy(member.get("activities", []))
+        existing_activities = copy.deepcopy(original_activities)
         existing_activity_ids = {
             act.get("activity_id") for act in existing_activities
             if act.get("activity_id")
@@ -917,6 +919,15 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
             activity_exists = False
             for idx, existing_act in enumerate(existing_activities):
                 if existing_act.get("activity_id") == item.get("activity_id"):
+                    # Re-paying/replaying this exact purchased period must not
+                    # undo an explicitly reviewed operational schedule/deadline.
+                    if existing_act.get("source_id") == invoice_id and (
+                        existing_act.get("source_period_key") == period_key
+                        or (not existing_act.get("source_period_key")
+                            and existing_act.get("start_date") == start_date)
+                    ):
+                        activity_exists = True
+                        break
                     existing_activities[idx] = {
                         "activity_id": item.get("activity_id"),
                         "activity_name": item.get("activity_name", ""),
@@ -956,15 +967,33 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
                     "source_period_key": period_key,
                 })
         
-        await db.members.update_one(
-            {"id": mid},
+        activity_write = await db.members.update_one(
+            {"id": mid, "activities": original_activities if "activities" in member else {"$exists": False}},
             {"$set": {"activities": existing_activities}}
         )
+        if activity_write.matched_count != 1:
+            # Payment was recorded earlier in this route. Do not claim complete
+            # success, silently erase a concurrent reviewed edit, or invite a
+            # second payment to repair this projection.
+            raise HTTPException(status_code=409, detail={
+                "code": "payment_recorded_subscription_conflict",
+                "payment_recorded": True,
+                "invoice_id": invoice_id,
+                "member_id": mid,
+                "message": "تم تسجيل الدفع، لكن الاشتراك تغير أثناء الحفظ ولم تتم مزامنته. لا تكرر الدفع؛ حدّث الفاتورة وراجع الاشتراك.",
+            })
         
         for item in member_items:
             # Do not move a currently placed member to a future period's level
             # before that prepaid period has started.
             if _is_deferred_prepaid(item):
+                continue
+            preserved = next((a for a in existing_activities
+                              if a.get("activity_id") == item.get("activity_id")
+                              and a.get("source_id") == invoice_id
+                              and a.get("schedule_reconciliation")), None)
+            if preserved:
+                # Its matching level period was committed with the schedule edit.
                 continue
             level_id = item.get("level_id")
             if level_id:

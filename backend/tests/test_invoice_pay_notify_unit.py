@@ -45,6 +45,7 @@ def run(coro, drain=True):
 class _Result:
     def __init__(self, modified):
         self.modified_count = modified
+        self.matched_count = modified
 
 
 class _FakeCursor:
@@ -345,3 +346,35 @@ def test_pay_arrived_expired_renewal_keeps_existing_overwrite_behavior(
     assert activity["status"] == "expired"
     assert activity["schedule"] == "arrived schedule"
     assert activity["source_id"] == "inv1"
+
+
+@pytest.mark.parametrize("initial_status", ["pending", "partial"])
+def test_payment_reports_recorded_conflict_without_erasing_concurrent_schedule(
+        db, push_calls, whatsapp_calls, monkeypatch, initial_status):
+    item = _activity_item(start_date=_date(-5), end_date=_date(22))
+    original = {**item, "source": "invoice", "source_id": "inv1"}
+    db.members.docs.append({"id": "m1", "activities": [dict(original)]})
+    db.invoices.docs.append(_invoice(member_id="m1", status=initial_status, items=[item]))
+    real_update = db.members.update_one
+    queries = []
+
+    async def concurrent_reconciliation(query, change, **kwargs):
+        queries.append(query)
+        db.members.docs[0]["activities"] = [{
+            **original, "schedule": "monday wednesday", "end_date": _date(29),
+            "schedule_reconciliation": {"paid_total": 8, "neutralized_attendance_ids": ["att1"]},
+        }]
+        return await real_update(query, change, **kwargs)
+
+    monkeypatch.setattr(db.members, "update_one", concurrent_reconciliation)
+    with pytest.raises(HTTPException) as exc:
+        run(inv_mod.pay_invoice("inv1", admin()))
+    assert exc.value.status_code == 409
+    assert exc.value.detail["code"] == "payment_recorded_subscription_conflict"
+    assert exc.value.detail["payment_recorded"] is True
+    assert db.invoices.docs[0]["status"] == "paid"
+    assert queries[0]["activities"] == [original]
+    saved = db.members.docs[0]["activities"][0]
+    assert saved["schedule"] == "monday wednesday"
+    assert saved["schedule_reconciliation"]["paid_total"] == 8
+    assert db.level_subscriptions.docs == []

@@ -104,6 +104,18 @@ def _quota(member_id="M1"):
     return asyncio.run(att.check_member_session_quota(member_id))
 
 
+def test_personal_weekday_count_change_preserves_purchased_frequency(fake_db):
+    item = {"activity_id": "A", "start_date": "2099-05-11", "end_date": "2099-06-03",
+            "schedule": "monday wednesday"}
+    invoice = {"id": "INV1", "member_id": "M1", "status": "paid", "items": [item]}
+    activity = {**item, "schedule": "monday tuesday wednesday", "source": "invoice",
+                "source_id": "INV1", "source_period_key": source_key(invoice, item, 0)}
+    fake_db(member={"id": "M1", "activities": [activity]}, invoices=[invoice], attendance=[])
+    quota = _quota()[0]
+    assert quota["days_per_week"] == 3  # current availability
+    assert quota["total_allowed"] == 8  # two purchased days/week, never twelve
+
+
 # ---------------------------------------------------------------------------
 # Regression: extended deadline must not inflate the paid total
 # ---------------------------------------------------------------------------

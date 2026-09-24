@@ -22,6 +22,25 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
+// A payment can be committed before a concurrent subscription edit prevents
+// its projection from syncing. Existing payment callers display detail as a
+// string; normalize ONLY this code so none can render an object or advise
+// another payment. Keep the structured evidence available for recovery UI.
+axios.interceptors.response.use(undefined, (error) => {
+  const detail = error?.response?.data?.detail;
+  if (detail?.code === 'payment_recorded_subscription_conflict' && detail.payment_recorded === true) {
+    error.paymentRecordedSubscriptionConflict = detail;
+    error.response.data = {
+      ...error.response.data,
+      detail: typeof detail.message === 'string' && detail.message.trim()
+        ? detail.message
+        : 'تم تسجيل الدفع، لكن تعذرت مزامنة الاشتراك. لا تكرر الدفع؛ حدّث الفاتورة وراجع الاشتراك.',
+      structured_detail: detail,
+    };
+  }
+  return Promise.reject(error);
+});
+
 // Auth API
 export const authAPI = {
   login: (username, password) => axios.post(`${API}/auth/login`, { username, password }),
@@ -148,6 +167,12 @@ export const membersAPI = {
   updateActivity: (memberId, activityId, activity, options = {}) => axios.put(`${API}/members/${memberId}/activities/${activityId}`, activity, {
     params: options.notifyWhatsapp === false ? { notify_whatsapp: false } : {},
   }),
+  previewActivityScheduleChange: (memberId, activityId, data) =>
+    axios.post(`${API}/members/${memberId}/activities/${activityId}/schedule-change/preview`, data),
+  confirmActivityScheduleChange: (memberId, activityId, data, options = {}) =>
+    axios.post(`${API}/members/${memberId}/activities/${activityId}/schedule-change/confirm`, data, {
+      params: options.notifyWhatsapp === false ? { notify_whatsapp: false } : {},
+    }),
   setMarked: (id, marked) => axios.patch(`${API}/members/${id}/marked`, { marked }),
   transfer: (id, data) => axios.post(`${API}/members/${id}/transfer`, data),
   transferBulk: (data) => axios.post(`${API}/members/transfer-bulk`, data),

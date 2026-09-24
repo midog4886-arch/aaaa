@@ -547,7 +547,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     async def _process_subscription(item_activity_id, activity_name, start_date, end_date,
                                      schedule_text, invoice_number="", quota_end_date=None,
                                      quota_start_date=None, count_activity_ids=None,
-                                     force_expired=False):
+                                     force_expired=False, quota_schedule=None):
         """Inner helper to build one quota result from a subscription item.
 
         ``end_date`` is the (possibly extended) deadline used for display and the
@@ -583,6 +583,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
                     "quota_end_date": quota_end_date,
                     "quota_start_date": quota_start_date,
                     "count_activity_ids": count_activity_ids,
+                    "quota_schedule": quota_schedule,
                 }
             return
 
@@ -611,7 +612,8 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             total_start_dt = datetime.strptime(total_start, "%Y-%m-%d")
             total_end_dt = datetime.strptime(total_end, "%Y-%m-%d")
             total_weeks = max(1, math.ceil((total_end_dt - total_start_dt).days / 7))
-            total_allowed_sessions = total_weeks * days_per_week
+            paid_days = (parse_schedule_days(quota_schedule) if quota_schedule else []) or days
+            total_allowed_sessions = total_weeks * len(paid_days)
         except Exception:
             return
 
@@ -771,6 +773,30 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             )
             if extra_aids:
                 count_aids |= extra_aids
+        # A personal weekday edit changes availability, never the paid frequency.
+        # Resolve the original item uniquely; do not merge co-purchased activities.
+        paid_candidates = []
+        for invoice in invoices:
+            if act.get("source_id") and invoice.get("id") != act.get("source_id"):
+                continue
+            for item_index, original_item in enumerate(invoice.get("items") or []):
+                if original_item.get("is_product"):
+                    continue
+                if (original_item.get("member_id") or invoice.get("member_id")) != member_id:
+                    continue
+                if act.get("source_period_key"):
+                    matches_original = source_key(invoice, original_item, item_index) == act["source_period_key"]
+                else:
+                    matches_original = (
+                        original_item.get("activity_id") == item_activity_id
+                        and original_window(original_item) == (quota_start or act.get("start_date", ""), quota_end)
+                    )
+                if matches_original:
+                    paid_candidates.append(original_item)
+        quota_schedule = None
+        if len(paid_candidates) == 1:
+            quota_schedule = paid_candidates[0].get("schedule")
+            count_aids.add(paid_candidates[0]["activity_id"])
         await _process_subscription(
             item_activity_id,
             act.get("activity_name", ""),
@@ -781,6 +807,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
             quota_end_date=quota_end,
             quota_start_date=quota_start,
             count_activity_ids=count_aids,
+            quota_schedule=quota_schedule,
         )
 
     # ── 2. Fall back to paid/partial invoices ONLY for activities that did not
@@ -2022,6 +2049,13 @@ async def delete_attendance(
     # so removing the record pushes the end date forward by one occurrence. Stepping
     # one scheduled occurrence forward is order-independent across multiple records.
     if record.get("off_schedule") and record.get("end_shift_to"):
+        # The durable audit survives later renewal replacing the activity row.
+        # Retrospective corrections neutralize deductions, not attendance itself.
+        reconciled_shift = await db.audit_logs.find_one({
+            "action": "subscription.schedule_reconciliation",
+            "entity_id": f'{record.get("member_id")}:{record.get("activity_id")}',
+            "after.schedule_reconciliation.neutralized_attendance_ids": record.get("id"),
+        }, {"_id": 0, "id": 1})
         member_doc = await db.members.find_one(
             {"id": record.get("member_id")}, {"_id": 0, "activities": 1}
         )
@@ -2032,7 +2066,9 @@ async def delete_attendance(
                 if a.get("activity_id") == record.get("activity_id") and a.get("end_date"):
                     target = a
                     break
-            if target:
+            if target and not reconciled_shift and record.get("id") not in (
+                (target.get("schedule_reconciliation") or {}).get("neutralized_attendance_ids") or []
+            ):
                 sched = await get_member_schedule_days(
                     record.get("member_id"), record.get("activity_id")
                 )
@@ -2042,10 +2078,15 @@ async def delete_attendance(
                     # record's own recorded shift (correct for the single-record case).
                     restored = record.get("end_shift_from")
                 if restored and restored > target["end_date"]:
-                    target["end_date"] = restored
-                    await db.members.update_one(
-                        {"id": record.get("member_id")}, {"$set": {"activities": activities}}
+                    result_shift = await db.members.update_one(
+                        {"id": record.get("member_id"), "activities": activities},
+                        {"$set": {"activities.$[target].end_date": restored}},
+                        array_filters=[{"target.activity_id": target["activity_id"],
+                                        "target.end_date": target["end_date"],
+                                        "target.start_date": target.get("start_date")}],
                     )
+                    if result_shift.matched_count != 1:
+                        raise HTTPException(409, detail="تغير الاشتراك؛ أعد محاولة حذف الحضور")
 
     result = await db.attendance.delete_one({"id": record_id})
     if result.deleted_count == 0:
