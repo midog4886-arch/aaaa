@@ -2,8 +2,8 @@
 FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm install --global npm@10.9.4 \
-    && npm ci --legacy-peer-deps --no-audit --no-fund \
+RUN npm install --global npm@10.9.4 --registry=https://registry.npmjs.org --fetch-timeout=30000 --fetch-retries=1 --loglevel=verbose \
+    && npm ci --legacy-peer-deps --no-audit --no-fund --registry=https://registry.npmjs.org --fetch-timeout=30000 --fetch-retries=1 --loglevel=verbose \
     || (cat /root/.npm/_logs/*debug*; exit 1)
 COPY frontend/public ./public
 COPY frontend/src ./src
