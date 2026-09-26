@@ -75,3 +75,11 @@ mirrors the same group fallback when clearing `level_id`, else a stale link is l
 and the member never returns to the unassigned list. **Why:** the admin's explicit
 click is unambiguous intent to assign; the link must actually stick. Keep add and
 remove symmetric on the matching strategy.
+
+## Transfers are placement changes, not schedule edits
+
+Preserve the member's personal schedule and purchased period when moving between levels; changing training hours is a separate member-profile operation. Never detach the source before confirming the destination.
+
+**Why:** a failed destination request can strand an already-detached member. Replacing a whole activity from a stale browser snapshot afterward can undo its new authoritative link. Level hours also need not equal a member's booked hours.
+
+**How to apply:** move the authoritative link and membership caches atomically by member/activity identity. Keep transfer notifications off WhatsApp as explicitly requested. Read-side cache cleanup must not overwrite a membership array changed since it was read.

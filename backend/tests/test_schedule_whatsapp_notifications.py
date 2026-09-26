@@ -103,3 +103,34 @@ def test_level_transfer_keeps_internal_and_push_but_skips_whatsapp(monkeypatch):
     assert sent == []
     assert len(fake_db.member_notifications.rows) == 1
     assert len(pushed) == 1
+
+
+def test_level_transfer_cannot_send_whatsapp_when_caller_omits_flag(monkeypatch):
+    fake_db = _MemberDB()
+    monkeypatch.setattr(members_mod, "db", fake_db)
+    sent, pushed = [], []
+
+    async def fake_whatsapp(*args, **kwargs):
+        sent.append(args)
+
+    async def fake_push(*args, **kwargs):
+        pushed.append(args)
+
+    monkeypatch.setattr(whatsapp_mod, "send_schedule_update_whatsapp_notice", fake_whatsapp)
+    monkeypatch.setattr(push_mod, "send_push_to_members", fake_push)
+    before = {"level_id": "level-old", "training_time": "4:00 م"}
+    after = {"level_id": "level-new", "training_time": "5:00 م"}
+    run(members_mod._notify_schedule_change(
+        "member-1", {"id": "member-1"}, before, after,
+    ))
+    assert sent == []
+    assert len(fake_db.member_notifications.rows) == 1
+    assert len(pushed) == 1
+
+    # The same hour change, without a level move, remains an actual schedule
+    # notification and must still be delivered over WhatsApp.
+    before["level_id"] = after["level_id"]
+    run(members_mod._notify_schedule_change(
+        "member-1", {"id": "member-1"}, before, after,
+    ))
+    assert len(sent) == 1

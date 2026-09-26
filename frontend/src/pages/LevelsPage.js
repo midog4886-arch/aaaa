@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { transferLevelMember } from '../utils/transferLevelMember';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -190,7 +191,7 @@ export const LevelsPage = () => {
   // Quick transfer (نقل سريع): move a level member straight to another level
   // (e.g. a different hour) from inside the manage-members dialog — detaches
   // them from the current level, force-links the destination, and shifts the
-  // training hour on their subscription to match the new level.
+  // placement without replacing the member's paid subscription or schedule.
   const [transferPickerOpen, setTransferPickerOpen] = useState(false);
   const [transferTarget, setTransferTarget] = useState(null); // { member, activity, fromLevel }
   const [transferring, setTransferring] = useState(false);
@@ -711,7 +712,7 @@ export const LevelsPage = () => {
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       const today = new Date().toISOString().split('T')[0];
       const [levelsRes, membersRes, branchesRes, activitiesRes, attendanceRes, coachesRes] = await Promise.all([
-        levelsAPI.getAll(branchParams),
+        levelsAPI.getAll({ ...branchParams, refresh: true }),
         membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         // Fetch branches for everyone (backend scopes non-admins to their own
         // branch) so visibleWeekdays can resolve the branch's working days even
@@ -1658,20 +1659,18 @@ ${slotTables}
     }
     
     try {
-      await levelsAPI.removeMember(draggedFromLevel.id, draggedMember.id);
-      try {
-        await levelsAPI.addMember(targetLevel.id, draggedMember.id);
-      } catch (addError) {
-        await levelsAPI.addMember(draggedFromLevel.id, draggedMember.id);
-        throw addError;
+      const activity = getMemberActivityForLevel(draggedMember, draggedFromLevel);
+      if (!activity?.activity_id || activity.level_id !== draggedFromLevel.id) {
+        throw new Error(t('ارتباط الاشتراك غير واضح؛ حدّث القائمة قبل النقل', 'Refresh the list: subscription placement is ambiguous'));
       }
+      await transferLevelMember(levelsAPI, draggedMember, draggedFromLevel, targetLevel, activity);
       
       toast.success(t(`تم نقل ${draggedMember.name_ar || draggedMember.name} إلى المستوى ${targetLevel.level_number}`,
                       `Moved ${draggedMember.name_ar || draggedMember.name} to Level ${targetLevel.level_number}`));
-      loadData();
+      await loadData();
     } catch (error) {
-      toast.error(t('فشل في نقل العضو', 'Failed to move member'));
-      loadData();
+      toast.error(error.response?.data?.detail || error.message || t('فشل في نقل العضو', 'Failed to move member'));
+      await loadData();
     } finally {
       setDraggedMember(null);
       setDraggedFromLevel(null);
@@ -1878,9 +1877,6 @@ ${slotTables}
         parseActivityName(l.activity_name).mainActivity === mainActivity &&
         (l.members || []).includes(memberId)
       );
-      for (const cl of conflictingLevels) {
-        try { await levelsAPI.removeMember(cl.id, memberId); } catch (_) { /* ignore */ }
-      }
 
       // Manual placement from the dialog: force + the member's OWN matching
       // activity so the backend force-links level_id on that entry. Without
@@ -1894,11 +1890,17 @@ ${slotTables}
             matchesGroup(a.activity_name, mainActivity) ||
             parseActivityName(a.activity_name).mainActivity === mainActivity)
         : null) || (activeActs.length === 1 ? activeActs[0] : null);
-      await levelsAPI.addMember(selectedLevel.id, memberId, matchingAct ? {
+      if (matchingAct?.level_id && matchingAct.level_id !== selectedLevel.id) {
+        await transferLevelMember(levelsAPI, memberObj, { id: matchingAct.level_id }, selectedLevel, matchingAct);
+      } else if (conflictingLevels.length) {
+        throw new Error(t('ارتباط الاشتراك غير واضح؛ حدّث القائمة قبل النقل', 'Refresh the list: subscription placement is ambiguous'));
+      } else {
+        await levelsAPI.addMember(selectedLevel.id, memberId, matchingAct ? {
         force: true,
         activityId: matchingAct.activity_id,
         activityName: matchingAct.activity_name,
-      } : undefined);
+        } : undefined);
+      }
       toast.success(
         conflictingLevels.length > 0
           ? t('تمت إضافة العضو ونُقل من المستوى السابق', 'Member added and moved from previous level')
@@ -1910,7 +1912,7 @@ ${slotTables}
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       try {
         const [levelsRes, membersRes] = await Promise.all([
-          levelsAPI.getAll(branchParams),
+          levelsAPI.getAll({ ...branchParams, refresh: true }),
           membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         ]);
         setLevels(levelsRes.data);
@@ -2037,70 +2039,16 @@ ${slotTables}
 
     setTransferring(true);
     try {
-      // 1) Detach from the current level.
-      await levelsAPI.removeMember(fromLevel.id, member.id);
-      // 2) Force-link to the destination (the member's schedule may not match
-      //    the new hour yet, so force + explicit activity keep the link).
-      try {
-        await levelsAPI.addMember(targetLevel.id, member.id, {
-          force: true,
-          activityId: activity?.activity_id,
-          activityName: activity?.activity_name,
-        });
-      } catch (addErr) {
-        // Roll back to the source so the member is never left orphaned. If the
-        // rollback ALSO fails the member is now detached from both levels — say
-        // so explicitly so the admin can re-add manually instead of assuming a
-        // silent generic failure.
-        let rolledBack = false;
-        try {
-          await levelsAPI.addMember(fromLevel.id, member.id, {
-            force: true,
-            activityId: activity?.activity_id,
-            activityName: activity?.activity_name,
-          });
-          rolledBack = true;
-        } catch (_) { /* rollback failed — handled below */ }
-        if (!rolledBack) {
-          loadData();
-          toast.error(t(
-            `تعذّر النقل ولم نستطع إرجاع ${member.name_ar || member.name} لمستواه السابق — أضِفه يدويًا من فضلك`,
-            `Transfer failed and ${member.name_ar || member.name} could not be returned to the previous level — please re-add manually`
-          ));
-          setTransferring(false);
-          return;
-        }
-        throw addErr;
+      if (!activity?.activity_id || activity.level_id !== fromLevel.id) {
+        throw new Error(t('ارتباط الاشتراك غير واضح؛ حدّث القائمة قبل النقل', 'Refresh the list: subscription placement is ambiguous'));
       }
-
-      // 3) Shift the training hour on the member's subscription to the new
-      //    level's hour (full activity replace — every field must be sent back).
-      let hourShifted = false;
-      if (activity && activity.activity_id) {
-        const newHour = _hourDigits(targetLevel.time_slot || parseActivityName(targetLevel.activity_name).timeSlot);
-        if (newHour != null) {
-          const updated = {
-            ...activity,
-            level_id: targetLevel.id,
-            training_time: `${newHour}:00 م`,
-            schedule: _shiftScheduleHour(activity.schedule || '', newHour),
-            start_date: activity.start_date || '',
-            end_date: activity.end_date || '',
-          };
-          try {
-            await membersAPI.updateActivity(member.id, activity.activity_id, updated, { notifyWhatsapp: false });
-            hourShifted = true;
-          } catch (_) { /* schedule update is best-effort; the move already succeeded */ }
-        }
-      }
+      // One server transaction. Never detach first or PUT a stale full activity.
+      await transferLevelMember(levelsAPI, member, fromLevel, targetLevel, activity);
 
       const targetName = _cleanLevelName(targetLevel.custom_name) || targetLevel.activity_name || `${t('المستوى', 'Level')} ${targetLevel.level_number}`;
       toast.success(
-        hourShifted
-          ? t(`تم نقل ${member.name_ar || member.name} إلى "${targetName}" وتحديث ساعة التدريب`,
-              `Moved ${member.name_ar || member.name} to "${targetName}" and updated training time`)
-          : t(`تم نقل ${member.name_ar || member.name} إلى "${targetName}"`,
-              `Moved ${member.name_ar || member.name} to "${targetName}"`)
+        t(`تم نقل ${member.name_ar || member.name} إلى "${targetName}"`,
+          `Moved ${member.name_ar || member.name} to "${targetName}"`)
       );
 
       setTransferPickerOpen(false);
@@ -2110,7 +2058,7 @@ ${slotTables}
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
       try {
         const [levelsRes, membersRes] = await Promise.all([
-          levelsAPI.getAll(branchParams),
+          levelsAPI.getAll({ ...branchParams, refresh: true }),
           membersAPI.getAll({ ...branchParams, exclude_photo: true }),
         ]);
         setLevels(levelsRes.data);
@@ -2118,11 +2066,11 @@ ${slotTables}
         const fresh = (levelsRes.data || []).find(l => l.id === fromLevel.id);
         if (fresh) setSelectedLevel(fresh);
       } catch (_) {
-        loadData();
+        await loadData();
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('فشل في نقل العضو', 'Failed to move member'));
-      loadData();
+      toast.error(error.response?.data?.detail || error.message || t('فشل في نقل العضو', 'Failed to move member'));
+      await loadData();
     } finally {
       setTransferring(false);
     }
@@ -4438,8 +4386,8 @@ ${slotTables}
                   )}
                 </div>
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                  {t('سيتم نقل اللاعب وتحديث ساعة التدريب في اشتراكه لساعة المستوى الجديد.',
-                     "The player will be moved and the training hour in their subscription updated to the new level's hour.")}
+                  {t('سيتم نقل اللاعب فقط، دون تغيير مواعيد أو مدة اشتراكه أو إرسال واتساب. تعديل موعد التدريب يتم من ملف العضو.',
+                     "Only the level placement changes. Subscription dates and schedule remain unchanged; no WhatsApp is sent. Edit training times from the member profile.")}
                 </p>
                 <div className="max-h-72 overflow-y-auto space-y-2 -mx-1 px-1">
                   {(() => {

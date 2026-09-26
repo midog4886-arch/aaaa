@@ -8,6 +8,8 @@ from typing import Optional, List
 from datetime import date, datetime, timezone
 import re
 import uuid
+import copy
+from pymongo.errors import OperationFailure
 
 from database import db
 from utils.auth import get_allowed_branch_ids, get_current_user, require_branch_scope, resolve_branch_filter
@@ -216,7 +218,8 @@ async def get_levels(
     branch_filter: Optional[str] = None,
     activity_id: Optional[str] = None,
     activity_name: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    refresh: bool = False,
 ):
     import asyncio
     is_admin = current_user.get("is_admin", False)
@@ -226,7 +229,7 @@ async def get_levels(
 
     cache_key = f"levels:{'admin' if is_admin else 'user'}:{effective_branch or 'all'}:{activity_id or '-'}:{activity_name or '-'}"
     cached = cache_get(cache_key)
-    if cached is not None:
+    if cached is not None and not refresh:
         return cached
 
     query = {}
@@ -341,17 +344,18 @@ async def get_levels(
                 level["members_details"] = members_details
                 # Sync members array to only valid IDs (remove stale/deleted member refs)
                 if len(valid_ids) != len(level["members"]):
+                    original_ids = list(level["members"])
                     level["members"] = valid_ids
                     if level.get("id"):
-                        stale_updates.append((level["id"], valid_ids))
+                        stale_updates.append((level["id"], original_ids, valid_ids))
             else:
                 level["members_details"] = []
 
         # Fire-and-forget: clean up stale member IDs in the database
-        for level_id, valid_ids in stale_updates:
+        for level_id, original_ids, valid_ids in stale_updates:
             try:
                 await db.levels.update_one(
-                    {"id": level_id},
+                    {"id": level_id, "members": original_ids},
                     {"$set": {"members": valid_ids}}
                 )
             except Exception:
@@ -565,6 +569,91 @@ async def delete_level(level_id: str, current_user: dict = Depends(get_current_u
             )
     cache_invalidate("levels:")
     return {"message": "Level deleted"}
+
+
+class LevelTransfer(BaseModel):
+    source_level_id: str
+    activity_id: str
+
+
+@router.post("/{level_id}/members/{member_id}/transfer")
+async def transfer_level_member(
+    level_id: str, member_id: str, data: LevelTransfer,
+    current_user: dict = Depends(get_current_user),
+):
+    """Move the authoritative link and both caches together; never notify WhatsApp.
+
+    No detach/add compensation loop and no stale full-subscription PUT. A failed
+    destination write aborts the entire move, retaining the original placement.
+    """
+    active_branch = require_branch_scope(current_user)
+    if level_id == data.source_level_id:
+        raise HTTPException(400, detail="اختر مستوى آخر")
+    try:
+        async with await db.client.start_session() as session:
+            async with session.start_transaction():
+                source = await db.levels.find_one({"id": data.source_level_id}, {"_id": 0}, session=session)
+                target = await db.levels.find_one({"id": level_id}, {"_id": 0}, session=session)
+                member = await db.members.find_one({"id": member_id}, {"_id": 0}, session=session)
+                if not source or not target or not member:
+                    raise HTTPException(404, detail="العضو أو المستوى غير موجود")
+                branch = member.get("branch_id")
+                if not branch:
+                    raise HTTPException(409, detail="فرع العضو غير محدد")
+                if not current_user.get("is_admin") and branch != active_branch:
+                    raise HTTPException(403, detail="لا يمكن نقل عضو من فرع آخر")
+                if any(l.get("branch_id") not in (None, "", branch) for l in (source, target)):
+                    raise HTTPException(403, detail="لا يمكن النقل بين فروع مختلفة")
+                source_group = _activity_group_name(source.get("activity_name", ""))
+                target_group = _activity_group_name(target.get("activity_name", ""))
+                if not (
+                    (source.get("activity_id") and source.get("activity_id") == target.get("activity_id"))
+                    or (source_group and source_group == target_group)
+                    or (source.get("activity_name") and source.get("activity_name") == target.get("activity_name"))
+                ):
+                    raise HTTPException(409, detail="اختر مستوى لنفس النشاط")
+                activities = member.get("activities") or []
+                candidates = [
+                    (i, a) for i, a in enumerate(activities)
+                    if a.get("activity_id") == data.activity_id
+                    and a.get("level_id") == data.source_level_id
+                ]
+                if len(candidates) != 1:
+                    raise HTTPException(409, detail="تغير ارتباط العضو أو توجد اشتراكات مكررة؛ حدّث القائمة")
+                index, before = candidates[0]
+                updated = copy.deepcopy(activities)
+                updated[index]["level_id"] = level_id
+                result = await db.members.update_one(
+                    {"id": member_id, "activities": activities, "branch_id": branch},
+                    {"$set": {"activities": updated}}, session=session,
+                )
+                if result.matched_count != 1:
+                    raise HTTPException(409, detail="تغير اشتراك العضو؛ أعد المحاولة")
+                # Keep unrelated activities legitimately linked to the source.
+                if not any(a.get("level_id") == data.source_level_id for a in updated):
+                    result = await db.levels.update_one(
+                        source, {"$pull": {"members": member_id}}, session=session,
+                    )
+                    if result.matched_count != 1:
+                        raise HTTPException(409, detail="تغير المستوى السابق؛ أعد المحاولة")
+                result = await db.levels.update_one(
+                    target, {"$addToSet": {"members": member_id}}, session=session,
+                )
+                if result.matched_count != 1:
+                    raise HTTPException(409, detail="تغير المستوى الجديد؛ أعد المحاولة")
+                await db.audit_logs.insert_one({
+                    "id": str(uuid.uuid4()), "action": "level.transfer_member",
+                    "entity_type": "member", "entity_id": member_id,
+                    "branch_id": branch, "actor_id": current_user.get("user_id"),
+                    "before": before, "after": updated[index],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }, session=session)
+    except OperationFailure as exc:
+        if exc.has_error_label("TransientTransactionError"):
+            raise HTTPException(409, detail="تغيرت البيانات أثناء النقل؛ حدّث القائمة وأعد المحاولة") from exc
+        raise
+    cache_invalidate("levels:")
+    return {"message": "Member transferred", "member_id": member_id, "level_id": level_id}
 
 
 async def _force_link_member_activity(member_id: str, level_id: str, activity_id: str = None, activity_name: str = None) -> bool:

@@ -1308,7 +1308,9 @@ async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
                                   before_act: Optional[dict], after_act: dict,
                                   notify_whatsapp: bool = True) -> None:
     """Insert an in-app notification + send a push when a member's training
-    schedule fields (schedule / training_days / training_time) changed."""
+    schedule fields (schedule / training_days / training_time) changed.
+    A level transfer can also change the hour; never send WhatsApp for that
+    transfer, even if an older caller did not pass notify_whatsapp=False."""
     def _sig(a: Optional[dict]):
         a = a or {}
         days = a.get("training_days") or []
@@ -1364,7 +1366,9 @@ async def _notify_schedule_change(member_id: str, member_doc: Optional[dict],
             f"Previous schedule: {_activity_schedule_str(before_act) or 'Not specified'}\n"
             f"New schedule: {new_sched or 'Please contact the branch'}"
         )
-        if notify_whatsapp:
+        if notify_whatsapp and (
+            (before_act or {}).get("level_id") or ""
+        ) == (after_act.get("level_id") or ""):
             await send_schedule_update_whatsapp_notice(
                 member_doc or {"id": member_id},
                 whatsapp_message,

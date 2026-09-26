@@ -103,6 +103,10 @@ export const coachSalariesAPI = {
 
 // Levels API
 export const levelsAPI = {
+  transferMember: (levelId, memberId, sourceLevelId, activityId) =>
+    axios.post(`${API}/levels/${levelId}/members/${memberId}/transfer`, {
+      source_level_id: sourceLevelId, activity_id: activityId,
+    }),
   getAll: (params = {}) => axios.get(`${API}/levels`, { params }),
   create: (data) => axios.post(`${API}/levels`, data),
   update: (id, data) => axios.put(`${API}/levels/${id}`, data),
