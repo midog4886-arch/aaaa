@@ -1206,6 +1206,7 @@ async def confirm_schedule_change(member_id: str, activity_id: str, data: Schedu
     member, plan = await commit_plan(db, _scoped_member_query(member_id, current_user),
                                      activity_id, data.model_dump(), current_user)
     invalidate_dashboard_caches()
+    cache_invalidate("levels:")
     try:
         await _notify_schedule_change(
             member_id=member_id, member_doc=member, before_act=plan["before"],

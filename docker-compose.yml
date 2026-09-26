@@ -20,16 +20,33 @@ services:
 
   mongodb:
     image: mongo:7
+    command:
+      - bash
+      - -ec
+      - |
+        if [ ! -f /data/db/.replica-key ]; then
+          head -c 512 /dev/urandom | base64 > /data/db/.replica-key
+        fi
+        chmod 400 /data/db/.replica-key
+        chown mongodb:mongodb /data/db/.replica-key
+        exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/db/.replica-key --bind_ip_all
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-champions}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD}
     volumes:
       - mongodb_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --host 127.0.0.1
+          --username "$$MONGO_INITDB_ROOT_USERNAME" --password "$$MONGO_INITDB_ROOT_PASSWORD"
+          --authenticationDatabase admin --eval
+          "try { quit(rs.status().myState === 1 ? 0 : 1); }
+          catch (e) { if (e.code === 94) rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}); quit(1); }"
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 20
       start_period: 30s
     restart: unless-stopped
 

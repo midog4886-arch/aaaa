@@ -796,15 +796,7 @@ export const MembersPage = () => {
     }
   };
 
-  const finishEditActivity = async (oldLevelId, newLevelId) => {
-    if (oldLevelId !== newLevelId) {
-      try {
-        if (oldLevelId) await levelsAPI.removeMember(oldLevelId, selectedMember.id);
-        if (newLevelId) await levelsAPI.addMember(newLevelId, selectedMember.id);
-      } catch (lvlErr) {
-        console.warn('Level update warning:', lvlErr);
-      }
-    }
+  const finishEditActivity = async () => {
     toast.success(language === 'ar' ? 'تم تحديث النشاط' : 'Activity updated');
     const updated = await membersAPI.getById(selectedMember.id);
     setSelectedMember(updated.data);
@@ -818,7 +810,7 @@ export const MembersPage = () => {
     setEditNotifyWhatsapp(true);
   };
 
-  // Save edited activity directly (without invoice)
+  // Review the full edit; only confirmation writes the subscription.
   const handleSaveEditActivity = async () => {
     if (!selectedMember || !editingActivityId) return;
     setEditActivitySaving(true);
@@ -829,8 +821,6 @@ export const MembersPage = () => {
         toast.error(language === 'ar' ? 'لم يعد الاشتراك موجوداً؛ حدّث الملف' : 'Subscription changed; refresh the profile');
         return;
       }
-      const oldLevelId = originalActivity?.level_id || '';
-      const newLevelId = editActivityForm.level_id || '';
 
       const payload = {
         ...originalActivity,
@@ -838,13 +828,7 @@ export const MembersPage = () => {
         fee: parseFloat(editActivityForm.fee) || 0,
         schedule: editActivityForm.schedule || buildMemberSchedule(editActivityForm.training_days || [], editActivityForm.training_time || '', editActivityForm.day_times || {})
       };
-      if (activityWeekdaysChanged(originalActivity, payload) || scheduleChangeMode === 'retrospective_correction') {
-        if (originalActivity.start_date !== payload.start_date || originalActivity.end_date !== payload.end_date || oldLevelId !== newLevelId || originalActivity.activity_id !== payload.activity_id) {
-          toast.error(language === 'ar'
-            ? 'عدّل أيام التدريب وحدها أولاً. تغيير الفترة أو النشاط أو المستوى يحتاج معاملة مستقلة.'
-            : 'Change weekdays separately from the dates, activity, or level.');
-          return;
-        }
+      {
         if (scheduleChangeMode === 'retrospective_correction' && !scheduleChangeReason.trim()) {
           toast.error(language === 'ar' ? 'أدخل سبب تصحيح الموعد السابق' : 'Enter a reason for correcting the previous schedule');
           return;
@@ -862,8 +846,6 @@ export const MembersPage = () => {
         });
         return; // Preview is read-only. The separate confirmation is the only write.
       }
-      await membersAPI.updateActivity(selectedMember.id, editingActivityId, payload, { notifyWhatsapp: editNotifyWhatsapp });
-      await finishEditActivity(oldLevelId, newLevelId);
     } catch (err) {
       toast.error(scheduleChangeError(err, language));
     } finally {
@@ -884,10 +866,7 @@ export const MembersPage = () => {
       await membersAPI.confirmActivityScheduleChange(review.memberId, review.activityId, {
         ...review.request, preview_token: review.preview.preview_token,
       }, { notifyWhatsapp: review.request.notify_whatsapp });
-      await finishEditActivity(
-        (selectedMember.activities || []).find(a => a.activity_id === review.activityId)?.level_id || '',
-        review.request.activity.level_id || '',
-      );
+      await finishEditActivity();
     } catch (err) {
       setScheduleChangeReview(null);
       toast.error(err?.response?.status === 409
@@ -3688,6 +3667,7 @@ export const MembersPage = () => {
                                     <Label className="text-xs">{language === 'ar' ? 'النشاط' : 'Activity'}</Label>
                                     <select
                                       value={editActivityForm.activity_id || ''}
+                                      aria-label={language === 'ar' ? 'النشاط' : 'Activity'}
                                       onChange={e => {
                                         const act = activities.find(a => a.id === e.target.value);
                                         setEditActivityForm({
@@ -3859,11 +3839,11 @@ export const MembersPage = () => {
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
                                       <Label className="text-xs">{t('start_date')}</Label>
-                                      <Input type="date" value={editActivityForm.start_date || ''} onChange={e => setEditActivityForm({...editActivityForm, start_date: e.target.value})} className="h-9 text-sm" />
+                                      <Input type="date" aria-label={language === 'ar' ? 'تاريخ البداية' : 'Start date'} value={editActivityForm.start_date || ''} onChange={e => setEditActivityForm({...editActivityForm, start_date: e.target.value})} className="h-9 text-sm" />
                                     </div>
                                     <div className="space-y-1">
                                       <Label className="text-xs">{t('end_date')}</Label>
-                                      <Input type="date" value={editActivityForm.end_date || ''} onChange={e => setEditActivityForm({...editActivityForm, end_date: e.target.value})} className="h-9 text-sm" />
+                                      <Input type="date" aria-label={language === 'ar' ? 'تاريخ الانتهاء' : 'End date'} value={editActivityForm.end_date || ''} onChange={e => setEditActivityForm({...editActivityForm, end_date: e.target.value})} className="h-9 text-sm" />
                                     </div>
                                   </div>
                                   <div className="grid grid-cols-2 gap-3">
@@ -3935,7 +3915,7 @@ export const MembersPage = () => {
                                       {language === 'ar' ? 'إلغاء' : 'Cancel'}
                                     </Button>
                                     <Button size="sm" onClick={handleSaveEditActivity} disabled={editActivitySaving} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                      {editActivitySaving ? (language === 'ar' ? 'جاري المراجعة...' : 'Reviewing...') : (activityWeekdaysChanged(activity, editActivityForm) || scheduleChangeMode === 'retrospective_correction' ? (language === 'ar' ? 'مراجعة التعديل' : 'Review change') : (language === 'ar' ? 'حفظ التعديل' : 'Save Changes'))}
+                                      {editActivitySaving ? (language === 'ar' ? 'جاري المراجعة...' : 'Reviewing...') : (language === 'ar' ? 'مراجعة التعديل' : 'Review change')}
                                     </Button>
                                   </div>
                                 </div>

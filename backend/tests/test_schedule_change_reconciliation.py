@@ -127,6 +127,7 @@ def fixture():
     db.closures = Collection([{"id": "c", "branch_id": "b", "start_date": "2026-09-23",
                               "end_date": "2026-09-23", "applied": True}])
     db.member_freezes = Collection()
+    db.levels = Collection([{"id": "l", "activity_id": "a", "members": ["m"], "branch_id": "b"}])
     db.level_subscriptions = Collection([{"id": "ls", "member_id": "m", "level_id": "l", "end_date": "2026-10-07"}])
     db.subscription_effective_periods = Collection([{
         "source_key": key, "effective_start_date": "2026-09-09", "effective_end_date": "2026-09-30",
@@ -138,6 +139,127 @@ def fixture():
 
 def run_plan(db, member, payload):
     return asyncio.run(build_plan(db, member, "a", payload, today=date(2026, 9, 24)))
+
+
+def combined_fixture():
+    db, member, payload = fixture()
+    db.activities = Collection([{"id": "a2", "name": "Swimming", "branch_id": "b"}])
+    db.levels = Collection([
+        {"id": "l", "activity_id": "a", "members": ["m"], "branch_id": "b"},
+        {"id": "l2", "activity_id": "a2", "members": [], "branch_id": "b", "capacity": 2},
+    ])
+    payload["mode"] = "future_only"
+    payload["activity"].update(activity_id="a2", level_id="l2", start_date="2026-09-15",
+                               end_date="2026-10-15", schedule="thursday", training_days=["thursday"], fee=350)
+    return db, member, payload
+
+
+def test_combined_review_is_read_only_and_preserves_manual_dates_and_paid_balance():
+    db, member, payload = combined_fixture()
+    plan = run_plan(db, member, payload)
+    assert plan["public"]["after"]["activity_id"] == "a2"
+    assert plan["public"]["after"]["level_id"] == "l2"
+    assert plan["public"]["after"]["start_date"] == "2026-09-15"
+    assert plan["public"]["new_end_date"] == "2026-10-15"
+    assert plan["public"]["used_sessions"] == 4  # includes attendance before the edited start
+    assert plan["public"]["total_allowed"] == 8
+    assert plan["after"]["source_period_key"] == member["activities"][0]["source_period_key"]
+    assert all(c.writes == 0 for c in vars(db).values() if isinstance(c, Collection))
+
+
+def test_combined_confirm_updates_activity_dates_and_level_atomically(monkeypatch):
+    import utils.schedule_changes as service
+    real_build = service.build_plan
+
+    async def fixed_build(*args, **kwargs):
+        kwargs["today"] = date(2026, 9, 24)
+        return await real_build(*args, **kwargs)
+
+    monkeypatch.setattr(service, "build_plan", fixed_build)
+    db, member, payload = combined_fixture()
+    invoices, attendance = copy.deepcopy(db.invoices.rows), copy.deepcopy(db.attendance.rows)
+    payload["preview_token"] = run_plan(db, member, payload)["public"]["preview_token"]
+    asyncio.run(commit_plan(db, {"id": "m"}, "a", payload, {"user_id": "staff"}))
+    after = db.members.rows[0]["activities"][0]
+    assert (after["activity_id"], after["level_id"], after["fee"]) == ("a2", "l2", 350)
+    assert db.levels.rows[0]["members"] == []
+    assert db.levels.rows[1]["members"] == ["m"]
+    assert db.level_subscriptions.rows[0]["level_id"] == "l2"
+    assert db.level_subscriptions.rows[0]["start_date"] == "2026-09-15"
+    assert db.subscription_effective_periods.rows[0]["effective_end_date"] == "2026-10-15"
+    assert db.invoices.rows == invoices
+    assert db.attendance.rows == attendance
+    assert len(db.audit_logs.rows) == 1
+
+
+def test_combined_failed_audit_rolls_back_all_writes(monkeypatch):
+    import utils.schedule_changes as service
+    real_build = service.build_plan
+
+    async def fixed_build(*args, **kwargs):
+        kwargs["today"] = date(2026, 9, 24)
+        return await real_build(*args, **kwargs)
+
+    async def fail_audit(*args, **kwargs):
+        raise RuntimeError("audit unavailable")
+
+    monkeypatch.setattr(service, "build_plan", fixed_build)
+    db, member, payload = combined_fixture()
+    before = {k: copy.deepcopy(v.rows) for k, v in vars(db).items() if isinstance(v, Collection)}
+    payload["preview_token"] = run_plan(db, member, payload)["public"]["preview_token"]
+    monkeypatch.setattr(db.audit_logs, "insert_one", fail_audit)
+    with pytest.raises(RuntimeError):
+        asyncio.run(commit_plan(db, {"id": "m"}, "a", payload, {}))
+    assert before == {k: v.rows for k, v in vars(db).items() if isinstance(v, Collection)}
+
+
+def test_combined_manual_subscription_can_be_reviewed_without_an_invoice():
+    db, member, payload = combined_fixture()
+    db.invoices.rows = []
+    for activity in (member["activities"][0], payload["activity"]):
+        activity.update(source="manual", source_id="")
+        activity.pop("source_period_key", None)
+    result = run_plan(db, member, payload)
+    assert result["invoice"] is None
+    assert result["public"]["total_allowed"] is None
+    assert result["after"]["end_date"] == "2026-10-15"
+    assert all(c.writes == 0 for c in vars(db).values() if isinstance(c, Collection))
+
+
+def test_combined_target_level_change_invalidates_confirmation(monkeypatch):
+    import utils.schedule_changes as service
+    real_build = service.build_plan
+
+    async def fixed_build(*args, **kwargs):
+        kwargs["today"] = date(2026, 9, 24)
+        return await real_build(*args, **kwargs)
+
+    monkeypatch.setattr(service, "build_plan", fixed_build)
+    db, member, payload = combined_fixture()
+    payload["preview_token"] = run_plan(db, member, payload)["public"]["preview_token"]
+    db.levels.rows[1]["members"].append("other-member")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(commit_plan(db, {"id": "m"}, "a", payload, {}))
+    assert exc.value.status_code == 409
+    assert all(c.writes == 0 for c in vars(db).values() if isinstance(c, Collection))
+
+
+@pytest.mark.parametrize("damage", ["foreign_branch", "full_level", "duplicate_activity", "source_change", "invalid_dates"])
+def test_combined_validation_blocks_without_writes(damage):
+    db, member, payload = combined_fixture()
+    if damage == "foreign_branch":
+        db.levels.rows[1]["branch_id"] = "other"
+    elif damage == "full_level":
+        db.levels.rows[1]["members"] = ["x", "y"]
+    elif damage == "duplicate_activity":
+        member["activities"].append({"activity_id": "a2"})
+    elif damage == "source_change":
+        payload["activity"]["source_id"] = "other"
+    else:
+        payload["activity"]["start_date"] = "bad"
+    with pytest.raises(HTTPException):
+        run_plan(db, member, payload)
+    assert all(c.writes == 0 for c in vars(db).values() if isinstance(c, Collection))
 
 
 def test_original_case_restores_only_proven_deductions_without_mutations():

@@ -35,6 +35,11 @@ All three data directories use named volumes. This creates a new empty database;
 existing production data must be migrated separately. Keep the database password
 stable after initialization because changing it does not update MongoDB users.
 
+MongoDB runs as a single-node replica set (`rs0`) to support atomic reviewed
+subscription edits. Its internal authentication key is persisted in the existing
+MongoDB data volume. The health check initializes the replica set once and waits
+for a writable primary; the database remains private to the Compose network.
+
 Check `/health`, `/api/health`, and the login page after deployment. The first
 endpoint checks liveness; the second checks database availability.
 

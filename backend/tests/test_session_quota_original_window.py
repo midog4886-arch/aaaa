@@ -116,6 +116,22 @@ def test_personal_weekday_count_change_preserves_purchased_frequency(fake_db):
     assert quota["total_allowed"] == 8  # two purchased days/week, never twelve
 
 
+def test_combined_edit_keeps_old_attendance_and_does_not_revive_invoiced_activity(fake_db):
+    item = {"activity_id": "A", "start_date": "2099-05-04", "end_date": "2099-05-27", "schedule": SCHEDULE}
+    invoice = {"id": "INV1", "member_id": "M1", "status": "paid", "items": [item]}
+    activity = {**item, "activity_id": "C", "start_date": "2099-05-18", "end_date": "2099-06-22",
+                "source": "invoice", "source_id": "INV1", "source_period_key": source_key(invoice, item, 0),
+                "schedule_reconciliation": {"activity_ids": ["A", "B", "C"]}}
+    records = [{"member_id": "M1", "activity_id": aid, "date": day}
+               for aid, day in [("A", "2099-05-05"), ("B", "2099-05-12"), ("C", "2099-05-19")]]
+    fake_db(member={"id": "M1", "activities": [activity]}, invoices=[invoice], attendance=records)
+    quotas = _quota()
+    assert len(quotas) == 1
+    assert quotas[0]["activity_id"] == "C"
+    assert quotas[0]["total_allowed"] == 8
+    assert quotas[0]["used_sessions"] == 3
+
+
 # ---------------------------------------------------------------------------
 # Regression: extended deadline must not inflate the paid total
 # ---------------------------------------------------------------------------

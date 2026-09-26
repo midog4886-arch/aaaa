@@ -128,6 +128,8 @@ webpackConfig.jest = {
         "<rootDir>/node_modules/@radix-ui/primitive/dist/internal/is-development.true.js",
       "^react-router/dom$":
         "<rootDir>/node_modules/react-router/dist/development/dom-export.js",
+      "^react-router-dom$":
+        "<rootDir>/node_modules/react-router-dom/dist/index.js",
       "^react-router$":
         "<rootDir>/node_modules/react-router/dist/development/index.js",
       ...(jestConfig.moduleNameMapper || {}),

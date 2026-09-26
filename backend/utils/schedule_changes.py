@@ -103,11 +103,13 @@ async def build_plan(db, member, activity_id, payload, today=None, session=None)
         structured = set(parse_schedule_days(" ".join(new["training_days"])))
         if structured != weekdays(new):
             conflict("أيام التدريب لا تطابق نص الموعد؛ صحّح الموعد قبل المعاينة")
-    for key in ("activity_id", "start_date", "source", "source_id", "level_id"):
+    for key in ("source", "source_id"):
         if (new.get(key) or "") != (old.get(key) or ""):
-            conflict("تغيير مصدر الاشتراك أو بدايته أو المستوى يتطلب إجراءً منفصلًا")
-    if new.get("end_date") != old.get("end_date"):
-        conflict("اترك تاريخ الانتهاء الحالي؛ المعاينة تحسب التاريخ الجديد")
+            conflict("لا يمكن تغيير مصدر الفاتورة عند تعديل الاشتراك")
+    dimensions_changed = any((new.get(k) or "") != (old.get(k) or "")
+                             for k in ("activity_id", "start_date", "end_date", "level_id"))
+    if dimensions_changed or old.get("source") != "invoice" or not old.get("source_id"):
+        return await build_combined_plan(db, member, index, old, payload, today, session)
     invoice = await db.invoices.find_one({"id": old.get("source_id"), "status": {"$in": ["paid", "partial"]}}, {"_id": 0}, **kw)
     candidates = []
     for n, item in enumerate((invoice or {}).get("items") or []):
@@ -124,10 +126,10 @@ async def build_plan(db, member, activity_id, payload, today=None, session=None)
         conflict("مصدر الحصص المدفوعة غير محدد بشكل فريد؛ يلزم مراجعة الفاتورة")
     key, item = candidates[0]
     effective = await db.subscription_effective_periods.find_one({"source_key": key}, {"_id": 0}, **kw)
-    aids = list({activity_id, item["activity_id"]})
+    aids = sorted({activity_id, item["activity_id"]} | set((old.get("schedule_reconciliation") or {}).get("activity_ids") or []))
     attendance = await db.attendance.find({
         "member_id": member["id"], "activity_id": {"$in": aids},
-        "date": {"$gte": old["start_date"][:10]},
+        "date": {"$gte": original_window(item)[0]},
     }, {"_id": 0}, **kw).to_list(None)
     if any(r["date"][:10] > today.isoformat() for r in attendance):
         conflict("يوجد حضور مؤرخ في المستقبل؛ يلزم مراجعته أولًا")
@@ -238,6 +240,7 @@ async def build_plan(db, member, activity_id, payload, today=None, session=None)
         "reason": payload.get("reason") or "",
     }
     public = {
+        "before": old, "after": after,
         "old_end_date": old["end_date"], "new_end_date": end,
         "old_schedule": old.get("schedule"), "new_schedule": new.get("schedule"),
         "total_allowed": total, "used_sessions": used, "remaining": max(0, total - used),
@@ -252,6 +255,138 @@ async def build_plan(db, member, activity_id, payload, today=None, session=None)
     public["preview_token"] = hashlib.sha256(json.dumps(evidence, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
     return dict(public=public, index=index, before=old, after=after, effective=effective,
                 key=key, item=item, invoice=invoice, levels=levels)
+
+
+async def build_combined_plan(db, member, index, old, payload, today, session=None):
+    """Review one explicit subscription edit without rewriting its purchase/history."""
+    from routes.attendance import parse_schedule_days
+    from utils.subscription_dates import validate_subscription_windows
+    kw = {"session": session} if session is not None else {}
+    new = {**old, **payload["activity"]}
+    validate_subscription_windows([new])
+    try:
+        start, end = date.fromisoformat(new["start_date"][:10]), date.fromisoformat(new["end_date"][:10])
+    except (ValueError, TypeError, KeyError):
+        raise HTTPException(422, detail="حدد تاريخ بداية وانتهاء صحيحين")
+    if (end - start).days > 730:
+        conflict("مدة الاشتراك أطول من نطاق المعاينة الآمن")
+    if any(i != index and a.get("activity_id") == new["activity_id"]
+           for i, a in enumerate(member.get("activities") or [])):
+        conflict("العضو لديه اشتراك بهذا النشاط؛ اختر نشاطًا آخر أو راجع الاشتراك الموجود")
+    target_activity = None
+    if new["activity_id"] != old["activity_id"]:
+        target_activity = await db.activities.find_one({"id": new["activity_id"]}, {"_id": 0}, **kw)
+        if not target_activity or target_activity.get("branch_id") not in (None, "", member.get("branch_id")):
+            conflict("النشاط الجديد غير متاح في فرع العضو")
+        if target_activity.get("branch_ids") and member.get("branch_id") not in target_activity["branch_ids"]:
+            conflict("النشاط الجديد غير متاح في فرع العضو")
+        new["activity_name"] = target_activity.get("name_ar") or target_activity.get("name") or new.get("activity_name")
+
+    level_docs = []
+    target_level = None
+    for lid in sorted({v for v in (old.get("level_id"), new.get("level_id")) if v}):
+        level = await db.levels.find_one({"id": lid}, {"_id": 0}, **kw)
+        if level:
+            level_docs.append(level)
+        if lid == new.get("level_id"):
+            target_level = level
+    if new.get("level_id"):
+        if not target_level or target_level.get("branch_id") not in (None, "", member.get("branch_id")):
+            conflict("المستوى الجديد غير متاح في فرع العضو")
+        if target_level.get("activity_id") and target_level["activity_id"] != new["activity_id"]:
+            from routes.levels import _activity_group_name
+            group = _activity_group_name(new.get("activity_name"))
+            if not group or group != _activity_group_name(target_level.get("activity_name")):
+                conflict("المستوى المختار لا يطابق النشاط الجديد")
+        capacity = target_level.get("capacity")
+        if capacity and member["id"] not in (target_level.get("members") or []) and len(target_level.get("members") or []) >= capacity:
+            conflict("المستوى المختار ممتلئ")
+
+    invoice, item, key, effective = None, None, None, None
+    if old.get("source") == "invoice" and old.get("source_id"):
+        invoice = await db.invoices.find_one({"id": old["source_id"], "status": {"$in": ["paid", "partial"]}}, {"_id": 0}, **kw)
+        candidates = []
+        for n, candidate in enumerate((invoice or {}).get("items") or []):
+            if candidate.get("is_product") or (candidate.get("member_id") or invoice.get("member_id")) != member["id"]:
+                continue
+            candidate_key = source_key(invoice, candidate, n)
+            if (candidate_key == old["source_period_key"] if old.get("source_period_key") else candidate.get("activity_id") == old["activity_id"]):
+                candidates.append((candidate_key, candidate))
+        if len(candidates) != 1:
+            conflict("مصدر الاشتراك غير محدد بشكل فريد؛ يلزم مراجعة الفاتورة")
+        key, item = candidates[0]
+        effective = await db.subscription_effective_periods.find_one({"source_key": key}, {"_id": 0}, **kw)
+        new["source_period_key"] = key
+
+    history_ids = set((old.get("schedule_reconciliation") or {}).get("activity_ids") or [])
+    history_ids.update(v for v in (old["activity_id"], new["activity_id"], (item or {}).get("activity_id")) if v)
+    original_start, original_end = original_window(item or old)
+    attendance = await db.attendance.find({"member_id": member["id"], "activity_id": {"$in": sorted(history_ids)},
+                                         "date": {"$gte": original_start}}, {"_id": 0}, **kw).to_list(None)
+    if any(r["date"][:10] > today.isoformat() for r in attendance):
+        conflict("يوجد حضور مؤرخ في المستقبل؛ يلزم مراجعته أولًا")
+    closures = await db.closures.find({"end_date": {"$gte": today.isoformat()}}, {"_id": 0}, **kw).to_list(None)
+    freezes = await db.member_freezes.find({"member_id": member["id"], "status": "active"}, {"_id": 0}, **kw).to_list(None)
+    days = weekdays(new)
+    if not days:
+        conflict("حدد أيام التدريب قبل مراجعة التعديل")
+    lower = max(today, start)
+    attended_dates = {r["date"][:10] for r in attendance}
+    dates = []
+    for offset in range(max(0, (end - lower).days + 1)):
+        d = lower + timedelta(days=offset)
+        s = d.isoformat()
+        if (d.strftime("%A").lower() in days and s not in attended_dates
+                and not training_day_closed([c for c in closures if c.get("start_date", "") <= s <= c.get("end_date", "")], member.get("branch_id"), new["activity_id"])
+                and not any(f.get("start_date", "") <= s <= f.get("end_date", "") for f in freezes)):
+            dates.append(s)
+    total = None
+    if item:
+        span = (date.fromisoformat(original_end) - date.fromisoformat(original_start)).days
+        total = max(1, math.ceil(span / 7)) * len(parse_schedule_days(item.get("schedule") or ""))
+    remaining = max(0, total - len(attendance)) if total is not None else None
+    warnings = ["سيُحفظ تاريخ البداية والانتهاء المختاران كما هما. الفاتورة والحضور السابق لا يتغيران، ولا تُضاف حصص مدفوعة بسبب تمديد الفترة."]
+    if remaining is not None and len(dates) > remaining:
+        warnings.append("المواعيد المتاحة في الفترة الجديدة أكثر من الحصص المدفوعة المتبقية؛ الحفظ لا يزيد رصيد الحصص.")
+    if payload["mode"] == "retrospective_correction":
+        if not (payload.get("reason") or "").strip():
+            raise HTTPException(422, detail="سبب تصحيح الموعد السابق مطلوب")
+        if item:
+            base_activity = {**payload["activity"], **{k: old.get(k) for k in ("activity_id", "start_date", "end_date", "level_id")}}
+            base = await build_plan(db, member, old["activity_id"], {**payload, "activity": base_activity}, today=today, session=session)
+            new["schedule_reconciliation"] = base["after"]["schedule_reconciliation"]
+            warnings.append("تمت مراجعة خصومات الموعد السابق؛ تاريخ الانتهاء اليدوي المختار هو المعتمد.")
+        else:
+            conflict("تصحيح خصومات الحضور يحتاج مصدر اشتراك مدفوع")
+    new["schedule_reconciliation"] = {**(new.get("schedule_reconciliation") or {}), "activity_ids": sorted(history_ids),
+                                      "mode": payload["mode"], "effective_date": today.isoformat(), "reason": payload.get("reason") or ""}
+    purchases = await db.invoices.find({"status": {"$in": ["paid", "partial"]},
+                                        "$or": [{"member_id": member["id"]}, {"items.member_id": member["id"]}]}, {"_id": 0}, **kw).to_list(None)
+    periods = await effective_period_map(db, purchases, session=session)
+    for purchase in purchases:
+        for n, other in enumerate(purchase.get("items") or []):
+            if other.get("is_product") or other.get("activity_id") not in history_ids or (other.get("member_id") or purchase.get("member_id")) != member["id"]:
+                continue
+            if source_key(purchase, other, n) == key:
+                continue
+            other_start, other_end = operational_window(purchase, other, n, periods)
+            if other_start and other_end and other_start <= new["end_date"][:10] and other_end >= new["start_date"][:10]:
+                conflict("التعديل يتداخل مع اشتراك مدفوع آخر؛ راجع الفترة المختارة")
+    level_rows = await db.level_subscriptions.find({"member_id": member["id"], "level_id": old.get("level_id")}, {"_id": 0}, **kw).to_list(None) if old.get("level_id") else []
+    level_rows = [r for r in level_rows if (str(r.get("start_date") or "")[:10] == old["start_date"][:10]
+                                           or (not r.get("start_date") and r.get("end_date", "") >= old["start_date"][:10]))]
+    if len(level_rows) > 1:
+        conflict("ارتباط المستوى مكرر؛ يلزم مراجعة الاشتراك")
+    public = {"before": old, "after": new, "old_schedule": old.get("schedule"), "new_schedule": new.get("schedule"),
+              "old_end_date": old["end_date"], "new_end_date": new["end_date"], "total_allowed": total,
+              "used_sessions": len(attendance), "remaining": remaining, "future_dates": dates, "warnings": warnings,
+              "old_level_name": next((l.get("custom_name") or l.get("activity_name") for l in level_docs if l["id"] == old.get("level_id")), ""),
+              "new_level_name": (target_level or {}).get("custom_name") or (target_level or {}).get("activity_name") or ""}
+    evidence = [member, invoice, effective, attendance, closures, freezes, level_rows, level_docs, target_activity,
+                purchases, periods, {k: v for k, v in payload.items() if k != "preview_token"}, today.isoformat()]
+    public["preview_token"] = hashlib.sha256(json.dumps(evidence, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
+    return dict(public=public, index=index, before=old, after=new, effective=effective, key=key, item=item,
+                invoice=invoice, levels=level_rows, level_docs=level_docs, combined=True)
 
 
 async def commit_plan(db, scoped, activity_id, payload, actor):
@@ -284,25 +419,46 @@ async def _commit_plan(db, scoped, activity_id, payload, actor):
             )
             if result.matched_count != 1:
                 conflict("تغير الاشتراك؛ أعد المعاينة")
-            start, end = original_window(plan["item"])
-            row = {**(plan["effective"] or {}), "source_key": plan["key"],
-                   "invoice_id": plan["invoice"]["id"], "member_id": member["id"],
-                   "activity_id": plan["item"]["activity_id"],
-                   "original_start_date": start, "original_end_date": end,
-                   "effective_start_date": plan["after"]["start_date"],
-                   "effective_end_date": plan["after"]["end_date"]}
-            if plan["effective"]:
-                res = await db.subscription_effective_periods.replace_one(plan["effective"], row, session=session)
-                if res.matched_count != 1:
-                    conflict("تغيرت فترة الاشتراك؛ أعد المعاينة")
-            else:
-                await db.subscription_effective_periods.insert_one(row, session=session)
+            if plan["item"]:
+                start, end = original_window(plan["item"])
+                row = {**(plan["effective"] or {}), "source_key": plan["key"],
+                       "invoice_id": plan["invoice"]["id"], "member_id": member["id"],
+                       "activity_id": plan["item"]["activity_id"],
+                       "effective_activity_id": plan["after"]["activity_id"],
+                       "original_start_date": start, "original_end_date": end,
+                       "effective_start_date": plan["after"]["start_date"],
+                       "effective_end_date": plan["after"]["end_date"]}
+                if plan["effective"]:
+                    res = await db.subscription_effective_periods.replace_one(plan["effective"], row, session=session)
+                    if res.matched_count != 1:
+                        conflict("تغيرت فترة الاشتراك؛ أعد المعاينة")
+                else:
+                    await db.subscription_effective_periods.insert_one(row, session=session)
             for level in plan["levels"]:
+                changes = {"end_date": plan["after"]["end_date"]}
+                if plan.get("combined"):
+                    changes.update(start_date=plan["after"]["start_date"], level_id=plan["after"].get("level_id") or "",
+                                   activity_id=plan["after"]["activity_id"])
                 res = await db.level_subscriptions.update_one(
-                    level, {"$set": {"end_date": plan["after"]["end_date"]}}, session=session,
+                    level, {"$set": changes}, session=session,
                 )
                 if res.matched_count != 1:
                     conflict("تغير اشتراك المستوى؛ أعد المعاينة")
+            if plan.get("combined"):
+                old_lid, new_lid = plan["before"].get("level_id"), plan["after"].get("level_id")
+                for level in plan["level_docs"]:
+                    ids = list(level.get("members") or [])
+                    if level["id"] == new_lid:
+                        updated_ids = list(dict.fromkeys(ids + [member["id"]]))
+                    elif level["id"] == old_lid and not any(a.get("level_id") == old_lid for a in activities):
+                        updated_ids = [mid for mid in ids if mid != member["id"]]
+                    else:
+                        continue
+                    if ids != updated_ids:
+                        res = await db.levels.update_one({"id": level["id"], "members": level.get("members", [])},
+                                                         {"$set": {"members": updated_ids}}, session=session)
+                        if res.matched_count != 1:
+                            conflict("تغيرت عضوية المستوى؛ أعد المعاينة")
             await db.audit_logs.insert_one({
                 "id": str(uuid.uuid4()), "action": "subscription.schedule_reconciliation",
                 "entity_type": "member_activity", "entity_id": f'{member["id"]}:{activity_id}',

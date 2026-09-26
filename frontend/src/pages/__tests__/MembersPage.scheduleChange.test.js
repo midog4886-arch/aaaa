@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within, act } from '@testing-library/react';
+import { render, screen, waitFor, within, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -77,6 +77,29 @@ beforeEach(() => {
   api.membersAPI.getSubscriptionAudit.mockResolvedValue({ data: [] });
   api.membersAPI.previewActivityScheduleChange.mockResolvedValue({ data: preview });
   api.membersAPI.confirmActivityScheduleChange.mockResolvedValue({ data: {} });
+  api.activitiesAPI.getAll.mockResolvedValue({ data: [
+    { id: 'swim-2', name: 'Swim 2', name_ar: 'سباحة' },
+    { id: 'swim-3', name: 'Swim 3', name_ar: 'سباحة ٣' },
+  ] });
+});
+
+test('days, dates and activity share one review and confirmation without separate level writes', async () => {
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  const view = await openEditor(user);
+  fireEvent.change(within(view).getByLabelText('Start date'), { target: { value: '2026-09-15' } });
+  fireEvent.change(within(view).getByLabelText('End date'), { target: { value: '2026-10-15' } });
+  fireEvent.change(within(view).getByRole('combobox', { name: 'Activity' }), { target: { value: 'swim-3' } });
+  await user.click(within(view).getByRole('button', { name: 'Review change' }));
+  await screen.findByTestId('schedule-review');
+  expect(api.membersAPI.previewActivityScheduleChange).toHaveBeenCalledWith('member-1', 'swim-2', expect.objectContaining({
+    activity: expect.objectContaining({ activity_id: 'swim-3', start_date: '2026-09-15', end_date: '2026-10-15', training_days: ['الإثنين', 'الأربعاء'] }),
+  }));
+  expect(api.membersAPI.confirmActivityScheduleChange).not.toHaveBeenCalled();
+  await user.click(screen.getByTestId('schedule-confirm'));
+  await waitFor(() => expect(api.membersAPI.confirmActivityScheduleChange).toHaveBeenCalledTimes(1));
+  expect(api.membersAPI.updateActivity).not.toHaveBeenCalled();
+  expect(api.levelsAPI.removeMember).not.toHaveBeenCalled();
+  expect(api.levelsAPI.addMember).not.toHaveBeenCalled();
 });
 
 test('review is read-only; cancel does not write and future-only confirmation preserves source data', async () => {
@@ -141,7 +164,7 @@ test('changing the mode while a preview is in flight discards its response', asy
 test('already-correct weekdays can explicitly review old off-day deductions without changing days', async () => {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
   const view = await openEditor(user, false);
-  expect(within(view).getByRole('button', { name: 'Save Changes' })).toBeInTheDocument();
+  expect(within(view).getByRole('button', { name: 'Review change' })).toBeInTheDocument();
   await user.click(within(view).getByTestId('correct-existing-schedule'));
   expect(within(view).getByRole('button', { name: 'Review change' })).toBeInTheDocument();
   await user.type(within(view).getByRole('textbox', { name: 'Correction reason' }), 'The days were corrected earlier');

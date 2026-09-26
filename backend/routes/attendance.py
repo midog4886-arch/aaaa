@@ -660,7 +660,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         attendance_count = await db.attendance.count_documents({
             "member_id": member_id,
             "activity_id": {"$in": count_aids},
-            "date": {"$gte": effective_start},
+            "date": {"$gte": min(effective_start, quota_start_date or effective_start)},
             "$or": [
                 {"date": {"$lte": end_date}},
                 {"off_schedule": True},
@@ -746,6 +746,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     #       for the attendance window, but the paid session total is computed
     #       from the original invoice window via quota_end_date. ───────────────
     member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    linked_source_keys = {a.get("source_period_key") for a in (member_doc or {}).get("activities", []) if a.get("source_period_key")}
     for act in (member_doc or {}).get("activities", []):
         item_activity_id = act.get("activity_id", "")
         if not item_activity_id:
@@ -793,7 +794,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
         # never-rewritten invoice + start + schedule) so a mid-subscription rename
         # does not under-count used sessions. The schedule key keeps other
         # activities that merely share a start_date apart.
-        count_aids = {item_activity_id}
+        count_aids = {item_activity_id} | set((act.get("schedule_reconciliation") or {}).get("activity_ids") or [])
         if act.get("source") == "invoice" and act.get("source_id"):
             extra_aids = aids_by_src_start_sched.get(
                 (
@@ -848,6 +849,8 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     for inv in invoices:
         for item_index, item in enumerate(inv.get("items", [])):
             if item.get("is_product"):
+                continue
+            if source_key(inv, item, item_index) in linked_source_keys:
                 continue
             item_activity_id = item.get("activity_id", "")
             if not item_activity_id:
@@ -956,7 +959,8 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
             "profile_subscription": bool(act),
             "invoice_number": inv.get("invoice_number", ""),
             "count_activity_ids": sorted({item["activity_id"]} | {
-                a["activity_id"] for a in links if a.get("activity_id")}),
+                a["activity_id"] for a in links if a.get("activity_id")} | {
+                aid for a in links for aid in (a.get("schedule_reconciliation") or {}).get("activity_ids", [])}),
             "schedule": (act or item).get("schedule", ""),
             "quota_schedule": item.get("schedule", ""),
             "read_only": not act or act.get("status", "active") not in ("active", "expired"),
@@ -1002,7 +1006,7 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
             off_day["date"] = {"$lt": next_start}
         used = await db.attendance.count_documents({
             "member_id": member_id, "activity_id": {"$in": card["count_activity_ids"]},
-            "date": {"$gte": start}, "$or": [{"date": {"$lte": end}}, off_day],
+            "date": {"$gte": min(start, card.get("original_start_date") or start)}, "$or": [{"date": {"$lte": end}}, off_day],
         })
         card.update({
             "attendance_before": next_start, "days_per_week": len(days),
