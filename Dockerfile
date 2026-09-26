@@ -16,7 +16,7 @@ RUN npm run build
 # Stage 2: Setup Backend
 FROM python:3.12-slim
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 ENV=production
 
 # Install Python dependencies
 COPY backend/requirements.txt ./
