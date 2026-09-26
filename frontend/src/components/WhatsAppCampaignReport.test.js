@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import WhatsAppCampaignReport from './WhatsAppCampaignReport';
+import WhatsAppCampaignReport, { recipientState } from './WhatsAppCampaignReport';
 
 jest.mock('../services/api', () => ({
   whatsappAPI: {
@@ -50,6 +50,26 @@ beforeEach(() => {
   });
   URL.createObjectURL = jest.fn(() => 'blob:campaign-report');
   URL.revokeObjectURL = jest.fn();
+});
+
+test.each(['accepted', 'delivered', 'read', 'failed'])(
+  'a partial attachment group stays partial with a %s receipt',
+  delivery_status => {
+    expect(recipientState({ status: 'partial', delivery_status })).toBe('partial');
+  },
+);
+
+test('partial recipients with one read attachment do not enter the read filter', async () => {
+  const user = userEvent.setup();
+  whatsappAPI.getBranchCloudJobReport.mockResolvedValue({ data: {
+    ...report,
+    recipients: [{ id: 'partial-1', name: 'Partial recipient', status: 'partial', delivery_status: 'read' }],
+  } });
+  render(<WhatsAppCampaignReport branchId="branch-1" job={{ id: 'job-1' }} open onOpenChange={jest.fn()} language="en" />);
+  const row = (await screen.findByText('Partial recipient')).closest('tr');
+  expect(within(row).getByText('Partial')).toBeInTheDocument();
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by status' }), 'read');
+  expect(screen.queryByText('Partial recipient')).not.toBeInTheDocument();
 });
 
 test('loads summary, timestamps, masked recipients, and receipt-aware states', async () => {

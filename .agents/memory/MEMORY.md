@@ -85,6 +85,7 @@
 - [Multipart list compatibility](multipart-list-compat.md) — production FastAPI rejects Optional file lists; use a plain list with an empty default and test multipart parsing.
 - [Manual inquiry boundaries](manual-inquiry-boundary.md) — ad inquiry imports do not authorize automated outreach; opening WhatsApp is not proof of contact.
 - [Invoice notice branding](invoice-notice-branding.md) — delayed receipt workers need full tenant branding; preserve clickable links and paid total in a single media message.
+- [Owner alert uncertainty](payment-owner-alert-uncertainty.md) — duplicate failure webhooks must not resend owner alerts after uncertain delivery; payment processing remains independent.
 - [WhatsApp reply-state evidence](whatsapp-reply-state.md) — unread is not unanswered; human replies need durable evidence and reversed-event ordering tests.
 - [Mongo send-response tests](mongo-send-response-tests.md) — mock insert mutation and HTTP serialization; a sent message can otherwise return 500 and leave its draft ready to resend.
 - [WhatsApp voice recording](whatsapp-voice-recording.md) — streaming WebM may have no duration; normalize bounded mono Opus and never auto-send or retry uncertain delivery.

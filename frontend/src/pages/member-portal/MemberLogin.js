@@ -151,13 +151,13 @@ const MemberLogin = () => {
   const rememberedPhone = requestedTenant
     ? getRememberedMemberPhoneForTenant(requestedTenant)
     : getRememberedMemberPhone();
-  const [phone, setPhone] = useState(rememberedPhone);
+  const [phone, setPhone] = useState(location.state?.verifiedPhone || rememberedPhone);
+  const [memberCode, setMemberCode] = useState(location.state?.verifiedMemberCode || '');
   const [loading, setLoading] = useState(false);
-  // When we already have the member's phone (from the academy picker or a
-  // previous login) we skip the splash and jump straight to an auto-login so
-  // they reach the portal without typing anything again.
-  const [showSplash, setShowSplash] = useState(!rememberedPhone);
-  const [formVisible, setFormVisible] = useState(!!rememberedPhone);
+  // A remembered phone alone cannot establish the member's academy. Never
+  // auto-login on it; the exact member code must be supplied as well.
+  const [showSplash, setShowSplash] = useState(!rememberedPhone && !location.state?.verifiedMemberCode);
+  const [formVisible, setFormVisible] = useState(!!rememberedPhone || !!location.state?.verifiedMemberCode);
   const [logo, setLogo] = useState(resolveAcademyLogo());
   const [academyName, setAcademyName] = useState(getAcademyName());
   const primary = useBrandColor();
@@ -198,10 +198,10 @@ const MemberLogin = () => {
   useEffect(() => {
     // Check if already logged in
     const token = localStorage.getItem('member_token');
-    if (token) {
+    if (token && !requestedTenant) {
       navigate('/member-dashboard');
     }
-  }, [navigate]);
+  }, [navigate, requestedTenant]);
 
   // Pull tenant branding (logo). Re-render on color changes via useBrandColor()
   // also refreshes the logo from the cached branding payload.
@@ -223,10 +223,15 @@ const MemberLogin = () => {
     setTimeout(() => setFormVisible(true), 100);
   };
 
-  const doLogin = async (phoneValue, { silent = false } = {}) => {
+  const doLogin = async (phoneValue, codeValue, { silent = false } = {}) => {
     const ph = (phoneValue || '').trim();
+    const code = (codeValue || '').trim();
     if (!ph) {
       if (!silent) toast.error('يرجى إدخال رقم الجوال');
+      return false;
+    }
+    if (!code) {
+      if (!silent) toast.error('يرجى إدخال رقم العضوية');
       return false;
     }
 
@@ -234,7 +239,8 @@ const MemberLogin = () => {
 
     try {
       const response = await axios.post(`${API_URL}/api/member-portal/login`, {
-        phone: ph
+        phone: ph,
+        member_code: code,
       }, {
         // The fixed native domain can't reveal the tenant via host, so bind
         // this request to the academy the member just confirmed.
@@ -254,9 +260,9 @@ const MemberLogin = () => {
     } catch (error) {
       // A remembered phone can become invalid (member removed / phone changed).
       // Drop it so we don't keep retrying and let the member type a new one.
-      if (error.response?.status === 404) {
+      if ([400, 401, 404].includes(error.response?.status)) {
         clearRememberedMemberPhone();
-        if (!silent) toast.error('رقم الجوال غير مسجل في النظام');
+        if (!silent) toast.error('رقم العضوية أو الجوال غير صحيح لهذه الأكاديمية');
       } else if (!silent) {
         toast.error('حدث خطأ في تسجيل الدخول');
       }
@@ -268,22 +274,20 @@ const MemberLogin = () => {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    doLogin(phone);
+    doLogin(phone, memberCode);
   };
 
-  // Auto-login when we already know the member's phone (from the academy
-  // picker or a previous session). Runs once; on failure the form stays
-  // visible so they can correct the number manually.
+  // The picker just verified both values against the selected academy.
+  // Auto-login only for that one navigation, never from a remembered phone.
   useEffect(() => {
     if (autoTriedRef.current) return;
     autoTriedRef.current = true;
     if (localStorage.getItem('member_token')) return;
-    const remembered = requestedTenant
-      ? getRememberedMemberPhoneForTenant(requestedTenant)
-      : getRememberedMemberPhone();
-    if (!remembered) return;
+    const verifiedCode = location.state?.verifiedMemberCode;
+    const verifiedPhone = location.state?.verifiedPhone;
+    if (!verifiedCode || !verifiedPhone) return;
     setFormVisible(true);
-    doLogin(remembered, { silent: true });
+    doLogin(verifiedPhone, verifiedCode, { silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -398,8 +402,22 @@ const MemberLogin = () => {
                           data-testid="member-phone-input"
                         />
                       </div>
-                      <p className="text-xs text-white/50 text-center">أدخل رقم الجوال المسجل في النظام</p>
+                      <p className="text-xs text-white/50 text-center">أدخل رقم الجوال المسجل في هذه الأكاديمية</p>
                     </motion.div>
+                    <div className="space-y-2">
+                      <label htmlFor="member-code-login" className="text-sm font-medium text-white/90">رقم العضوية</label>
+                      <Input
+                        id="member-code-login"
+                        type="text"
+                        value={memberCode}
+                        onChange={(e) => setMemberCode(e.target.value)}
+                        placeholder="مثلاً: ABTL-042"
+                        autoComplete="off"
+                        className="text-lg h-14 text-center bg-white/10 border-white/20 text-white placeholder:text-white/40 focus:bg-white/20"
+                        dir="ltr"
+                        data-testid="member-code-input"
+                      />
+                    </div>
                     
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}

@@ -266,6 +266,8 @@ def webhook_client(monkeypatch):
     fake_processed_events.create_index = AsyncMock(side_effect=fake_processed_create_index)
 
     fake_control_db = MagicMock()
+    from test_notification_failure_safety import Claims
+    fake_control_db.payment_owner_alerts = Claims()
     fake_control_db.tenants = fake_tenants
     fake_control_db.platform_settings = fake_settings
     fake_control_db.processed_payment_events = fake_processed_events
@@ -608,6 +610,10 @@ def test_webhook_releases_claim_when_processing_fails(webhook_client, monkeypatc
     error_notices = [c for c in email_calls if c["kind"] == "payment_failed"]
     assert len(error_notices) == 1
     assert "processing error" in error_notices[0]["ctx"]["reason"]
+    # Repeated provider deliveries still retry processing, not the owner email.
+    with pytest.raises(RuntimeError, match="simulated transient failure"):
+        client.post("/api/billing/webhook/stripe", content=body, headers=headers)
+    assert len([c for c in email_calls if c["kind"] == "payment_failed"]) == 1
 
     # Restore the real handler and let the provider retry succeed.
     monkeypatch.setattr(_sa, "apply_renewal", real_apply_renewal, raising=True)

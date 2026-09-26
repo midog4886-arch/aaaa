@@ -62,25 +62,24 @@ const AcademyPickerPage = () => {
 
   const confirmAcademy = (match) => {
     try {
-      const prevSlug = localStorage.getItem('tenant_slug');
       // Switching to a different academy must drop any session cached for the
       // old one, otherwise the member portal would redirect into a stale
       // (wrong-tenant) dashboard and then hit 403s on every API call.
-      if (prevSlug && prevSlug !== match.tenant_slug) {
-        localStorage.removeItem('member_token');
-        localStorage.removeItem('member_data');
-        localStorage.removeItem('member_dashboard_cache_v1');
-      }
+      // The selected member may differ even within the same academy. Never
+      // carry another member's session through a newly confirmed identity.
+      localStorage.removeItem('member_token');
+      localStorage.removeItem('member_data');
+      localStorage.removeItem('member_dashboard_cache_v1');
       localStorage.setItem('tenant_slug', match.tenant_slug);
       localStorage.setItem('academy_confirmed', '1');
       localStorage.setItem('academy_display_name', match.academy_name || '');
       if (match.academy_logo) localStorage.setItem('academy_display_logo', match.academy_logo);
-      // Carry the already-verified phone (scoped to the chosen tenant, which
-      // we just stored above) so the member portal can log in directly.
+      // Remember only the phone. The member code is passed in navigation
+      // state, never persisted in localStorage.
       setRememberedMemberPhone(phone.trim());
     } catch (e) {}
     const next = new URLSearchParams(location.search).get('next') || '/member-login';
-    navigate(next, { replace: true });
+    navigate(next, { replace: true, state: { verifiedMemberCode: memberCode.trim(), verifiedPhone: phone.trim() } });
   };
 
   return (

@@ -125,6 +125,11 @@ def db(monkeypatch):
     monkeypatch.setattr(att, "db", fdb)
     # No loyalty award wired -> attendance points path is skipped.
     monkeypatch.setattr(att, "loyalty_award_points", None)
+    # These fixtures exercise stamping/scanning, not subscription eligibility.
+    # Real rejection/valid-history cases live in test_attendance_window_and_member_identity.
+    async def eligible(*args, **kwargs):
+        return None
+    monkeypatch.setattr(att, "enforce_attendance_window", eligible)
     return fdb
 
 

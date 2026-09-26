@@ -276,6 +276,7 @@ async def create_attendance(
         raise HTTPException(status_code=400, detail="Already checked in for this activity today")
 
     # Hard cap on total allowed sessions for this subscription
+    await enforce_attendance_window(attendance.member_id, attendance.activity_id, record_date, current_user)
     await enforce_session_cap(attendance.member_id, attendance.activity_id, record_date)
 
     # Off-schedule detection: did the member attend on a day NOT in their schedule?
@@ -502,11 +503,41 @@ async def apply_off_schedule_end_shift(member_id: str, activity_id: str,
     await db.members.update_one({"id": member_id}, {"$set": {"activities": activities}})
     return (old_end, new_end)
 
+async def enforce_attendance_window(member_id: str, activity_id: str, check_date: str,
+                                    current_user=None, previous_date=None):
+    """Authorize historical dates inside the linked operational period, not stale invoice dates."""
+    try:
+        if datetime.strptime(check_date, "%Y-%m-%d").date().isoformat() != check_date:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise HTTPException(422, detail="تاريخ الحضور غير صالح")
+    member = await db.members.find_one({"id": member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(404, detail="Member not found")
+    if current_user and not current_user.get("is_admin"):
+        branch = resolve_branch_filter(current_user, None)
+        if not branch or (member.get("branch_id") != branch and not member.get("is_vip")):
+            raise HTTPException(403, detail="لا يمكن تسجيل حضور عضو من فرع آخر")
+    linked = [a for a in member.get("activities", []) if a.get("activity_id") == activity_id]
+    if linked:
+        windows = [a for a in linked if a.get("status", "active") in ("active", "expired")]
+    else:
+        windows = await check_member_session_quota(member_id, activity_id)
+    for window in windows:
+        start, end = str(window.get("start_date") or "")[:10], str(window.get("end_date") or "")[:10]
+        if start and end and start <= check_date <= end:
+            if previous_date and not start <= previous_date <= end:
+                continue
+            return
+    raise HTTPException(400, detail="تاريخ الحضور خارج فترة الاشتراك — لا يمكن التسجيل أو التعديل بعد انتهائه")
+
+
 async def enforce_session_cap(member_id: str, activity_id: str, check_date: str):
     """Raise HTTPException if recording another attendance would exceed the
     member's total allowed sessions for the active subscription that covers
     `check_date`. Uses the same calculation as check_member_session_quota so
     the total honours days_per_week × weeks (e.g. 2 days/week → 8/month)."""
+    await enforce_attendance_window(member_id, activity_id, check_date)
     quotas = await check_member_session_quota(member_id, activity_id)
     for q in quotas:
         if q.get("activity_id") != activity_id:
@@ -1829,6 +1860,7 @@ async def qr_checkin(
 
     # Hard cap on total allowed sessions for this subscription
     try:
+        await enforce_attendance_window(member["id"], target_activity_id, today, current_user)
         await enforce_session_cap(member["id"], target_activity_id, today)
     except HTTPException as cap_err:
         return {
@@ -2002,6 +2034,10 @@ async def update_attendance_date(
         if user_branch and record_branch and user_branch != record_branch:
             raise HTTPException(status_code=403, detail="Not allowed to modify attendance from another branch")
 
+    await enforce_attendance_window(
+        record["member_id"], record["activity_id"], new_date, current_user,
+        previous_date=record.get("date"),
+    )
     if new_date == record.get("date"):
         return {"message": "No change", "id": record_id, "date": new_date}
 

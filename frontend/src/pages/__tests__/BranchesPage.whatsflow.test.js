@@ -190,6 +190,30 @@ test('refreshes the selected branch and renders a genuine disconnected state', a
   expect(mockToast.success).toHaveBeenCalledWith('Provider status refreshed');
 });
 
+test('renders a verified connected Whatsflow session without WAHA lifecycle controls', async () => {
+  mockBranchesAPI.getProviderStatus.mockResolvedValue({
+    data: { check_ok: true, connected: true, status: 'open' },
+  });
+  const { user, dialog } = await openSouthBranch();
+  await user.click(within(dialog).getByRole('button', { name: 'Refresh status' }));
+  expect(await within(dialog).findByText('Connected')).toBeInTheDocument();
+  expect(within(dialog).queryByRole('button', { name: /start|stop|restart|logout/i })).not.toBeInTheDocument();
+  expect(mockBranchesAPI.getProviderStatus).toHaveBeenCalledWith('branch-b');
+});
+
+test('the production build runs both Whatsflow screen suites before compiling', () => {
+  const { scripts } = require('../../../package.json');
+  expect(scripts.build).toMatch(/^yarn test:whatsflow && /);
+  expect(scripts['test:whatsflow']).toContain('BranchesPage.whatsflow.test.js');
+  expect(scripts['test:whatsflow']).toContain('WhatsAppBulkPage.whatsflow.test.js');
+  expect(scripts['test:whatsflow']).toContain('--watchAll=false');
+  const fs = require('fs');
+  const path = require('path');
+  const postMerge = fs.readFileSync(path.resolve(__dirname, '../../../../scripts/post-merge.sh'), 'utf8');
+  expect(postMerge).toContain('yarn build)');
+  expect(postMerge).not.toMatch(/npx craco build/);
+});
+
 test('does not misreport an unknown provider check as disconnected and exposes the error', async () => {
   mockBranchesAPI.getProviderStatus.mockResolvedValue({
     data: {

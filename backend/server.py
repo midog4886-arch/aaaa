@@ -6918,6 +6918,10 @@ async def create_purchase_invoice(invoice: PurchaseInvoiceCreate, current_user: 
     supplier = await db.suppliers.find_one({"id": invoice.supplier_id}, {"_id": 0})
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+    if (not current_user.get("is_admin") and
+            (not current_user.get("branch_id") or
+             supplier.get("branch_id") not in (None, "", current_user.get("branch_id")))):
+        raise HTTPException(status_code=403, detail="Supplier belongs to another branch")
     
     # Calculate totals
     subtotal = 0
@@ -6993,6 +6997,11 @@ async def create_purchase_invoice(invoice: PurchaseInvoiceCreate, current_user: 
     purchases_account = await db.accounts.find_one({"code": "5200"}, {"_id": 0})
     input_vat_account = await db.accounts.find_one({"code": "1150"}, {"_id": 0})
     supplier_account = await db.accounts.find_one({"code": "2110"}, {"_id": 0})
+    if not purchases_account or not supplier_account or (tax_amount > 0 and not input_vat_account):
+        raise HTTPException(
+            status_code=400,
+            detail="يلزم إعداد حساب المشتريات والموردين وضريبة المدخلات قبل ترحيل الفاتورة",
+        )
     
     if purchases_account and supplier_account:
         journal_entry_id = str(uuid.uuid4())
@@ -8242,7 +8251,10 @@ async def quick_attendance(
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
     
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")
+    from routes.attendance import enforce_attendance_window, enforce_session_cap
+    await enforce_attendance_window(member["id"], activity_id, today, current_user)
+    await enforce_session_cap(member["id"], activity_id, today)
     now_time = datetime.now(timezone.utc).strftime("%H:%M")
     
     has_active_subscription = False
@@ -8427,6 +8439,9 @@ async def record_attendance(
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
     
+    from routes.attendance import enforce_attendance_window, enforce_session_cap
+    await enforce_attendance_window(record.member_id, record.activity_id, record.date, current_user)
+    await enforce_session_cap(record.member_id, record.activity_id, record.date)
     # Check if member already has attendance today (any activity)
     existing_today = await db.attendance.find_one({
         "member_id": record.member_id,
@@ -8488,6 +8503,10 @@ async def record_bulk_attendance(
     if not activity:
         raise HTTPException(status_code=404, detail="النشاط غير موجود")
     
+    # Validate the entire batch before the first write or guardian notification.
+    from routes.attendance import enforce_attendance_window
+    for rec in request.records:
+        await enforce_attendance_window(rec["member_id"], request.activity_id, request.date, current_user)
     now = datetime.now(timezone.utc).isoformat()
     current_time = datetime.now().strftime("%H:%M")
     recorded_count = 0
@@ -8598,7 +8617,10 @@ async def qr_checkin(
     if not member_activity:
         raise HTTPException(status_code=400, detail="العضو غير مسجل في هذا النشاط")
     
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")
+    from routes.attendance import enforce_attendance_window, enforce_session_cap
+    await enforce_attendance_window(member_id, activity_id, today, current_user)
+    await enforce_session_cap(member_id, activity_id, today)
     current_time = datetime.now().strftime("%H:%M")
     now = datetime.now(timezone.utc).isoformat()
     
@@ -9377,6 +9399,8 @@ async def create_internal_expense(
             )
         except Exception as exc:
             logger.error(f"create_internal_expense: admin push failed: {exc}")
+            from utils.notification_health import report_notification_failure
+            await report_notification_failure(db, source="expense_pending", branch_id=final_branch_id)
     
     return expense_data
 

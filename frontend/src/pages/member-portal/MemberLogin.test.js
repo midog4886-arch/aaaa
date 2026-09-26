@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, waitFor, cleanup } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, waitFor, cleanup, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import axios from 'axios';
 import MemberLogin from './MemberLogin';
+import AcademyPickerPage from '../AcademyPickerPage';
 
 jest.mock('axios', () => ({ post: jest.fn() }));
 
@@ -48,4 +49,62 @@ test('tenant query clears another academy session without using its cached phone
   expect(localStorage.getItem('member_data')).toBeNull();
   expect(localStorage.getItem('member_language')).toBeNull();
   expect(axios.post).not.toHaveBeenCalled();
+});
+
+test('remembered phone alone never logs in without the member code', async () => {
+  localStorage.setItem('tenant_slug', 'academy-one');
+  localStorage.setItem('member_login_phone:academy-one', '0500000000');
+  render(<MemoryRouter initialEntries={['/member-login']}><MemberLogin /></MemoryRouter>);
+  expect(screen.getByTestId('member-phone-input').value).toBe('0500000000');
+  fireEvent.click(screen.getByTestId('member-login-btn'));
+  expect(axios.post).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByTestId('member-code-input'), { target: { value: 'ACA-123' } });
+  fireEvent.click(screen.getByTestId('member-login-btn'));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
+    expect.stringContaining('/api/member-portal/login'),
+    { phone: '0500000000', member_code: 'ACA-123' },
+    { headers: { 'X-Tenant-Slug': 'academy-one' } },
+  ));
+});
+
+test('picker passes verified code and phone only for this navigation', async () => {
+  localStorage.setItem('tenant_slug', 'academy-two');
+  axios.post.mockResolvedValueOnce({
+    data: { access_token: 'test-token', member: { name_ar: 'Test', language: 'ar' } },
+  });
+  render(<MemoryRouter initialEntries={[{
+    pathname: '/member-login',
+    state: { verifiedMemberCode: 'ACA-456', verifiedPhone: '0511111111' },
+  }]}><MemberLogin /></MemoryRouter>);
+  await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
+    expect.stringContaining('/api/member-portal/login'),
+    { phone: '0511111111', member_code: 'ACA-456' },
+    { headers: { 'X-Tenant-Slug': 'academy-two' } },
+  ));
+  expect(localStorage.getItem('member_login_code:academy-two')).toBeNull();
+});
+
+test('academy picker clears another member session and carries verified identity to login', async () => {
+  localStorage.setItem('tenant_slug', 'academy-two');
+  localStorage.setItem('member_token', 'previous-member');
+  axios.post.mockResolvedValueOnce({ data: { matches: [{ tenant_slug: 'academy-two', academy_name: 'Test' }] } })
+    .mockResolvedValueOnce({ data: { access_token: 'new-member', member: { name_ar: 'New member' } } });
+  render(
+    <MemoryRouter initialEntries={['/academy-picker']}>
+      <Routes>
+        <Route path="/academy-picker" element={<AcademyPickerPage />} />
+        <Route path="/member-login" element={<MemberLogin />} />
+        <Route path="/member-dashboard" element={<div>Dashboard</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  fireEvent.change(screen.getByTestId('academy-picker-code'), { target: { value: 'ACA-789' } });
+  fireEvent.change(screen.getByTestId('academy-picker-phone'), { target: { value: '0555555555' } });
+  await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2), { timeout: 3500 });
+  expect(axios.post).toHaveBeenNthCalledWith(2,
+    expect.stringContaining('/api/member-portal/login'),
+    { phone: '0555555555', member_code: 'ACA-789' },
+    { headers: { 'X-Tenant-Slug': 'academy-two' } },
+  );
+  expect(localStorage.getItem('member_token')).toBe('new-member');
 });

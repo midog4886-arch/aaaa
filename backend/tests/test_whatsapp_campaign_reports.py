@@ -266,7 +266,8 @@ def test_campaign_success_without_provider_id_is_unknown_and_not_resent(monkeypa
     assert len(calls) == 1
 
 
-def test_report_groups_attachment_items_and_requires_receipts_for_delivery(monkeypatch):
+@pytest.mark.parametrize("receipt", ["delivered", "read"])
+def test_report_groups_attachment_items_and_requires_receipts_for_delivery(monkeypatch, receipt):
     db = DB(
         [{"id": "job-1", "branch_id": "branch-a", "created_at": datetime.now(timezone.utc)}],
         [
@@ -276,7 +277,7 @@ def test_report_groups_attachment_items_and_requires_receipts_for_delivery(monke
                 "recipient_id": "member-1", "recipient_name": "A",
                 "phone": "966500000001", "status": "sent",
                 "provider_message_id": "wamid-delivered",
-                "delivery_status": "delivered", "delivered_at": "2026-01-01T01:00:00+00:00",
+                "delivery_status": receipt, f"{receipt}_at": "2026-01-01T01:00:00+00:00",
             },
             {
                 "id": "item-2", "job_id": "job-1", "branch_id": "branch-a",
@@ -294,8 +295,10 @@ def test_report_groups_attachment_items_and_requires_receipts_for_delivery(monke
     assert report["summary"]["total"] == 1
     assert report["summary"]["partial"] == 1
     assert report["summary"]["delivered"] == 0
+    assert report["summary"]["read"] == 0
+    assert report["recipients"][0]["status"] == "partial"
     assert report["recipients"][0]["id"] == "member-1"
-    assert report["recipients"][0]["delivery_status"] == "delivered"
+    assert report["recipients"][0]["delivery_status"] == receipt
     assert report["recipients"][0]["phone"] == "966500000001"
 
 

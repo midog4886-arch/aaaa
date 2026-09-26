@@ -6166,6 +6166,15 @@ async def _load_cloud_chat_image(branch_id: str, media_id: str) -> tuple[bytes, 
     meta = await _db["whatsapp_cloud_media"].find_one(scope, {"_id": 0})
     if not meta:
         raise HTTPException(status_code=404, detail="Media not found")
+    if meta.get("archive_owner_message_id"):
+        # Archive-owned inbound media must use the same integrity checks as
+        # the archive worker. Legacy outbound objects keep their existing path.
+        try:
+            return await whatsapp_media_archive.load(
+                _db, scope["tenant_slug"], branch_id, media_id,
+            )
+        except whatsapp_media_archive.ArchiveError as exc:
+            raise HTTPException(status_code=500, detail=exc.detail) from exc
     expected_chunks = int(meta.get("chunk_count") or 0)
     cursor = _db["whatsapp_cloud_media_chunks"].find(scope).sort("index", 1)
     chunks = await cursor.to_list(length=expected_chunks + 1)

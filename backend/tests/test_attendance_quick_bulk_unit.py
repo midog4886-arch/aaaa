@@ -121,6 +121,12 @@ class _FakeDB:
 def db(monkeypatch):
     fdb = _FakeDB()
     monkeypatch.setattr(server, "db", fdb)
+    from routes import attendance
+    async def eligible(*args, **kwargs):
+        return None
+    # Eligibility is tested with actual guards in test_attendance_window_and_member_identity.
+    monkeypatch.setattr(attendance, "enforce_attendance_window", eligible)
+    monkeypatch.setattr(attendance, "enforce_session_cap", eligible)
 
     async def _noop_push(*a, **k):
         return None
@@ -341,8 +347,8 @@ def test_bulk_existing_record_updated_not_duplicated(db):
     assert len(db.attendance.docs) == 1
     assert db.attendance.docs[0]["status"] == "absent"
     assert db.attendance.docs[0]["notes"] == "مريض"
-    # branch stamp untouched by the update path
-    assert db.attendance.docs[0]["branch_id"] == "b1"
+    # Updates use the same authoritative member branch stamp as inserts.
+    assert db.attendance.docs[0]["branch_id"] == "b-member"
 
 
 def test_bulk_notifies_only_present(db):

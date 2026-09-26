@@ -6,6 +6,7 @@ authentication in the provider integration layer.
 """
 import zipfile
 import uuid
+import hashlib
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -135,6 +136,7 @@ async def store(db, tenant_slug: str, branch_id: str, storage_id: str, content: 
                                      "archive_owner_message_id": message_id})
         await meta.insert_one({**scope, "name": filename, "mime_type": mime_type,
                                "size": len(content),
+                               "sha256": hashlib.sha256(content).hexdigest(),
                                "chunk_count": (len(content) + CHUNK_SIZE - 1) // CHUNK_SIZE,
                                "archive_owner_message_id": message_id,
                                "created_at": datetime.now(timezone.utc).isoformat()})
@@ -149,11 +151,22 @@ async def load(db, tenant_slug: str, branch_id: str, storage_id: str) -> tuple[b
     meta = await db["whatsapp_cloud_media"].find_one(scope, {"_id": 0})
     if not meta:
         raise ArchiveError("unavailable", "Archived attachment is unavailable")
-    expected = int(meta.get("chunk_count") or 0)
+    try:
+        expected = int(meta.get("chunk_count") or 0)
+        size = int(meta.get("size") or 0)
+    except (TypeError, ValueError, OverflowError):
+        raise ArchiveError("unavailable", "Archived attachment metadata is invalid")
+    # Validate metadata before using it as a database read limit. An interrupted
+    # or corrupt archive must not be presented as a successful empty attachment.
+    if not (0 < size <= MAX_MEDIA_BYTES and
+            expected == (size + CHUNK_SIZE - 1) // CHUNK_SIZE):
+        raise ArchiveError("unavailable", "Archived attachment is incomplete")
     chunks = await db["whatsapp_cloud_media_chunks"].find(scope).sort("index", 1).to_list(expected + 1)
     content = b"".join(row.get("data") or b"" for row in chunks)
     if (len(chunks) != expected or any(row.get("index") != i for i, row in enumerate(chunks))
-            or len(content) != int(meta.get("size") or 0) or len(content) > MAX_MEDIA_BYTES):
+            or len(content) != size
+            or (meta.get("sha256") and
+                hashlib.sha256(content).hexdigest() != meta["sha256"])):
         raise ArchiveError("unavailable", "Archived attachment is incomplete")
     return content, str(meta.get("mime_type") or "application/octet-stream"), safe_filename(meta.get("name"))
 

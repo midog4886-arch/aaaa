@@ -27,7 +27,9 @@ if echo "$CHANGED" | grep -qE "^frontend/(src|public|package\.json|craco\.config
     echo "node_modules missing, installing JS deps..."
     (cd frontend && npm install --legacy-peer-deps --no-audit --no-fund)
   fi
-  (cd frontend && GENERATE_SOURCEMAP=false NODE_OPTIONS="--max-old-space-size=6144" CI=false npx craco build)
+  # Use the same pre-publication Whatsflow screen gate as deployment builds;
+  # invoking craco directly bypasses those regressions.
+  (cd frontend && GENERATE_SOURCEMAP=false NODE_OPTIONS="--max-old-space-size=6144" CI=false yarn build)
   rm -rf backend/static
   cp -r frontend/build backend/static
   echo "Frontend rebuilt and copied."

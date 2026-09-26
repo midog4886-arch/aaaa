@@ -11,6 +11,8 @@ Phase 2: when a payment provider (Stripe / Moyasar / Tap) is connected via
 JWT.
 """
 import logging
+import hashlib
+import json
 import os
 import secrets
 import uuid
@@ -113,6 +115,8 @@ async def _notify_owner_webhook_failure(
     reason: str,
     amount: Optional[float] = None,
     currency: str = "SAR",
+    provider: str = "",
+    event_key: str = "",
 ) -> dict:
     """Email the academy owner (``payment_failed`` template) when a webhook
     event for their academy fails to process (status ``error`` /
@@ -131,7 +135,25 @@ async def _notify_owner_webhook_failure(
             or (tenant.get("owner_email") or "").strip()
         if not recipient:
             return {"status": "skipped", "error": "no owner_email"}
-        return await send_email(
+        if not event_key or not tenant.get("id"):
+            return {"status": "skipped", "error": "missing durable event identity"}
+        # Separate from the processing claim: processing retries must remain
+        # possible after failure, while owner alerts must not repeat. Mongo's
+        # built-in unique _id provides the concurrency fence without startup DDL.
+        alert_id = hashlib.sha256(json.dumps(
+            [tenant["id"], provider, event_key, "owner_processing_failure"],
+            separators=(",", ":"),
+        ).encode()).hexdigest()
+        from pymongo.errors import DuplicateKeyError
+        try:
+            await control_db.payment_owner_alerts.insert_one({
+                "_id": alert_id, "tenant_id": tenant["id"], "provider": provider,
+                "event_key": event_key, "status": "sending",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except DuplicateKeyError:
+            return {"status": "skipped", "error": "owner alert already claimed"}
+        result = await send_email(
             kind="payment_failed",
             to=recipient,
             tenant_slug=tenant.get("slug"),
@@ -142,6 +164,18 @@ async def _notify_owner_webhook_failure(
                 "currency": (currency or "SAR").upper(),
             },
         )
+        if result.get("status") == "skipped":
+            # Configuration/recipient skips have not contacted the provider.
+            await control_db.payment_owner_alerts.delete_one({"_id": alert_id})
+        else:
+            # Failed transport outcomes may be ambiguous (timeout after send).
+            # Retain the fence; never automatically resend an uncertain email.
+            await control_db.payment_owner_alerts.update_one(
+                {"_id": alert_id},
+                {"$set": {"status": result.get("status", "unknown"),
+                          "updated_at": datetime.now(timezone.utc).isoformat()}},
+            )
+        return result
     except Exception as e:
         logger.exception(
             "owner webhook-failure email failed for %s", tenant.get("slug"))
@@ -523,6 +557,8 @@ async def payment_webhook(provider: str, request: Request):
                 # sends its own payment_success email via apply_renewal.
                 await _notify_owner_webhook_failure(
                     tenant,
+                    provider=cfg_provider,
+                    event_key=event_id or payload_fingerprint(payload),
                     reason=f"renewal rejected: {e}",
                     amount=success.get("amount"),
                     currency=success.get("currency") or "SAR",
@@ -587,6 +623,8 @@ async def payment_webhook(provider: str, request: Request):
         # complete it — a successful reprocess sends payment_success itself).
         await _notify_owner_webhook_failure(
             resolved_tenant, reason=f"webhook processing error: {str(e)[:300]}",
+            provider=cfg_provider,
+            event_key=event_id or payload_fingerprint(payload),
         )
         raise
 

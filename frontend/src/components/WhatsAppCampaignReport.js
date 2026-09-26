@@ -58,6 +58,9 @@ const numberValue = value => {
 export const recipientState = recipient => {
   const sendStatus = normalizeStatus(recipient?.status);
   const deliveryStatus = normalizeStatus(recipient?.delivery_status);
+  // A recipient may have several attachments. The strongest receipt belongs
+  // to only one item; it must not upgrade an explicitly partial recipient.
+  if (sendStatus === 'partial') return 'partial';
   const receiptStatus = RECEIPT_STATES.has(deliveryStatus)
     ? deliveryStatus
     : (RECEIPT_STATES.has(sendStatus) ? sendStatus : '');

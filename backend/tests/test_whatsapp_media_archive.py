@@ -263,3 +263,69 @@ def test_archive_rejects_macro_office_zip_even_with_a_safe_office_mime():
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "report.docx",
         )
+
+
+def test_private_archive_detects_same_length_corruption_without_provider_access():
+    db = _DB(_pending_message())
+    content = b"%PDF-1.4\nprivate attachment"
+    run(archive.store(db, "tenant-a", "branch-a", "stored-1", content,
+                      "application/pdf", "report.pdf", "inbound-1"))
+    assert run(archive.load(db, "tenant-a", "branch-a", "stored-1"))[0] == content
+    db["whatsapp_cloud_media_chunks"].rows[0]["data"] = b"x" * len(content)
+    with pytest.raises(archive.ArchiveError, match="incomplete"):
+        run(archive.load(db, "tenant-a", "branch-a", "stored-1"))
+
+
+@pytest.mark.parametrize("size,count", [(0, 0), ("invalid", 1), (20 * 1024 * 1024 + 1, 1)])
+def test_corrupt_metadata_is_rejected_before_reading_chunks(size, count):
+    db = _DB(_pending_message())
+    db["whatsapp_cloud_media"].rows.append({
+        "tenant_slug": "tenant-a", "branch_id": "branch-a", "media_id": "stored-1",
+        "size": size, "chunk_count": count,
+    })
+    def forbidden_read(*args, **kwargs):
+        raise AssertionError("Invalid metadata must not trigger a chunks query")
+    db["whatsapp_cloud_media_chunks"].find = forbidden_read
+    with pytest.raises(archive.ArchiveError):
+        run(archive.load(db, "tenant-a", "branch-a", "stored-1"))
+
+
+def test_legacy_archive_without_digest_remains_readable_but_branch_and_tenant_scoped():
+    db = _DB(_pending_message())
+    content = b"%PDF-1.4\nlegacy attachment"
+    run(archive.store(db, "tenant-a", "branch-a", "stored-1", content,
+                      "application/pdf", "report.pdf", "inbound-1"))
+    db["whatsapp_cloud_media"].rows[0].pop("sha256")
+    assert run(archive.load(db, "tenant-a", "branch-a", "stored-1"))[0] == content
+    for tenant, branch in [("tenant-b", "branch-a"), ("tenant-a", "branch-b")]:
+        with pytest.raises(archive.ArchiveError, match="unavailable"):
+            run(archive.load(db, tenant, branch, "stored-1"))
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_actual_inbox_route_reads_archive_without_provider_then_rejects_corruption(monkeypatch, legacy):
+    from routes import whatsapp
+    message = {**_pending_message(), "media_storage_id": "stored-1",
+               "archive_status": "archived", "provider": "meta_cloud"}
+    db = _DB(message)
+    content = b"%PDF-1.4\nretained after Meta expiry"
+    run(archive.store(db, "tenant-a", "branch-a", "stored-1", content,
+                      "application/pdf", "report.pdf", message["id"]))
+    if legacy:
+        db["whatsapp_cloud_media"].rows[0].pop("sha256")
+    monkeypatch.setattr(whatsapp, "_db", db)
+    monkeypatch.setattr(whatsapp, "get_current_tenant_slug", lambda: "tenant-a")
+
+    async def forbidden_provider(*args, **kwargs):
+        raise AssertionError("Archived media must never need Meta")
+    monkeypatch.setattr(whatsapp, "_get_branch_cloud_config", forbidden_provider)
+    monkeypatch.setattr(whatsapp, "_download_inbound_archive_media", forbidden_provider)
+    response = run(whatsapp.get_cloud_inbox_media(message["id"], current_user={"is_admin": True}))
+    assert response.body == content
+    assert response.media_type == "application/pdf"
+    # New archives detect same-size damage; legacy archives still detect missing bytes.
+    db["whatsapp_cloud_media_chunks"].rows[0]["data"] = b"x" * (len(content) - int(legacy))
+    with pytest.raises(whatsapp.HTTPException) as exc:
+        run(whatsapp.get_cloud_inbox_media(message["id"], current_user={"is_admin": True}))
+    assert exc.value.status_code == 500
+    assert "incomplete" in exc.value.detail

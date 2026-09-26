@@ -60,6 +60,7 @@ async def get_member_level_coach_maps(member_id: str):
 
 class MemberLogin(BaseModel):
     phone: str
+    member_code: str
 
 
 class MemberTokenResponse(BaseModel):
@@ -169,14 +170,21 @@ async def get_current_member(credentials: HTTPAuthorizationCredentials = Depends
 
 @router.post("/login", response_model=MemberTokenResponse)
 async def member_login(data: MemberLogin):
-    """Login with phone number only"""
-    phone = data.phone.strip()
-    
-    # Find member by phone
-    member = await db.members.find_one({"phone": phone}, {"_id": 0})
-    
-    if not member:
-        raise HTTPException(status_code=404, detail="رقم الجوال غير مسجل")
+    """Bind the exact membership and guardian phone in the resolved tenant."""
+    from utils.text import normalize_digits
+    from .tenant_lookup import _phone_variants
+    code = normalize_digits(data.member_code).strip()
+    phones = _phone_variants(normalize_digits(data.phone))
+    if not code or not phones:
+        raise HTTPException(400, detail="أدخل رقم العضوية كاملًا ورقم الجوال")
+    candidates = await db.members.find({
+        "member_code": {"$regex": f"^{re.escape(code)}$", "$options": "i"},
+        "phone": {"$in": phones},
+    }, {"_id": 0}).to_list(2)
+    if len(candidates) != 1:
+        raise HTTPException(401, detail="رقم العضوية والجوال لا يتطابقان في الأكاديمية المحددة")
+    member = candidates[0]
+    phone = member["phone"]
     
     # Create token
     token = create_member_token(member["id"], phone)
@@ -2152,6 +2160,8 @@ async def _notify_admins_new_member_message(member: dict, title_ar: str, title_e
         })
     except Exception as exc:
         logger.error(f"member message bell notification failed: {exc}")
+        from utils.notification_health import report_notification_failure
+        await report_notification_failure(db, source="member_message_bell", branch_id=member.get("branch_id"))
     # Push fan-out is branch-scoped. Fail closed when the member has no
     # branch: pushing with branch_id=None would blast the message preview to
     # EVERY admin across branches. The bell notification above still surfaces
@@ -2173,6 +2183,8 @@ async def _notify_admins_new_member_message(member: dict, title_ar: str, title_e
         )
     except Exception as exc:
         logger.error(f"member message admin push failed: {exc}")
+        from utils.notification_health import report_notification_failure
+        await report_notification_failure(db, source="member_message_push", branch_id=member.get("branch_id"))
 
 
 @router.post("/profile/change-request")

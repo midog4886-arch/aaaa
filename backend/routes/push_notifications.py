@@ -893,10 +893,15 @@ async def send_push_to_admins(payload: NotificationPayload, branch_id: Optional[
             except Exception as exc:
                 fail_count += 1
                 logger.error(f"send_push_to_admins: push send failed: {exc}")
+        if fail_count:
+            from utils.notification_health import report_notification_failure
+            await report_notification_failure(db, source="admin_push", branch_id=branch_id)
         return {"total": len(subs), "success": success_count, "failed": fail_count}
     except Exception as exc:
         logger.error(f"send_push_to_admins: pipeline error: {exc}")
-        return {"total": 0, "success": 0, "failed": 0}
+        from utils.notification_health import report_notification_failure
+        await report_notification_failure(db, source="admin_push", branch_id=branch_id)
+        return {"total": 0, "success": 0, "failed": 0, "error": "notification_service_unavailable"}
 
 
 async def expand_family_member_ids(member_id: str) -> List[str]:
