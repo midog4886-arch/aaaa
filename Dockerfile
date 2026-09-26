@@ -33,6 +33,7 @@ COPY backend/utils ./utils
 # Create static folder and copy frontend build
 RUN mkdir -p static uploads backups
 COPY --from=frontend-builder /app/frontend/build ./static
+RUN MONGO_URL=mongodb://127.0.0.1:27017 MONGO_TLS=false python -c "import server"
 
 # Expose port
 EXPOSE 8000
