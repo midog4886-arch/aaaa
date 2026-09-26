@@ -26,10 +26,11 @@ else:
     from motor.motor_asyncio import AsyncIOMotorClient
     import certifi
     mongo_url = os.environ['MONGO_URL']
+    mongo_tls = os.environ.get('MONGO_TLS', 'true').lower() in ('1', 'true', 'yes')
     _raw_client = AsyncIOMotorClient(
         mongo_url,
-        tls=True,
-        tlsAllowInvalidCertificates=True,
+        tls=mongo_tls,
+        tlsAllowInvalidCertificates=mongo_tls,
         serverSelectionTimeoutMS=30000,
         connectTimeoutMS=20000,
         socketTimeoutMS=60000,

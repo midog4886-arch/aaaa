@@ -1,26 +1,39 @@
-version: '3.8'
-
 services:
   app:
     build: .
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
-      - MONGO_URL=${MONGO_URL}
-      - DB_NAME=${DB_NAME}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - PORT=8000
+      MONGO_URL: mongodb://${MONGO_ROOT_USERNAME:-champions}:${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD}@mongodb:27017/?authSource=admin
+      MONGO_TLS: "false"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY}
+      PORT: "8000"
+      APP_BASE_URL: ${APP_BASE_URL:-}
+      REACT_APP_BACKEND_URL: ${APP_BASE_URL:-}
     volumes:
-      - ./uploads:/app/uploads
+      - app_uploads:/app/uploads
+      - app_backups:/app/backups
+    depends_on:
+      mongodb:
+        condition: service_healthy
     restart: unless-stopped
 
-  # Optional: Local MongoDB for development
-  # mongodb:
-  #   image: mongo:6
-  #   ports:
-  #     - "27017:27017"
-  #   volumes:
-  #     - mongodb_data:/data/db
+  mongodb:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-champions}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand('ping').ok ? 0 : 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
-# volumes:
-#   mongodb_data:
+volumes:
+  app_uploads:
+  app_backups:
+  mongodb_data:
