@@ -2,7 +2,9 @@
 FROM node:22-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm ci --legacy-peer-deps
+RUN npm install --global npm@10.9.4 \
+    && npm ci --legacy-peer-deps --no-audit --no-fund \
+    || (cat /root/.npm/_logs/*debug*; exit 1)
 COPY frontend/public ./public
 COPY frontend/src ./src
 COPY frontend/plugins ./plugins
