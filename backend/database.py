@@ -27,16 +27,17 @@ else:
     import certifi
     mongo_url = os.environ['MONGO_URL']
     mongo_tls = os.environ.get('MONGO_TLS', 'true').lower() in ('1', 'true', 'yes')
+    mongo_tls_options = {'tlsAllowInvalidCertificates': True} if mongo_tls else {}
     _raw_client = AsyncIOMotorClient(
         mongo_url,
         tls=mongo_tls,
-        tlsAllowInvalidCertificates=mongo_tls,
         serverSelectionTimeoutMS=30000,
         connectTimeoutMS=20000,
         socketTimeoutMS=60000,
         retryReads=True,
         retryWrites=True,
         compressors="zlib",
+        **mongo_tls_options,
     )
 
 
