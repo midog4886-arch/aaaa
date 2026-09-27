@@ -127,7 +127,7 @@ const recipientIdentityPayload = (item) => {
 
 export default function WhatsAppBulkPage() {
   const { language } = useLanguage();
-  const { selectedBranchId } = useAuth();
+  const { selectedBranchId, user } = useAuth();
   const ar = language === 'ar';
   const t = (a, e) => ar ? a : e;
 
@@ -1137,7 +1137,7 @@ export default function WhatsAppBulkPage() {
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-                disabled={!validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || whatsflowQuotaExhausted || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !selectedTemplateReady)}
+                disabled={user?.is_admin === false || !validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || whatsflowQuotaExhausted || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !selectedTemplateReady)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />
@@ -1149,6 +1149,7 @@ export default function WhatsAppBulkPage() {
               {t('فتح واتساب يدوياً', 'Open WhatsApp manually')}
             </Button>
             </div>
+            {user?.is_admin === false && <p className="text-sm text-amber-800">{t('جهّز المعاينة في قسم اعتماد الإرسال أدناه، ثم أرسلها للمدير.', 'Prepare a preview in the approval section below, then submit it to the manager.')}</p>}
             {cloudJobs.length > 0 && (
               <div className="mt-4 space-y-2 max-h-[560px] overflow-y-auto" data-testid="cloud-job-progress">
                 {cloudJobs.map(job => (
