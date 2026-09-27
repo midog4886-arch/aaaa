@@ -37,7 +37,7 @@ _COLLECTIONS = [
     "messages", "notifications", "notifications_settings",
     "payment_transactions", "payment_vouchers", "points_history",
     "product_invoices", "products", "purchase_invoices", "push_subscriptions",
-    "redemption_requests", "registration_forms", "supplier_payments",
+    "redemption_requests", "registration_forms", "public_registration_links", "supplier_payments",
     "suppliers", "users", "video_views", "whatsapp_settings",
     "whatsapp_send_log",
 ]

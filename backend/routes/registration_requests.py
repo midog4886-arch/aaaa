@@ -22,6 +22,10 @@ from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import re
 import uuid
+import hashlib
+import unicodedata
+from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from database import db
 from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
@@ -499,6 +503,76 @@ class RegistrationFollowupStop(BaseModel):
 
 
 # ============ PUBLIC ROUTES (no auth) ============
+
+def _registration_slug(branch: dict) -> str:
+    label = unicodedata.normalize("NFKD", branch.get("public_name") or branch.get("name") or "")
+    label = label.encode("ascii", "ignore").decode().lower()
+    label = re.sub(r"\bbranch\b", "", label)
+    label = re.sub(r"[^a-z0-9]+", "-", label).strip("-")
+    if len(label) > 32:
+        label = label[:33].rsplit("-", 1)[0].rstrip("-")[:32]
+    label = label or "branch"
+    suffix = re.sub(r"[^a-z0-9]", "", (branch.get("code_prefix") or "").lower())
+    suffix = suffix[:12] or hashlib.sha256(branch["id"].encode()).hexdigest()[:8]
+    return f"{label}-{suffix}"
+
+
+def _friendly_registration_slug(slug: str) -> str:
+    words = [word for word in slug.split("-") if word not in {"school", "branch", "educational"}]
+    if len(words) > 1 and re.fullmatch(r"b\d+", words[-1]):
+        words.pop()
+    return "-".join(words) or slug
+
+
+@router.post("/registration-links/{branch_id}")
+async def create_registration_link(branch_id: str, current_user: dict = Depends(get_current_user)):
+    scope = require_branch_scope(current_user, branch_id)
+    if scope and scope != branch_id:
+        raise HTTPException(status_code=403, detail="Branch access denied")
+    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    await db.public_registration_links.create_index("slug", unique=True)
+    try:
+        link = await db.public_registration_links.find_one_and_update(
+            {"_id": branch_id},
+            {"$setOnInsert": {"branch_id": branch_id, "slug": _registration_slug(branch)}},
+            upsert=True, return_document=ReturnDocument.AFTER,
+        )
+    except DuplicateKeyError:
+        link = await db.public_registration_links.find_one({"_id": branch_id})
+        if not link:
+            raise HTTPException(status_code=409, detail="تعذّر إنشاء رابط فريد لهذا الفرع")
+    # Upgrade existing URLs once, retaining their old address as an alias.
+    # Derive from the saved slug so a later branch rename never changes its URL.
+    if link.get("slug_version", 1) < 2:
+        await db.public_registration_links.create_index("aliases", unique=True, sparse=True)
+        candidate = _friendly_registration_slug(link["slug"])
+        owner = await db.public_registration_links.find_one({
+            "$or": [{"slug": candidate}, {"aliases": candidate}], "_id": {"$ne": branch_id},
+        })
+        if owner:
+            candidate = link["slug"]
+        try:
+            upgraded = await db.public_registration_links.find_one_and_update(
+                {"_id": branch_id, "slug": link["slug"]},
+                {"$set": {"slug": candidate, "slug_version": 2},
+                 "$addToSet": {"aliases": {"$each": [link["slug"], candidate]}}},
+                return_document=ReturnDocument.AFTER,
+            )
+            link = upgraded or await db.public_registration_links.find_one({"_id": branch_id})
+        except DuplicateKeyError:
+            # A competing branch claimed the shorter name; keep the stable URL.
+            link = await db.public_registration_links.find_one({"_id": branch_id})
+    return {"slug": link["slug"]}
+
+
+@router.get("/public/registration-link/{slug}")
+async def resolve_registration_link(slug: str):
+    link = await db.public_registration_links.find_one({"$or": [{"slug": slug}, {"aliases": slug}]})
+    if not link:
+        raise HTTPException(status_code=404, detail="Registration link not found")
+    return await public_get_registration_branch(link["branch_id"])
 
 @router.get("/public/branches")
 async def public_list_branches():

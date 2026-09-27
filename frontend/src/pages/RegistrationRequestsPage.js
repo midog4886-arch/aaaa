@@ -39,6 +39,8 @@ export const RegistrationRequestsPage = () => {
   const [loading, setLoading] = useState(true);
   const [showLink, setShowLink] = useState(false);
   const [linkBranch, setLinkBranch] = useState('');
+  const [shortLink, setShortLink] = useState(null);
+  const [linkError, setLinkError] = useState(false);
   const [multiBranchIds, setMultiBranchIds] = useState([]);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
@@ -105,9 +107,21 @@ export const RegistrationRequestsPage = () => {
   }, [requests, searchQuery]);
 
   const registrationLink = useMemo(() => {
-    if (!linkBranch) return '';
-    return `${getPublicBaseUrl()}/register/${tenantSlug}/${linkBranch}`;
-  }, [linkBranch, tenantSlug]);
+    if (!linkBranch || shortLink?.branchId !== linkBranch || shortLink?.tenant !== tenantSlug) return '';
+    const path = tenantSlug === 'default' ? '' : `${encodeURIComponent(tenantSlug)}/`;
+    return `${getPublicBaseUrl()}/r/${path}${shortLink.slug}`;
+  }, [linkBranch, tenantSlug, shortLink]);
+
+  useEffect(() => {
+    if (!showLink || !linkBranch) return undefined;
+    let active = true;
+    setShortLink(null);
+    setLinkError(false);
+    registrationRequestsAPI.createLink(linkBranch).then(({ data }) => {
+      if (active) setShortLink({ branchId: linkBranch, tenant: tenantSlug, slug: data.slug });
+    }).catch(() => { if (active) setLinkError(true); });
+    return () => { active = false; };
+  }, [showLink, linkBranch, tenantSlug]);
 
   // Multi-branch link: the visitor sees ONLY the hand-picked subset of branches
   // in the picker (encoded as ?branches=id1,id2). Needs at least two branches to
@@ -287,12 +301,20 @@ export const RegistrationRequestsPage = () => {
                     </Select>
                   </div>
                   {registrationLink && (
-                    <div className="flex items-center gap-2">
-                      <input readOnly value={registrationLink}
-                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs bg-gray-50" dir="ltr" />
-                      <Button size="sm" onClick={copyLink} className="gap-1.5 shrink-0"><Copy className="w-3.5 h-3.5" /> نسخ</Button>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-sm font-medium text-emerald-800"><Globe className="w-4 h-4" /><span>موقع الأكاديمية الرسمي</span><span dir="ltr">adaa-alabtal.com</span></div>
+                      <a href={registrationLink} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 rounded-lg bg-white border border-emerald-300 px-4 py-3 font-semibold text-gray-900 hover:bg-emerald-50"><ExternalLink className="w-4 h-4 shrink-0" />التسجيل في {branchName(linkBranch)}</a>
+                      {getPublicBaseUrl().startsWith('http://127.0.0.1') && <p className="text-xs text-amber-800">هذه معاينة على جهازك؛ الرابط المنسوخ ورمز QR للتجربة المحلية فقط.</p>}
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={copyLink} className="gap-1.5"><Copy className="w-3.5 h-3.5" /> نسخ الرابط</Button>
+                        <a href={`https://wa.me/?text=${encodeURIComponent(`سجّل في ${branchName(linkBranch)} عبر الرابط:\n${registrationLink}`)}`}
+                          target="_blank" rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center rounded-md border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-800 gap-1.5"><Phone className="w-3.5 h-3.5" /> مشاركة واتساب</a>
+                      </div>
                     </div>
                   )}
+                  {linkBranch && !registrationLink && <p role="status" className="text-sm text-gray-500">{linkError ? 'تعذّر تجهيز الرابط. أعد اختيار الفرع للمحاولة.' : 'جارٍ تجهيز رابط الفرع…'}</p>}
                 </div>
                 {registrationLink && (
                   <div className="bg-white p-3 rounded-lg border shrink-0 mx-auto flex flex-col items-center">

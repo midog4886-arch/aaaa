@@ -112,7 +112,7 @@ const STRINGS = {
 };
 
 export const PublicRegistrationPage = () => {
-  const { tenantSlug, branchId } = useParams();
+  const { tenantSlug, branchId, branchSlug } = useParams();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const referralCode = (searchParams.get('ref') || '').trim();
@@ -142,10 +142,10 @@ export const PublicRegistrationPage = () => {
   // When the link carries a branch (e.g. /register/:tenant/:branchId) the branch
   // is fixed and locked to the link. When it doesn't (e.g. the all-branches
   // social-media ad link) the visitor picks the branch from a list.
-  const hasFixedBranch = !!branchId;
+  const hasFixedBranch = !!(branchId || branchSlug);
   const [branches, setBranches] = useState([]);
   const [pickedBranchId, setPickedBranchId] = useState('');
-  const selectedBranchId = hasFixedBranch ? branchId : pickedBranchId;
+  const selectedBranchId = hasFixedBranch ? (branchId || branch?.id || '') : pickedBranchId;
 
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
@@ -172,7 +172,9 @@ export const PublicRegistrationPage = () => {
       try {
         if (hasFixedBranch) {
           // Branch-locked link: load the single branch tied to the link.
-          const res = await api.get(`/api/public/registration/${branchId}`);
+          const res = await api.get(branchSlug
+            ? `/api/public/registration-link/${encodeURIComponent(branchSlug)}`
+            : `/api/public/registration/${branchId}`);
           if (!active) return;
           setBranch(res.data.branch);
           setBranchActivities(res.data.activities || []);
@@ -194,7 +196,7 @@ export const PublicRegistrationPage = () => {
       }
     })();
     return () => { active = false; };
-  }, [api, hasFixedBranch, branchId]);
+  }, [api, hasFixedBranch, branchId, branchSlug]);
 
   // Resolve the referral code (if any) so we can show the special discount.
   useEffect(() => {

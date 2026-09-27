@@ -45,6 +45,7 @@ jest.mock('lucide-react', () => {
 jest.mock('../services/api', () => ({
   branchesAPI: { getAll: jest.fn() },
   registrationRequestsAPI: {
+    createLink: jest.fn(),
     getAll: jest.fn(),
     updateStatus: jest.fn(),
     delete: jest.fn(),
@@ -55,6 +56,20 @@ jest.mock('../services/api', () => ({
 afterEach(() => {
   cleanup();
   jest.clearAllMocks();
+});
+
+test('shows a named short link and shares the same destination through WhatsApp', async () => {
+  branchesAPI.getAll.mockResolvedValue({ data: [{ id: 'original-id', name: 'Riyadh School' }] });
+  registrationRequestsAPI.getAll.mockResolvedValue({ data: [] });
+  registrationRequestsAPI.createLink.mockResolvedValue({ data: { slug: 'riyadh-school-b11' } });
+  render(<RegistrationRequestsPage />);
+  await waitFor(() => expect(branchesAPI.getAll).toHaveBeenCalled());
+  fireEvent.click(screen.getByRole('button', { name: 'رابط التسجيل العام' }));
+  const link = await screen.findByRole('link', { name: 'التسجيل في Riyadh School' });
+  expect(link.getAttribute('href')).toBe('https://example.test/r/riyadh-school-b11');
+  expect(screen.getByText('موقع الأكاديمية الرسمي')).toBeTruthy();
+  expect(decodeURIComponent(screen.getByRole('link', { name: 'مشاركة واتساب' }).getAttribute('href')))
+    .toContain('https://example.test/r/riyadh-school-b11');
 });
 
 test('loads the server-filtered followed-up tab and shows both evidence badges', async () => {

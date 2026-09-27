@@ -288,6 +288,8 @@ function AppRoutes() {
       {/* All-branches (e.g. social-media ad) link: visitor picks the branch */}
       <Route path="/register/:tenantSlug" element={<PublicRegistrationPage />} />
       <Route path="/register/:tenantSlug/:branchId" element={<PublicRegistrationPage />} />
+      <Route path="/r/:branchSlug" element={<PublicRegistrationPage />} />
+      <Route path="/r/:tenantSlug/:branchSlug" element={<PublicRegistrationPage />} />
       {/* Short, clean alias for the social-media link (auto-tagged source=social) */}
       <Route path="/join/:tenantSlug" element={<PublicRegistrationPage />} />
 
