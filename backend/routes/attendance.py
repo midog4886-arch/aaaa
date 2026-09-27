@@ -557,9 +557,10 @@ async def enforce_session_cap(member_id: str, activity_id: str, check_date: str)
         return
 
 
-async def check_member_session_quota(member_id: str, activity_id: str = None):
+async def check_member_session_quota(member_id: str, activity_id: str = None, session=None):
     """Check if member has used all their allowed sessions based on subscription days per week.
     Checks both invoices (normal members) and member.activities (registration form members)."""
+    kw = {"session": session} if session is not None else {}
     saudi_tz = timezone(timedelta(hours=3))
     today_str = datetime.now(saudi_tz).strftime("%Y-%m-%d")
 
@@ -665,7 +666,17 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
                 {"date": {"$lte": end_date}},
                 {"off_schedule": True},
             ],
-        })
+        }, **kw)
+
+        linked = [a for a in (member_doc or {}).get("activities", [])
+                  if a.get("activity_id") == item_activity_id and a.get("start_date", "")[:10] == effective_start
+                  and a.get("end_date", "")[:10] == end_date]
+        if len(linked) == 1:
+            act = linked[0]
+            if act.get("source") == "session_transfer":
+                total_allowed_sessions = 0
+            total_allowed_sessions += int(act.get("session_transfer_delta") or 0)
+        total_allowed_sessions = max(0, total_allowed_sessions)
 
         results.append({
             "activity_id": item_activity_id,
@@ -688,9 +699,9 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     #    paid session total. ──────────────────────────────────────────────────
     invoices = await db.invoices.find(
         {"member_id": member_id, "status": {"$in": ["paid", "partial"]}},
-        {"_id": 0}
+        {"_id": 0}, **kw
     ).to_list(100)
-    effective_periods = await effective_period_map(db, invoices)
+    effective_periods = await effective_period_map(db, invoices, session=session)
 
     # Map the original (unextended) end date for each subscription so the session
     # total can be computed from what the member actually paid for, even when
@@ -745,7 +756,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None):
     #       day-extensions / freezes. Its end_date is the extended deadline used
     #       for the attendance window, but the paid session total is computed
     #       from the original invoice window via quota_end_date. ───────────────
-    member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1})
+    member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1}, **kw)
     linked_source_keys = {a.get("source_period_key") for a in (member_doc or {}).get("activities", []) if a.get("source_period_key")}
     for act in (member_doc or {}).get("activities", []):
         item_activity_id = act.get("activity_id", "")

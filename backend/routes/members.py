@@ -17,6 +17,27 @@ from utils.phone import normalize_phone, phone_lookup_values
 router = APIRouter(prefix="/members", tags=["members"])
 logger = logging.getLogger(__name__)
 
+
+class SessionTransferRequest(BaseModel):
+    recipient_id: str
+    sessions: int = Field(gt=0, strict=True)
+    reason: str = Field(min_length=1, max_length=500)
+    preview_token: Optional[str] = None
+
+
+@router.post("/{member_id}/activities/{activity_id}/session-transfer/{action}")
+async def transfer_sessions(member_id: str, activity_id: str, action: Literal["preview", "confirm"],
+                            data: SessionTransferRequest, current_user: dict = Depends(get_current_user)):
+    await require_permission(current_user, "members-edit")
+    from utils.session_transfers import preview, confirm
+    sender = _scoped_member_query(member_id, current_user)
+    recipient = _scoped_member_query(data.recipient_id, current_user)
+    if action == "preview":
+        return (await preview(db, sender, recipient, activity_id, data.model_dump()))[-1]
+    result = await confirm(db, sender, recipient, activity_id, data.model_dump(), current_user)
+    invalidate_dashboard_caches()
+    return result
+
 # ============ MODELS ============
 
 class MemberActivity(BaseModel):
@@ -1238,7 +1259,7 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
     after_activity = activity.model_dump()
     protect_schedule_edit(before_act, after_activity)
     if before_act and before_act.get("source_id") == after_activity.get("source_id") and before_act.get("start_date") == after_activity.get("start_date"):
-        for key in ("source_period_key", "schedule_reconciliation"):
+        for key in ("source_period_key", "schedule_reconciliation", "session_transfer_delta"):
             if key in before_act:
                 after_activity[key] = before_act[key]
     if before_member:

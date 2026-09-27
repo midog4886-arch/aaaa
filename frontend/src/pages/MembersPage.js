@@ -15,6 +15,7 @@ import { Button } from '../components/ui/button';
 import ProfileOverview from '../components/member-profile/ProfileOverview';
 import ProfileFeed from '../components/member-profile/ProfileFeed';
 import MemberEditHistoryDialog from '../components/members/MemberEditHistoryDialog';
+import SessionTransferDialog from '../components/members/SessionTransferDialog';
 import ScheduleChangeReviewDialog from '../components/members/ScheduleChangeReviewDialog';
 import { activityWeekdaysChanged, scheduleChangeError } from '../utils/memberScheduleChange';
  
@@ -232,6 +233,7 @@ export const MembersPage = () => {
   const [isMemberCardDialogOpen, setIsMemberCardDialogOpen] = useState(false);
   const [memberCardData, setMemberCardData] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [sessionTransferActivity, setSessionTransferActivity] = useState(null);
   // Generation counter for member-view requests: bumped on every
   // openViewDialog/openFreezeDialog call and on dialog close, so late
   // responses from a previously opened member are dropped instead of
@@ -3644,6 +3646,13 @@ export const MembersPage = () => {
                                     </Button>
                                   )}
                                   {/* Delete button (admin only) */}
+                                  {(isAdmin || (user?.permissions || []).includes('members-edit')) && !isEditing && (
+                                    <Button size="sm" variant="outline" className="h-auto min-h-8 px-2 border-blue-300 text-blue-700"
+                                      onClick={() => setSessionTransferActivity(activity)} data-testid={`transfer-sessions-${activity.activity_id}`}>
+                                      <ArrowRightLeft className="w-3.5 h-3.5 me-1" />
+                                      {language === 'ar' ? 'نقل حصص لمشترك آخر' : 'Transfer sessions'}
+                                    </Button>
+                                  )}
                                   {isAdmin && !isEditing && (
                                     <Button
                                       size="sm"
@@ -3941,6 +3950,7 @@ export const MembersPage = () => {
                         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                           {memberAuditLog.map((log) => {
                             const ACTION_LABELS = {
+                              'subscription.session_transfer': language === 'ar' ? 'نقل حصص' : 'Sessions transferred',
                               'subscription.add': language === 'ar' ? 'إضافة نشاط' : 'Activity added',
                               'subscription.update': language === 'ar' ? 'تعديل نشاط' : 'Activity edited',
                               'subscription.delete': language === 'ar' ? 'حذف نشاط' : 'Activity deleted',
@@ -3949,6 +3959,9 @@ export const MembersPage = () => {
                               'day_extension.manual': language === 'ar' ? 'تمديد أيام' : 'Days extension',
                             };
                             const FIELD_LABELS = {
+                              remaining_sessions: language === 'ar' ? 'رصيد الحصص' : 'Session balance',
+                              transfer_reason: language === 'ar' ? 'سبب النقل' : 'Transfer reason',
+                              transfer_member: language === 'ar' ? 'المشترك الآخر' : 'Other member',
                               start_date: language === 'ar' ? 'تاريخ البداية' : 'Start date',
                               end_date: language === 'ar' ? 'تاريخ النهاية' : 'End date',
                               fee: language === 'ar' ? 'الرسوم' : 'Fee',
@@ -5775,6 +5788,15 @@ export const MembersPage = () => {
           onCancel={() => setScheduleChangeReview(null)}
           onConfirm={confirmScheduleChange}
         />
+        {sessionTransferActivity && selectedMember && (
+          <SessionTransferDialog member={selectedMember} activity={sessionTransferActivity} language={language}
+            onClose={() => setSessionTransferActivity(null)} onComplete={async () => {
+              setSessionTransferActivity(null);
+              const updated = await membersAPI.getById(selectedMember.id);
+              setSelectedMember(updated.data);
+              setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...updated.data } : m));
+            }} />
+        )}
       </div>
     </Layout>
   );
