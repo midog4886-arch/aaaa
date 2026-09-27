@@ -29,6 +29,15 @@ beforeEach(() => {
   dashboardAPI.getActions.mockResolvedValue(response([expiring]));
 });
 
+test('inbound Open targets the exact conversation and branch without a phone lookup', () => {
+  const target = pageFor('conversations', { entity_id: 'branch-a:966500000000', branch_id: 'branch-a' });
+  const url = new URL(target, 'https://example.test');
+  expect(url.pathname).toBe('/admin/whatsapp');
+  expect(url.searchParams.get('conversation')).toBe('branch-a:966500000000');
+  expect(url.searchParams.get('branch')).toBe('branch-a');
+  expect(pageFor('registrations', { entity_id: 'r1' })).toBe('/admin/registration-requests');
+});
+
 test('opens the API-supplied actionable list and omits unavailable permission groups', async () => {
   render(<DailyActions />);
   await screen.findByText('Renewals due');

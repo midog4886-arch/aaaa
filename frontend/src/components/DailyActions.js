@@ -39,6 +39,11 @@ const getActionsRequest = (identity, params) => {
 };
 
 export const pageFor = (key, item) => {
+  if (key === 'conversations' && item?.entity_id) {
+    const query = new URLSearchParams({ conversation: item.entity_id });
+    if (item.branch_id) query.set('branch', item.branch_id);
+    return `/admin/whatsapp?${query.toString()}`;
+  }
   if (key === 'expiring') return '/admin/renewals';
   if (item?.kind === 'payment' || item?.kind === 'failed_payment' || item?.kind === 'billing_payment') return '/admin/settings#billing';
   if (item?.kind === 'whatsapp' || item?.kind === 'failed_send' || key === 'conversations') return '/admin/whatsapp';

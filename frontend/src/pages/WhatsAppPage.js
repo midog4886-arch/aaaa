@@ -432,6 +432,11 @@ export default function WhatsAppPage() {
   const navigate = useNavigate();
   const isRTL = language === 'ar';
   const isAdmin = user?.is_admin === true;
+  const [inboxLink] = useState(() => {
+    const query = new URLSearchParams(window.location.search);
+    return { conversation: query.get('conversation'), branch: query.get('branch') };
+  });
+  const inboxLinkOpened = useRef(false);
 
   const [activeTab, setActiveTab] = useState('cloud_inbox');
 
@@ -529,7 +534,7 @@ export default function WhatsAppPage() {
   const [cloudSearchInput, setCloudSearchInput] = useState('');
   const [cloudSearch, setCloudSearch] = useState('');
   const [cloudBranchFilter, setCloudBranchFilter] = useState(
-    selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all'
+    (isAdmin && inboxLink.branch) || (selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all')
   );
   const [selectedCloudThread, setSelectedCloudThread] = useState(null);
   const [cloudThread, setCloudThread] = useState(null);
@@ -1511,6 +1516,15 @@ export default function WhatsAppPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, cloudBranchFilter, cloudInboxView, cloudAuthScope, cloudSearch]);
+
+  useEffect(() => {
+    if (activeTab !== 'cloud_inbox' || !inboxLink.conversation || inboxLinkOpened.current) return;
+    inboxLinkOpened.current = true;
+    // Open the exact detail even when it is outside the inbox's first page.
+    // The existing endpoint enforces branch access and handles read state.
+    openCloudThread(inboxLink.conversation, { refreshInbox: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, inboxLink.conversation]);
 
   useEffect(() => {
     const mediaScope = cloudMediaScopeRef.current;
