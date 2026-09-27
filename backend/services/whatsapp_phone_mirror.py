@@ -85,13 +85,16 @@ async def store_snapshot(db, branch_id, rows, build_message):
     operations, documents = [], []
     excluded = 0
     unread_chats = 0
+    unknown_read_chats = 0
+    has_read_evidence = False
     seen = set()
     for row in rows:
         identity = chat_identity(branch_id, row)
         unread = unread_value(row) if identity else None
-        if identity is None or unread is None:
+        if identity is None:
             excluded += 1
             continue
+        has_read_evidence = has_read_evidence or unread is not None
         if identity['id'] in seen:
             excluded += 1
             continue
@@ -103,11 +106,15 @@ async def store_snapshot(db, branch_id, rows, build_message):
             continue
         if document:
             documents.append(document)
-        unread_chats += int(unread > 0)
+        unread_chats += int(unread is not None and unread > 0)
+        unknown_read_chats += int(unread is None)
         metadata = {
             **identity, 'branch_id': branch_id, 'provider': 'whatsflow',
             'contact_name': row.get('pushName') or row.get('name') or identity['phone'] or identity['remote_jid'],
-            'unread_count': unread, 'phone_unread_count': unread,
+            # The local counter remains numeric for live webhook $inc writes;
+            # phone_unread_known distinguishes unavailable state from read.
+            'unread_count': unread if unread is not None else 0, 'phone_unread_count': unread,
+            'phone_unread_known': unread is not None,
             'phone_snapshot': token, 'phone_synced_at': now, 'phone_mirrored': True,
             'last_message': (document or {}).get('body') or ('[message]' if record else ''),
             'last_message_at': (document or {}).get('created_at') or row.get('updatedAt') or now,
@@ -121,7 +128,7 @@ async def store_snapshot(db, branch_id, rows, build_message):
         operations.append(UpdateOne({'id': identity['id'], 'branch_id': branch_id},
                                    {'$set': metadata, '$setOnInsert': {'created_at': now}}, upsert=True))
     # A malformed snapshot must not silently erase unread information.
-    if rows and not seen:
+    if rows and (not seen or not has_read_evidence):
         raise ValueError('Provider returned no valid chat identities/unread counts')
     await store_messages(db, documents)
     if operations:
@@ -129,5 +136,6 @@ async def store_snapshot(db, branch_id, rows, build_message):
     await db['whatsapp_phone_sync'].update_one({'branch_id': branch_id}, {'$set': {
         'enabled': True, 'snapshot': token, 'synced_at': now, 'chats': len(operations),
         'unread_chats': unread_chats, 'excluded': excluded,
+        'unknown_read_chats': unknown_read_chats,
     }}, upsert=True)
-    return {'success': True, 'chats': len(operations), 'unread_chats': unread_chats, 'excluded': excluded}
+    return {'success': True, 'chats': len(operations), 'unread_chats': unread_chats, 'excluded': excluded, 'unknown_read_chats': unknown_read_chats}

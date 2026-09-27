@@ -54,15 +54,16 @@ def test_snapshot_preserves_existing_messages_and_scopes_bulk_writes():
           'whatsapp_phone_sync': state}
     rows = [{'remoteJid': '966500000001@s.whatsapp.net', 'unreadCount': 12, 'lastMessage': record()},
             {'remoteJid': '123-456@g.us', 'unreadCount': 1, 'lastMessage': record('123-456@g.us')},
-            {'remoteJid': '123@lid'}]
+            {'remoteJid': '123@lid', 'lastMessage': record('123@lid')}]
     result = run(mirror.store_snapshot(db, 'a', rows, mod._phone_message_builder('a')))
-    assert result == {'success': True, 'chats': 2, 'unread_chats': 2, 'excluded': 1}
+    assert result == {'success': True, 'chats': 3, 'unread_chats': 2, 'excluded': 0, 'unknown_read_chats': 1}
     for operation in messages.bulk_write.call_args.args[0]:
         assert operation._filter['branch_id'] == 'a'
         assert set(operation._doc) == {'$setOnInsert'}
     for operation in conversations.bulk_write.call_args.args[0]:
         assert operation._filter['branch_id'] == 'a'
-        assert operation._doc['$set']['unread_count'] in [12, 1]
+        assert operation._doc['$set']['unread_count'] in [12, 1, 0]
+        assert operation._doc['$set']['phone_unread_known'] == (operation._doc['$set']['phone_unread_count'] is not None)
         assert operation._doc['$set']['needs_reply'] == (not operation._doc['$set'].get('read_only_chat'))
 
 

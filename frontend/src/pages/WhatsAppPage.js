@@ -3749,6 +3749,7 @@ export default function WhatsAppPage() {
                     {phoneSync && <span className="text-xs text-muted-foreground">
                       {t(`آخر 30 يومًا · ${phoneSync.chats} محادثة · ${phoneSync.unread_chats} غير مقروءة`, `Last 30 days · ${phoneSync.chats} chats · ${phoneSync.unread_chats} unread`)}
                       {phoneSync.stale && <span className="block text-amber-700">{t('تعذر تحديث بيانات الجوال. المعروض آخر نسخة محفوظة، وقد تتغير حالة القراءة على الجوال.', 'Phone refresh unavailable. Showing the last saved snapshot; read state may have changed on the phone.')}</span>}
+                      {phoneSync.unknown_read_chats > 0 && <span className="block text-amber-700">{t(`حالة القراءة غير مؤكدة لـ ${phoneSync.unknown_read_chats} محادثة؛ عدد غير المقروء يشمل الحالات المؤكدة فقط.`, `Read state is unavailable for ${phoneSync.unknown_read_chats} chats; unread count includes confirmed states only.`)}</span>}
                       {phoneSync.excluded > 0 && <span className="block text-amber-700">{t(`لم يعرض المزود بيانات مكتملة لـ ${phoneSync.excluded} سجلًا؛ المطابقة تشمل المحادثات المتاحة فقط.`, `${phoneSync.excluded} provider records are incomplete; synchronization covers available chats only.`)}</span>}
                     </span>}
                   </div>

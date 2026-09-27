@@ -5624,7 +5624,7 @@ async def get_cloud_inbox_thread(
         # Never infer that the customer reading an outbound message read our inbox.
         keys = [r['key'] for r in phone_history['records']
                 if isinstance(r.get('key'), dict) and r['key'].get('fromMe') is False]
-        if keys and conversation.get('unread_count', 0) > 0:
+        if keys and (conversation.get('unread_count') or 0) > 0:
             ok, _, _ = await phone_client.mark_messages_read(keys)
             if not ok:
                 raise HTTPException(502, 'Could not synchronize read state with the phone')
