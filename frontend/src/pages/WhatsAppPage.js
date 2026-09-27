@@ -1605,23 +1605,12 @@ export default function WhatsAppPage() {
     if (actNotifChannel === 'whatsapp') {
       const membersWithPhone = actNotifFilteredMembers.filter(m => m.phone);
       if (!membersWithPhone.length) { toast.error(t('لا يوجد أعضاء لديهم رقم هاتف', 'No members have phone numbers')); return; }
-      if (!window.confirm(t(`سيتم إرسال رسالة واتساب لـ ${membersWithPhone.length} عضو. متابعة؟`, `Send WhatsApp to ${membersWithPhone.length} members. Continue?`))) return;
-      setActNotifSending(true);
-      setActNotifWaProgress({ done: 0, total: membersWithPhone.length });
-      let success = 0;
-      for (let i = 0; i < membersWithPhone.length; i++) {
-        const m = membersWithPhone[i];
-        try {
-          await whatsappAPI.sendTest(m.phone, actNotifBody);
-          success++;
-        } catch { }
-        setActNotifWaProgress({ done: i + 1, total: membersWithPhone.length });
-        if (i < membersWithPhone.length - 1) await new Promise(r => setTimeout(r, 2000));
-      }
-      setActNotifSending(false);
-      setActNotifWaProgress({ done: 0, total: 0 });
-      toast.success(t(`تم الإرسال عبر واتساب: ${success} من ${membersWithPhone.length}`, `WhatsApp sent: ${success} of ${membersWithPhone.length}`));
-      setActNotifBody('');
+      if (!isAdmin) { toast.error(t('الإرسال التلقائي يتطلب اعتماد المدير من حملات واتساب', 'Automatic sending requires manager approval through WhatsApp campaigns')); return; }
+      if (actNotifBody.length > 4096) { toast.error(t('الرسالة أطول من الحد المسموح', 'Message exceeds the allowed length')); return; }
+      setAutomaticSend({
+        recipients: membersWithPhone.map(member => ({ ...member, id: member.member_id })),
+        message: actNotifBody,
+      });
       return;
     }
 

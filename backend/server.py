@@ -10300,7 +10300,7 @@ async def get_members_active_status(
 
     members = await db.members.find(
         {"id": {"$in": data.member_ids}},
-        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1, "activities": 1}
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1, "activities": 1, "branch_id": 1}
     ).to_list(1000)
 
     result = []
@@ -10314,6 +10314,7 @@ async def get_members_active_status(
             "member_id": m["id"],
             "name": m.get("name_ar") or m.get("name", ""),
             "phone": m.get("phone", ""),
+            "branch_id": m.get("branch_id") or "",
             "is_active": is_active,
         })
 
