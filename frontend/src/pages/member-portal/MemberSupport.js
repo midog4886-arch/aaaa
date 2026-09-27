@@ -1,7 +1,8 @@
 import React from 'react';
 import { Card, CardContent } from '../../components/ui/card';
 import { Phone, MessageCircle } from 'lucide-react';
-import MemberLayout, { getLanguage, getDarkMode, useSupportContact } from './MemberLayout';
+import MemberLayout, { memberAPI, getLanguage, getDarkMode, useSupportContact } from './MemberLayout';
+import SupportRequestsPanel from '../../components/SupportRequestsPanel';
 import { whatsappChatUrl } from '../../utils/whatsapp';
 
 const MemberSupport = () => {
@@ -70,6 +71,7 @@ const MemberSupport = () => {
           </CardContent>
         </Card>
 
+        <SupportRequestsPanel api={memberAPI} />
         <div className="text-center pb-6">
           <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
             {t('شركة اداء الابطال العالمية للرياضة', 'Champions Academy')}

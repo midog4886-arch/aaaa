@@ -44,19 +44,31 @@ const CoachAvatar = ({ photo, name, coachId, darkMode, size = 'md' }) => {
 const MemberSchedule = () => {
   const [loading, setLoading] = useState(true);
   const [scheduleData, setScheduleData] = useState({ schedules: [], active_count: 0, expired_count: 0 });
+  const [scheduleError, setScheduleError] = useState('');
+  const [updatedAt, setUpdatedAt] = useState(null);
   const darkMode = getDarkMode();
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchSchedule();
+    const refresh = () => { if (document.visibilityState !== 'hidden') fetchSchedule(); };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('online', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
   }, []);
 
   const fetchSchedule = async () => {
     try {
-      const res = await memberAPI.get('/api/member-portal/my-schedule');
+      const res = await memberAPI.get('/api/member-portal/my-schedule', { timeout: 15000 });
       setScheduleData(res.data);
+      setUpdatedAt(new Date()); setScheduleError('');
     } catch (error) {
-      console.error('Failed to fetch schedule');
+      setScheduleError('تعذّر تحديث الجدول. تحقق من الاتصال ثم أعد المحاولة.');
     } finally {
       setLoading(false);
     }
@@ -79,6 +91,11 @@ const MemberSchedule = () => {
     <MemberLayout>
       <div className="space-y-6 page-enter">
         <h1 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>جدول التدريبات</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span>{updatedAt ? `آخر تحديث: ${updatedAt.toLocaleString('ar-SA')}` : ''}</span>
+          <button className="rounded-lg border px-4 py-2" onClick={fetchSchedule}>تحديث الجدول</button>
+        </div>
+        {scheduleError && <p role="alert" className="rounded-lg border border-red-300 p-3 text-red-600">{scheduleError}</p>}
 
         {/* Schedule change banner */}
         {scheduleData.schedule_change_notice && (
@@ -91,6 +108,8 @@ const MemberSchedule = () => {
               <p className={`text-sm mt-1 ${darkMode ? 'text-amber-100' : 'text-amber-700'}`}>
                 {scheduleData.schedule_change_notice.message_ar}
               </p>
+              {scheduleData.schedule_change_notice.old_schedule && <p className="mt-2 text-sm">الموعد السابق: {scheduleData.schedule_change_notice.old_schedule}</p>}
+              {scheduleData.schedule_change_notice.new_schedule && <p className="mt-1 font-bold">الموعد الجديد: {scheduleData.schedule_change_notice.new_schedule}</p>}
             </div>
           </div>
         )}
@@ -136,6 +155,7 @@ const MemberSchedule = () => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item.activity_name}</h3>
+                              {item.member_name && <span className="text-sm opacity-70">{item.member_name}</span>}
                               <span className="px-2 py-0.5 bg-green-600 text-white text-xs rounded-full">ساري</span>
                             </div>
                             {item.coach_name && (

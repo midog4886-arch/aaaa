@@ -74,6 +74,7 @@ def _install_job_spies(monkeypatch, server_module, **overrides):
     import routes.push_notifications as push_mod
     import utils.tenant as tenant_mod
     import utils.prepaid as prepaid_mod
+    import services.member_expiry_reminders as member_reminders_mod
     import control_db as control_mod
 
     calls: dict = {}
@@ -119,6 +120,10 @@ def _install_job_spies(monkeypatch, server_module, **overrides):
         notifications_mod, "check_subscription_renewals",
         _wrap("check_subscription_renewals", _default_check), raising=True,
     )
+    async def _default_member_reminders(*_a, **_k):
+        return 0
+    monkeypatch.setattr(member_reminders_mod, 'send_member_expiry_reminders',
+                        _wrap('send_member_expiry_reminders', _default_member_reminders))
     monkeypatch.setattr(
         notifications_mod, "check_ads_expiry",
         _wrap("check_ads_expiry", _default_check), raising=True,
@@ -409,6 +414,7 @@ def test_per_tenant_callback_runs_renewal_and_ads_checks(monkeypatch, server_mod
     assert seen["label"] == "renewal_ads"
     # Admin-global renewal check ran.
     assert seen["global_renewals"] == 1
+    assert calls.get('send_member_expiry_reminders') == 1
     # Per-branch renewal check (routes.notifications alias) ran for the branch.
     assert calls.get("check_subscription_renewals") == 1
     # Ads-expiry ran for both the branch and the admin-global scope.

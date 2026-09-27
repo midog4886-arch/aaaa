@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { QRCodeSVG } from 'qrcode.react';
 import MemberLayout, { memberAPI, getMemberData, getDarkMode, getLanguage } from './MemberLayout';
 import { useBrandColor } from '../../services/branding';
+import { getTenantSlug } from '../../config/api';
+import { readOfflineCard, saveOfflineCard } from '../../utils/offlineMemberCard';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -170,6 +172,9 @@ const SubscriptionCard = ({ act, darkMode, language, today, primary }) => {
 const MemberCard = () => {
   const [loading, setLoading] = useState(true);
   const [cardData, setCardData] = useState(null);
+  const [offlineSnapshot, setOfflineSnapshot] = useState(null);
+  const [cardError, setCardError] = useState('');
+  const [offline, setOffline] = useState(false);
   const [selectedCardIdx, setSelectedCardIdx] = useState(0);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
   const member = getMemberData();
@@ -184,7 +189,11 @@ const MemberCard = () => {
   const isStandalone = typeof window !== 'undefined' &&
     (window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator.standalone === true);
 
-  useEffect(() => { fetchCardData(); }, []);
+  useEffect(() => {
+    fetchCardData();
+    window.addEventListener('online', fetchCardData);
+    return () => window.removeEventListener('online', fetchCardData);
+  }, []);
 
   useEffect(() => {
     const handler = (e) => { e.preventDefault(); setDeferredPrompt(e); };
@@ -268,11 +277,23 @@ const MemberCard = () => {
   };
 
   const fetchCardData = async () => {
+    setCardError('');
     try {
-      const res = await memberAPI.get('/api/member-portal/qr-card');
+      const res = await memberAPI.get('/api/member-portal/qr-card', { timeout: 15000 });
+      if (!res.data || (!res.data.member_code && !res.data.cards?.length)) throw new Error('No card data');
       setCardData(res.data);
+      setOffline(false);
+      const saved = await saveOfflineCard(getTenantSlug(), member?.id, res.data).catch(() => null);
+      setOfflineSnapshot(saved);
     } catch (error) {
-      console.error('Failed to fetch card data');
+      if ([401, 403].includes(error.response?.status)) {
+        setCardData(null); setOfflineSnapshot(null);
+        setCardError('تعذّر التحقق من الحساب. سجّل الدخول من جديد.');
+      } else {
+        const saved = readOfflineCard(getTenantSlug(), member?.id);
+        if (saved) { setCardData(saved.data); setOfflineSnapshot(saved); setOffline(true); }
+        else setCardError('لا توجد بطاقة محفوظة لهذا الحساب. افتح البطاقة مرة واحدة أثناء الاتصال بالإنترنت.');
+      }
     } finally {
       setLoading(false);
     }
@@ -307,6 +328,7 @@ const MemberCard = () => {
     );
   }
 
+  if (!cardData && cardError) return <MemberLayout><p role="alert" className="rounded-lg border p-4">{cardError}</p><Button onClick={fetchCardData}>إعادة المحاولة</Button></MemberLayout>;
   const qrData = getMemberQRValue(currentCard?.member_code);
   const name = currentCard?.name_ar || member?.name_ar || '';
   const activeActivities = currentCard?.active_activities || [];
@@ -314,6 +336,13 @@ const MemberCard = () => {
   return (
     <MemberLayout>
       <div className="max-w-lg mx-auto space-y-5">
+        {cardError && <p role="alert" className="rounded-lg bg-red-50 p-4 text-red-800">{cardError}</p>}
+        {offlineSnapshot && <div className="rounded-lg border p-3 text-sm" role="status">
+          <p>{offline ? 'أنت تعرض بطاقة محفوظة دون إنترنت.' : 'تم حفظ بطاقتك للاستخدام دون إنترنت.'}</p>
+          <p>آخر تحديث: {new Date(offlineSnapshot.savedAt).toLocaleString('ar-SA')}</p>
+          {offline && <p>صلاحية الاشتراك تُراجع عند تسجيل الحضور؛ البيانات هنا تعكس آخر تحديث.</p>}
+          <a className="underline" href="/offline.html">فتح البطاقة المحفوظة</a>
+        </div>}
 
         {/* ── Linked Members Switcher (siblings sharing this phone) ── */}
         {cards.length > 1 && (

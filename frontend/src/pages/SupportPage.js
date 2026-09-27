@@ -1,4 +1,6 @@
 import React from 'react';
+import axios from 'axios';
+import SupportRequestsPanel from '../components/SupportRequestsPanel';
 import { Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -82,6 +84,7 @@ const SupportPage = () => {
   return (
     <Layout title={title}>
       <div className="space-y-6 max-w-4xl" data-testid="support-page">
+        <SupportRequestsPanel api={axios} staff />
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

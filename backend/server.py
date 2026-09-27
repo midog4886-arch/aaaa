@@ -288,6 +288,8 @@ set_push_notify_function(push_notify_new_video)
 
 # Member Portal router (mounted directly on app, not api_router)
 app.include_router(member_portal_router)
+from routes.member_support import router as member_support_router
+app.include_router(member_support_router)
 
 # Mount uploads directory for serving images (disk-only, no /api prefix)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
@@ -3689,7 +3691,7 @@ _ALL_COLLECTIONS = [
     "dashboard_settings", "discounts", "expenses", "extension_logs",
     "internal_expense_payments", "internal_expenses", "invoices",
     "journal_entries", "levels", "level_subscriptions", "loyalty_rewards",
-    "loyalty_settings", "member_freezes", "member_notifications", "member_points",
+    "loyalty_settings", "member_freezes", "member_notifications", "member_points", "support_requests",
     "members", "messages", "notifications", "payment_transactions",
     "payment_vouchers", "points_history", "product_invoices", "products",
     "purchase_invoices", "push_subscriptions", "redemption_requests",
@@ -4542,6 +4544,12 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
                 print(f"Daily checks [{slug}]: prepaid roll-forward updated {rolled} member(s)")
         except Exception as e:
             _record(f"[{slug}] prepaid roll-forward failed: {e}")
+
+        try:
+            from services.member_expiry_reminders import send_member_expiry_reminders
+            await send_member_expiry_reminders(db)
+        except Exception as e:
+            _record(f"[{slug}] member expiry reminders failed: {e}")
 
         try:
             admin_user = {"is_admin": True, "branch_id": None}

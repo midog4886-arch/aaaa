@@ -67,6 +67,9 @@ def test_member_schedule_change_sends_old_and_new_times(monkeypatch):
     ))
 
     assert len(sent) == 1
+    assert '4:00 م' in fake_db.member_notifications.rows[0]['old_schedule']
+    assert '5:00 م' in fake_db.member_notifications.rows[0]['new_schedule']
+    assert fake_db.member_notifications.rows[0]['link'] == '/member-schedule'
     assert "4:00 م" in sent[0][1]
     assert "5:00 م" in sent[0][1]
     assert sent[0][2]["notice_type"] == "schedule_changed_cloud"

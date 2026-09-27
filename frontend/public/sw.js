@@ -37,7 +37,7 @@
 // invisible in the created_at-based new-members list.
 // v34: membership cards no longer repeat a duplicated activity (dedupe by
 // name, keeping the latest-ending copy — e.g. after a renewal).
-const CACHE_NAME = 'gcsp-academy-v107';
+const CACHE_NAME = 'gcsp-academy-v108';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
@@ -47,6 +47,7 @@ const PRECACHE_ASSETS = [
   '/offline.html',
   '/manifest.json',
   '/images/academy-logo.png',
+  '/logo-new.png',
   '/images/icon-192x192.png',
   '/images/icon-512x512.png'
 ];

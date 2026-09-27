@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import axios from 'axios';
 import API_URL, { getTenantSlug, clearRememberedMemberPhone } from '../../config/api';
+import { clearOfflineCards } from '../../utils/offlineMemberCard';
 import { getAcademyLogoUrl, getAcademyName, useBrandColor } from '../../services/branding';
 
 // Default member-portal logo (used when tenant has not uploaded a custom logo).
@@ -34,6 +35,7 @@ export const memberLogout = () => {
   localStorage.removeItem('member_data');
   try { localStorage.removeItem('member_dashboard_cache_v1'); } catch {}
   clearSupportContactCache();
+  clearOfflineCards();
   // Forget the remembered phone so an explicit logout does NOT auto-login again.
   clearRememberedMemberPhone();
 };

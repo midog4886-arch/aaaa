@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import MemberQRCard from '../MemberQRCard';
+import { memberAPI, getMemberData } from '../MemberLayout';
 
 jest.mock('html2canvas', () => jest.fn());
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), info: jest.fn() } }));
@@ -39,7 +40,7 @@ jest.mock('../MemberLayout', () => {
   return {
     __esModule: true,
     default: ({ children }) => <main>{children}</main>,
-    getMemberData: () => ({ name_ar: 'عضو الاختبار' }),
+    getMemberData: jest.fn(() => ({ name_ar: 'عضو الاختبار' })),
     getDarkMode: () => false,
     getLanguage: () => 'ar',
     memberAPI: {
@@ -62,6 +63,7 @@ jest.mock('../MemberLayout', () => {
 });
 
 describe('MemberQRCard previous membership card design', () => {
+  afterEach(() => { localStorage.clear(); getMemberData.mockReturnValue({ name_ar: 'عضو الاختبار' }); });
   test('saveable card includes the member photo and active-status presentation', async () => {
     render(<MemberQRCard />);
 
@@ -97,5 +99,23 @@ describe('MemberQRCard previous membership card design', () => {
     expect(html).toContain('stable%3AGC-100');
     expect(close).toHaveBeenCalled();
     open.mockRestore();
+  });
+
+  test('network failure restores only the current account cached card', async () => {
+    getMemberData.mockReturnValue({ id: 'm1', name_ar: 'عضو' });
+    localStorage.setItem('member_offline_card_v1:default:m1', JSON.stringify({ savedAt: '2030-01-01T00:00:00Z', data: { member_code: 'OFF-1', name_ar: 'عضو محفوظ', active_activities: [] } }));
+    memberAPI.get.mockRejectedValueOnce(new Error('offline'));
+    render(<MemberQRCard />);
+    expect(await screen.findByRole('status')).toHaveTextContent('بطاقة محفوظة دون إنترنت');
+    expect(screen.getByTestId('qr-code')).toHaveAttribute('data-value', 'stable:OFF-1');
+  });
+
+  test('authentication rejection never displays a cached card', async () => {
+    getMemberData.mockReturnValue({ id: 'm1', name_ar: 'عضو' });
+    localStorage.setItem('member_offline_card_v1:default:m1', JSON.stringify({ savedAt: '2030-01-01T00:00:00Z', data: { member_code: 'OFF-1' } }));
+    memberAPI.get.mockRejectedValueOnce({ response: { status: 401 } });
+    render(<MemberQRCard />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('سجّل الدخول من جديد');
+    expect(screen.queryByTestId('digital-membership-card')).not.toBeInTheDocument();
   });
 });

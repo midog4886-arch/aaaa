@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#25136b"><title>بطاقة العضوية دون إنترنت</title>
+<style>body{margin:0;background:#f3f2fa;color:#231750;font:16px system-ui,Tahoma,sans-serif}main{max-width:480px;margin:32px auto;padding:20px}section{background:white;border-radius:24px;padding:28px;text-align:center;box-shadow:0 8px 30px #25136b15}.logo{width:100px;height:100px;object-fit:contain}.qr{width:240px;max-width:100%}select,button,a{font:inherit}select{max-width:100%;padding:10px;border-radius:10px;margin:12px}a{color:#25136b}small{display:block;color:#615978;line-height:1.8}.badge{background:#e8e3f6;border-radius:30px;padding:8px 14px;display:inline-block}h1{font-size:22px}h2{margin-bottom:8px}#code{font-size:20px;letter-spacing:1px}#empty{line-height:1.9}</style></head>
+<body><main><section><img class="logo" src="/logo-new.png" alt="شعار الأكاديمية"><h1>بطاقة العضوية المحفوظة</h1><span class="badge">متاحة دون إنترنت</span><p id="empty">افتح بطاقة العضوية مرة واحدة أثناء الاتصال بالإنترنت لحفظها على هذا الجهاز.</p><div id="card" hidden><select id="members" aria-label="اختيار العضو"></select><h2 id="name"></h2><p id="code" dir="ltr"></p><img class="qr" id="qr" alt="رمز بطاقة العضوية"><small id="updated"></small><small>هذه نسخة محفوظة. صلاحية الاشتراك تُراجع عند تسجيل الحضور.</small></div><p><a href="/card">تحديث البطاقة عند توفر الإنترنت</a></p><a href="/member-login">العودة إلى التطبيق</a></section></main>
+<script>
+(() => {
+  try {
+    if (!localStorage.getItem('member_token')) return;
+    const member = JSON.parse(localStorage.getItem('member_data') || 'null');
+    const tenant = localStorage.getItem('tenant_slug') || 'default';
+    if (!member?.id) return;
+    const saved = JSON.parse(localStorage.getItem(`member_offline_card_v1:${tenant}:${member.id}`) || 'null');
+    if (!saved?.data || !saved.qr) return;
+    const cards = saved.data.cards?.length ? saved.data.cards : [saved.data];
+    const select = document.getElementById('members');
+    const render = () => {
+      const card = cards[Number(select.value) || 0];
+      document.getElementById('name').textContent = card.name_ar || card.name || '';
+      document.getElementById('code').textContent = card.member_code || '';
+      document.getElementById('qr').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(saved.qr[card.member_code] || '');
+      document.getElementById('updated').textContent = 'آخر تحديث: ' + new Date(saved.savedAt).toLocaleString('ar-SA');
+    };
+    cards.forEach((card, index) => { const option = document.createElement('option'); option.value = index; option.textContent = card.name_ar || card.name || card.member_code; select.append(option); });
+    select.hidden = cards.length < 2;
+    select.addEventListener('change', render); render();
+    document.getElementById('empty').hidden = true; document.getElementById('card').hidden = false;
+  } catch {}
+})();
+</script></body></html>

@@ -144,6 +144,7 @@ const MemberSubscriptions = () => {
   return (
     <MemberLayout>
       <div className="space-y-6 page-enter">
+        <p className="rounded-lg border p-3 text-sm">تذكيرات الانتهاء تصلك قبل الموعد بـ7 أيام و3 أيام ويوم واحد. فعّل إشعارات التطبيق لتصلك خارج البوابة.</p>
         <div className="flex items-center justify-between gap-3">
           <h1 className={`text-xl sm:text-2xl font-bold ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>اشتراكاتي</h1>
           <button

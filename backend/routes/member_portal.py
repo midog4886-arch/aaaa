@@ -1012,6 +1012,8 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
             notifications.append({
                 "id": str(uuid.uuid4()),
                 "type": "expiring_soon",
+                "member_id": act.get('_owner_id') or member['id'],
+                "activity_id": act.get('activity_id'),
                 "title": "اشتراك على وشك الانتهاء",
                 "message": f"{name_prefix}اشتراك {act.get('activity_name')} سينتهي في {end_date}",
                 "activity_name": act.get("activity_name"),
@@ -1059,6 +1061,12 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
         {"member_id": {"$in": linked_ids_list}},
         {"_id": 0}
     ).sort("created_at", -1).to_list(50)
+
+    saved_expiry = {(row.get('member_id'), row.get('activity_id'), row.get('end_date'))
+                    for row in member_notifs if row.get('type') == 'subscription_expiry'}
+    notifications = [row for row in notifications
+                     if row.get('type') != 'expiring_soon' or
+                     (row.get('member_id'), row.get('activity_id'), row.get('end_date')) not in saved_expiry]
     
     for notif in member_notifs:
         notifications.append({
@@ -1969,6 +1977,8 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
     activity_source_ids = set()
     for act in member_acts:
         sched_str = (act.get("schedule") or "").strip()
+        if act.get('day_times'):
+            sched_str = '، '.join(f'{day}: {hour}' for day, hour in act['day_times'].items() if day and hour)
         if not sched_str:
             days = act.get("training_days") or []
             time = (act.get("training_time") or "").strip()
@@ -1985,6 +1995,7 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
         coach_id, coach_name, coach_photo = await get_coach_for_activity(aid or "", act.get("activity_name") or "")
         schedules.append({
             "source": "activity",
+            "member_name": act.get('_owner_name') or member.get('name_ar') or member.get('name', ''),
             "activity_id": aid,
             "activity_name": act.get("activity_name"),
             "schedule": sched_str,
@@ -2080,7 +2091,7 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
     schedule_change_notice = None
     try:
         recent = await db.member_notifications.find_one(
-            {"member_id": member["id"], "type": "schedule_changed"},
+            {"member_id": {"$in": member.get("_linked_member_ids", [member["id"]])}, "type": "schedule_changed"},
             {"_id": 0},
             sort=[("created_at", -1)],
         )
@@ -2099,6 +2110,7 @@ async def get_member_full_schedule(member: dict = Depends(get_current_member)):
                     "message_ar": recent.get("message_ar", ""),
                     "message_en": recent.get("message_en", ""),
                     "new_schedule": recent.get("new_schedule", ""),
+                    "old_schedule": recent.get("old_schedule", ""),
                     "activity_name": recent.get("activity_name", ""),
                     "created_at": created_raw,
                 }
