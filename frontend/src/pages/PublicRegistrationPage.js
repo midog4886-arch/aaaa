@@ -3,6 +3,7 @@ import { useParams, useSearchParams, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
 import { Loader2, CheckCircle2, Calendar, Phone, User, Dumbbell, Flag, Building2, MapPin, Languages } from 'lucide-react';
+import './PublicRegistrationPage.css';
 import { NationalitySelect } from '../components/NationalitySelect';
 
 // The Arabic label is the canonical value (it is what gets submitted and what
@@ -160,6 +161,8 @@ export const PublicRegistrationPage = () => {
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
 
+  const [motionPaused, setMotionPaused] = useState(false);
+  const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState('');
@@ -296,7 +299,7 @@ export const PublicRegistrationPage = () => {
     setFormError('');
     // Validation errors are stored as translation KEYS so they follow the
     // language toggle; server messages come through as raw text.
-    if (!name.trim()) { setFormError('errName'); return; }
+    if (!name.trim()) { setFormError('errName'); setStep(1); return; }
     const parsedAge = Number(age);
     if (!Number.isInteger(parsedAge) || parsedAge < 1 || parsedAge > 100) { setFormError('errAge'); return; }
     if (!expectedStartDate) { setFormError('errExpectedStartDate'); return; }
@@ -307,6 +310,7 @@ export const PublicRegistrationPage = () => {
     if (!hasFixedBranch && allowedBranchIds.length && !visibleBranches.some(b => b.id === selectedBranchId)) {
       setFormError('errBranchScope'); return;
     }
+    if (step === 1) { setStep(2); return; }
     setSubmitting(true);
     try {
       // Submitted values stay Arabic (canonical) regardless of the visitor's
@@ -358,50 +362,29 @@ export const PublicRegistrationPage = () => {
   })();
 
   return (
-    <div dir={lang === 'ar' ? 'rtl' : 'ltr'} className="relative min-h-screen overflow-hidden flex flex-col items-center py-8 px-4 bg-gradient-to-br from-emerald-50 via-white to-sky-50">
-      <style>{`
-        @keyframes pra-float-a { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(24px,-30px) scale(1.08); } }
-        @keyframes pra-float-b { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-28px,26px) scale(1.1); } }
-        @keyframes pra-float-c { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(18px,22px) scale(0.94); } }
-        @keyframes pra-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-        .pra-rise { animation: pra-rise .6s ease-out both; }
-        @media (prefers-reduced-motion: reduce) {
-          .pra-blob, .pra-rise { animation: none !important; }
-        }
-      `}</style>
-      {/* Animated brand-color background (logo palette: emerald / blue / gold) */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
-        <div className="pra-blob absolute -top-24 -right-24 w-80 h-80 rounded-full bg-emerald-300/30 blur-3xl" style={{ animation: 'pra-float-a 14s ease-in-out infinite' }} />
-        <div className="pra-blob absolute top-1/3 -left-28 w-96 h-96 rounded-full bg-sky-300/25 blur-3xl" style={{ animation: 'pra-float-b 18s ease-in-out infinite' }} />
-        <div className="pra-blob absolute -bottom-28 right-1/4 w-80 h-80 rounded-full bg-amber-200/30 blur-3xl" style={{ animation: 'pra-float-c 16s ease-in-out infinite' }} />
-      </div>
-      <div className="relative z-10 w-full max-w-md pra-rise">
-        <div className="flex justify-end mb-2">
-          <button type="button" onClick={() => setLang(l => (l === 'ar' ? 'en' : 'ar'))}
-            data-testid="button-toggle-language"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-xs font-semibold text-gray-600 shadow-sm hover:bg-white transition-colors">
-            <Languages className="w-3.5 h-3.5" /> {t.switchTo}
-          </button>
+    <div dir={lang === 'ar' ? 'rtl' : 'ltr'} className={`modern-registration ${motionPaused ? 'motion-paused' : ''}`}>
+      <header className="registration-top">
+        <div className="registration-brand"><img src={logoUrl} alt={t.logoAlt} /><span>{academyName || 'أكاديمية أداء الأبطال'}</span></div>
+        <div className="registration-controls">
+          <button type="button" aria-pressed={motionPaused} onClick={() => setMotionPaused(v => !v)}>{lang === 'ar' ? (motionPaused ? 'تشغيل الحركة' : 'إيقاف الحركة') : (motionPaused ? 'Resume motion' : 'Pause motion')}</button>
+          <button type="button" data-testid="button-toggle-language" onClick={() => setLang(l => l === 'ar' ? 'en' : 'ar')}><Languages size={15} /> {t.switchTo}</button>
         </div>
-        <div className="text-center mb-6">
-          <div className="mx-auto w-24 h-24 rounded-full bg-white shadow-lg ring-4 ring-emerald-100 flex items-center justify-center mb-4 overflow-hidden p-2">
-            <img
-              src={logoUrl}
-              onError={(e) => { if (!e.target.dataset.fb) { e.target.dataset.fb = '1'; e.target.src = '/logo-new.png'; } }}
-              alt={t.logoAlt}
-              className="w-full h-full object-contain"
-            />
+      </header>
+      <main className="registration-shell">
+        <section className="registration-hero">
+          <p className="registration-eyebrow">● {lang === 'ar' ? 'بداية جديدة. أداء أقوى.' : 'A fresh start. Stronger performance.'}</p>
+          <h1>{lang === 'ar' ? <>خطوتك الأولى<br />نحو <span>أداء الأبطال.</span></> : <>Your first step<br />towards <span>champion performance.</span></>}</h1>
+          <p className="registration-lead">{lang === 'ar' ? 'كل بطل يبدأ بخطوة. سجّل بيانات اللاعب، ودعنا نساعدك في اختيار النشاط المناسب.' : "Every champion starts with a step. Register the player's details and let us help you choose the right activity."}</p>
+          <div className="registration-scene">
+            <div className="registration-aura" aria-hidden="true" /><div className="registration-orbit" aria-hidden="true" />
+            <div className="registration-logo"><img src={logoUrl} alt={t.logoAlt} onError={e => { if (!e.target.dataset.fb) { e.target.dataset.fb = '1'; e.target.src = '/logo-new.png'; } }} /></div>
+            <span className="registration-star" aria-hidden="true">✦</span>
+            <div className="registration-tag tag-one"><Dumbbell size={18} />{lang === 'ar' ? 'أنشطة تناسب طموحك' : 'Activities for your ambition'}</div>
+            <div className="registration-tag tag-two"><CheckCircle2 size={18} />{lang === 'ar' ? 'بداية رحلة بطل' : 'A champion journey begins'}</div>
           </div>
-          <h1 className="text-xl font-extrabold text-gray-800 leading-snug px-2">
-            {academyName || 'شركة اداء الابطال العالمية للرياضة'}
-          </h1>
-          {branchName && (
-            <span className="inline-flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-100">
-              <Building2 className="w-3.5 h-3.5" /> {t.branchTag}: {branchName}
-            </span>
-          )}
-        </div>
-
+          {branchName && <div className="registration-branch"><Building2 size={22} /><div>{t.branchTag}<strong>{branchName}</strong></div></div>}
+        </section>
+        <section className="registration-panel">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-7 h-7 animate-spin text-emerald-600" />
@@ -417,8 +400,10 @@ export const PublicRegistrationPage = () => {
             <p className="text-sm text-gray-600">{t.submittedBody}</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="bg-white/90 backdrop-blur-sm rounded-3xl shadow-lg border border-gray-100 p-6 space-y-4">
-            <p className="text-sm text-gray-600 text-center mb-2">{t.intro}</p>
+          <form onSubmit={handleSubmit} className="registration-form space-y-4">
+            <div className="registration-steps" aria-label={lang === 'ar' ? 'خطوات التسجيل' : 'Registration steps'}>{[1, 2, 3].map(n => <span key={n} className={(submitted ? 3 : step) === n ? 'active' : ''}><i>{n}</i>{lang === 'ar' ? ['بيانات اللاعب', 'التفضيلات', 'التأكيد'][n - 1] : ['Player details', 'Preferences', 'Confirmation'][n - 1]}</span>)}</div>
+            <h2 className="registration-form-title">{lang === 'ar' ? (step === 1 ? 'لنبدأ بالتعارف' : 'اختر ما يناسب اللاعب') : (step === 1 ? 'Let’s get to know you' : 'Choose your preferences')}</h2>
+            <p className="text-sm text-gray-600 mb-2">{t.intro}</p>
 
             {marketer && (
               <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-center">
@@ -429,6 +414,7 @@ export const PublicRegistrationPage = () => {
               </div>
             )}
 
+            <div hidden={step !== 1} className="registration-fields space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><User className="w-4 h-4" /> {t.childName} *</label>
               <input value={name} onChange={(e) => setName(e.target.value)}
@@ -444,13 +430,13 @@ export const PublicRegistrationPage = () => {
                 <input value={age} onChange={(e) => setAge(e.target.value)} type="number" min="1" max="100"
                   aria-required="true"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  placeholder={t.agePh} required />
+                  placeholder={t.agePh} required={step === 1} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Calendar className="w-4 h-4" /> {t.expectedStartDate} *</label>
                 <input value={expectedStartDate} onChange={(e) => setExpectedStartDate(e.target.value)} type="date"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  required />
+                  required={step === 1} />
               </div>
             </div>
 
@@ -508,6 +494,8 @@ export const PublicRegistrationPage = () => {
               )}
             </div>
 
+            </div>
+            <div hidden={step !== 2} className="registration-fields space-y-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5"><Dumbbell className="w-4 h-4" /> {t.activity} <span className="text-gray-400 font-normal">{t.activityHint}</span></label>
               <div className="flex flex-wrap gap-2">
@@ -546,18 +534,23 @@ export const PublicRegistrationPage = () => {
                 placeholder={t.notesPh} />
             </div>
 
+            </div>
             {formError && <div className="text-sm text-red-600 text-center">{t[formError] || formError}</div>}
 
-            <button type="submit" disabled={submitting}
+            {step === 1 ? <button type="button" className="registration-next" onClick={() => {
+              const invalid = !name.trim() ? 'errName' : (!Number.isInteger(Number(age)) || Number(age) < 1 || Number(age) > 100) ? 'errAge' : !expectedStartDate ? 'errExpectedStartDate' : phone.replace(/\D/g, '').length < 8 ? 'errPhone' : !nationality.trim() ? 'errNationality' : !selectedBranchId ? 'errBranch' : '';
+              setFormError(invalid); if (!invalid) setStep(2);
+            }}>{lang === 'ar' ? 'التالي: تفضيلات التدريب ←' : 'Next: training preferences →'}</button> : <div className="registration-submit-row"><button type="button" className="registration-back" onClick={() => { setStep(1); setFormError(''); }}>{lang === 'ar' ? 'رجوع' : 'Back'}</button><button type="submit" disabled={submitting}
               className="w-full rounded-xl bg-gradient-to-l from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-white font-semibold py-3.5 text-sm flex items-center justify-center gap-2 shadow-md shadow-emerald-200 transition-all disabled:opacity-60">
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               {t.submit}
-            </button>
+            </button></div>}
           </form>
         )}
 
         <p className="text-center text-xs text-gray-400 mt-8">© {academyName || 'شركة اداء الابطال العالمية للرياضة'}</p>
-      </div>
+        </section>
+      </main>
     </div>
   );
 };

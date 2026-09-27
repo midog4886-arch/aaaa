@@ -1,0 +1,21 @@
+import React from 'react';
+import {render,screen,fireEvent} from '@testing-library/react';
+import '@testing-library/jest-dom';
+import axios from 'axios';
+import PublicRegistrationPage from '../PublicRegistrationPage';
+jest.mock('axios');
+jest.mock('react-router-dom',()=>({useParams:()=>({branchId:'b1'}),useSearchParams:()=>[new URLSearchParams('lang=en')],useLocation:()=>({pathname:'/register/default/b1'})}));
+jest.mock('../../config/api',()=>({API_URL:''}));
+jest.mock('../../components/NationalitySelect',()=>({NationalitySelect:({value,onChange})=><input aria-label="nationality" value={value} onChange={e=>onChange(e.target.value)}/>}));
+test('first step validates and never creates a request when proceeding',async()=>{
+ const post=jest.fn();axios.create.mockReturnValue({get:jest.fn().mockResolvedValue({data:{branch:{id:'b1',name:'Branch'},activities:[]}}),post});
+ const {container}=render(<PublicRegistrationPage/>);await screen.findByText('Let’s get to know you');
+ fireEvent.click(screen.getByRole('button',{name:/Next: training/}));expect(screen.getByText('Please enter the name')).toBeInTheDocument();
+ fireEvent.change(screen.getByPlaceholderText('Full name'),{target:{value:'Player'}});
+ fireEvent.change(screen.getByPlaceholderText('Enter age in years'),{target:{value:'10'}});
+ fireEvent.change(container.querySelector('input[type=date]'),{target:{value:'2026-10-01'}});
+ fireEvent.change(screen.getByPlaceholderText('05xxxxxxxx'),{target:{value:'0500000000'}});
+ fireEvent.change(screen.getByLabelText('nationality'),{target:{value:'Saudi'}});
+ fireEvent.submit(container.querySelector('form'));expect(screen.getByText('Choose your preferences')).toBeInTheDocument();expect(post).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Back'}));expect(screen.getByPlaceholderText('Full name')).toHaveValue('Player');
+});
