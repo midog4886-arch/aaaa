@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import ChatMessageViewport from '../components/ChatMessageViewport';
 import CloudVoiceComposer from '../components/CloudVoiceComposer';
+import BranchAutomaticSendDialog from '../components/BranchAutomaticSendDialog';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -491,6 +492,8 @@ export default function WhatsAppPage() {
   const [expandedBranches, setExpandedBranches] = useState({});
   const [waQueue, setWaQueue] = useState([]);
   const [waQueueIdx, setWaQueueIdx] = useState(0);
+  const [automaticSend, setAutomaticSend] = useState(null);
+  const automaticAttemptKeys = useRef(new Map());
 
   // ── Portal Notifications State ──
   const [portalNotifications, setPortalNotifications] = useState([]);
@@ -2190,7 +2193,7 @@ export default function WhatsAppPage() {
   // ── Tabs definition ──
   const tabs = [
     { id: 'settings', label: t('الإعدادات', 'Settings'), icon: <Settings className="w-4 h-4" /> },
-    { id: 'manual', label: t('إرسال يدوي', 'Manual Send'), icon: <Phone className="w-4 h-4" /> },
+    { id: 'manual', label: t('إرسال رسائل', 'Send Messages'), icon: <Phone className="w-4 h-4" /> },
     { id: 'activity_notif', label: t('إشعار النشاط', 'Activity Alert'), icon: <Megaphone className="w-4 h-4" /> },
     { id: 'portal', label: t('إشعارات الأعضاء', 'Member Notifications'), icon: <Bell className="w-4 h-4" /> },
     { id: 'cloud_inbox', label: t('شات واتساب', 'WhatsApp Chats'), icon: <MessageCircle className="w-4 h-4" />, badge: cloudUnreadCount },
@@ -3008,7 +3011,7 @@ export default function WhatsAppPage() {
             <Card className="border-amber-500/30 bg-amber-500/5">
               <CardContent className="p-4 flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-700">{t('سيتم فتح واتساب لكل مستلم على حدة. للإرسال الجماعي التلقائي استخدم تبويب "واتساب" مع الربط بالجلسة.', 'WhatsApp will open for each recipient separately. For automated bulk sending, use the WhatsApp tab.')}</p>
+                <p className="text-sm text-amber-700">{t('يمكن الإرسال تلقائيًا من رقم فرع كل مستلم إذا كان الفرع متصلًا. تظهر حالة الاتصال قبل التأكيد؛ الفروع غير المتصلة تُستبعد من الإرسال التلقائي.', 'Send automatically from each recipient’s connected branch. Review connections before confirming; disconnected branches are excluded.')}</p>
               </CardContent>
             </Card>
 
@@ -3137,9 +3140,14 @@ export default function WhatsAppPage() {
                       {waMessage}
                     </div>
                   )}
-                  <Button className="w-full gap-2" onClick={handleSendWaMessage} disabled={!selectedMembers.length || !waMessage.trim()}>
+                  {isAdmin && <Button className="w-full gap-2" onClick={() => setAutomaticSend({ recipients: members.filter(m => selectedMembers.includes(m.id)), message: waMessage })} disabled={!selectedMembers.length || !waMessage.trim() || waMessage.trim().length > 4096}>
                     <Send className="w-4 h-4" />
-                    {t('إرسال', 'Send')} ({selectedMembers.length})
+                    {t('معاينة الإرسال التلقائي', 'Preview automatic sending')} ({selectedMembers.length})
+                  </Button>}
+                  {!isAdmin && <p className="text-sm text-muted-foreground">{t('الإرسال التلقائي يحتاج اعتماد المدير من شاشة واتساب جماعي.', 'Automatic sending requires manager approval through Bulk WhatsApp.')}</p>}
+                  <Button variant="outline" className="w-full gap-2" onClick={handleSendWaMessage} disabled={!selectedMembers.length || !waMessage.trim()}>
+                    <Send className="w-4 h-4" />
+                    {t('فتح واتساب يدويًا', 'Open WhatsApp manually')} ({selectedMembers.length})
                   </Button>
                 </CardContent>
               </Card>
@@ -4533,6 +4541,9 @@ export default function WhatsAppPage() {
         )}
 
       </div>
+      {automaticSend && <BranchAutomaticSendDialog recipients={automaticSend.recipients} message={automaticSend.message}
+        branches={branches} language={language} attemptKeys={automaticAttemptKeys} onClose={() => setAutomaticSend(null)}
+        onQueued={ids => { setSelectedMembers(current => current.filter(id => !ids.includes(id))); setSelectAll(false); }} />}
     </Layout>
   );
 }
