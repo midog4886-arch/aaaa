@@ -39,6 +39,14 @@ def _safe_regex(q: str) -> dict:
     return {"$regex": re.escape(q), "$options": "i"}
 
 
+def _phone_regex(q: str) -> dict:
+    digits = q.translate(str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'))
+    digits = re.sub(r'[\s()+-]', '', digits)
+    if not digits.isdigit():
+        return _safe_regex(q)
+    return {'$regex': r'[\s()+-]*'.join(re.escape(digit) for digit in digits), '$options': 'i'}
+
+
 def _name_match(fields: list, tokens: list) -> dict:
     """Match a multi-word name: EVERY typed word (first/second/third name…)
     must appear in at least one of the given name fields. This lets
@@ -51,7 +59,7 @@ def _name_match(fields: list, tokens: list) -> dict:
 
 @router.get("")
 async def global_search(
-    q: str = Query(..., min_length=1),
+    q: str = Query(..., min_length=1, max_length=200),
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user),
 ):
@@ -60,8 +68,14 @@ async def global_search(
         return {"members": [], "invoices": [], "activities": []}
 
     branch_id = resolve_branch_filter(current_user, branch_filter)
+    if current_user.get('is_admin'):
+        permissions = {'members', 'invoices', 'activities'}
+    else:
+        user = await db.users.find_one({'id': current_user.get('user_id')}, {'_id': 0, 'permissions': 1})
+        permissions = set((user or {}).get('permissions') or [])
     branch_q = {"branch_id": branch_id} if branch_id else {}
     rx = _safe_regex(q)
+    phone_rx = _phone_regex(q)
     tokens = [t for t in q.split() if t]
 
     member_name_fields = ["name_ar", "name", "guardian_name_ar", "guardian_name"]
@@ -69,9 +83,9 @@ async def global_search(
         **branch_q,
         "$or": [
             _name_match(member_name_fields, tokens),
-            {"phone": rx},
+            {"phone": phone_rx},
             {"member_code": rx},
-            {"guardian_phone": rx},
+            {"guardian_phone": phone_rx},
         ],
     }
     members_raw = await db.members.find(
@@ -81,7 +95,7 @@ async def global_search(
             "activities": 1,
             "guardian_name_ar": 1, "guardian_name": 1, "guardian_phone": 1,
         },
-    ).limit(10).to_list(10)
+    ).limit(10).to_list(10) if 'members' in permissions else []
     members = [
         {
             "id": m.get("id"),
@@ -106,7 +120,7 @@ async def global_search(
     invoices_raw = await db.invoices.find(
         invoice_query,
         {"_id": 0, "id": 1, "invoice_number": 1, "member_name": 1, "total": 1, "status": 1, "created_at": 1},
-    ).limit(10).to_list(10)
+    ).limit(10).to_list(10) if 'invoices' in permissions else []
     invoices = [
         {
             "id": i.get("id"),
@@ -126,7 +140,7 @@ async def global_search(
     activities_raw = await db.activities.find(
         activity_query,
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "monthly_fee": 1, "price": 1},
-    ).limit(10).to_list(10)
+    ).limit(10).to_list(10) if 'activities' in permissions else []
     activities = [
         {
             "id": a.get("id"),

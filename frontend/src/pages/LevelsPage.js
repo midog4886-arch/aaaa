@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { transferLevelMember } from '../utils/transferLevelMember';
+import GroupWaitingList from '../components/GroupWaitingList';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -2600,6 +2601,7 @@ ${slotTables}
   return (
     <Layout>
       <div className="p-4 md:p-6 max-w-6xl mx-auto" data-testid="levels-page">
+        <GroupWaitingList />
         {/* Header with Breadcrumb */}
         <div className="mb-6">
           {/* Breadcrumb Navigation */}

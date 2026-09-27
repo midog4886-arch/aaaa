@@ -161,6 +161,10 @@ export const Sidebar = ({ isOpen, onClose }) => {
       ]
     },
     {
+      id: 'daily_tasks', label_ar: 'مهام اليوم', label_en: 'Today’s tasks', icon: ClipboardList, single: true,
+      items: [{ to: '/admin/tasks', icon: ClipboardList, label_ar: 'مهام اليوم', label_en: 'Today’s tasks', permission: 'dashboard' }],
+    },
+    {
       id: 'invoices_quick',
       label_ar: 'الفواتير',
       label_en: 'Invoices',
@@ -180,7 +184,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/registration-requests', icon: Inbox, label: 'registration_requests', permission: 'invoices' },
         { to: '/admin/marketers', icon: Megaphone, label: 'marketers', permission: 'marketers' },
         { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'renewals', feature: 'renewals' },
-        { to: '/admin/member-card', icon: QrCode, label: 'member_card', permission: 'member-card' },
         { to: '/admin/daily-new-cards', icon: CalendarDays, label: 'daily_new_cards', permission: 'member-card' },
         { to: '/admin/attendance', icon: ClipboardList, label: 'attendance', permission: 'attendance', feature: 'attendance' },
         { to: '/admin/today-attendance', icon: CheckCheck, label: 'today_attendance', permission: 'attendance', feature: 'attendance' },
@@ -283,7 +286,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
           const groupLabel = (language === 'ar' ? group.label_ar : group.label_en) || '';
           const groupMatches = groupLabel.toLowerCase().includes(normalizedSearch);
           const matchedItems = group.items.filter(item => {
-            const label = (t(item.label) || '').toLowerCase();
+            const label = ((language === 'ar' ? item.label_ar : item.label_en) || t(item.label) || '').toLowerCase();
             return label.includes(normalizedSearch);
           });
           if (groupMatches) return { ...group, single: group.single && matchedItems.length <= 1 };
@@ -411,7 +414,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
                   onClick={onClose}
                 >
                   <item.icon className="nav-item-icon" />
-                  <span>{t(item.label)}</span>
+                  <span>{(language === 'ar' ? item.label_ar : item.label_en) || t(item.label)}</span>
                 </NavLink>
               );
             }
@@ -443,7 +446,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
                       onClick={onClose}
                     >
                       <item.icon className="nav-item-icon" />
-                      <span className="flex-1">{t(item.label)}</span>
+                      <span className="flex-1">{(language === 'ar' ? item.label_ar : item.label_en) || t(item.label)}</span>
                       {item.to === '/admin/levels' && unassignedCount > 0 && (
                         <span
                           className="ms-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold"

@@ -1,0 +1,35 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import axios from 'axios';
+import RenewalFollowup from '../RenewalFollowup';
+import GroupWaitingList from '../GroupWaitingList';
+jest.mock('axios', () => ({ get: jest.fn(), put: jest.fn(), post: jest.fn(), delete: jest.fn() }));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ selectedBranchId: 'north', user: { id: 'staff' } }) }));
+jest.mock('../../contexts/LanguageContext', () => ({ useLanguage: () => ({ language: 'en' }) }));
+beforeEach(() => jest.clearAllMocks());
+test('follow-up loads on demand and saves status without changing subscription', async () => {
+  axios.get.mockResolvedValue({ data: {} });
+  axios.put.mockResolvedValue({ data: { status: 'promised', notes: '', owner_name: 'Staff' } });
+  render(<RenewalFollowup memberId="m" language="en" />);
+  expect(axios.get).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByText('Renewal follow-up'));
+  await screen.findByLabelText('Status');
+  await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+  fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'promised' } });
+  fireEvent.click(screen.getByText('Save and assign to me'));
+  await waitFor(() => expect(axios.put).toHaveBeenCalledWith('/api/operations/renewals/m', { status: 'promised', next_date: null, notes: '' }));
+  expect(await screen.findByText('Owner: Staff')).toBeInTheDocument();
+});
+test('shows vacancies with waiting members and adds using member code', async () => {
+  axios.get.mockResolvedValue({ data: [{ id: 'l', activity_name: 'Swimming', used: 5, capacity: 6, available: 1, waiting_list: [{ member_id: 'm', name: 'Lina', created_at: '2026-09-27T00:00:00Z' }] }] });
+  axios.post.mockResolvedValue({ data: {} });
+  render(<GroupWaitingList />);
+  fireEvent.click(screen.getByText('Group capacity & waiting lists'));
+  await screen.findByRole('option', { name: /Swimming/ });
+  fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'l' } });
+  expect(screen.getByText(/Places available/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Member code'), { target: { value: '123' } });
+  fireEvent.click(screen.getByText('Add to waiting list'));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledWith('/api/operations/groups/l/waiting', { member_id: '123' }));
+});

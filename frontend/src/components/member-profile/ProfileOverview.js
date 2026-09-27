@@ -55,6 +55,10 @@ export default function ProfileOverview({ member, attendance, canViewFinancial, 
         </div>)}
       </div>}
     </section>
+    <div className="flex flex-wrap gap-3">
+      <button type="button" onClick={() => onTab('timeline')} className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted">{copy('عرض التسلسل الزمني', 'View timeline', language)}</button>
+      <button type="button" onClick={() => onTab('info')} className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted">{copy('بيانات العضو', 'Member details', language)}</button>
+    </div>
     <div className="grid gap-3 sm:grid-cols-3">
       {quick.map(({ key, icon: Icon, label, value, allowed = true }) => <button key={key} type="button" disabled={!allowed} onClick={() => allowed && onTab(key)} className="rounded-xl border bg-card p-4 text-start transition-colors hover:border-primary/50 disabled:cursor-not-allowed disabled:opacity-65">
         <Icon className="mb-3 h-4 w-4 text-primary" /><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-semibold">{value}</p>

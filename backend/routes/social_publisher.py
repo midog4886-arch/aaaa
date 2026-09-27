@@ -143,7 +143,7 @@ def _require_admin(current_user: dict = Depends(get_current_user)) -> dict:
 
 def _public_base_url(request: Request) -> str:
     """Return the base URL that external platforms can fetch /uploads from."""
-    forced = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+    forced = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("APP_BASE_URL") or '').rstrip("/")
     if forced:
         return forced
     # Trust the configured Replit domain if available — proxied previews
@@ -218,6 +218,8 @@ async def upload_media(
             )
 
     base = _public_base_url(request)
+    from utils.auth import resolve_branch_filter
+    await db.social_media.insert_one({'filename':name,'kind':kind,'size':total,'duration':duration,'public_url':f'{base}/uploads/social/{name}','branch_id':resolve_branch_filter(current_user),'created_at':datetime.now(timezone.utc).isoformat(),'allowed_to_publish':False,'category':'','activity':'','tournament':'','consent_note':''})
     return {
         "filename": name,
         "kind": kind,
@@ -934,6 +936,11 @@ async def publish_post(
     request: Request,
     current_user: dict = Depends(_require_social_publisher),
 ):
+    if not current_user.get('is_admin') and not current_user.get('_approved_plan'):
+        raise HTTPException(status_code=403, detail='أرسل المنشور للمراجعة من مركز المسودات قبل النشر')
+    registered=await db.social_media.find_one({'filename':payload.media_filename},{'_id':0,'allowed_to_publish':1})
+    if registered and not registered.get('allowed_to_publish'):
+        raise HTTPException(status_code=400, detail='فعّل السماح بالنشر لهذا الوسيط من مكتبة الوسائط أولًا')
     if not payload.targets:
         raise HTTPException(status_code=400, detail="اختر منصة واحدة على الأقل")
     # Sanitize filename: only allow a basename that exists inside the upload
@@ -2126,6 +2133,13 @@ async def _collect_recent_post_filenames(max_age_days: int) -> set:
             logo_name = logo.get("filename")
             if isinstance(logo_name, str) and logo_name:
                 referenced.add(logo_name)
+    # Editorial drafts and scheduled jobs must retain their media until cancelled.
+    plans=await db.social_plans.find({'status':{'$in':['draft','pending_review','approved','scheduled','publishing','unknown']}},{'_id':0,'payload':1}).to_list(None)
+    for plan in plans:
+        payload=plan.get('payload') or {}
+        if payload.get('media_filename'): referenced.add(payload['media_filename'])
+        logo=((payload.get('video_edits') or {}).get('logo') or {}).get('filename')
+        if logo: referenced.add(logo)
     return referenced
 
 

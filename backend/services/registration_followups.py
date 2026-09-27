@@ -512,6 +512,9 @@ async def authorize_dispatch(item: dict):
     """Called while the branch pacing lease is held."""
     kind = item.get("communication_kind") or "marketing"
     phone = normalize_phone(item.get("phone"))
+    if kind == 'marketing' and await _db['registration_followup_stops'].find_one(
+            {'phone':phone, '$or':[{'reason':'opted_out'},{'persistent':True}]}):
+        return {'action':'cancel','reason':'opted_out'}
     now = datetime.now(timezone.utc)
     local = now.astimezone(RIYADH)
     if kind == "registration_followup":
@@ -558,6 +561,9 @@ async def authorize_dispatch(item: dict):
 
 
 async def recheck_dispatch(item: dict) -> bool:
+    if (item.get('communication_kind') or 'marketing') == 'marketing':
+        return not bool(await _db['registration_followup_stops'].find_one(
+            {'phone':normalize_phone(item.get('phone')), '$or':[{'reason':'opted_out'},{'persistent':True}]}))
     if (item.get("communication_kind") or "marketing") != "registration_followup":
         return True
     phone = normalize_phone(item.get("phone"))

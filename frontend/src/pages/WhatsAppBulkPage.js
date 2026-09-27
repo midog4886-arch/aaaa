@@ -13,6 +13,7 @@ import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser,
 import { branchesAPI, whatsappAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import WhatsAppCampaignReport from '../components/WhatsAppCampaignReport';
+import WhatsAppCampaignWorkflow from '../components/WhatsAppCampaignWorkflow';
 
 const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
 const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[d] || d);
@@ -438,6 +439,7 @@ export default function WhatsAppBulkPage() {
       setRemoveStoredAttachment(false);
       toast.success(t('تم حفظ المسودة', 'Draft saved'));
       await loadCampaigns();
+      return response.data.id;
     } catch (error) {
       toast.error(apiErrorMessage(error, t('تعذر حفظ المسودة', 'Could not save draft')));
     } finally {
@@ -741,9 +743,9 @@ export default function WhatsAppBulkPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium flex items-center gap-2">
                     <CalendarClock className="w-4 h-4" />
-                    {t('موعد إرسال مقترح (اختياري)', 'Proposed send time (optional)')}
+                    {t('موعد إرسال الحملة', 'Campaign send time')}
                   </label>
-                  <Input type="datetime-local" value={proposedSendAt} onChange={event => setProposedSendAt(event.target.value)} />
+                  <p className="text-sm text-muted-foreground">{proposedSendAt || t('حدّد الموعد في قسم معاينة الحملة واعتماد الإرسال أدناه.', 'Set the time in campaign preview and approval below.')}</p>
                 </div>
               </div>
               <div className="flex items-center justify-between gap-3 rounded-lg border bg-emerald-50/60 p-3">
@@ -754,7 +756,7 @@ export default function WhatsAppBulkPage() {
                       : t(`المعاينة: ${validItems.length} جهة اتصال`, `Preview: ${validItems.length} recipient(s)`)}
                   </p>
                   <p className="text-xs text-amber-800">
-                    {t('الموعد المقترح للتخطيط فقط؛ لا يتم جدولة أو إرسال أي رسالة تلقائياً.', 'The proposed time is advisory only; nothing is scheduled or sent automatically.')}
+                    {t('لن تُرسل المسودة تلقائياً. استخدم المعاينة ثم أرسلها لاعتماد المدير لتفعيل الجدولة.', 'Drafts never send automatically. Preview and submit for manager approval to activate scheduling.')}
                   </p>
                 </div>
                 {audience !== 'pasted' && (
@@ -1225,6 +1227,8 @@ export default function WhatsAppBulkPage() {
           </CardContent>
         </Card>
 
+        <WhatsAppCampaignWorkflow branchId={branchId} items={items} message={message} defaultName={defaultName}
+          audience={audience} onSave={saveCampaign} onMessage={setMessage} scheduleAt={proposedSendAt} onSchedule={setProposedSendAt} />
         <WhatsAppCampaignReport
           branchId={branchId}
           job={reportJob}

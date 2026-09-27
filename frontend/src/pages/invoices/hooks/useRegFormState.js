@@ -251,7 +251,7 @@ export const useRegFormState = ({
     const branchObj = (branches || []).find(b => b.id === form.branch_id);
     const branchGroupUrl = (branchObj && branchObj.whatsapp_group_url) ? String(branchObj.whatsapp_group_url).trim() : '';
     const groupBlock = branchGroupUrl ? `👥 *انضم لمجموعتنا على الواتساب:*\n${branchGroupUrl}\n` : '';
-    const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *لتحميل الأيفون اضغط على الرابط:*\nhttps://adaa-alabtal.replit.app/member-login\n${groupBlock}━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📋 *استمارة تسجيل رقم:* #${form.form_number}\n📅 *التاريخ:* ${new Date(form.created_at).toLocaleDateString('ar-SA')}\n👤 *العميل:* ${form.customer_name}\n━━━━━━━━━━━━━━\n*الأنشطة والمواعيد:*\n${itemsList}\n━━━━━━━━━━━━━━`;
+    const message = `📲 *لتحميل أيقونة تطبيق الأعضاء اندرويد اضغط على الرابط:*\nhttps://play.google.com/store/apps/details?id=com.champions.academy.member\n🍎 *لتحميل الأيفون اضغط على الرابط:*\nhttps://adaa-alabtal.com/member-login\n${groupBlock}━━━━━━━━━━━━━━\n🏆 *${COMPANY_INFO.name_ar}*\n━━━━━━━━━━━━━━\n📋 *استمارة تسجيل رقم:* #${form.form_number}\n📅 *التاريخ:* ${new Date(form.created_at).toLocaleDateString('ar-SA')}\n👤 *العميل:* ${form.customer_name}\n━━━━━━━━━━━━━━\n*الأنشطة والمواعيد:*\n${itemsList}\n━━━━━━━━━━━━━━`;
     window.open(`https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`, '_blank');
   };
 

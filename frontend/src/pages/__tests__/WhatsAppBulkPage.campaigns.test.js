@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+jest.mock('../../components/WhatsAppCampaignWorkflow',()=>()=>null);
 
 jest.mock('../../services/api', () => ({
   branchesAPI: {
@@ -210,7 +211,7 @@ test('daily quota is advisory because a durable queue may continue next day', as
   expect(screen.getByDisplayValue('Welcome draft')).toBeInTheDocument();
   expect(screen.getByDisplayValue('Hello {name}')).toBeInTheDocument();
   expect(screen.getByText(/Preview: 1 recipient/)).toBeInTheDocument();
-  expect(screen.getByText(/advisory only/i)).toBeInTheDocument();
+  expect(screen.getByText(/manager approval to activate scheduling/i)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Send 1 message.* to 1/i })).toBeEnabled();
   expect(whatsappAPI.sendBranchCloudBulk).not.toHaveBeenCalled();
   expect(whatsappAPI.sendBranchCloudBulkMedia).not.toHaveBeenCalled();

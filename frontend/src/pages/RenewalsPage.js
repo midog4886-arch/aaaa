@@ -14,6 +14,7 @@ import { notificationsAPI, invoicesAPI, membersAPI, branchesAPI, whatsappAPI, di
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
 import MemberAvatar from '../components/MemberAvatar';
+import RenewalFollowup from '../components/RenewalFollowup';
 import AdditionalActivityRows from './renewals/AdditionalActivityRows';
 import {
   activitySchedule,
@@ -1433,6 +1434,7 @@ const RenewalsPage = () => {
                 )}
             </div>
           </div>
+          <RenewalFollowup memberId={item.member_id} language={language} />
           {item._renewed ? (
             <div className="flex items-center justify-center gap-2 pt-2 text-emerald-700 font-semibold text-sm">
               <CheckCircle2 className="w-4 h-4" />

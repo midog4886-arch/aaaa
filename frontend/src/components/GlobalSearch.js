@@ -5,37 +5,36 @@ import { useAuth } from '../contexts/AuthContext';
 import { globalSearchAPI } from '../services/api';
 import { Search, Users, Receipt, Dumbbell, X, Loader2, Clock, Trash2 } from 'lucide-react';
 
-const HISTORY_KEY = 'global_search_history';
 const MAX_HISTORY = 10;
-
-const getSearchHistory = () => {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
-  } catch { return []; }
-};
-
-const saveSearchHistory = (history) => {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY)));
-};
 
 const GlobalSearch = () => {
   const { language } = useLanguage();
-  const { selectedBranchId } = useAuth();
+  const { selectedBranchId, user, token, isAdmin } = useAuth();
+  const scope = `${token || user?.id || 'anonymous'}:${selectedBranchId}`;
+  const canSearch = permission => isAdmin || user?.permissions?.includes(permission);
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const [history, setHistory] = useState(getSearchHistory);
+  const [history, setHistory] = useState([]);
+  const [searchError, setSearchError] = useState(false);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
   const debounceRef = useRef(null);
+  const requestRef = useRef(0);
+
+  useEffect(() => {
+    requestRef.current += 1;
+    clearTimeout(debounceRef.current);
+    setQuery(''); setResults(null); setLoading(false); setSearchError(false); setIsOpen(false); setHistory([]);
+    return () => { requestRef.current += 1; clearTimeout(debounceRef.current); };
+  }, [scope]);
 
   const addToHistory = useCallback((item) => {
     setHistory(prev => {
       const filtered = prev.filter(h => h.path !== item.path);
       const updated = [item, ...filtered].slice(0, MAX_HISTORY);
-      saveSearchHistory(updated);
       return updated;
     });
   }, []);
@@ -44,14 +43,12 @@ const GlobalSearch = () => {
     e.stopPropagation();
     setHistory(prev => {
       const updated = prev.filter(h => h.path !== path);
-      saveSearchHistory(updated);
       return updated;
     });
   }, []);
 
   const clearHistory = useCallback(() => {
     setHistory([]);
-    saveSearchHistory([]);
   }, []);
 
   useEffect(() => {
@@ -81,27 +78,39 @@ const GlobalSearch = () => {
   }, []);
 
   const handleSearch = (value) => {
+    const request = ++requestRef.current;
     setQuery(value);
+    setResults(null);
+    setSearchError(false);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length < 2) {
       setResults(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await globalSearchAPI.search(value, selectedBranchId);
-        setResults(res.data);
+        if (request !== requestRef.current) return;
+        setResults({
+          members: canSearch('members') ? res.data.members : [],
+          invoices: canSearch('invoices') ? res.data.invoices : [],
+          activities: canSearch('activities') ? res.data.activities : [],
+        });
         setIsOpen(true);
       } catch (err) {
-        console.error('Search error:', err);
+        if (request === requestRef.current) { setSearchError(true); setIsOpen(true); }
       } finally {
-        setLoading(false);
+        if (request === requestRef.current) setLoading(false);
       }
     }, 300);
   };
 
   const handleNavigate = (path, label, type) => {
+    requestRef.current += 1;
+    clearTimeout(debounceRef.current);
+    setLoading(false);
     addToHistory({ path, label, type, timestamp: Date.now() });
     setIsOpen(false);
     setQuery('');
@@ -120,6 +129,8 @@ const GlobalSearch = () => {
         <input
           ref={inputRef}
           type="text"
+          aria-label={language === 'ar' ? 'بحث شامل' : 'Global search'}
+          maxLength={200}
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
           onFocus={() => { setIsOpen(true); }}
@@ -128,11 +139,13 @@ const GlobalSearch = () => {
         />
         {loading && <Loader2 className="absolute end-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-primary" />}
         {!loading && query && (
-          <button onClick={() => { setQuery(''); setResults(null); setIsOpen(false); }} className="absolute end-3 top-1/2 -translate-y-1/2">
+          <button aria-label={language === 'ar' ? 'مسح البحث' : 'Clear search'} onClick={() => { requestRef.current += 1; clearTimeout(debounceRef.current); setQuery(''); setResults(null); setLoading(false); setSearchError(false); setIsOpen(false); }} className="absolute end-3 top-1/2 -translate-y-1/2">
             <X className="w-4 h-4 text-muted-foreground hover:text-foreground" />
           </button>
         )}
       </div>
+
+      {isOpen && searchError && <div role="alert" className="absolute top-full mt-2 w-full rounded-lg border bg-card p-4 text-sm z-50"><p>{language === 'ar' ? 'تعذر البحث. حاول مجددًا.' : 'Search failed. Please try again.'}</p><button type="button" onClick={() => handleSearch(query)} className="mt-2 text-primary">{language === 'ar' ? 'إعادة المحاولة' : 'Retry'}</button></div>}
 
       {isOpen && !results && !query && history.length > 0 && (
         <div className="fixed top-[60px] inset-x-2 sm:absolute sm:top-full sm:inset-x-auto sm:start-0 sm:end-0 sm:mt-2 sm:w-full bg-white rounded-xl shadow-2xl border z-50 overflow-hidden max-h-[70vh] overflow-y-auto">
@@ -165,12 +178,12 @@ const GlobalSearch = () => {
                   <p className="text-sm font-medium truncate">{h.label}</p>
                   <p className="text-xs text-muted-foreground">{cfg.label}</p>
                 </div>
-                <button
+                <span role="button" tabIndex={0} aria-label={language === 'ar' ? 'حذف من السجل' : 'Remove from history'} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeFromHistory(h.path, e); } }}
                   onClick={(e) => removeFromHistory(h.path, e)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
                 >
                   <X className="w-3.5 h-3.5 text-red-400" />
-                </button>
+                </span>
               </button>
             );
           })}

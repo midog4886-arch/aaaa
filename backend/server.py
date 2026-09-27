@@ -224,6 +224,8 @@ api_router.include_router(coach_advances_router)
 api_router.include_router(coach_salaries_router)
 api_router.include_router(whatsapp_router)
 api_router.include_router(tournaments_router)
+from routes.swimming_meets import router as swimming_meets_router
+api_router.include_router(swimming_meets_router)
 api_router.include_router(operation_passwords_router)
 api_router.include_router(social_publisher_router)
 
@@ -254,6 +256,12 @@ api_router.include_router(global_search_router)
 
 from routes.dashboard_actions import router as dashboard_actions_router
 api_router.include_router(dashboard_actions_router)
+from routes.operations_followup import router as operations_followup_router
+api_router.include_router(operations_followup_router)
+from routes.whatsapp_workflow import router as whatsapp_workflow_router
+api_router.include_router(whatsapp_workflow_router)
+from routes.social_workflow import router as social_workflow_router
+api_router.include_router(social_workflow_router)
 
 from routes.member_profile import router as member_profile_router
 api_router.include_router(member_profile_router)
@@ -11580,6 +11588,8 @@ async def create_default_admin():
     asyncio.create_task(_init())
     # Start WhatsApp scheduler
     start_whatsapp_scheduler()
+    from routes.whatsapp_workflow import start_scheduler as start_whatsapp_review_scheduler
+    start_whatsapp_review_scheduler()
     # Keep proxy alive (prevent Render free tier from sleeping)
     async def _keep_proxy_alive():
         import httpx as _httpx
@@ -11626,6 +11636,8 @@ async def create_default_admin():
     try:
         from routes.social_publisher import start_insights_scheduler
         start_insights_scheduler()
+        from routes.social_workflow import start_scheduler as start_social_editorial_scheduler
+        start_social_editorial_scheduler()
     except Exception as e:
         print(f"Insights scheduler start failed: {e}")
     # Start daily cleanup of old social uploads (processed videos / custom logos)

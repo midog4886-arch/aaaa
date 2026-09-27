@@ -25,6 +25,7 @@ import {
   tournamentsAPI, levelsAPI, membersAPI, branchesAPI, activitiesAPI, coachesAPI
 } from '../services/api';
 import { toast } from 'sonner';
+import SwimmingMeetManager from '../components/SwimmingMeetManager';
 import {
   Trophy, Plus, Edit, Trash2, Loader2, ArrowRight, Search, UserPlus,
   Calendar, MapPin, Activity, FileSpreadsheet, FileText, Award, Share2,
@@ -477,7 +478,8 @@ const TournamentsPage = () => {
                   <div className="flex items-center justify-between pt-2 border-t">
                     <Badge variant="secondary" className="gap-1">
                       <Users className="w-3.5 h-3.5" />
-                      {tn.participants_count || 0} {language === 'ar' ? 'مشارك' : 'participants'}
+                      {tn.swimming_swimmers_count ?? tn.participants_count ?? 0} {language === 'ar' ? 'مشارك' : 'participants'}
+                      {tn.swimming_races_count != null && <span> · {tn.swimming_races_count} {language === 'ar' ? 'سباق' : 'races'}</span>}
                     </Badge>
                     <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                       <Button size="sm" variant="ghost" onClick={() => openEdit(tn)}>
@@ -1433,6 +1435,7 @@ const TournamentDetail = ({ tid, onBack }) => {
         </div>
 
         {/* Printable area */}
+        <SwimmingMeetManager tid={tid} />
         <div ref={printRef} className="bg-white p-4 rounded-lg space-y-4">
           {/* Tournament header (print-only — screen uses LevelsPage-style header above) */}
           <Card className="border-2 border-orange-300 hidden print:block">

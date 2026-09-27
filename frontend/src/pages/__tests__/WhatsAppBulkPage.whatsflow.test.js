@@ -1,4 +1,5 @@
 import React from 'react';
+jest.mock('../../components/WhatsAppCampaignWorkflow',()=>()=>null);
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 

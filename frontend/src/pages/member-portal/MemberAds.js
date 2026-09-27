@@ -5,7 +5,7 @@ import { Dialog, DialogContent } from '../../components/ui/dialog';
 import { X, ChevronLeft, ChevronRight, Play, ExternalLink, Volume2, VolumeX, ZoomIn } from 'lucide-react';
 import { memberAPI, getDarkMode } from './MemberLayout';
 
-const LIVE_SERVER_URL = 'https://adaa-alabtal.replit.app';
+const LIVE_SERVER_URL = 'https://adaa-alabtal.com';
 const isNativeApp = !!(window.Capacitor?.isNativePlatform?.());
 
 // Helper function to get proper image URL (absolute for Android, relative for web)

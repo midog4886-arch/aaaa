@@ -487,6 +487,9 @@ async def list_tournaments(
     # Add participant count per tournament for the list view
     for t in items:
         t["participants_count"] = len(t.get("participants") or [])
+        if t.get('swimming_meet'):
+            t['swimming_swimmers_count'] = len(t['swimming_meet'].get('swimmers') or [])
+            t['swimming_races_count'] = len(t['swimming_meet'].get('races') or [])
     return items
 
 

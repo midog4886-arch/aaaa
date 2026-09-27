@@ -13,7 +13,7 @@
 //     app through it (no code change needed). It can also be forced via the
 //     REACT_APP_PUBLIC_BASE_URL build env var.
 const PUBLISHED_BASE_URL = (
-  process.env.REACT_APP_PUBLIC_BASE_URL || 'https://adaa-alabtal.replit.app'
+  process.env.REACT_APP_PUBLIC_BASE_URL || 'https://adaa-alabtal.com'
 ).replace(/\/+$/, '');
 
 // Matches Replit dev/preview hosts (e.g. *.replit.dev, *.pike.replit.dev, *.repl.co).

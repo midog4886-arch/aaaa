@@ -7153,6 +7153,9 @@ def _campaign_attachment_items(doc: dict) -> list[dict]:
 async def _delete_campaign_attachment(branch_id: str, attachment_id: Optional[str]):
     if not attachment_id:
         return
+    if await _db['whatsapp_reviews'].find_one({'branch_id':branch_id,
+            'attachments.attachment_id':attachment_id}, {'_id':1}):
+        return
     scope = {**_campaign_scope(branch_id), "attachment_id": attachment_id}
     await _db["whatsapp_campaign_attachment_chunks"].delete_many(scope)
     await _db["whatsapp_campaign_attachments"].delete_one(scope)
@@ -7286,7 +7289,7 @@ async def _campaign_audience_recipients(branch_id: str, audience: str) -> list[d
     if audience != "expired_members":
         cursor = collection.find(
             query,
-            {"_id": 0, "phone": 1, "name": 1, "name_ar": 1, "customer_phone": 1, "customer_name": 1},
+            {"_id": 0, "id": 1, "phone": 1, "name": 1, "name_ar": 1, "customer_phone": 1, "customer_name": 1},
         ).limit(
             CAMPAIGN_MAX_PASTED_RECIPIENTS
         )
@@ -7304,7 +7307,7 @@ async def _campaign_audience_recipients(branch_id: str, audience: str) -> list[d
         recipients.append({
             "phone": phone,
             "name": row.get("name_ar") or row.get("name") or row.get("customer_name") or "",
-            **({"member_id": row["id"]} if audience == "expired_members" else {}),
+            **({"member_id": row["id"]} if audience != 'registration_requests' and row.get('id') else {}),
         })
         if len(recipients) >= CAMPAIGN_MAX_PASTED_RECIPIENTS:
             break
@@ -7793,6 +7796,8 @@ async def send_branch_cloud_bulk(
     response: Response = None,
 ):
     _require_bulk_whatsapp_access(current_user)
+    if not current_user.get('is_admin') and not current_user.get('_approved_campaign'):
+        raise HTTPException(403, detail='جهّز الحملة وأرسلها لاعتماد المدير قبل الإرسال')
     _assert_branch_access(current_user, data.branch_id)
     if not data.recipients:
         raise HTTPException(status_code=400, detail="No recipients supplied")
@@ -7832,6 +7837,9 @@ async def send_branch_cloud_bulk(
     if len(key) < 12:
         raise HTTPException(status_code=400, detail="Invalid idempotency key")
     recipients = [_bulk_recipient_payload(r) for r in data.recipients]
+    if current_user.get('_campaign_schedule'):
+        for recipient in recipients:
+            recipient['next_attempt_at'] = current_user['_campaign_schedule']
     if any(not _format_cloud_phone(r["phone"]) or not r["message"] or len(r["message"]) > 4096
            for r in recipients):
         raise HTTPException(status_code=400, detail="Invalid phone or message")
@@ -8411,6 +8419,8 @@ async def send_branch_cloud_bulk_media(
     response: Response = None,
 ):
     _require_bulk_whatsapp_access(current_user)
+    if not current_user.get('is_admin') and not current_user.get('_approved_campaign'):
+        raise HTTPException(403, detail='جهّز الحملة وأرسلها لاعتماد المدير قبل الإرسال')
     _assert_branch_access(current_user, branch_id)
     metadata = _bulk_campaign_metadata(campaign_title, campaign_id, branch_name)
     try:
@@ -8536,9 +8546,13 @@ async def send_branch_cloud_bulk_media(
             ref.update({"media_type": item["media_type"], "filename": item["filename"],
                         "mime_type": item["mime_type"]})
             stored.append(ref)
+        prepared_recipients = [_bulk_recipient_payload(r) for r in recipients]
+        if current_user.get('_campaign_schedule'):
+            for recipient in prepared_recipients:
+                recipient['next_attempt_at'] = current_user['_campaign_schedule']
         enqueue_args = (
             branch_id, provider,
-            [_bulk_recipient_payload(r) for r in recipients],
+            prepared_recipients,
             idempotency_key, stored,
         )
         if metadata:

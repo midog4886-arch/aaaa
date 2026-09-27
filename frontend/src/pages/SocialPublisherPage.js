@@ -19,6 +19,7 @@ import {
 import MediaCropEditor from '../components/MediaCropEditor';
 import MediaImageEditor from '../components/MediaImageEditor';
 import VideoTrimEditor from '../components/VideoTrimEditor';
+import SocialEditorialHub from '../components/SocialEditorialHub';
 
 // ── Inline form for pasting platform tokens (alternative to OAuth) ──
 // Rendered inside each unconnected account card. Each platform exposes
@@ -1524,6 +1525,12 @@ const SocialPublisherPage = () => {
           </Card>
         )}
 
+        <SocialEditorialHub
+          media={uploaded}
+          payload={{media_filename:uploaded?.filename||'',caption,targets:Array.from(selected).map(platform=>({platform,caption_override:overrides[platform]?.trim()?overrides[platform]:null})),video_crop:uploaded?.kind==='video'&&videoCrop?videoCrop.crop:null,video_edits:uploaded?.kind==='video'?videoEdits:null}}
+          onCaption={setCaption}
+          onRestore={({payload,media})=>{if(media)setUploaded(media);if(payload){setCaption(payload.caption||'');setSelected(new Set(payload.targets.map(t=>t.platform)));setOverrides(Object.fromEntries(payload.targets.map(t=>[t.platform,t.caption_override||''])));setVideoCrop(payload.video_crop?{crop:payload.video_crop}:null);setVideoEdits(payload.video_edits||null);}}}
+        />
         {/* ── Connected accounts ─────────────────────────────────── */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -1558,6 +1565,9 @@ const SocialPublisherPage = () => {
                           <div className="text-xs text-gray-500 truncate" title={acc.display_name}>
                             {acc.display_name}
                           </div>
+                          <p className="text-xs text-muted-foreground">حساب مربوط · تحقق من صلاحياته إذا فشل النشر</p>
+                          {acc.avatar_url&&<img src={acc.avatar_url} alt={acc.display_name||'الحساب'} className="w-8 h-8 rounded-full"/>}
+                          <Button size="sm" variant="outline" className="mt-2 w-full" onClick={()=>handleConnect(p.id)} disabled={!isConfigured}>إعادة الربط</Button>
                           <Button size="sm" variant="outline" className="mt-2 w-full text-red-600 border-red-200" onClick={() => handleDisconnect(p.id)}>
                             <Unlink className="w-3 h-3 ml-1" /> فصل
                           </Button>
@@ -1565,6 +1575,7 @@ const SocialPublisherPage = () => {
                       ) : (
                         <>
                           <div className="text-xs text-gray-400">غير مربوط</div>
+                          {!isConfigured&&<p className="text-xs text-amber-700 mt-1">إعداد التطبيق لهذه المنصة ناقص. اطلب من المسؤول إكمال إعدادات OAuth أعلى الصفحة ثم اربط الحساب.</p>}
                           <Button
                             size="sm"
                             className="mt-2 w-full"

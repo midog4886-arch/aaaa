@@ -49,6 +49,7 @@ class ErrorBoundary extends React.Component {
 // (initial load only downloads the bundle for the page being visited).
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const DailyTasksPage = lazy(() => import('./pages/DailyTasksPage'));
 const MembersPage = lazy(() => import('./pages/MembersPage'));
 const ActivitiesPage = lazy(() => import('./pages/ActivitiesPage'));
 const PublicRegistrationPage = lazy(() => import('./pages/PublicRegistrationPage'));
@@ -75,7 +76,6 @@ const LevelsBoardPage = lazy(() => import('./pages/LevelsBoardPage'));
 const BranchDisplayPage = lazy(() => import('./pages/BranchDisplayPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const UnauthorizedPage = lazy(() => import('./pages/UnauthorizedPage'));
-const MemberCardPage = lazy(() => import('./pages/MemberCardPage'));
 const DailyNewCardsPage = lazy(() => import('./pages/DailyNewCardsPage'));
 const CoachRatingsPage = lazy(() => import('./pages/CoachRatingsPage'));
 const CoachAttendancePage = lazy(() => import('./pages/CoachAttendancePage'));
@@ -332,6 +332,7 @@ function AppRoutes() {
       />
 
       {/* Admin Protected Routes - under /admin prefix */}
+      <Route path="/admin/tasks" element={<ProtectedRoute permission="dashboard"><DailyTasksPage /></ProtectedRoute>} />
       <Route 
         path="/admin/unauthorized" 
         element={
@@ -670,14 +671,6 @@ function AppRoutes() {
         }
       />
       <Route path="/admin/push-notifications" element={<Navigate to="/admin/whatsapp" replace />} />
-      <Route 
-        path="/admin/member-card" 
-        element={
-          <ProtectedRoute permission="member-card">
-            <MemberCardPage />
-          </ProtectedRoute>
-        } 
-      />
       <Route 
         path="/admin/whatsapp" 
         element={
