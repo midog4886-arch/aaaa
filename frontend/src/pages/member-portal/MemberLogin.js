@@ -274,7 +274,13 @@ const MemberLogin = () => {
 
   const handleLogin = (e) => {
     e.preventDefault();
-    doLogin(phone, memberCode);
+    // Native autofill can update the inputs without firing React onChange.
+    const values = new FormData(e.currentTarget);
+    const submittedPhone = String(values.get('phone') || '').trim();
+    const submittedCode = String(values.get('member_code') || '').trim();
+    setPhone(submittedPhone);
+    setMemberCode(submittedCode);
+    doLogin(submittedPhone, submittedCode);
   };
 
   // The picker just verified both values against the selected academy.
@@ -394,6 +400,7 @@ const MemberLogin = () => {
                         <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
                         <Input
                           type="tel"
+                          name="phone"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
                           placeholder="05xxxxxxxx"
@@ -408,6 +415,7 @@ const MemberLogin = () => {
                       <label htmlFor="member-code-login" className="text-sm font-medium text-white/90">رقم العضوية</label>
                       <Input
                         id="member-code-login"
+                        name="member_code"
                         type="text"
                         value={memberCode}
                         onChange={(e) => setMemberCode(e.target.value)}

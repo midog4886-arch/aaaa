@@ -28,6 +28,21 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
+test('member login submits values supplied by native autofill without change events', async () => {
+  localStorage.setItem('tenant_slug', 'academy-one');
+  localStorage.setItem('member_login_phone:academy-one', '0500000000');
+  axios.post.mockResolvedValueOnce({ data: { access_token: 'test-token', member: { name_ar: 'Test' } } });
+  render(<MemoryRouter><MemberLogin /></MemoryRouter>);
+  screen.getByTestId('member-phone-input').value = '0551234567';
+  screen.getByTestId('member-code-input').value = 'ACA-321';
+  fireEvent.click(screen.getByTestId('member-login-btn'));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
+    expect.stringContaining('/api/member-portal/login'),
+    { phone: '0551234567', member_code: 'ACA-321' },
+    { headers: { 'X-Tenant-Slug': 'academy-one' } },
+  ));
+});
+
 test('picker continue reads native autofill values and uses a bounded request', async () => {
   axios.post.mockResolvedValueOnce({ data: { matches: [] } });
   render(<MemoryRouter><AcademyPickerPage /></MemoryRouter>);
