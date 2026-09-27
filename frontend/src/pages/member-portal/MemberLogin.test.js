@@ -28,6 +28,31 @@ afterEach(() => {
   jest.clearAllMocks();
 });
 
+test('picker continue reads native autofill values and uses a bounded request', async () => {
+  axios.post.mockResolvedValueOnce({ data: { matches: [] } });
+  render(<MemoryRouter><AcademyPickerPage /></MemoryRouter>);
+  screen.getByTestId('academy-picker-code').value = 'ACA-321';
+  screen.getByTestId('academy-picker-phone').value = '0551234567';
+  fireEvent.click(screen.getByTestId('academy-picker-continue'));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
+    expect.stringContaining('/api/public/lookup-academy'),
+    { member_code: 'ACA-321', phone: '0551234567' }, { timeout: 15000 },
+  ));
+  expect(await screen.findByText(/البيانات غير صحيحة/)).toBeInTheDocument();
+  expect(screen.getByTestId('academy-picker-code').value).toBe('ACA-321');
+  expect(screen.getByTestId('academy-picker-phone').value).toBe('0551234567');
+});
+
+test('picker exposes a retry after a connection timeout', async () => {
+  axios.post.mockRejectedValueOnce({ code: 'ECONNABORTED' });
+  render(<MemoryRouter><AcademyPickerPage /></MemoryRouter>);
+  fireEvent.change(screen.getByTestId('academy-picker-code'), { target: { value: 'ACA-321' } });
+  fireEvent.change(screen.getByTestId('academy-picker-phone'), { target: { value: '0551234567' } });
+  fireEvent.click(screen.getByTestId('academy-picker-continue'));
+  expect(await screen.findByText('تعذّر الاتصال بالخادم، حاول مرة أخرى.')).toBeInTheDocument();
+  expect(screen.getByTestId('academy-picker-continue')).not.toBeDisabled();
+});
+
 test('tenant query clears another academy session without using its cached phone', async () => {
   localStorage.setItem('tenant_slug', 'academy-old');
   localStorage.setItem('member_token', 'old-token');

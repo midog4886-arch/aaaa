@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { Trophy, Loader2, AlertCircle, Building2 } from 'lucide-react';
-import { setRememberedMemberPhone } from '../config/api';
+import { API_URL, setRememberedMemberPhone } from '../config/api';
 
 const PLATFORM_NAME_AR = 'أكاديميتي';
 const PLATFORM_TAGLINE_AR = 'حدّد أكاديميتك للمتابعة';
@@ -16,36 +16,51 @@ const AcademyPickerPage = () => {
   const [matches, setMatches] = useState(null);
   const [error, setError] = useState('');
   const debounceRef = useRef(null);
+  const codeInputRef = useRef(null);
+  const phoneInputRef = useRef(null);
+  const lookupRef = useRef(0);
+  const verifiedInputRef = useRef(null);
 
   const doLookup = async (codeVal, phoneVal) => {
+    const requestId = ++lookupRef.current;
+    const input = { code: codeVal.trim(), phone: phoneVal.trim() };
+    if (input.code.length < 2 || input.phone.length < 6) {
+      setError('أدخل رقم العضوية ورقم الجوال للمتابعة.');
+      return;
+    }
     setLoading(true);
     setError('');
     setMatches(null);
     try {
-      const res = await axios.post('/api/public/lookup-academy', {
-        member_code: codeVal.trim(),
-        phone: phoneVal.trim(),
-      });
+      const res = await axios.post(`${API_URL}/api/public/lookup-academy`, {
+        member_code: input.code,
+        phone: input.phone,
+      }, { timeout: 15000 });
+      if (requestId !== lookupRef.current) return;
+      verifiedInputRef.current = input;
       const list = res.data?.matches || [];
       if (list.length === 0) {
         setError('البيانات غير صحيحة. تأكد من رقم العضوية ورقم الجوال أو تواصل مع إدارة أكاديميتك.');
       } else if (list.length === 1) {
-        confirmAcademy(list[0]);
+        confirmAcademy(list[0], input);
       } else {
         setMatches(list);
       }
     } catch (e) {
+      if (requestId !== lookupRef.current) return;
       if (e?.response?.status === 429) {
         setError('عدد محاولات كبير، حاول بعد دقيقة.');
       } else {
         setError('تعذّر الاتصال بالخادم، حاول مرة أخرى.');
       }
     } finally {
-      setLoading(false);
+      if (requestId === lookupRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    ++lookupRef.current;
+    setLoading(false);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const code = memberCode.trim();
     const ph = phone.trim();
@@ -57,10 +72,14 @@ const AcademyPickerPage = () => {
     debounceRef.current = setTimeout(() => {
       doLookup(code, ph);
     }, 800);
-    return () => debounceRef.current && clearTimeout(debounceRef.current);
+    return () => {
+      clearTimeout(debounceRef.current);
+      ++lookupRef.current;
+    };
   }, [memberCode, phone]);
 
-  const confirmAcademy = (match) => {
+  const confirmAcademy = (match, input = verifiedInputRef.current) => {
+    if (!input) return;
     try {
       // Switching to a different academy must drop any session cached for the
       // old one, otherwise the member portal would redirect into a stale
@@ -76,10 +95,10 @@ const AcademyPickerPage = () => {
       if (match.academy_logo) localStorage.setItem('academy_display_logo', match.academy_logo);
       // Remember only the phone. The member code is passed in navigation
       // state, never persisted in localStorage.
-      setRememberedMemberPhone(phone.trim());
+      setRememberedMemberPhone(input.phone);
     } catch (e) {}
     const next = new URLSearchParams(location.search).get('next') || '/member-login';
-    navigate(next, { replace: true, state: { verifiedMemberCode: memberCode.trim(), verifiedPhone: phone.trim() } });
+    navigate(next, { replace: true, state: { verifiedMemberCode: input.code, verifiedPhone: input.phone } });
   };
 
   return (
@@ -93,12 +112,17 @@ const AcademyPickerPage = () => {
           <p className="text-sm text-gray-500 mt-1">{PLATFORM_TAGLINE_AR}</p>
         </div>
 
-        <div className="space-y-4">
+        <form className="space-y-4" onSubmit={(event) => {
+          event.preventDefault();
+          clearTimeout(debounceRef.current);
+          doLookup(codeInputRef.current?.value || memberCode, phoneInputRef.current?.value || phone);
+        }}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">رقم العضوية</label>
             <input
               type="text"
-              value={memberCode}
+              ref={codeInputRef}
+              defaultValue=""
               onChange={(e) => setMemberCode(e.target.value)}
               placeholder="مثلاً: ABTL-042"
               className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary text-base"
@@ -111,7 +135,8 @@ const AcademyPickerPage = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">رقم الجوال</label>
             <input
               type="tel"
-              value={phone}
+              ref={phoneInputRef}
+              defaultValue=""
               onChange={(e) => setPhone(e.target.value)}
               placeholder="05XXXXXXXX"
               dir="ltr"
@@ -120,6 +145,12 @@ const AcademyPickerPage = () => {
               data-testid="academy-picker-phone"
             />
           </div>
+
+          <button type="submit" disabled={loading}
+            className="w-full bg-primary text-white rounded-lg py-3 font-semibold disabled:opacity-60"
+            data-testid="academy-picker-continue">
+            {loading ? 'جاري التحقق...' : 'متابعة'}
+          </button>
 
           {loading && (
             <div className="flex items-center justify-center gap-2 text-sm text-gray-600 py-2">
@@ -164,7 +195,7 @@ const AcademyPickerPage = () => {
               ))}
             </div>
           )}
-        </div>
+        </form>
 
         <p className="text-xs text-gray-400 text-center mt-6">
           البيانات تُستخدم للتحقق فقط ولا تُحفظ على هذا الجهاز قبل التأكيد.
