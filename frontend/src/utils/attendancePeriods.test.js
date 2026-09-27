@@ -1,4 +1,4 @@
-import { attendanceForPeriod, periodIsReadOnly } from './attendancePeriods';
+import { attendanceForPeriod, periodIsReadOnly, canRecordToday } from './attendancePeriods';
 
 const period = {
   activity_id: 'swim', count_activity_ids: ['swim', 'legacy'],
@@ -18,4 +18,15 @@ test('future cards are never actionable even with attendance records', () => {
   expect(periodIsReadOnly(period, '2026-09-30')).toBe(true);
   expect(periodIsReadOnly({ ...period, read_only: true }, '2026-10-10')).toBe(true);
   expect(periodIsReadOnly(period, '2026-10-10')).toBe(false);
+});
+
+test('today action allows a current purchased period while retaining historical read-only rules', () => {
+  const purchased = { ...period, read_only: true, remaining: 3 };
+  expect(canRecordToday(purchased, '2026-10-10')).toBe(true);
+  expect(periodIsReadOnly(purchased, '2026-10-10')).toBe(true);
+  expect(canRecordToday(purchased, '2026-09-30')).toBe(false);
+  expect(canRecordToday(purchased, '2026-10-25')).toBe(false);
+  expect(canRecordToday({ ...purchased, remaining: 0 }, '2026-10-10')).toBe(false);
+  expect(canRecordToday({ ...purchased, upcoming: true }, '2026-10-10')).toBe(false);
+  expect(canRecordToday({ ...purchased, expired: true }, '2026-10-10')).toBe(false);
 });

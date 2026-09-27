@@ -10,3 +10,10 @@ export const attendanceForPeriod = (records, period) => records.filter(record =>
 
 export const periodIsReadOnly = (period, today) =>
   Boolean(period.read_only || period.expired || period.upcoming || period.start_date > today);
+
+// A current purchased card can request today's attendance without enabling
+// historical edits. The attendance endpoint remains the authority on eligibility.
+export const canRecordToday = (period, today) => Boolean(period.activity_id
+  && period.start_date && period.end_date
+  && period.start_date <= today && today <= period.end_date
+  && !period.expired && !period.upcoming && period.remaining > 0);

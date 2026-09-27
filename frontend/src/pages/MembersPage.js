@@ -4,7 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
-import { attendanceForPeriod, periodIsReadOnly } from '../utils/attendancePeriods';
+import { attendanceForPeriod, periodIsReadOnly, canRecordToday } from '../utils/attendancePeriods';
 import { NationalitySelect } from '../components/NationalitySelect';
 import MemberAvatar from '../components/MemberAvatar';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
@@ -251,6 +251,7 @@ export const MembersPage = () => {
   const [expandedQuotaIdx, setExpandedQuotaIdx] = useState(new Set());
   const [expandedOldDatesIdx, setExpandedOldDatesIdx] = useState(new Set());
   const [registeringDate, setRegisteringDate] = useState(null);
+  const attendanceRegistrationLock = useRef(false);
   const [viewTab, setViewTab] = useState('overview'); // compact case-file summary is the opening state
   const [memberReminders, setMemberReminders] = useState([]);
   const [memberRemindersLoading, setMemberRemindersLoading] = useState(false);
@@ -1276,15 +1277,19 @@ export const MembersPage = () => {
   };
 
   const handleRegisterDateAttendance = async (memberId, activityId, date) => {
+    if (attendanceRegistrationLock.current) return;
+    attendanceRegistrationLock.current = true;
     const key = `${activityId}_${date}`;
     setRegisteringDate(key);
     try {
       await attendanceAPI.record({ member_id: memberId, activity_id: activityId, date, notes: 'تسجيل يدوي' });
       await refreshMemberAttendance(memberId);
+      toast.success(language === 'ar' ? 'تم تسجيل الحضور' : 'Attendance recorded');
     } catch (e) {
       const msg = e?.response?.data?.detail || (language === 'ar' ? 'فشل تسجيل الحضور' : 'Failed to record attendance');
       toast.error(msg);
     } finally {
+      attendanceRegistrationLock.current = false;
       setRegisteringDate(null);
     }
   };
@@ -4199,6 +4204,8 @@ export const MembersPage = () => {
                             const isOldExpanded = expandedOldDatesIdx.has(idx);
                             const todayStr = localDateStr(new Date());
                             const readOnly = periodIsReadOnly(q, todayStr);
+                            const todayAttended = attendedDates.has(todayStr);
+                            const todayAvailable = canRecordToday(q, todayStr) && !transferInfo.transferredSet.has(todayStr);
                             return (
                               <div key={idx} className={`rounded-lg border ${q.expired ? 'bg-gray-50 border-gray-300' : q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
                                 <div className="p-3">
@@ -4226,8 +4233,19 @@ export const MembersPage = () => {
                                   <div className="text-xs text-gray-500 mb-1">
                                     {q.profile_subscription
                                       ? (language === 'ar' ? 'اشتراك الملف الشخصي' : 'Profile subscription')
-                                      : (language === 'ar' ? 'فترة اشتراك مشتراة — للعرض فقط' : 'Purchased period — view only')}
+                                      : (language === 'ar' ? 'فترة اشتراك مشتراة' : 'Purchased period')}
                                   </div>
+                                  {(todayAvailable || todayAttended) && (
+                                    <Button size="sm" className="mb-2" disabled={todayAttended || !!registeringDate}
+                                      onClick={() => {
+                                        if (window.confirm(language === 'ar' ? `تسجيل حضور اليوم ${todayStr} لنشاط ${q.activity_name}؟` : `Record today's attendance (${todayStr}) for ${q.activity_name}?`)) {
+                                          handleRegisterDateAttendance(selectedMember.id, q.activity_id, todayStr);
+                                        }
+                                      }}>
+                                      {todayAttended ? (language === 'ar' ? 'تم تحضير اليوم ✓' : 'Present today ✓')
+                                        : (language === 'ar' ? 'تحضير اليوم' : 'Record today')}
+                                    </Button>
+                                  )}
                                   <div className="flex items-center gap-3 text-xs text-gray-600">
                                     <span>{language === 'ar' ? `${q.days_per_week} أيام/أسبوع` : `${q.days_per_week} days/week`}</span>
                                     <span>{language === 'ar' ? `${q.used_sessions}/${q.total_allowed} حصة` : `${q.used_sessions}/${q.total_allowed} sessions`}</span>
@@ -4256,7 +4274,7 @@ export const MembersPage = () => {
                                 {isExpanded && (
                                   <div className="border-t px-3 pb-3 pt-2">
                                     <p className="text-xs text-gray-500 mb-2">
-                                      {readOnly ? (language === 'ar' ? 'للعرض فقط' : 'View only') : language === 'ar'
+                                      {readOnly ? (todayAvailable ? (language === 'ar' ? 'اضغط على تاريخ اليوم لتحضير العضو؛ باقي التواريخ للعرض فقط' : 'Click today to record attendance; other dates are view only') : (language === 'ar' ? 'للعرض فقط' : 'View only')) : language === 'ar'
                                         ? 'اضغط على تاريخ غير مسجّل لتسجيل الحضور'
                                         : 'Click an unregistered date to record attendance'}
                                     </p>
@@ -4290,13 +4308,14 @@ export const MembersPage = () => {
                                         // Expired subscription card = read-only reference: no
                                         // registering, replacing, or removing dates.
                                         const removable = !readOnly && attended && !isRegistering && !isTransferred && !!recordId;
-                                        const clickable = !readOnly && ((!attended && !isRegistering && !isFuture && !isTransferred) || removable);
+                                        const todayClickable = isToday && todayAvailable && !attended && !registeringDate;
+                                        const clickable = todayClickable || (!readOnly && ((!attended && !isRegistering && !isFuture && !isTransferred) || removable));
                                         return (
                                           <button
                                             key={date + (isReplacement ? '_r' : '')}
                                             disabled={!clickable}
                                             onClick={() => {
-                                              if (readOnly || isRegistering || isTransferred) return;
+                                              if ((readOnly && !todayClickable) || isRegistering || isTransferred) return;
                                               if (attended) {
                                                 if (!recordId) return;
                                                 handleReplaceDateAttendance(selectedMember.id, q.activity_id, date, recordId);
@@ -4308,7 +4327,7 @@ export const MembersPage = () => {
                                                 }
                                               }
                                             }}
-                                            title={readOnly
+                                            title={todayClickable ? (language === 'ar' ? 'اضغط لتحضير اليوم' : 'Click to record today') : readOnly
                                               ? (q.upcoming ? (language === 'ar' ? 'اشتراك قادم — للعرض فقط' : 'Upcoming subscription — view only')
                                                 : (language === 'ar' ? 'للعرض فقط' : 'View only'))
                                               : isTransferred
