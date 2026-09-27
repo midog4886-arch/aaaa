@@ -1,0 +1,52 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import axios from 'axios';
+import { toast } from 'sonner';
+import RegistrationPaymentLink from './RegistrationPaymentLink';
+jest.mock('axios', () => ({ post: jest.fn() }));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+const request = { id: 'r1', invoice_id: 'i1', workflow_stage: 'awaiting_payment' };
+const link = { id: 'l1', invoice_ids: ['i1'], state: 'pending', url: 'https://adaa-alabtal.com/pay/token', expires_at: '2026-10-01', sends: [] };
+beforeEach(() => {
+  jest.clearAllMocks();
+  Object.defineProperty(window, 'crypto', { configurable: true, value: { randomUUID: () => '11111111-1111-4111-8111-111111111111' } });
+});
+const mount = (props = {}) => render(<RegistrationPaymentLink request={request} links={[]} loaded gatewayReady={false} onChanged={jest.fn().mockResolvedValue()} {...props} />);
+test('creates from the linked invoice then sends, and preserves the link when sending fails', async () => {
+  axios.post.mockResolvedValueOnce({ data: link }).mockRejectedValueOnce(new Error('transport'));
+  mount();
+  fireEvent.click(screen.getByText('إنشاء وإرسال رابط الدفع'));
+  fireEvent.click(screen.getByText('إنشاء وإرسال عبر واتساب'));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
+  expect(axios.post.mock.calls[0][1].invoice_ids).toEqual(['i1']);
+  expect(axios.post.mock.calls[1][0]).toBe('/api/payment-links/l1/send');
+  await waitFor(() => expect(screen.queryByText('إنشاء الرابط فقط')).toBeNull());
+  expect(screen.getByText('فتح الرابط').getAttribute('href')).toBe(link.url);
+});
+test('reuses an existing family link, displays sending history, and never recreates it', async () => {
+  axios.post.mockResolvedValue({ data: { sent: false } });
+  mount({ links: [{ ...link, invoice_ids: ['i1', 'i2'], sends: [{ id: 's1', actor: 'أحمد', at: '2026-09-27T12:00:00Z', status: 'sent' }] }] });
+  fireEvent.click(screen.getByText('إنشاء وإرسال رابط الدفع'));
+  expect(screen.queryByText('إنشاء الرابط فقط')).toBeNull();
+  expect(screen.getByText(/أحمد/)).toBeTruthy();
+  fireEvent.click(screen.getByText('إرسال عبر واتساب'));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('لم يتأكد الإرسال')));
+  expect(axios.post).toHaveBeenCalledTimes(1);
+  expect(axios.post.mock.calls[0][0]).toBe('/api/payment-links/l1/send');
+});
+test('an uncertain creation retry uses the same id and paid requests cannot create or send', async () => {
+  axios.post.mockRejectedValueOnce(new Error('timeout')).mockResolvedValueOnce({ data: link });
+  const view = mount();
+  fireEvent.click(screen.getByText('إنشاء وإرسال رابط الدفع'));
+  fireEvent.click(screen.getByText('إنشاء الرابط فقط'));
+  await waitFor(() => expect(screen.getByText('إنشاء الرابط فقط').disabled).toBe(false));
+  fireEvent.click(screen.getByText('إنشاء الرابط فقط'));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
+  expect(axios.post.mock.calls[0][1]).toEqual(axios.post.mock.calls[1][1]);
+  view.unmount();
+  mount({ request: { ...request, workflow_stage: 'registered' }, links: [{ ...link, state: 'paid' }] });
+  fireEvent.click(screen.getByText('إنشاء وإرسال رابط الدفع'));
+  expect(screen.queryByText('إنشاء الرابط فقط')).toBeNull();
+  expect(screen.queryByText('إرسال عبر واتساب')).toBeNull();
+  expect(screen.getByText(/رابط دفع طلب التسجيل: مدفوع/)).toBeTruthy();
+});

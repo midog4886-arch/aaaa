@@ -2,6 +2,8 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import RegistrationRequestsPage from './RegistrationRequestsPage';
 import { branchesAPI, registrationRequestsAPI } from '../services/api';
+import axios from 'axios';
+jest.mock('axios', () => ({ get: jest.fn().mockResolvedValue({ data: { links: [], gateway_ready: false } }), post: jest.fn() }));
 
 jest.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -59,6 +61,17 @@ jest.mock('../services/api', () => ({
 afterEach(() => {
   cleanup();
   jest.clearAllMocks();
+});
+
+test('shows invoice payment actions directly on a processed registration request', async () => {
+  branchesAPI.getAll.mockResolvedValue({ data: [{ id: 'b1', name_ar: 'الفرع' }] });
+  registrationRequestsAPI.getAll.mockResolvedValue({ data: [{ id: 'paid-request', customer_name: 'طلب الدفع', branch_id: 'b1', status: 'processed', invoice_id: 'invoice-1', workflow_stage: 'awaiting_payment', created_at: '2026-09-27' }] });
+  render(<RegistrationRequestsPage />);
+  await screen.findByText('طلب الدفع');
+  await screen.findByText('رابط دفع طلب التسجيل: لم يُنشأ بعد');
+  fireEvent.click(screen.getByText('إنشاء وإرسال رابط الدفع'));
+  expect(screen.getByText('إنشاء وإرسال عبر واتساب')).toBeTruthy();
+  expect(axios.get).toHaveBeenCalledWith('/api/payment-links', expect.objectContaining({ params: {} }));
 });
 
 test('groups siblings, sorts overdue requests and filters by activity', async () => {

@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import axios from 'axios';
+import RegistrationPaymentLink from '../components/RegistrationPaymentLink';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../contexts/AuthContext';
@@ -56,6 +58,21 @@ export const RegistrationRequestsPage = () => {
   const [sortOrder, setSortOrder] = useState('priority');
   const [groupFamilies, setGroupFamilies] = useState(true);
   const loadSequence = useRef(0);
+  const [paymentLinks, setPaymentLinks] = useState([]);
+  const [paymentLinksLoaded, setPaymentLinksLoaded] = useState(false);
+  const [gatewayReady, setGatewayReady] = useState(false);
+  const canManagePayments = Boolean(isAdmin || (user?.permissions || []).includes('invoices'));
+  const paymentSequence = useRef(0);
+  const loadPaymentLinks = async () => {
+    const sequence = ++paymentSequence.current;
+    if (!canManagePayments) return;
+    try {
+      const { data } = await axios.get('/api/payment-links', { params: selectedBranch !== 'all' ? { branch_filter: selectedBranch } : {}, timeout: 15000 });
+      if (sequence !== paymentSequence.current) return;
+      setPaymentLinks(data.links || []); setGatewayReady(Boolean(data.gateway_ready)); setPaymentLinksLoaded(true);
+    } catch { if (sequence === paymentSequence.current) { setPaymentLinksLoaded(false); toast.error('تعذّر تحديث حالات روابط الدفع'); } }
+  };
+  useEffect(() => { setPaymentLinks([]); setPaymentLinksLoaded(false); loadPaymentLinks(); /* eslint-disable-next-line */ }, [selectedBranch, canManagePayments]);
 
   const tenantSlug = (() => { try { return localStorage.getItem('tenant_slug') || 'default'; } catch { return 'default'; } })();
 
@@ -613,6 +630,7 @@ export const RegistrationRequestsPage = () => {
                             <CheckCircle2 className="w-4 h-4" /> {req.workflow_stage === 'registered' ? 'اكتمل التسجيل والدفع' : 'الفاتورة بانتظار الدفع'}
                           </span>
                           <Button size="sm" variant="outline" onClick={() => navigate('/admin/invoices')}>فتح الفواتير</Button>
+                          {canManagePayments && <RegistrationPaymentLink request={req} links={paymentLinks} loaded={paymentLinksLoaded} gatewayReady={gatewayReady} onChanged={async () => { await loadPaymentLinks(); await loadRequests(); }} />}
                         </>
                       ) : (
                         <Button size="sm" onClick={() => handleCreateInvoice(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
