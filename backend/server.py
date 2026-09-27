@@ -3707,6 +3707,23 @@ _ALL_COLLECTIONS = [
     "purchase_invoices", "push_subscriptions", "redemption_requests",
     "registration_forms", "public_registration_links", "session_transfers", "supplier_payments", "suppliers", "users",
     "video_views", "whatsapp_settings", "whatsapp_send_log",
+    "registration_requests", "registration_followup_stops", "marketers",
+    "activity_logs", "audit_logs", "branch_counters", "campaign_inquiries",
+    "coach_advances", "coach_salaries", "coach_notes", "coach_photos",
+    "day_extensions", "member_photos", "notifications_settings", "ops_alerts",
+    "refunds", "renewal_reminder_log", "rental_bookings", "rental_coaches",
+    "rental_payments", "social_settings", "social_uploads_cleanup_runs",
+    "subscription_effective_periods", "supervisors", "supervisor_photos",
+    "supervisor_ratings", "tournaments", "whatsapp_automated_outbound",
+    "whatsapp_branch_configs", "whatsapp_bulk_media_batches",
+    "whatsapp_campaign_rate_gates", "whatsapp_campaign_attachment_chunks",
+    "whatsapp_campaign_attachments", "whatsapp_campaign_receipt_buffer",
+    "whatsapp_campaign_job_items", "whatsapp_campaign_jobs",
+    "whatsapp_class_reminder_log", "whatsapp_cloud_media_chunks",
+    "whatsapp_cloud_media", "whatsapp_cloud_conversations",
+    "whatsapp_cloud_messages", "whatsapp_cloud_outbound_failures",
+    "whatsapp_contact_days", "whatsapp_invoice_payment_outbox",
+    "whatsapp_phone_sync", "whatsapp_waha_campaign_quota",
 ]
 
 
@@ -4226,11 +4243,14 @@ async def _backup_one_tenant(tenant: dict) -> dict:
     skipped: list = []
     for col_name in _ALL_COLLECTIONS:
         try:
-            documents = await db[col_name].find({}, {"_id": 0}).to_list(100000)
+            documents = await db[col_name].find({}, {"_id": 0}).to_list(None)
             if documents:
                 backup_data["collections"][col_name] = documents
         except Exception as e:
             skipped.append(f"{col_name}: {e}")
+
+    if skipped:
+        raise RuntimeError(f"Backup incomplete: {len(skipped)} collections could not be read")
 
     def _write_backup_file():
         # JSON serialization of a full tenant dump is CPU/IO heavy (70MB+) —
@@ -5664,11 +5684,11 @@ async def create_backup(token: Optional[str] = None):
     for col_name in _ALL_COLLECTIONS:
         try:
             collection = db[col_name]
-            documents = await collection.find({}, {"_id": 0}).to_list(100000)
+            documents = await collection.find({}, {"_id": 0}).to_list(None)
             if documents:
                 backup_data["collections"][col_name] = documents
         except Exception as e:
-            pass  # Skip empty or inaccessible collections
+            raise HTTPException(status_code=503, detail="تعذّر قراءة جميع بيانات النسخة الاحتياطية؛ لم تُنشأ نسخة ناقصة") from e
 
     with open(filepath, 'w', encoding='utf-8') as f:
         json.dump(backup_data, f, ensure_ascii=False, default=str)
