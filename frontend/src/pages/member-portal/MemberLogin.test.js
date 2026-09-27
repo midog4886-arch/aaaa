@@ -39,7 +39,7 @@ test('member login submits values supplied by native autofill without change eve
   await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
     expect.stringContaining('/api/member-portal/login'),
     { phone: '0551234567', member_code: 'ACA-321' },
-    { headers: { 'X-Tenant-Slug': 'academy-one' } },
+    { headers: { 'X-Tenant-Slug': 'academy-one' }, timeout: 15000 },
   ));
 });
 
@@ -56,6 +56,47 @@ test('picker continue reads native autofill values and uses a bounded request', 
   expect(await screen.findByText(/البيانات غير صحيحة/)).toBeInTheDocument();
   expect(screen.getByTestId('academy-picker-code').value).toBe('ACA-321');
   expect(screen.getByTestId('academy-picker-phone').value).toBe('0551234567');
+});
+
+test('member login retains filled fields on timeout and offers help', async () => {
+  localStorage.setItem('member_login_phone:default', '0551234567');
+  axios.post.mockRejectedValueOnce({ code: 'ECONNABORTED' });
+  render(<MemoryRouter><MemberLogin /></MemoryRouter>);
+  fireEvent.change(screen.getByTestId('member-code-input'), { target: { value: 'ACA-321' } });
+  fireEvent.click(screen.getByTestId('member-login-btn'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('استغرق الاتصال وقتًا طويلًا');
+  expect(screen.getByTestId('member-code-input')).toHaveValue('ACA-321');
+  expect(screen.getByTestId('member-login-btn')).not.toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'تواجه مشكلة في الدخول؟' }));
+  expect(screen.getByRole('link', { name: 'فتح الدخول في المتصفح' })).toHaveAttribute('href', 'https://adaa-alabtal.com/member-login?tenant=default');
+});
+
+test('saving member identity requires explicit consent and stays scoped to academy', async () => {
+  localStorage.setItem('tenant_slug', 'academy-one');
+  localStorage.setItem('member_login_phone:academy-one', '0551234567');
+  axios.post.mockResolvedValue({ data: { access_token: 'test-token', member: { name_ar: 'Test' } } });
+  render(<MemoryRouter><MemberLogin /></MemoryRouter>);
+  const consent = screen.getByRole('checkbox', { name: 'تذكر رقم العضوية والجوال على هذا الجهاز' });
+  expect(consent).not.toBeChecked();
+  fireEvent.change(screen.getByTestId('member-code-input'), { target: { value: 'ACA-321' } });
+  fireEvent.click(screen.getByTestId('member-login-btn'));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByTestId('member-login-btn')).not.toBeDisabled());
+  expect(localStorage.getItem('member_login_identity:academy-one')).toBeNull();
+  fireEvent.click(consent);
+  fireEvent.click(screen.getByTestId('member-login-btn'));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('member_login_identity:academy-one'))).toEqual({ code: 'ACA-321', phone: '0551234567' }));
+  expect(localStorage.getItem('member_login_identity:default')).toBeNull();
+  fireEvent.click(consent);
+  expect(localStorage.getItem('member_login_identity:academy-one')).toBeNull();
+});
+
+test('saved identity prefills but does not automatically authenticate', () => {
+  localStorage.setItem('member_login_phone:default', '0551234567');
+  localStorage.setItem('member_login_identity:default', JSON.stringify({ code: 'ACA-321', phone: '0551234567' }));
+  render(<MemoryRouter><MemberLogin /></MemoryRouter>);
+  expect(screen.getByTestId('member-code-input')).toHaveValue('ACA-321');
+  expect(axios.post).not.toHaveBeenCalled();
 });
 
 test('picker exposes a retry after a connection timeout', async () => {
@@ -103,7 +144,7 @@ test('remembered phone alone never logs in without the member code', async () =>
   await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
     expect.stringContaining('/api/member-portal/login'),
     { phone: '0500000000', member_code: 'ACA-123' },
-    { headers: { 'X-Tenant-Slug': 'academy-one' } },
+    { headers: { 'X-Tenant-Slug': 'academy-one' }, timeout: 15000 },
   ));
 });
 
@@ -119,7 +160,7 @@ test('picker passes verified code and phone only for this navigation', async () 
   await waitFor(() => expect(axios.post).toHaveBeenCalledWith(
     expect.stringContaining('/api/member-portal/login'),
     { phone: '0511111111', member_code: 'ACA-456' },
-    { headers: { 'X-Tenant-Slug': 'academy-two' } },
+    { headers: { 'X-Tenant-Slug': 'academy-two' }, timeout: 15000 },
   ));
   expect(localStorage.getItem('member_login_code:academy-two')).toBeNull();
 });
@@ -144,7 +185,7 @@ test('academy picker clears another member session and carries verified identity
   expect(axios.post).toHaveBeenNthCalledWith(2,
     expect.stringContaining('/api/member-portal/login'),
     { phone: '0555555555', member_code: 'ACA-789' },
-    { headers: { 'X-Tenant-Slug': 'academy-two' } },
+    { headers: { 'X-Tenant-Slug': 'academy-two' }, timeout: 15000 },
   );
   expect(localStorage.getItem('member_token')).toBe('new-member');
 });

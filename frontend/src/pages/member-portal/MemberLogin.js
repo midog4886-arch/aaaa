@@ -15,6 +15,7 @@ import API_URL, {
   clearRememberedMemberPhone,
 } from '../../config/api';
 import { getAcademyLogoUrl, getAcademyName, loadBranding, useBrandColor } from '../../services/branding';
+import { WEB_RELEASE } from '../../config/release';
 
 const DEFAULT_LOGO = "/logo-new.png";
 
@@ -151,8 +152,16 @@ const MemberLogin = () => {
   const rememberedPhone = requestedTenant
     ? getRememberedMemberPhoneForTenant(requestedTenant)
     : getRememberedMemberPhone();
-  const [phone, setPhone] = useState(location.state?.verifiedPhone || rememberedPhone);
-  const [memberCode, setMemberCode] = useState(location.state?.verifiedMemberCode || '');
+  const identityKey = `member_login_identity:${requestedTenant || getTenantSlug()}`;
+  const rememberedIdentity = (() => {
+    try { return JSON.parse(localStorage.getItem(identityKey) || 'null'); } catch { return null; }
+  })();
+  const [phone, setPhone] = useState(location.state?.verifiedPhone || rememberedIdentity?.phone || rememberedPhone);
+  const [memberCode, setMemberCode] = useState(location.state?.verifiedMemberCode || rememberedIdentity?.code || '');
+  const [rememberIdentity, setRememberIdentity] = useState(!!rememberedIdentity);
+  const [loginError, setLoginError] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [loading, setLoading] = useState(false);
   // A remembered phone alone cannot establish the member's academy. Never
   // auto-login on it; the exact member code must be supplied as well.
@@ -224,14 +233,15 @@ const MemberLogin = () => {
   };
 
   const doLogin = async (phoneValue, codeValue, { silent = false } = {}) => {
+    setLoginError('');
     const ph = (phoneValue || '').trim();
     const code = (codeValue || '').trim();
     if (!ph) {
-      if (!silent) toast.error('يرجى إدخال رقم الجوال');
+      if (!silent) setLoginError('يرجى إدخال رقم الجوال');
       return false;
     }
     if (!code) {
-      if (!silent) toast.error('يرجى إدخال رقم العضوية');
+      if (!silent) setLoginError('يرجى إدخال رقم العضوية');
       return false;
     }
 
@@ -244,7 +254,8 @@ const MemberLogin = () => {
       }, {
         // The fixed native domain can't reveal the tenant via host, so bind
         // this request to the academy the member just confirmed.
-        headers: { 'X-Tenant-Slug': getTenantSlug() }
+        headers: { 'X-Tenant-Slug': getTenantSlug() },
+        timeout: 15000,
       });
 
       localStorage.setItem('member_token', response.data.access_token);
@@ -252,7 +263,13 @@ const MemberLogin = () => {
       const savedLang = response.data.member?.language;
       localStorage.setItem('member_language', savedLang === 'en' ? 'en' : 'ar');
       // Remember the phone (scoped to this tenant) for one-tap return logins.
-      setRememberedMemberPhone(ph);
+      if (rememberIdentity) {
+        setRememberedMemberPhone(ph);
+        try { localStorage.setItem(identityKey, JSON.stringify({ code, phone: ph })); } catch {}
+      } else {
+        clearRememberedMemberPhone();
+        try { localStorage.removeItem(identityKey); } catch {}
+      }
 
       toast.success(`مرحباً ${response.data.member.name_ar}`);
       navigate('/member-dashboard');
@@ -262,9 +279,13 @@ const MemberLogin = () => {
       // Drop it so we don't keep retrying and let the member type a new one.
       if ([400, 401, 404].includes(error.response?.status)) {
         clearRememberedMemberPhone();
-        if (!silent) toast.error('رقم العضوية أو الجوال غير صحيح لهذه الأكاديمية');
+        if (!silent) setLoginError('رقم العضوية أو الجوال غير صحيح لهذه الأكاديمية. راجع البيانات أو اختر أكاديميتك من جديد.');
       } else if (!silent) {
-        toast.error('حدث خطأ في تسجيل الدخول');
+        setLoginError(error.code === 'ECONNABORTED'
+          ? 'استغرق الاتصال وقتًا طويلًا. تحقق من الإنترنت ثم حاول مرة أخرى.'
+          : !error.response
+            ? 'تعذّر الاتصال. تحقق من الإنترنت ثم حاول مرة أخرى.'
+            : 'تعذّر تسجيل الدخول الآن. حاول مرة أخرى بعد قليل.');
       }
       return false;
     } finally {
@@ -281,6 +302,21 @@ const MemberLogin = () => {
     setPhone(submittedPhone);
     setMemberCode(submittedCode);
     doLogin(submittedPhone, submittedCode);
+  };
+
+  const checkUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      if (!navigator.onLine) throw new Error('offline');
+      const registration = await navigator.serviceWorker?.getRegistration();
+      if (registration) {
+        await registration.update();
+        if (registration.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+      toast.success('تم فحص التحديثات. أعد فتح التطبيق إذا استمرت المشكلة.');
+    } catch {
+      toast.error('تعذّر فحص التحديثات. تحقق من اتصال الإنترنت.');
+    } finally { setCheckingUpdate(false); }
   };
 
   // The picker just verified both values against the selected academy.
@@ -395,12 +431,14 @@ const MemberLogin = () => {
                       transition={{ delay: 0.4 }}
                       className="space-y-2"
                     >
-                      <label className="text-sm font-medium text-white/90">رقم الجوال</label>
+                      <label htmlFor="member-phone-login" className="text-sm font-medium text-white/90">رقم الجوال</label>
                       <div className="relative">
                         <Phone className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/50" />
                         <Input
                           type="tel"
+                          id="member-phone-login"
                           name="phone"
+                          autoComplete="tel"
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
                           placeholder="05xxxxxxxx"
@@ -426,6 +464,17 @@ const MemberLogin = () => {
                         data-testid="member-code-input"
                       />
                     </div>
+                    <label className="flex items-center gap-2 text-sm text-white/80">
+                      <input type="checkbox" checked={rememberIdentity} disabled={loading} onChange={(e) => {
+                        setRememberIdentity(e.target.checked);
+                        if (!e.target.checked) {
+                          clearRememberedMemberPhone();
+                          try { localStorage.removeItem(identityKey); } catch {}
+                        }
+                      }} />
+                      تذكر رقم العضوية والجوال على هذا الجهاز
+                    </label>
+                    {loginError && <p role="alert" className="rounded-lg bg-red-950/70 p-3 text-sm text-red-100">{loginError}</p>}
                     
                     <motion.div
                       initial={{ opacity: 0, y: 20 }}
@@ -455,6 +504,17 @@ const MemberLogin = () => {
                       </Button>
                     </motion.div>
                   </form>
+                  <button type="button" className="mt-5 w-full text-sm text-white/80 underline" onClick={() => setHelpOpen(!helpOpen)} aria-expanded={helpOpen}>
+                    تواجه مشكلة في الدخول؟
+                  </button>
+                  {helpOpen && <div className="mt-3 space-y-3 rounded-lg bg-white/10 p-4 text-sm text-white/90">
+                    <p>اكتب رقم العضوية كما يظهر في بطاقتك، واستخدم رقم الجوال المسجل لدى الأكاديمية.</p>
+                    <button type="button" className="block underline" onClick={() => navigate('/academy-picker')}>اختيار الأكاديمية من جديد</button>
+                    <button type="button" className="block underline" onClick={checkUpdate} disabled={checkingUpdate}>{checkingUpdate ? 'جارٍ فحص التحديثات…' : 'فحص تحديث التطبيق'}</button>
+                    <a className="block underline" href={`https://adaa-alabtal.com/member-login?tenant=${encodeURIComponent(requestedTenant || getTenantSlug())}`} target="_blank" rel="noreferrer">فتح الدخول في المتصفح</a>
+                    {(requestedTenant || getTenantSlug()) === 'default' && <a className="block underline" href="https://wa.me/966566238384" target="_blank" rel="noreferrer">التواصل مع خدمة العملاء</a>}
+                  </div>}
+                  <p className="mt-4 text-center text-xs text-white/50">إصدار الواجهة {WEB_RELEASE}</p>
                 </CardContent>
               </Card>
 

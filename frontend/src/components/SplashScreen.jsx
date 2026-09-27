@@ -66,7 +66,7 @@ const SplashScreen = ({ onComplete }) => {
               <div className="w-32 h-32 mx-auto bg-white rounded-3xl shadow-2xl flex items-center justify-center p-3 overflow-hidden">
                 <img 
                   src={ACADEMY_LOGO} 
-                  alt="Global Champions" 
+                  alt="أكاديمية أداء الأبطال"
                   className="w-full h-full object-contain"
                 />
               </div>

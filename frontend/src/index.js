@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { getTenantSlug } from "./config/api";
+import { toast } from 'sonner';
 
 // Global guard: mouse-wheel over a focused number input must never change its
 // value (fees, discounts, quantities...). Covers raw <input type="number">
@@ -46,6 +47,17 @@ if ('serviceWorker' in navigator) {
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!refreshing) {
+      // Keep entered form data intact while a new version takes control.
+      const editing = Array.from(document.querySelectorAll('input:not([type=checkbox]):not([type=hidden]), textarea'))
+        .some(input => input.value || input === document.activeElement);
+      if (editing) {
+        toast.info('تحديث جديد جاهز. أعد تحميل الصفحة عندما تنتهي من إدخال بياناتك.', {
+          duration: Infinity,
+          action: { label: 'تحديث الآن', onClick: () => window.location.reload() },
+          id: 'app-update-ready',
+        });
+        return;
+      }
       refreshing = true;
       window.location.reload();
     }
@@ -69,7 +81,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.ready.then(postTenantToSW).catch(() => {});
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
       .then((registration) => {
         console.log('[App] Service Worker registered:', registration.scope);
         postTenantToSW();
@@ -83,7 +95,17 @@ if ('serviceWorker' in navigator) {
             });
           }
         });
-        registration.update();
+        let lastCheck = 0;
+        const checkForUpdate = () => {
+          if (!navigator.onLine || document.visibilityState === 'hidden' || Date.now() - lastCheck < 60000) return;
+          lastCheck = Date.now();
+          registration.update().catch(() => {});
+        };
+        checkForUpdate();
+        window.addEventListener('focus', checkForUpdate);
+        window.addEventListener('online', checkForUpdate);
+        document.addEventListener('visibilitychange', checkForUpdate);
+        window.setInterval(checkForUpdate, 5 * 60 * 1000);
       })
       .catch((error) => {
         console.error('[App] Service Worker registration failed:', error);
