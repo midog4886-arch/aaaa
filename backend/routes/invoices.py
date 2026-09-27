@@ -683,6 +683,10 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Invoice already paid")
+    if invoice.get('status') not in {'pending', 'partial'}:
+        raise HTTPException(status_code=409, detail='الفاتورة ليست معلقة')
+    if invoice.get('online_payment_link_id') and current_user.get('_verified_gateway_link') != invoice['online_payment_link_id']:
+        raise HTTPException(status_code=409, detail='توجد عملية دفع إلكترونية؛ تحقق منها أو ألغِ رابط الدفع أولًا')
     
     # Deduct stock for product items
     for item in invoice.get("items", []):
@@ -711,7 +715,7 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     # Conditional transition: only ONE concurrent /pay call can win, so the
     # side effects below (admin notification, activity merge) run once.
     pay_result = await db.invoices.update_one(
-        {**scoped_invoice_query, "status": {"$ne": "paid"}},
+        {**scoped_invoice_query, "status": invoice.get('status'), 'online_payment_link_id': invoice.get('online_payment_link_id')},
         {"$set": {
             "status": "paid",
             "paid_at": paid_at
@@ -1083,8 +1087,11 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
     """Cancel an invoice (branch-scoped for non-admins)"""
     before = await db.invoices.find_one(_scoped_invoice_query(invoice_id, current_user), {"_id": 0})
+    if (before or {}).get('online_payment_link_id'):
+        from routes.payment_links import cancel_link
+        await cancel_link(before['online_payment_link_id'], current_user)
     result = await db.invoices.update_one(
-        _scoped_invoice_query(invoice_id, current_user),
+        {**_scoped_invoice_query(invoice_id, current_user), 'online_payment_link_id': None},
         {"$set": {"status": "cancelled"}}
     )
     if result.matched_count == 0:
@@ -1124,8 +1131,12 @@ async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_curre
 
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Cannot delete paid invoice")
+    if invoice.get('online_payment_link_id'):
+        raise HTTPException(status_code=409, detail='ألغِ رابط الدفع الإلكتروني قبل حذف الفاتورة')
 
-    await db.invoices.delete_one(scoped)
+    delete_result = await db.invoices.delete_one({**scoped, 'online_payment_link_id': None})
+    if getattr(delete_result, 'deleted_count', 1) == 0:
+        raise HTTPException(status_code=409, detail='بدأت عملية دفع؛ تعذّر حذف الفاتورة')
     from utils.audit import log_audit
     await log_audit(
         actor=current_user,

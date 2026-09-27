@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import PaymentLinksPanel from '../components/PaymentLinksPanel';
 import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -324,6 +325,7 @@ export const InvoicesPage = () => {
   return (
     <Layout title={t('invoices')}>
       <div className="space-y-6" data-testid="invoices-page">
+        <PaymentLinksPanel invoices={invoices} branchId={selectedBranchId} />
         <div className="flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
             <div className="flex flex-1 flex-wrap gap-3 w-full sm:w-auto items-center">

@@ -5,6 +5,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Toaster } from './components/ui/sonner';
 import { loadBranding } from './services/branding';
+const PublicPaymentPage = lazy(() => import('./pages/PublicPaymentPage'));
 
 const ManifestSwitcher = () => {
   const location = useLocation();
@@ -295,6 +296,7 @@ function AppRoutes() {
 
       {/* Private marketer self-service portal (the token is the credential) */}
       <Route path="/marketer/:tenantSlug/:token" element={<MarketerPortalPage />} />
+      <Route path="/pay/:token" element={<PublicPaymentPage />} />
 
       {/* Super-Admin (control plane) — outside main auth/permissions */}
       <Route path="/super" element={<Navigate to="/super/tenants" replace />} />

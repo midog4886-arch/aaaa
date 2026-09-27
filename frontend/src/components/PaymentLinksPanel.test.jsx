@@ -1,0 +1,23 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import axios from 'axios';
+import PaymentLinksPanel from './PaymentLinksPanel';
+jest.mock('axios', () => ({ get: jest.fn(), post: jest.fn() }));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+test('creates selected family link and keeps the same request ID on an uncertain retry', async () => {
+  Object.defineProperty(window, 'crypto', { configurable: true, value: { randomUUID: () => '11111111-1111-4111-8111-111111111111' } });
+  axios.get.mockResolvedValue({ data: { links: [], gateway_ready: false } });
+  axios.post.mockRejectedValueOnce(new Error('timeout')).mockResolvedValueOnce({ data: {} });
+  render(<PaymentLinksPanel branchId="b1" invoices={[{ id: 'i1', customer_name: 'محمد', invoice_number: '1', total: 115, status: 'pending' }, { id: 'i2', customer_name: 'سارة', invoice_number: '2', total: 230, status: 'pending' }]} />);
+  fireEvent.click(screen.getByText('روابط دفع الاشتراكات والأسرة'));
+  const boxes = screen.getAllByRole('checkbox');
+  fireEvent.click(boxes[0]); fireEvent.click(boxes[1]);
+  fireEvent.click(screen.getByRole('button', { name: 'إنشاء رابط دفع' }));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'إنشاء رابط دفع' }).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'إنشاء رابط دفع' }));
+  await waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2));
+  expect(axios.post.mock.calls[0][1]).toEqual(axios.post.mock.calls[1][1]);
+  expect(axios.post.mock.calls[0][1].invoice_ids).toEqual(['i1', 'i2']);
+  expect(axios.get).toHaveBeenCalledWith('/api/payment-links', expect.objectContaining({ params: { branch_filter: 'b1' } }));
+});

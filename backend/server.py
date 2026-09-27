@@ -290,6 +290,8 @@ set_push_notify_function(push_notify_new_video)
 app.include_router(member_portal_router)
 from routes.member_support import router as member_support_router
 app.include_router(member_support_router)
+from routes.payment_links import router as payment_links_router
+app.include_router(payment_links_router)
 
 # Mount uploads directory for serving images (disk-only, no /api prefix)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
@@ -1406,6 +1408,8 @@ async def update_invoice_branch(invoice_id: str, branch_id: str, current_user: d
     invoice = await db.invoices.find_one({"id": invoice_id})
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.get('online_payment_link_id'):
+        raise HTTPException(status_code=409, detail='ألغِ رابط الدفع الإلكتروني قبل تغيير الفرع')
     
     # Verify branch exists
     if branch_id and branch_id != "all":
@@ -1413,10 +1417,12 @@ async def update_invoice_branch(invoice_id: str, branch_id: str, current_user: d
         if not branch:
             raise HTTPException(status_code=404, detail="Branch not found")
     
-    await db.invoices.update_one(
-        {"id": invoice_id},
+    branch_update = await db.invoices.update_one(
+        {"id": invoice_id, 'online_payment_link_id': None},
         {"$set": {"branch_id": branch_id if branch_id != "all" else None}}
     )
+    if not branch_update.matched_count:
+        raise HTTPException(status_code=409, detail='بدأت عملية دفع؛ تعذّر تغيير الفرع')
     return {"message": "Invoice branch updated", "branch_id": branch_id}
 
 # ============ INVOICE/REG FORM CHECK TOGGLE ============
@@ -2612,6 +2618,8 @@ async def update_invoice(invoice_id: str, invoice: InvoiceCreate, current_user: 
     
     if existing["status"] != "pending":
         raise HTTPException(status_code=400, detail="Can only edit pending invoices")
+    if existing.get('online_payment_link_id'):
+        raise HTTPException(status_code=409, detail='ألغِ رابط الدفع الإلكتروني قبل تعديل الفاتورة')
 
     # Reject inverted subscription windows (end before start).
     from utils.subscription_dates import validate_invoice_payload_windows
@@ -2640,10 +2648,12 @@ async def update_invoice(invoice_id: str, invoice: InvoiceCreate, current_user: 
     }
     
     result = await db.invoices.find_one_and_update(
-        {"id": invoice_id},
+        {"id": invoice_id, 'status': 'pending', 'online_payment_link_id': None},
         {"$set": update_data},
         return_document=True
     )
+    if not result:
+        raise HTTPException(status_code=409, detail='تغيّرت حالة الفاتورة؛ أعد تحميلها')
     result.pop("_id", None)
     return result
 
@@ -3691,7 +3701,7 @@ _ALL_COLLECTIONS = [
     "dashboard_settings", "discounts", "expenses", "extension_logs",
     "internal_expense_payments", "internal_expenses", "invoices",
     "journal_entries", "levels", "level_subscriptions", "loyalty_rewards",
-    "loyalty_settings", "member_freezes", "member_notifications", "member_points", "support_requests",
+    "loyalty_settings", "member_freezes", "member_notifications", "member_points", "support_requests", "payment_links",
     "members", "messages", "notifications", "payment_transactions",
     "payment_vouchers", "points_history", "product_invoices", "products",
     "purchase_invoices", "push_subscriptions", "redemption_requests",
@@ -4548,6 +4558,8 @@ async def _run_daily_renewal_and_ads_checks(trigger: str = "scheduler") -> dict:
         try:
             from services.member_expiry_reminders import send_member_expiry_reminders
             await send_member_expiry_reminders(db)
+            from routes.payment_links import payment_link_reminders
+            await payment_link_reminders()
         except Exception as e:
             _record(f"[{slug}] member expiry reminders failed: {e}")
 
