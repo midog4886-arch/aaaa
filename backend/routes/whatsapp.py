@@ -13,7 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from datetime import datetime, timedelta, date, timezone
 from zoneinfo import ZoneInfo
-from typing import Optional, List
+from typing import Optional, List, Literal
 from urllib.parse import quote, urlparse
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -2583,7 +2583,7 @@ async def _send_wa_for_members(members_data: list, days_before: int, template: s
             if success:
                 sent_count += 1
                 logger.info(f"WhatsApp reminder ({days_before}d) sent to {name} ({phone})")
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)
     return sent_count
 
 
@@ -6987,6 +6987,7 @@ class BulkCloudSendRequest(BaseModel):
     campaign_title: Optional[str] = Field(default=None, max_length=160)
     campaign_id: Optional[str] = Field(default=None, max_length=128)
     branch_name: Optional[str] = Field(default=None, max_length=200)
+    dispatch_source: Literal['campaign', 'branch_bulk'] = 'campaign'
 
 
 def _bulk_campaign_metadata(
@@ -7844,12 +7845,14 @@ async def send_branch_cloud_bulk(
            for r in recipients):
         raise HTTPException(status_code=400, detail="Invalid phone or message")
     enqueue_args = (data.branch_id, provider, recipients, key)
+    is_campaign = data.dispatch_source == 'campaign' or data.campaign_id or current_user.get('_approved_campaign')
+    enqueue_options = {} if is_campaign else {'source': 'branch_bulk'}
     if metadata:
         job, _created = await whatsapp_bulk_jobs.enqueue(
-            *enqueue_args, metadata=metadata
+            *enqueue_args, metadata=metadata, **enqueue_options
         )
     else:
-        job, _created = await whatsapp_bulk_jobs.enqueue(*enqueue_args)
+        job, _created = await whatsapp_bulk_jobs.enqueue(*enqueue_args, **enqueue_options)
     if response is not None:
         response.status_code = 202
     return job
@@ -9763,9 +9766,9 @@ async def send_bulk_renewal_reminders(
             )
         if ok:
             wa_sent += 1
-        # Match scheduler pacing, without delaying after the final recipient.
+        # Match non-campaign bulk pacing, without delaying after the final recipient.
         if group_index < len(wa_groups) - 1:
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)
 
     return {
         "success": True,

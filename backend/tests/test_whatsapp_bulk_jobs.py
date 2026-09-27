@@ -422,7 +422,7 @@ def test_slow_worker_sets_cooldown_from_completion_not_gate_acquisition(queue):
 
 
 @pytest.mark.parametrize("legacy", [False, True])
-def test_closure_actual_sends_share_one_minute_lane_across_jobs_and_providers(queue, legacy):
+def test_closure_actual_sends_share_thirty_second_lane_across_jobs_and_providers(queue, legacy):
     _db, sent, *_ = queue
     source = "campaign" if legacy else "closure_notice"
     run(jobs.enqueue("a", "meta_cloud", recipients(), "closure_notice_one",
@@ -440,12 +440,12 @@ def test_closure_actual_sends_share_one_minute_lane_across_jobs_and_providers(qu
     jobs._handlers["send"] = slow_send
     assert run(jobs.process_one()) is True
     completed = Clock.now()
-    Clock.set(completed + timedelta(seconds=59))
+    Clock.set(completed + timedelta(seconds=29))
     assert run(jobs.process_one()) is False
     assert len(sent) == 1
-    Clock.set(completed + timedelta(seconds=60))
+    Clock.set(completed + timedelta(seconds=30))
     assert run(jobs.process_one()) is True
-    assert sent == [(started, "meta_cloud"), (completed + timedelta(seconds=60), "waha")]
+    assert sent == [(started, "meta_cloud"), (completed + timedelta(seconds=30), "waha")]
 
 
 @pytest.mark.parametrize("sources", [
@@ -463,6 +463,20 @@ def test_mixed_closure_and_campaign_preserve_longer_campaign_spacing(queue, sour
         assert run(jobs.process_one()) is False
         assert len(sent) == 1
     Clock.set(completed + timedelta(seconds=jobs.MIN_INTERVAL_SECONDS))
+    assert run(jobs.process_one()) is True
+    assert len(sent) == 2
+
+
+def test_non_campaign_bulk_waits_thirty_seconds_between_provider_calls(queue):
+    _db, sent, *_ = queue
+    for index in range(2):
+        run(jobs.enqueue("a", "waha", recipients(), f"branch-bulk-{index}", source="branch_bulk"))
+    assert run(jobs.process_one()) is True
+    completed = Clock.now()
+    Clock.set(completed + timedelta(seconds=29))
+    assert run(jobs.process_one()) is False
+    assert len(sent) == 1
+    Clock.set(completed + timedelta(seconds=30))
     assert run(jobs.process_one()) is True
     assert len(sent) == 2
 

@@ -82,6 +82,7 @@ export default function BranchAutomaticSendDialog({ recipients, message, branche
           // the existing job instead of creating a duplicate send.
           await whatsappAPI.sendBranchCloudBulk(row.branchId, payload, await attemptKey(fingerprint, attemptKeys), {
             campaign_title: ar ? 'رسالة من شاشة واتساب' : 'WhatsApp message', branch_name: row.name,
+            dispatch_source: 'branch_bulk',
           });
           row.queued = offset + batch.length; row.uncertain = false;
           onQueued(batch.flatMap(recipient => recipient.memberIds));

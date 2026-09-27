@@ -19,7 +19,8 @@ from utils.tenant import for_each_active_tenant, get_current_tenant_slug
 log = logging.getLogger("whatsapp.bulk_jobs")
 _DATETIME_TYPE = datetime
 MIN_INTERVAL_SECONDS = max(180, int(os.environ.get("WHATSAPP_CAMPAIGN_INTERVAL_SECONDS", "180")))
-CLOSURE_NOTICE_INTERVAL_SECONDS = 60
+CLOSURE_NOTICE_INTERVAL_SECONDS = 30
+BRANCH_BULK_INTERVAL_SECONDS = 30
 LEASE_SECONDS = 600
 BRANCH_PARALLELISM = max(
     1, int(os.environ.get("WHATSAPP_CAMPAIGN_BRANCH_WORKERS", "8"))
@@ -811,8 +812,11 @@ async def _refresh_job(job_id):
 
 
 def _item_interval_seconds(item):
-    return (CLOSURE_NOTICE_INTERVAL_SECONDS
-            if item.get("source") == "closure_notice" else MIN_INTERVAL_SECONDS)
+    if item.get("source") == "closure_notice":
+        return CLOSURE_NOTICE_INTERVAL_SECONDS
+    if item.get("source") == "branch_bulk":
+        return BRANCH_BULK_INTERVAL_SECONDS
+    return MIN_INTERVAL_SECONDS
 
 
 async def _acquire_gate(branch_id, provider, now, interval_seconds=MIN_INTERVAL_SECONDS):

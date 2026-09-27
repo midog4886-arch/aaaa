@@ -847,6 +847,7 @@ export const whatsappAPI = {
       idempotency_key: idempotencyKey,
       campaign_id: metadata.campaign_id || null,
       campaign_title: metadata.campaign_title || '',
+      dispatch_source: metadata.dispatch_source || 'campaign',
       branch_name: metadata.branch_name || ''
     }),
   sendBranchCloudBulkMedia: (formData, metadata = {}) => {
