@@ -1999,6 +1999,24 @@ export default function WhatsAppPage() {
   };
 
   const normalizeActivityIdentity = (value) => (value || '').trim().toLocaleLowerCase();
+  const recipientActivities = activities.filter(activity => {
+    if (filterBranch === 'all') return true;
+    if (activity.branch_id && activity.branch_id !== 'all') {
+      return String(activity.branch_id) === String(filterBranch);
+    }
+    // Legacy shared activities belong in this list only when used by this branch.
+    const aliases = [activity.id, activity.name, activity.name_ar].map(normalizeActivityIdentity).filter(Boolean);
+    return members.some(member => String(member.branch_id || '') === String(filterBranch)
+      && member.activities?.some(subscription =>
+        [subscription.activity_id, subscription.activity_name, subscription.name, subscription.name_ar]
+          .some(value => aliases.includes(normalizeActivityIdentity(value)))));
+  });
+  const changeRecipientBranch = branchId => {
+    setFilterBranch(branchId);
+    setFilterActivities([]);
+    setSelectedMembers([]);
+    setSelectAll(false);
+  };
   // Member subscriptions contain a mixture of canonical activity UUIDs and
   // legacy Arabic/English names. Treat each selected activity's id + names as
   // aliases so the filter works for both kinds of records.
@@ -2641,7 +2659,7 @@ export default function WhatsAppPage() {
                   <MultiSelectPopover
                     values={filterActivities}
                     onChange={setFilterActivities}
-                    options={activities.filter(a => a.id).map(a => ({ id: a.id, label: isRTL ? a.name_ar : a.name }))}
+                    options={recipientActivities.filter(a => a.id).map(a => ({ id: a.id, label: isRTL ? a.name_ar : a.name }))}
                     allLabel={t('جميع الأنشطة', 'All Activities')}
                     minWidth={140}
                   />
@@ -2653,7 +2671,7 @@ export default function WhatsAppPage() {
                     minWidth={120}
                   />
                   {isAdmin && branches.length > 0 && (
-                    <Select value={filterBranch} onValueChange={setFilterBranch}>
+                    <Select value={filterBranch} onValueChange={changeRecipientBranch}>
                       <SelectTrigger className="flex-1 min-w-[140px] h-9 text-sm"><SelectValue placeholder={t('جميع الفروع', 'All Branches')} /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">{t('جميع الفروع', 'All Branches')}</SelectItem>
@@ -3030,7 +3048,7 @@ export default function WhatsAppPage() {
                     <MultiSelectPopover
                       values={filterActivities}
                       onChange={setFilterActivities}
-                      options={activities
+                      options={recipientActivities
                         .filter(a => a.id)
                         .map(a => {
                           const label = (isRTL ? a.name_ar : a.name) || a.name_ar || a.name || t('نشاط بدون اسم', 'Unnamed activity');
@@ -3054,7 +3072,7 @@ export default function WhatsAppPage() {
                       minWidth={120}
                     />
                     {isAdmin && branches.length > 0 && (
-                      <Select value={filterBranch} onValueChange={setFilterBranch}>
+                      <Select value={filterBranch} onValueChange={changeRecipientBranch}>
                         <SelectTrigger className="flex-1 min-w-[140px]"><SelectValue placeholder={t('الفروع', 'Branches')} /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">{t('جميع الفروع', 'All Branches')}</SelectItem>
