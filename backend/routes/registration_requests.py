@@ -17,7 +17,7 @@ Routes:
     DELETE /registration-requests/{req_id}   -> delete / reject
 """
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
 import re
@@ -237,6 +237,7 @@ def _attach_followed_evidence(row: dict, evidence: dict):
     row["followup_staff_contacted_at"] = details.get("staff_contacted_at")
     row["followup_automatic_sent"] = bool(details.get("automatic_sent"))
     row["followup_automatic_sent_at"] = details.get("automatic_sent_at")
+    row['last_contact_at'] = _latest_timestamp(row.get('last_contact_at'), details.get('staff_contacted_at'), details.get('automatic_sent_at'))
 
 
 async def _registration_invoice_links(rows: list) -> dict:
@@ -338,6 +339,9 @@ async def _normalize_registration_request_rows(rows: list) -> list:
             # to Pending, not attempt the forbidden direct processed state.
             row["archived_from"] = "pending"
         normalized.append(row)
+        row['workflow_stage'] = ('registered' if invoice and invoice.get('status') == 'paid' else
+                                 'awaiting_payment' if invoice else
+                                 'contacted' if row.get('followup_staff_contacted_at') or row.get('followup_stop_reason') in STAFF_CONTACT_FOLLOWUP_REASONS else 'new')
     return normalized
 
 
@@ -797,11 +801,10 @@ async def list_registration_requests(
     query: dict = {}
     if effective_branch:
         query["branch_id"] = effective_branch
-    followed_evidence = {}
+    followed_evidence = await _followed_up_evidence(
+        {"branch_id": effective_branch} if effective_branch else {}
+    )
     if status == "followed_up":
-        followed_evidence = await _followed_up_evidence(
-            {"branch_id": effective_branch} if effective_branch else {}
-        )
         # This intentionally does not constrain request status.  A follow-up
         # can be recorded while pending and the request can later be
         # processed, rejected, or archived; all such rows belong in this
@@ -822,6 +825,19 @@ async def list_registration_requests(
     _search_registration_requests(query, search)
     requests = await db.registration_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
     requests = await _normalize_registration_request_rows(requests)
+    from services.registration_queue import enrich_queue
+    # Use all live siblings to derive the same quiet-hours due time as the scheduler.
+    family_rows = await db.registration_requests.find(
+        {**({'branch_id': effective_branch} if effective_branch else {}), 'status': 'pending'}, {'_id': 0}
+    ).to_list(None)
+    enrich_queue(family_rows)
+    family_meta = {row['id']: row for row in family_rows}
+    enrich_queue(requests)
+    for row in requests:
+        source = family_meta.get(row['id'])
+        if source:
+            for key in ('next_followup_at', 'followup_overdue'):
+                row[key] = source[key]
     if status and status != "all" and status != "followed_up":
         requests = [request for request in requests if request.get("status") == status]
     elif status == "all":
@@ -831,6 +847,66 @@ async def list_registration_requests(
             _attach_followed_evidence(request, followed_evidence)
     requests = await _attach_phone_matched_members(requests, current_user)
     return await _sanitize_registration_requests(requests, current_user)
+
+
+@router.get('/registration-requests/overview')
+async def registration_queue_overview(branch_filter: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    branch = resolve_branch_filter(current_user, branch_filter)
+    scope = {'branch_id': branch} if branch else {}
+    rows = await db.registration_requests.find(scope, {'_id': 0}).to_list(None)
+    rows = await _normalize_registration_request_rows(rows)
+    from services.registration_queue import enrich_queue
+    enrich_queue(rows)
+    active = [r for r in rows if r.get('status') not in {'archived', 'rejected'}]
+    return {'new': sum(r['workflow_stage'] == 'new' for r in active),
+            'overdue': sum(r.get('followup_overdue', False) for r in active),
+            'contacted': sum(r['workflow_stage'] == 'contacted' for r in active),
+            'awaiting_payment': sum(r['workflow_stage'] == 'awaiting_payment' for r in active),
+            'registered': sum(r['workflow_stage'] == 'registered' for r in active)}
+
+
+@router.get('/registration-requests/assignees')
+async def registration_assignees(branch_filter: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    branch = resolve_branch_filter(current_user, branch_filter)
+    users = await db.users.find({}, {'_id': 0, 'id': 1, 'name': 1, 'name_ar': 1, 'username': 1, 'branch_id': 1, 'branch_ids': 1, 'is_admin': 1, 'is_active': 1}).to_list(None)
+    return [{'id': u['id'], 'name': u.get('name_ar') or u.get('name') or u.get('username'),
+             'branch_ids': u.get('branch_ids') or [u.get('branch_id')], 'is_admin': bool(u.get('is_admin'))}
+            for u in users if u.get('is_active') is not False and (not branch or u.get('is_admin') or branch in (u.get('branch_ids') or [u.get('branch_id')]))]
+
+
+class RegistrationManagementUpdate(BaseModel):
+    assignee_id: Optional[str] = None
+    note: str = Field(default='', max_length=2000)
+    expected_assignee_id: Optional[str] = None
+
+
+@router.patch('/registration-requests/{req_id}/management')
+async def manage_registration_request(req_id: str, payload: RegistrationManagementUpdate, current_user: dict = Depends(get_current_user)):
+    req = await db.registration_requests.find_one({'id': req_id}, {'_id': 0})
+    if not req:
+        raise HTTPException(404, 'الطلب غير موجود')
+    scope = require_branch_scope(current_user)
+    if scope and req.get('branch_id') != scope:
+        raise HTTPException(403, 'غير مصرح لك بهذا الطلب')
+    assignee = None
+    if payload.assignee_id:
+        assignee = await db.users.find_one({'id': payload.assignee_id}, {'_id': 0})
+        if not assignee or assignee.get('is_active') is False or not (assignee.get('is_admin') or req.get('branch_id') in (assignee.get('branch_ids') or [assignee.get('branch_id')])):
+            raise HTTPException(400, 'الموظف غير متاح لهذا الفرع')
+    now = datetime.now(timezone.utc).isoformat()
+    name = current_user.get('name') or current_user.get('username') or 'موظف'
+    update = {'$set': {'assignee_id': payload.assignee_id or None, 'assignee_name': (assignee or {}).get('name_ar') or (assignee or {}).get('name') or (assignee or {}).get('username') or '', 'updated_at': now}}
+    events = []
+    if (req.get('assignee_id') or None) != (payload.assignee_id or None):
+        events.append({'at': now, 'actor': name, 'text': 'تغيير المسؤول: ' + (update['$set']['assignee_name'] or 'دون مسؤول')})
+    if payload.note.strip():
+        events.append({'at': now, 'actor': name, 'text': payload.note.strip()})
+    if events:
+        update['$push'] = {'staff_history': {'$each': events, '$slice': -100}}
+    result = await db.registration_requests.update_one({'id': req_id, 'assignee_id': payload.expected_assignee_id or None}, update)
+    if not result.matched_count:
+        raise HTTPException(409, 'تغيّر المسؤول بواسطة موظف آخر؛ حدّث الصفحة قبل الحفظ')
+    return {'success': True}
 
 
 @router.put("/registration-requests/{req_id}")

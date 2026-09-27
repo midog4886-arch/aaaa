@@ -53,6 +53,8 @@ export default function RegistrationFollowup({ request, onChanged }) {
       {labels[status] || 'غير مشمول بالمتابعة الآلية'}
       {request.followup_stop_reason && ` — ${reasons[request.followup_stop_reason] || 'توقفت المتابعة لهذا الرقم'}`}
     </p>
+    <p className="mt-2">آخر تواصل: {request.last_contact_at ? new Date(request.last_contact_at).toLocaleString('ar-SA') : 'لم يُسجل تواصل'} · المتابعة القادمة: {request.next_followup_at ? new Date(request.next_followup_at).toLocaleString('ar-SA') : 'لا توجد متابعة مجدولة'} {request.followup_overdue && <strong className="text-red-600"> — متأخرة</strong>}</p>
+    {['compatible_provider_unavailable', 'provider_unavailable', 'branch_send_lane_frozen'].includes(request.followup_stop_reason) && <a href="/admin/branches" className="mt-2 inline-block rounded border px-3 py-2 text-emerald-700">إصلاح اتصال واتساب</a>}
     {canStop && <div className="flex flex-wrap gap-2 mt-2">
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => stop('contacted')}>
         {busy && <Loader2 className="w-3 h-3 animate-spin ms-1" />} تم التواصل — إيقاف المتابعة

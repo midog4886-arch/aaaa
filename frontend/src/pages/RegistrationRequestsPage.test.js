@@ -45,6 +45,9 @@ jest.mock('lucide-react', () => {
 jest.mock('../services/api', () => ({
   branchesAPI: { getAll: jest.fn() },
   registrationRequestsAPI: {
+    overview: jest.fn().mockResolvedValue({ data: { new: 2, overdue: 1, registered: 1 } }),
+    assignees: jest.fn().mockResolvedValue({ data: [{ id: 'staff', name: 'أحمد', branch_ids: ['b1'] }] }),
+    manage: jest.fn().mockResolvedValue({ data: {} }),
     createLink: jest.fn(),
     getAll: jest.fn(),
     updateStatus: jest.fn(),
@@ -56,6 +59,22 @@ jest.mock('../services/api', () => ({
 afterEach(() => {
   cleanup();
   jest.clearAllMocks();
+});
+
+test('groups siblings, sorts overdue requests and filters by activity', async () => {
+  branchesAPI.getAll.mockResolvedValue({ data: [{ id: 'b1', name_ar: 'الفرع' }] });
+  registrationRequestsAPI.getAll.mockResolvedValue({ data: [
+    { id: 'a', customer_name: 'نواف', branch_id: 'b1', family_key: 'family', activity_name: 'السباحة', status: 'pending', workflow_stage: 'new', created_at: '2026-09-20' },
+    { id: 'c', customer_name: 'خالد', branch_id: 'b1', family_key: 'other', activity_name: 'كرة القدم', status: 'pending', workflow_stage: 'new', followup_overdue: true, created_at: '2026-09-21' },
+    { id: 'b', customer_name: 'ريما', branch_id: 'b1', family_key: 'family', activity_name: 'السباحة', status: 'pending', workflow_stage: 'new', created_at: '2026-09-22' },
+  ] });
+  render(<RegistrationRequestsPage />);
+  await screen.findByText('نواف');
+  expect(screen.getByText(/طلبات أسرة واحدة/)).toBeTruthy();
+  expect(screen.getAllByRole('heading', { level: 3 }).map(e => e.textContent)).toEqual(['خالد', 'نواف', 'ريما']);
+  fireEvent.change(screen.getByLabelText('النشاط'), { target: { value: 'السباحة' } });
+  expect(screen.queryByText('خالد')).toBeNull();
+  expect(screen.getByText('ريما')).toBeTruthy();
 });
 
 test('shows a named short link and shares the same destination through WhatsApp', async () => {

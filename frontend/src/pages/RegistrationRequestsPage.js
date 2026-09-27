@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,6 +11,7 @@ import { getPublicBaseUrl } from '../utils/publicUrl';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
 import RegistrationFollowup from '../components/RegistrationFollowup';
+import RegistrationManagement from '../components/RegistrationManagement';
 import { Loader2, Phone, Calendar, Clock, Trash2, FileText, Link2, Copy, QrCode, Inbox, UserPlus, Globe, CheckCircle2, Megaphone, Download, Search, X, Archive, ArchiveRestore, ExternalLink } from 'lucide-react';
 
 const STATUS_FILTERS = [
@@ -27,6 +28,7 @@ const STATUS_BADGE = {
   rejected: { label: 'مرفوض', cls: 'bg-red-100 text-red-700' },
   archived: { label: 'مؤرشف', cls: 'bg-gray-200 text-gray-600' },
 };
+const STAGES = { new: 'جديد', contacted: 'تم التواصل', awaiting_payment: 'بانتظار الدفع', registered: 'مسجل' };
 
 export const RegistrationRequestsPage = () => {
   const { user } = useAuth();
@@ -44,6 +46,16 @@ export const RegistrationRequestsPage = () => {
   const [multiBranchIds, setMultiBranchIds] = useState([]);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
+  const [overview, setOverview] = useState({});
+  const [assignees, setAssignees] = useState([]);
+  const [activityFilter, setActivityFilter] = useState('');
+  const [ownerFilter, setOwnerFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [stageFilter, setStageFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState('priority');
+  const [groupFamilies, setGroupFamilies] = useState(true);
+  const loadSequence = useRef(0);
 
   const tenantSlug = (() => { try { return localStorage.getItem('tenant_slug') || 'default'; } catch { return 'default'; } })();
 
@@ -55,17 +67,22 @@ export const RegistrationRequestsPage = () => {
   }, []);
 
   const loadRequests = async () => {
+    const sequence = ++loadSequence.current;
     setLoading(true);
     try {
       const params = { status: statusFilter };
       if (isAdmin && selectedBranch !== 'all') params.branch_filter = selectedBranch;
       if (searchQuery.trim()) params.search = searchQuery.trim();
       const res = await registrationRequestsAPI.getAll(params);
+      if (sequence !== loadSequence.current) return;
       setRequests(res.data || []);
+      const scope = isAdmin && selectedBranch !== 'all' ? { branch_filter: selectedBranch } : {};
+      if (registrationRequestsAPI.overview) registrationRequestsAPI.overview(scope).then(r => { if (sequence === loadSequence.current) setOverview(r.data || {}); }).catch(() => toast.error('تعذّر تحديث الملخص'));
+      if (registrationRequestsAPI.assignees) registrationRequestsAPI.assignees(scope).then(r => { if (sequence === loadSequence.current) setAssignees(r.data || []); }).catch(() => toast.error('تعذّر تحميل الموظفين'));
     } catch (e) {
       toast.error('تعذّر تحميل الطلبات');
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   };
 
@@ -94,8 +111,13 @@ export const RegistrationRequestsPage = () => {
   const normalizeDigits = (s) => String(s ?? '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
   const filteredRequests = useMemo(() => {
     const q = normalizeDigits(searchQuery.trim().toLowerCase());
-    if (!q) return requests;
     return requests.filter(r => {
+      if (activityFilter && r.activity_name !== activityFilter) return false;
+      if (ownerFilter && (ownerFilter === 'none' ? Boolean(r.assignee_id) : r.assignee_id !== ownerFilter)) return false;
+      if (stageFilter && r.workflow_stage !== stageFilter) return false;
+      const day = String(r.created_at || '').slice(0, 10);
+      if ((dateFrom && day < dateFrom) || (dateTo && day > dateTo)) return false;
+      if (!q) return true;
       const name = (r.customer_name || '').toLowerCase();
       const phone = normalizeDigits(r.customer_phone || '').replace(/\D/g, '');
       const marketer = (r.marketer_name || '').toLowerCase();
@@ -103,8 +125,13 @@ export const RegistrationRequestsPage = () => {
       const qDigits = q.replace(/\D/g, '');
       return name.includes(q) || marketer.includes(q) || activity.includes(q) ||
         (qDigits.length >= 3 && phone.includes(qDigits));
-    });
-  }, [requests, searchQuery]);
+    }).sort((a, b) => (sortOrder === 'priority' ? Number(Boolean(b.followup_overdue)) - Number(Boolean(a.followup_overdue)) : 0) || (sortOrder === 'oldest' || sortOrder === 'priority' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at)));
+  }, [requests, searchQuery, activityFilter, ownerFilter, dateFrom, dateTo, stageFilter, sortOrder]);
+  const familyGroups = useMemo(() => {
+    const groups = new Map();
+    filteredRequests.forEach(r => { const key = groupFamilies ? r.family_key || r.id : r.id; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(r); });
+    return Array.from(groups.entries());
+  }, [filteredRequests, groupFamilies]);
 
   const registrationLink = useMemo(() => {
     if (!linkBranch || shortLink?.branchId !== linkBranch || shortLink?.tenant !== tenantSlug) return '';
@@ -236,6 +263,7 @@ export const RegistrationRequestsPage = () => {
         setRequests(prev => prev.filter(r => r.id !== req.id));
       }
       toast.success('تم نقل الطلب إلى الأرشيف');
+      await loadRequests();
     } catch {
       toast.error('تعذّرت الأرشفة');
     }
@@ -247,6 +275,7 @@ export const RegistrationRequestsPage = () => {
       await registrationRequestsAPI.updateStatus(req.id, restoreTo);
       setRequests(prev => prev.filter(r => r.id !== req.id));
       toast.success('تمت استعادة الطلب من الأرشيف');
+      await loadRequests();
     } catch {
       toast.error('تعذّرت الاستعادة');
     }
@@ -258,6 +287,7 @@ export const RegistrationRequestsPage = () => {
       await registrationRequestsAPI.delete(req.id);
       setRequests(prev => prev.filter(r => r.id !== req.id));
       toast.success('تم حذف الطلب');
+      await loadRequests();
     } catch {
       toast.error('تعذّر الحذف');
     }
@@ -406,6 +436,9 @@ export const RegistrationRequestsPage = () => {
           </Card>
         )}
 
+        <div className="mb-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+          {Object.entries({ new: 'طلبات جديدة', overdue: 'متابعة متأخرة', contacted: 'تم التواصل', awaiting_payment: 'بانتظار الدفع', registered: 'تحولت إلى اشتراك' }).map(([key, title]) => <div key={key} className="rounded-xl border bg-white p-3"><p className="text-xs text-gray-500">{title}</p><strong className="text-2xl text-emerald-700">{overview[key] ?? '—'}</strong></div>)}
+        </div>
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
             {STATUS_FILTERS.map(f => (
@@ -452,6 +485,16 @@ export const RegistrationRequestsPage = () => {
           </div>
         </div>
 
+        <div className="mb-4 flex flex-wrap gap-3 text-sm">
+          <select aria-label="النشاط" value={activityFilter} onChange={e => setActivityFilter(e.target.value)} className="rounded border p-2"><option value="">كل الأنشطة</option>{Array.from(new Set(requests.map(r => r.activity_name).filter(Boolean))).map(a => <option key={a}>{a}</option>)}</select>
+          <select aria-label="فلتر المسؤول" value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="rounded border p-2"><option value="">كل الموظفين</option><option value="none">دون مسؤول</option>{assignees.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>
+          <select aria-label="مرحلة التسجيل" value={stageFilter} onChange={e => { setStageFilter(e.target.value); if (e.target.value) setStatusFilter('all'); }} className="rounded border p-2"><option value="">كل مراحل التسجيل</option>{Object.entries(STAGES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+          <label>من <input aria-label="من تاريخ" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="rounded border p-2" /></label>
+          <label>إلى <input aria-label="إلى تاريخ" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="rounded border p-2" /></label>
+          <select aria-label="ترتيب الطلبات" value={sortOrder} onChange={e => setSortOrder(e.target.value)} className="rounded border p-2"><option value="priority">المتأخرة أولًا</option><option value="oldest">الأقدم أولًا</option><option value="newest">الأحدث أولًا</option></select>
+          <label className="p-2"><input type="checkbox" checked={groupFamilies} onChange={e => setGroupFamilies(e.target.checked)} /> جمع طلبات الأسرة</label>
+        </div>
+
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-emerald-600" /></div>
         ) : filteredRequests.length === 0 ? (
@@ -461,13 +504,18 @@ export const RegistrationRequestsPage = () => {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredRequests.map(req => (
+            {familyGroups.map(([familyKey, family]) => <section key={familyKey} className={family.length > 1 ? 'rounded-xl border-2 border-sky-100 bg-sky-50/30 p-3 space-y-3' : 'space-y-3'}>
+              {family.length > 1 && <p className="font-semibold text-sky-800">طلبات أسرة واحدة · {family.length} طلبات · {branchName(family[0].branch_id)} <span className="text-xs font-normal">كل طفل له تسجيل مستقل</span></p>}
+              {family.map(req => (
               <Card key={req.id} className="overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-gray-800">{req.customer_name}</h3>
+                        {req.workflow_stage && <span className="rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-800">{STAGES[req.workflow_stage]}</span>}
+                        <span className="text-xs text-gray-500">المسؤول: {req.assignee_name || 'لم يُعيّن'}</span>
+                        {req.followup_overdue && <span className="text-xs text-red-600">متابعة متأخرة</span>}
                         {isAdmin && <span className="text-[11px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">{branchName(req.branch_id)}</span>}
                         {(() => { const b = STATUS_BADGE[req.status] || STATUS_BADGE.pending; return (
                           <span className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${b.cls}`}>{b.label}</span>
@@ -522,8 +570,6 @@ export const RegistrationRequestsPage = () => {
                         ) : (
                           <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3.5 h-3.5" />{req.customer_phone}</span>
                         )}
-                        {req.nationality && <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5" />{req.nationality}</span>}
-                        {req.age && <span>العمر: {req.age} سنة</span>}
                         {req.expected_start_date && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />البداية المتوقعة: {req.expected_start_date}</span>}
                         {req.activity_name && <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5" />{req.activity_name}</span>}
                         {(req.preferred_days || []).length > 0 && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{(req.preferred_days || []).join('، ')}</span>}
@@ -549,7 +595,11 @@ export const RegistrationRequestsPage = () => {
                           ))}
                         </div>
                       )}
-                      {req.notes && <p className="mt-2 text-xs text-gray-500 bg-gray-50 rounded p-2">{req.notes}</p>}
+                      <details className="mt-3 rounded border p-3"><summary className="cursor-pointer text-sm text-emerald-700">عرض التفاصيل</summary>
+                        <p className="mt-2 text-xs">{req.nationality} · العمر: {req.age || '—'} سنة</p>
+                        {req.notes && <p className="mt-2 text-xs text-gray-500 bg-gray-50 rounded p-2">{req.notes}</p>}
+                        <RegistrationManagement key={`${req.id}:${req.assignee_id || ''}`} request={req} assignees={assignees} onChanged={loadRequests} />
+                      </details>
                       <p className="mt-2 text-[11px] text-gray-400">{new Date(req.created_at).toLocaleString('ar-EG')}</p>
                     </div>
                     <div className="flex flex-col gap-2 shrink-0">
@@ -560,8 +610,9 @@ export const RegistrationRequestsPage = () => {
                       ) : req.status === 'processed' && req.invoice_id ? (
                         <>
                           <span className="inline-flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2 py-0.5">
-                            <CheckCircle2 className="w-4 h-4" /> تمت المعالجة
+                            <CheckCircle2 className="w-4 h-4" /> {req.workflow_stage === 'registered' ? 'اكتمل التسجيل والدفع' : 'الفاتورة بانتظار الدفع'}
                           </span>
+                          <Button size="sm" variant="outline" onClick={() => navigate('/admin/invoices')}>فتح الفواتير</Button>
                         </>
                       ) : (
                         <Button size="sm" onClick={() => handleCreateInvoice(req)} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
@@ -573,15 +624,15 @@ export const RegistrationRequestsPage = () => {
                           <Archive className="w-3.5 h-3.5" /> أرشفة
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" onClick={() => handleDelete(req)} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
+                      <details><summary className="cursor-pointer text-xs text-gray-500">إجراءات إضافية</summary><Button size="sm" variant="outline" onClick={() => handleDelete(req)} className="mt-2 gap-1.5 text-red-600 border-red-200 hover:bg-red-50">
                         <Trash2 className="w-3.5 h-3.5" /> حذف
-                      </Button>
+                      </Button></details>
                     </div>
                   </div>
                   <RegistrationFollowup request={req} onChanged={loadRequests} />
                 </CardContent>
               </Card>
-            ))}
+            ))}</section>)}
           </div>
         )}
       </div>

@@ -401,6 +401,9 @@ export const billingAPI = {
 
 // Branches API
 export const registrationRequestsAPI = {
+  overview: (params = {}) => axios.get(`${API}/registration-requests/overview`, { params }),
+  assignees: (params = {}) => axios.get(`${API}/registration-requests/assignees`, { params }),
+  manage: (id, data) => axios.patch(`${API}/registration-requests/${id}/management`, data),
   createLink: (branchId) => axios.post(`${API}/registration-links/${encodeURIComponent(branchId)}`),
   stopFollowup: (id, reason) => axios.post(`${API}/registration-requests/${id}/followup-stop`, { reason }),
   getAll: (params = {}) => axios.get(`${API}/registration-requests`, { params }),
