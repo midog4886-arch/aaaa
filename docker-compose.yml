@@ -11,6 +11,8 @@ services:
       PORT: "8000"
       APP_BASE_URL: ${APP_BASE_URL:-}
       REACT_APP_BACKEND_URL: ${APP_BASE_URL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     volumes:
       - app_uploads:/app/uploads
       - app_backups:/app/backups
