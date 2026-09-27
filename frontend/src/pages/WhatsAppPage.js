@@ -539,6 +539,14 @@ export default function WhatsAppPage() {
   const [selectedCloudThread, setSelectedCloudThread] = useState(null);
   const [cloudThread, setCloudThread] = useState(null);
   const [cloudMessages, setCloudMessages] = useState([]);
+  const [phoneSync, setPhoneSync] = useState(null);
+  const [syncingPhoneBranch, setSyncingPhoneBranch] = useState(false);
+  const phoneBranchBusy = useRef(false);
+  const [phoneHistory, setPhoneHistory] = useState(null);
+  const phoneHistoryRef = useRef(null);
+  const [loadingOlderPhone, setLoadingOlderPhone] = useState(false);
+  const [visibleCloudChats, setVisibleCloudChats] = useState(100);
+  useEffect(() => { setVisibleCloudChats(100); }, [cloudBranchFilter, cloudSearch, cloudInboxView]);
   const [cloudReply, setCloudReply] = useState('');
   const [loadingCloudInbox, setLoadingCloudInbox] = useState(false);
   const [sendingCloudReply, setSendingCloudReply] = useState(false);
@@ -814,6 +822,7 @@ export default function WhatsAppPage() {
       const [inboxResponse] = await request;
       if (!isCurrentRequest()) return;
       setCloudConversations(inboxResponse.data?.conversations || []);
+      setPhoneSync(inboxResponse.data?.phone_sync || null);
       const unreadCount = inboxResponse.data?.unread_count || 0;
       setCloudNeedsReplyCount(inboxResponse.data?.needs_reply_count || 0);
       if (isUnreadView) {
@@ -1037,7 +1046,23 @@ export default function WhatsAppPage() {
       ));
       setCloudThread(response.data?.conversation || null);
       const messages = response.data?.messages || [];
-      setCloudMessages(messages);
+      if (response.data?.phone_history) {
+        const previousHistory = phoneHistoryRef.current;
+        const history = previousHistory?.conversation === conversationId && previousHistory.page > 1
+          ? previousHistory
+          : { conversation: conversationId, page: 1, ...response.data.phone_history };
+        phoneHistoryRef.current = history;
+        setPhoneHistory(history);
+        setCloudMessages(previous => {
+          const older = history.page > 1 ? previous : [];
+          const merged = new Map([...older, ...messages].map(m => [m.id, m]));
+          return [...merged.values()].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+        });
+      } else {
+        phoneHistoryRef.current = null;
+        setPhoneHistory(null);
+        setCloudMessages(messages);
+      }
       const mediaMessages = messages.filter(message => message.media_id || message.media_storage_id);
       mediaMessages.forEach(message => {
         loadCloudMedia(message, branchKey, authScope, viewKey, conversationId);
@@ -1235,6 +1260,44 @@ export default function WhatsAppPage() {
       sendingCloudReplyRef.current = false;
       setSendingCloudReply(false);
     }
+  };
+
+  const handleSyncPhoneBranch = async () => {
+    const branch = cloudBranchFilterRef.current;
+    const auth = cloudBranchesScopeRef.current;
+    if (!branch || branch === 'all' || phoneBranchBusy.current) return;
+    phoneBranchBusy.current = true;
+    setSyncingPhoneBranch(true);
+    try {
+      const response = await whatsappAPI.syncCloudPhoneBranch(branch);
+      if (branch !== cloudBranchFilterRef.current || auth !== cloudBranchesScopeRef.current) return;
+      await loadCloudConversations();
+      toast.success(t(`تمت مزامنة ${response.data.chats} محادثة من الجوال`, `Synced ${response.data.chats} phone conversations`));
+      if (response.data.excluded) toast.warning(t(`المزود لم يُرجع حالة قراءة صالحة لـ ${response.data.excluded} سجل`, `Provider omitted valid unread data for ${response.data.excluded} records`));
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t('تعذرت مزامنة الجوال', 'Phone synchronization failed')));
+    } finally { phoneBranchBusy.current = false; setSyncingPhoneBranch(false); }
+  };
+
+  const handleOlderPhoneMessages = async () => {
+    const history = phoneHistoryRef.current;
+    const auth = cloudBranchesScopeRef.current;
+    if (!history?.has_more || loadingOlderPhone) return;
+    setLoadingOlderPhone(true);
+    try {
+      const response = await whatsappAPI.getCloudPhoneHistory(history.conversation, history.page + 1);
+      if (selectedCloudThreadRef.current !== history.conversation || auth !== cloudBranchesScopeRef.current) return;
+      const next = { ...history, page: response.data.page, has_more: response.data.has_more };
+      phoneHistoryRef.current = next;
+      setPhoneHistory(next);
+      const messages = response.data.messages || [];
+      setCloudMessages(previous => [...new Map([...messages, ...previous].map(m => [m.id, m])).values()]
+        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || '')));
+      messages.filter(m => m.media_id || m.media_storage_id).forEach(m => loadCloudMedia(
+        m, cloudBranchFilterRef.current, cloudAuthScope, cloudInboxViewRef.current, history.conversation,
+      ));
+    } catch (error) { toast.error(apiErrorMessage(error, t('تعذر تحميل الرسائل الأقدم', 'Could not load older messages'))); }
+    finally { setLoadingOlderPhone(false); }
   };
 
   const handleSyncPhoneReplies = async () => {
@@ -3677,6 +3740,16 @@ export default function WhatsAppPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <Button variant="outline" onClick={handleSyncPhoneBranch}
+                      disabled={syncingPhoneBranch || cloudBranchFilter === 'all'}>
+                      <RefreshCcw className={`w-4 h-4 me-2 ${syncingPhoneBranch ? 'animate-spin' : ''}`} />
+                      {t('مزامنة الرسائل والقراءة مع الجوال', 'Sync phone messages and unread state')}
+                    </Button>
+                    {phoneSync && <span className="text-xs text-muted-foreground">
+                      {t(`مزامنة الجوال مفعّلة · ${phoneSync.chats} محادثة · ${phoneSync.unread_chats} غير مقروءة`, `Phone sync enabled · ${phoneSync.chats} chats · ${phoneSync.unread_chats} unread`)}
+                    </span>}
+                  </div>
                   <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
                     {t(
                       'فتح المحادثة يحدّث حالة القراءة فقط؛ «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
@@ -3699,7 +3772,7 @@ export default function WhatsAppPage() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {cloudConversations.map(conversation => {
+                      {cloudConversations.slice(0, visibleCloudChats).map(conversation => {
                         const campaignConversation = isCampaignConversation(conversation);
                         const campaignStatus = campaignStatusKey(conversation.last_status);
                         const campaignTime = campaignConversation
@@ -3790,6 +3863,10 @@ export default function WhatsAppPage() {
                           </button>
                         );
                       })}
+                      {visibleCloudChats < cloudConversations.length && <Button variant="outline" className="w-full"
+                        onClick={() => setVisibleCloudChats(value => value + 100)}>
+                        {t(`عرض المزيد (${cloudConversations.length - visibleCloudChats})`, `Show more (${cloudConversations.length - visibleCloudChats})`)}
+                      </Button>}
                     </div>
                   )}
                 </CardContent>
@@ -3824,7 +3901,7 @@ export default function WhatsAppPage() {
                           event,
                         )}
                       />
-                       {cloudThread?.provider === 'whatsflow' && (
+                       {cloudThread?.provider === 'whatsflow' && !cloudThread?.phone_mirrored && (
                          <Button
                            type="button"
                            variant="outline"
@@ -3848,6 +3925,9 @@ export default function WhatsAppPage() {
                     )}
                   </p>
                   <ChatMessageViewport key={selectedCloudThread} className="max-h-[520px] overflow-y-auto mb-4 p-2 bg-muted/20 rounded-lg">
+                    {phoneHistory?.has_more && <Button variant="outline" onClick={handleOlderPhoneMessages} disabled={loadingOlderPhone} className="mb-3 w-full">
+                      {t('تحميل رسائل الجوال الأقدم', 'Load older phone messages')}
+                    </Button>}
                     {cloudMessages.map(message => {
                       const outbound = message.direction === 'outbound';
                       const campaignMessage = isCampaignMessage(message);
@@ -4104,6 +4184,9 @@ export default function WhatsAppPage() {
                       );
                     })}
                   </ChatMessageViewport>
+                  {cloudThread?.read_only_chat ? <p className="text-sm text-muted-foreground">
+                    {t('هذه محادثة مجموعة أو معرف جوال خاص؛ الرد عليها من واتساب الجوال.', 'This is a group or device-identifier chat; reply from phone WhatsApp.')}
+                  </p> : <>
                    {(cloudThread?.voice_supported !== false && cloudThread?.capabilities?.voice !== false) && (
                      <CloudVoiceComposer
                        conversationId={selectedCloudThread}
@@ -4217,6 +4300,7 @@ export default function WhatsAppPage() {
                       ? t('داخل 24 ساعة يُرسل الرد كنص عادي، وبعدها يستخدم النظام قالب Meta المعتمد للفرع.', 'Within 24 hours replies are free-form; afterward the approved branch template is used.')
                       : t('يُرسل الرد كنص عادي عبر مزود واتساب الخاص بالفرع.', 'Replies are sent as text using the branch WhatsApp provider.')}
                   </p>
+                  </>}
                 </CardContent>
               </Card>
             )}

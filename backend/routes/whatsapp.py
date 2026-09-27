@@ -41,6 +41,7 @@ from services import whatsapp_media_archive
 from services import whatsapp_bulk_jobs
 from services import campaign_inbox, registration_followups
 from services import campaign_inquiry_automation
+from services import whatsapp_phone_mirror
 from utils.phone import normalize_phone, phone_lookup_values
 from utils.member_photos import is_photo_url
 from .global_search import _member_overall_status
@@ -5333,6 +5334,88 @@ async def _scoped_cloud_unread_count(scope_query: dict) -> int:
     raise RuntimeError("Cloud inbox unread aggregation is unavailable")
 
 
+def _phone_message_builder(branch_id):
+    return lambda identity, record: whatsapp_phone_mirror.message_document(
+        branch_id, identity, record, _normalize_whatsflow_message,
+        _extract_whatsflow_body, _whatsflow_history_timestamp,
+        _provider_marks_view_once, _whatsflow_history_status, _archive_pending_fields,
+    )
+
+
+async def _phone_client(branch_id):
+    config = await _db['whatsapp_branch_configs'].find_one(
+        {'branch_id': branch_id, 'provider': 'whatsflow', 'enabled': True}, {'_id': 0}
+    )
+    client = _whatsflow_client(config or {})
+    if not client.configured:
+        raise HTTPException(409, 'Complete the branch Whatsflow connection first')
+    return client
+
+
+_phone_snapshot_locks = {}
+
+
+async def _refresh_phone_snapshot(branch_id, force=False):
+    lock_key = (get_current_tenant_slug(), branch_id)
+    lock = _phone_snapshot_locks.setdefault(lock_key, asyncio.Lock())
+    async with lock:
+        previous = await _db['whatsapp_phone_sync'].find_one({'branch_id': branch_id}, {'_id': 0})
+        if not force and previous:
+            try:
+                if (datetime.now(timezone.utc) - datetime.fromisoformat(previous['synced_at'])).total_seconds() < 30:
+                    return previous
+            except (ValueError, KeyError):
+                pass
+        client = await _phone_client(branch_id)
+        ok, rows, error = await client.find_chats()
+        if not ok:
+            raise HTTPException(502, 'Phone chat list is unavailable from the provider')
+        try:
+            await whatsapp_phone_mirror.store_snapshot(_db, branch_id, rows, _phone_message_builder(branch_id))
+        except ValueError:
+            raise HTTPException(502, 'Provider chat identities or unread counts are unavailable')
+        return await _db['whatsapp_phone_sync'].find_one({'branch_id': branch_id}, {'_id': 0})
+
+
+@router.post('/cloud-inbox/phone-sync/{branch_id}')
+async def enable_phone_mirror(branch_id: str, current_user: dict = Depends(get_current_user)):
+    _require_bulk_whatsapp_access(current_user)
+    _assert_branch_access(current_user, branch_id)
+    snapshot = await _refresh_phone_snapshot(branch_id, force=True)
+    return {'success': True, **snapshot}
+
+
+async def _import_phone_history(conversation, page=1):
+    branch_id = conversation['branch_id']
+    client = await _phone_client(branch_id)
+    ok, result, error = await client.history_page(conversation['remote_jid'], page)
+    if not ok:
+        raise HTTPException(502, 'Phone message history is unavailable from the provider')
+    build = _phone_message_builder(branch_id)
+    documents = [d for d in (build(conversation, r) for r in result['records']) if d]
+    await whatsapp_phone_mirror.store_messages(_db, documents)
+    ids = [d['provider_message_id'] for d in documents]
+    stored = await _db['whatsapp_cloud_messages'].find({
+        'branch_id': branch_id, 'conversation_id': conversation['id'],
+        'provider': 'whatsflow', 'provider_message_id': {'$in': ids},
+    }, {'_id': 0}).sort('created_at', 1).to_list(length=50)
+    return client, result, stored
+
+
+@router.get('/cloud-inbox/conversations/{conversation_id}/phone-history')
+async def get_phone_history(conversation_id: str, page: int = Query(1, ge=1, le=100000),
+                            current_user: dict = Depends(get_current_user)):
+    _require_bulk_whatsapp_access(current_user)
+    conversation = await _db['whatsapp_cloud_conversations'].find_one({'id': conversation_id}, {'_id': 0})
+    if not conversation:
+        raise HTTPException(404, 'Conversation not found')
+    _assert_branch_access(current_user, conversation['branch_id'])
+    if not conversation.get('phone_mirrored'):
+        raise HTTPException(409, 'Enable phone synchronization for this branch first')
+    _, result, stored = await _import_phone_history(conversation, page)
+    return {'messages': stored, 'has_more': result['has_more'], 'page': page, 'total': result['total']}
+
+
 @router.get("/cloud-inbox/conversations")
 async def list_cloud_inbox_conversations(
     branch_filter: Optional[str] = None,
@@ -5346,6 +5429,12 @@ async def list_cloud_inbox_conversations(
     # not silently turn a selected branch into a cross-branch aggregation.
     effective_branch = resolve_branch_filter(current_user, branch_filter)
     scope_query = {"branch_id": effective_branch} if effective_branch else {}
+    phone_snapshot = None
+    if effective_branch:
+        phone_snapshot = await _db['whatsapp_phone_sync'].find_one({'branch_id': effective_branch, 'enabled': True}, {'_id': 0})
+        if phone_snapshot:
+            phone_snapshot = await _refresh_phone_snapshot(effective_branch)
+            scope_query['phone_snapshot'] = phone_snapshot['snapshot']
     # The focused needs-reply view must see its bounded backfill before its
     # materialized predicate runs.  Other polling views run it concurrently so
     # a legacy migration never serializes the cloud/campaign reads.
@@ -5400,14 +5489,14 @@ async def list_cloud_inbox_conversations(
         conversations
         .find(query, {"_id": 0})
         .sort("last_message_at", -1)
-        .limit(200)
-        .to_list(length=200)
+        .limit(20000 if phone_snapshot else 200)
+        .to_list(length=20000 if phone_snapshot else 200)
     )
     needs_reply_count_request = conversations.count_documents({
         **scope_query, "needs_reply": True,
     })
     unread_count_request = _scoped_cloud_unread_count(scope_query)
-    if unread_only or needs_reply_only or search_text:
+    if phone_snapshot or unread_only or needs_reply_only or search_text:
         # Campaign sends are outbound projections and always have
         # ``unread_count == 0`` and never resolve a human response. Keep them
         # out of focused/search views entirely. In particular, search must not
@@ -5471,7 +5560,8 @@ async def list_cloud_inbox_conversations(
         row["branch_name"] = branch_names.get(branch_id) or branch_id
     return {
         "conversations": rows,
-        "unread_count": unread_count,
+        "unread_count": phone_snapshot['unread_chats'] if phone_snapshot else unread_count,
+        **({'phone_sync': phone_snapshot} if phone_snapshot else {}),
         "needs_reply_count": int(needs_reply_count or 0),
     }
 
@@ -5487,7 +5577,12 @@ async def get_cloud_inbox_thread(
     if not conversation:
         conversation = await _campaign_conversation(conversation_id, current_user)
     _assert_branch_access(current_user, conversation.get("branch_id"))
-    cloud_rows, campaign_messages = await asyncio.gather(
+    phone_history = None
+    if conversation.get('phone_mirrored'):
+        phone_client, phone_history, phone_messages = await _import_phone_history(conversation)
+        cloud_rows, campaign_messages = list(reversed(phone_messages)), []
+    else:
+        cloud_rows, campaign_messages = await asyncio.gather(
         _db["whatsapp_cloud_messages"]
         .find({"conversation_id": conversation_id}, {"_id": 0})
         .sort("created_at", -1)
@@ -5504,13 +5599,23 @@ async def get_cloud_inbox_thread(
     messages = campaign_inbox.merge_messages(
         cloud_messages, campaign_messages
     )
-    await _mark_cloud_inbound_read(
-        conversation_id,
-        conversation.get("branch_id") or "",
-        cloud_messages,
-        provider=None,
-        fetched_complete=fetched_complete,
-    )
+    if phone_history:
+        # Send read receipts for exact inbound keys on the fetched provider page.
+        # Never infer that the customer reading an outbound message read our inbox.
+        keys = [r['key'] for r in phone_history['records']
+                if isinstance(r.get('key'), dict) and r['key'].get('fromMe') is False]
+        if keys and conversation.get('unread_count', 0) > 0:
+            ok, _, _ = await phone_client.mark_messages_read(keys)
+            if not ok:
+                raise HTTPException(502, 'Could not synchronize read state with the phone')
+            await _refresh_phone_snapshot(conversation['branch_id'], force=True)
+        else:
+            await _refresh_phone_snapshot(conversation['branch_id'])
+    else:
+        await _mark_cloud_inbound_read(
+            conversation_id, conversation.get("branch_id") or "", cloud_messages,
+            provider=None, fetched_complete=fetched_complete,
+        )
     branch = await _db["branches"].find_one(
         {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
     )
@@ -5523,7 +5628,8 @@ async def get_cloud_inbox_thread(
             include_candidates=True,
         )
     )[0]
-    return {"conversation": conversation, "messages": messages}
+    return {"conversation": conversation, "messages": messages,
+            "phone_history": {'has_more': phone_history['has_more'], 'total': phone_history['total']} if phone_history else None}
 
 
 def _whatsflow_history_timestamp(record: dict) -> Optional[str]:

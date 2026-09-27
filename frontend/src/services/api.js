@@ -927,6 +927,10 @@ export const whatsappAPI = {
     axios.get(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}`),
   syncCloudInboxPhoneReplies: (conversationId) =>
     axios.post(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/sync-phone-replies`),
+  syncCloudPhoneBranch: (branchId) =>
+    axios.post(`${API}/whatsapp/cloud-inbox/phone-sync/${encodeURIComponent(branchId)}`),
+  getCloudPhoneHistory: (conversationId, page) =>
+    axios.get(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/phone-history`, { params: { page } }),
   getCloudInboxMedia: (messageId) =>
     axios.get(`${API}/whatsapp/cloud-inbox/media/${encodeURIComponent(messageId)}`, { responseType: 'blob' }),
   retryCloudInboxMediaArchive: (messageId) =>

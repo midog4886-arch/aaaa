@@ -14,6 +14,8 @@ jest.mock('../../services/api', () => ({
     getCloudInboxConversations: jest.fn(),
     getCloudInboxThread: jest.fn(),
     syncCloudInboxPhoneReplies: jest.fn(),
+    syncCloudPhoneBranch: jest.fn(),
+    getCloudPhoneHistory: jest.fn(),
     getCloudInboxMedia: jest.fn(),
     retryCloudInboxMediaArchive: jest.fn(),
     recoverCloudInboxMessageText: jest.fn(),
@@ -1189,4 +1191,35 @@ test('does not restore legacy status reads after visibility changes', async () =
   });
   await flushPromises();
   expect(whatsappAPI.getStatus).not.toHaveBeenCalled();
+});
+
+test('synchronizes the selected branch without sending messages', async () => {
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  whatsappAPI.syncCloudPhoneBranch.mockResolvedValue({ data: { success: true, chats: 4367 } });
+  render(<WhatsAppPage />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'مزامنة الرسائل والقراءة مع الجوال' }));
+  await waitFor(() => expect(whatsappAPI.syncCloudPhoneBranch).toHaveBeenCalledWith('branch-a'));
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('تمت مزامنة 4367 محادثة من الجوال'));
+  expect(whatsappAPI.replyCloudInbox).not.toHaveBeenCalled();
+  expect(whatsappAPI.sendCloudInboxMedia).not.toHaveBeenCalled();
+});
+
+test('loads older phone messages without duplicating the latest page', async () => {
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({ data: {
+    conversation: { ...conversation, provider: 'whatsflow', phone_mirrored: true },
+    messages: [{ id: 'latest', body: 'رسالة حديثة', direction: 'inbound', type: 'text', created_at: '2026-09-27T10:00:00Z' }],
+    phone_history: { has_more: true, total: 70 },
+  } });
+  whatsappAPI.getCloudPhoneHistory.mockResolvedValue({ data: { page: 2, has_more: false,
+    messages: [{ id: 'older', body: 'رسالة قديمة', direction: 'inbound', type: 'text', created_at: '2026-09-26T10:00:00Z' }],
+  } });
+  render(<WhatsAppPage />);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: /أحمد.*صورة/ }));
+  await user.click(await screen.findByRole('button', { name: 'تحميل رسائل الجوال الأقدم' }));
+  expect(whatsappAPI.getCloudPhoneHistory).toHaveBeenCalledWith(conversation.id, 2);
+  expect(await screen.findByText('رسالة قديمة')).toBeInTheDocument();
+  expect(screen.getAllByText('رسالة حديثة')).toHaveLength(1);
 });

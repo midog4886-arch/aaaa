@@ -283,6 +283,43 @@ class WhatsflowClient:
             return False, None, "invalid_history_response"
         return True, records, None
 
+    async def find_chats(self):
+        ok, data, error = await self._request(
+            "POST", f"/chat/findChats/{self._instance_path()}", json={}
+        )
+        if not ok:
+            return False, None, error
+        if not isinstance(data, list) or len(data) > 20000:
+            return False, None, "invalid_chat_history"
+        return True, data, None
+
+    async def history_page(self, remote_jid: str, page: int = 1):
+        if not re.fullmatch(r"[0-9-]+@(?:s\.whatsapp\.net|c\.us|g\.us|lid)", remote_jid or "") or not 1 <= page <= 100000:
+            return False, None, "invalid_history_query"
+        ok, data, error = await self._request(
+            "POST", f"/chat/findMessages/{self._instance_path()}",
+            json={"where": {"key": {"remoteJid": remote_jid}}, "page": page, "offset": 50},
+        )
+        if not ok:
+            return False, None, error
+        messages = data.get("messages") if isinstance(data, dict) else None
+        if not isinstance(messages, dict) or not isinstance(messages.get("records"), list) or len(messages["records"]) > 50:
+            return False, None, "invalid_history_response"
+        if any(not isinstance(r, dict) or not isinstance(r.get('key'), dict) or r['key'].get("remoteJid") != remote_jid for r in messages["records"]):
+            return False, None, "history_message_mismatch"
+        total = messages.get("total")
+        if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+            return False, None, "invalid_history_total"
+        return True, {"records": messages["records"], "has_more": page * 50 < total, "total": total}, None
+
+    async def mark_messages_read(self, keys: list[dict]):
+        if not keys or len(keys) > 50:
+            return False, None, "invalid_read_keys"
+        return await self._request(
+            "POST", f"/chat/markMessageAsRead/{self._instance_path()}",
+            json={"readMessages": keys},
+        )
+
     async def set_webhook(self, url: str, secret: str):
         return await self._request(
             "POST",
