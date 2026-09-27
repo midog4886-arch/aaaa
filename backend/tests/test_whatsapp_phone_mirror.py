@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,7 +15,7 @@ def run(coro):
 
 def record(jid='966500000001@s.whatsapp.net', from_me=False, private=False):
     return {'key': {'id': 'message-1', 'remoteJid': jid, 'fromMe': from_me},
-            'messageTimestamp': 1750000000, 'status': 'READ',
+            'messageTimestamp': int(datetime.now(timezone.utc).timestamp()), 'status': 'READ',
             'message': {'viewOnceMessage': {'message': {'imageMessage': {}}}} if private else {'conversation': 'history'}}
 
 
@@ -62,6 +63,22 @@ def test_snapshot_preserves_existing_messages_and_scopes_bulk_writes():
     for operation in conversations.bulk_write.call_args.args[0]:
         assert operation._filter['branch_id'] == 'a'
         assert operation._doc['$set']['unread_count'] in [12, 1]
+        assert operation._doc['$set']['needs_reply'] == (not operation._doc['$set'].get('read_only_chat'))
+
+
+def test_offline_snapshot_keeps_unread_and_branch_scope(monkeypatch):
+    saved = {'branch_id': 'a', 'snapshot': 'saved', 'synced_at': '2020-01-01T00:00:00+00:00', 'unread_chats': 9}
+    state = AsyncMock()
+    state.find_one.return_value = saved
+    monkeypatch.setattr(mod, '_db', {'whatsapp_phone_sync': state})
+    client = AsyncMock()
+    client.find_chats.return_value = (False, None, 'offline')
+    monkeypatch.setattr(mod, '_phone_client', AsyncMock(return_value=client))
+    result = run(mod._refresh_phone_snapshot('a'))
+    assert result == {**saved, 'stale': True}
+    state.update_one.assert_not_called()
+    with pytest.raises(HTTPException):
+        run(mod._refresh_phone_snapshot('a', force=True))
 
 
 def test_bad_snapshot_does_not_clear_saved_unreads():
@@ -70,6 +87,16 @@ def test_bad_snapshot_does_not_clear_saved_unreads():
     with pytest.raises(ValueError):
         run(mirror.store_snapshot(db, 'a', [{'remoteJid': '123@s.whatsapp.net'}], lambda *_: None))
     state.update_one.assert_not_called()
+
+
+def test_snapshot_excludes_old_chats_without_deleting_history():
+    db = {name: AsyncMock() for name in ['whatsapp_cloud_messages', 'whatsapp_cloud_conversations', 'whatsapp_phone_sync']}
+    old = record()
+    old['messageTimestamp'] = int((datetime.now(timezone.utc) - timedelta(days=31)).timestamp())
+    result = run(mirror.store_snapshot(db, 'a', [{'remoteJid': old['key']['remoteJid'], 'unreadCount': 7, 'lastMessage': old}], mod._phone_message_builder('a')))
+    assert result['chats'] == result['unread_chats'] == 0
+    db['whatsapp_cloud_messages'].bulk_write.assert_not_called()
+    db['whatsapp_cloud_conversations'].delete_many.assert_not_called()
 
 
 def test_client_history_pages_both_directions_and_rejects_other_chat(monkeypatch):

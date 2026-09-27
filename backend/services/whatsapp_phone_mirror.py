@@ -1,7 +1,17 @@
 """Read-only history imports. Never replay old messages through automations."""
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+
+def recent_timestamp(value):
+    try:
+        parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed >= datetime.now(timezone.utc) - timedelta(days=30)
+    except (TypeError, ValueError):
+        return False
 from pymongo import UpdateOne
 
 
@@ -88,6 +98,9 @@ async def store_snapshot(db, branch_id, rows, build_message):
         seen.add(identity['id'])
         record = row.get('lastMessage') or {}
         document = build_message(identity, record)
+        last_at = (document or {}).get('created_at') or row.get('updatedAt')
+        if not recent_timestamp(last_at):
+            continue
         if document:
             documents.append(document)
         unread_chats += int(unread > 0)
@@ -100,10 +113,15 @@ async def store_snapshot(db, branch_id, rows, build_message):
             'last_message_at': (document or {}).get('created_at') or row.get('updatedAt') or now,
             'last_direction': (document or {}).get('direction'),
         }
+        # A native last message includes outgoing phone replies. Historical
+        # imports lack human_reply metadata and must not be backfilled as
+        # thousands of unanswered messages merely for that reason.
+        if document:
+            metadata['needs_reply'] = document['direction'] == 'inbound' and not identity.get('read_only_chat')
         operations.append(UpdateOne({'id': identity['id'], 'branch_id': branch_id},
                                    {'$set': metadata, '$setOnInsert': {'created_at': now}}, upsert=True))
     # A malformed snapshot must not silently erase unread information.
-    if rows and not operations:
+    if rows and not seen:
         raise ValueError('Provider returned no valid chat identities/unread counts')
     await store_messages(db, documents)
     if operations:

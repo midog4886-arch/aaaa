@@ -3747,7 +3747,9 @@ export default function WhatsAppPage() {
                       {t('مزامنة الرسائل والقراءة مع الجوال', 'Sync phone messages and unread state')}
                     </Button>
                     {phoneSync && <span className="text-xs text-muted-foreground">
-                      {t(`مزامنة الجوال مفعّلة · ${phoneSync.chats} محادثة · ${phoneSync.unread_chats} غير مقروءة`, `Phone sync enabled · ${phoneSync.chats} chats · ${phoneSync.unread_chats} unread`)}
+                      {t(`آخر 30 يومًا · ${phoneSync.chats} محادثة · ${phoneSync.unread_chats} غير مقروءة`, `Last 30 days · ${phoneSync.chats} chats · ${phoneSync.unread_chats} unread`)}
+                      {phoneSync.stale && <span className="block text-amber-700">{t('تعذر تحديث بيانات الجوال. المعروض آخر نسخة محفوظة، وقد تتغير حالة القراءة على الجوال.', 'Phone refresh unavailable. Showing the last saved snapshot; read state may have changed on the phone.')}</span>}
+                      {phoneSync.excluded > 0 && <span className="block text-amber-700">{t(`لم يعرض المزود بيانات مكتملة لـ ${phoneSync.excluded} سجلًا؛ المطابقة تشمل المحادثات المتاحة فقط.`, `${phoneSync.excluded} provider records are incomplete; synchronization covers available chats only.`)}</span>}
                     </span>}
                   </div>
                   <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
