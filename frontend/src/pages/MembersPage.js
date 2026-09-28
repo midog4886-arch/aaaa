@@ -4209,12 +4209,12 @@ export const MembersPage = () => {
                             const todayAttended = attendedDates.has(todayStr);
                             const todayAvailable = canRecordToday(q, todayStr) && !transferInfo.transferredSet.has(todayStr);
                             return (
-                              <div key={idx} className={`rounded-lg border ${q.expired ? 'bg-gray-50 border-gray-300' : q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
+                              <div key={idx} className={`rounded-lg border ${q.expired ? 'bg-gray-100 border-gray-300 text-gray-700' : q.exceeded ? 'bg-red-50 border-red-300' : q.remaining <= 2 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'}`}>
                                 <div className="p-3">
                                   <div className="flex items-center justify-between mb-1">
                                     <span className="font-medium text-sm">{q.activity_name}</span>
                                     <span className="flex items-center gap-1">
-                                      <Badge className="bg-blue-100 text-blue-700">
+                                      <Badge className={q.expired ? 'bg-gray-200 text-gray-700' : 'bg-blue-100 text-blue-700'}>
                                         {q.upcoming ? (language === 'ar' ? 'قادم' : 'Upcoming')
                                           : q.expired ? (language === 'ar' ? 'سابق' : 'Previous')
                                           : (language === 'ar' ? 'الفترة الحالية' : 'Current period')}
@@ -4224,7 +4224,7 @@ export const MembersPage = () => {
                                           {language === 'ar' ? 'اشتراك منتهي' : 'Expired'}
                                         </Badge>
                                       )}
-                                      <Badge className={q.exceeded ? 'bg-red-100 text-red-700' : q.remaining <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
+                                      <Badge className={q.expired ? 'bg-gray-200 text-gray-700' : q.exceeded ? 'bg-red-100 text-red-700' : q.remaining <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}>
                                         {q.exceeded ? (language === 'ar' ? 'استنفدت' : 'Exceeded') : `${q.remaining} ${language === 'ar' ? 'متبقي' : 'left'}`}
                                       </Badge>
                                     </span>
@@ -4237,7 +4237,7 @@ export const MembersPage = () => {
                                       ? (language === 'ar' ? 'اشتراك الملف الشخصي' : 'Profile subscription')
                                       : (language === 'ar' ? 'فترة اشتراك مشتراة' : 'Purchased period')}
                                   </div>
-                                  {(todayAvailable || todayAttended) && (
+                                  {!q.expired && (todayAvailable || todayAttended) && (
                                     <Button size="sm" className="mb-2" disabled={todayAttended || !!registeringDate}
                                       onClick={() => {
                                         if (window.confirm(language === 'ar' ? `تسجيل حضور اليوم ${todayStr} لنشاط ${q.activity_name}؟` : `Record today's attendance (${todayStr}) for ${q.activity_name}?`)) {
@@ -4254,7 +4254,7 @@ export const MembersPage = () => {
                                     <span>{q.schedule_days?.join(' - ')}</span>
                                   </div>
                                   <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                                    <div className={`h-2 rounded-full ${q.exceeded ? 'bg-red-500' : q.remaining <= 2 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (q.used_sessions / q.total_allowed) * 100)}%` }}></div>
+                                    <div className={`h-2 rounded-full ${q.expired ? 'bg-gray-400' : q.exceeded ? 'bg-red-500' : q.remaining <= 2 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (q.used_sessions / q.total_allowed) * 100)}%` }}></div>
                                   </div>
                                   {displayDates.length > 0 && (
                                     <button
@@ -4263,7 +4263,7 @@ export const MembersPage = () => {
                                         if (next.has(idx)) next.delete(idx); else next.add(idx);
                                         return next;
                                       })}
-                                      className="mt-2 text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-medium"
+                                      className={`mt-2 text-xs flex items-center gap-1 font-medium ${q.expired ? 'text-gray-600 hover:text-gray-800' : 'text-blue-600 hover:text-blue-800'}`}
                                     >
                                       <Calendar className="w-3 h-3" />
                                       {isExpanded
@@ -4285,7 +4285,7 @@ export const MembersPage = () => {
                                       const extraDates = availableCount - q.total_allowed;
                                       if (extraDates <= 0) return null;
                                       return (
-                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-2 flex items-start gap-1">
+                                        <p className={`text-xs border rounded-md px-2 py-1.5 mb-2 flex items-start gap-1 ${q.expired ? 'text-gray-600 bg-gray-50 border-gray-300' : 'text-amber-700 bg-amber-50 border-amber-200'}`}>
                                           <span>ℹ️</span>
                                           <span>
                                             {language === 'ar'
@@ -4344,7 +4344,9 @@ export const MembersPage = () => {
                                                     ? (language === 'ar' ? 'موعد مستقبلي' : 'Future date')
                                                     : (language === 'ar' ? 'اضغط للتسجيل' : 'Click to register')}
                                             className={`text-xs px-2 py-1 rounded-full border font-medium transition-all ${
-                                              isTransferred
+                                              q.expired
+                                                ? 'bg-gray-200 border-gray-300 text-gray-600 cursor-not-allowed'
+                                                : isTransferred
                                                 ? 'bg-orange-100 border-orange-400 text-orange-800 line-through decoration-orange-600 cursor-not-allowed'
                                                 : isReplacement
                                                   ? attended
@@ -4366,19 +4368,19 @@ export const MembersPage = () => {
                                             {isTransferred ? (
                                               <span className="inline-flex items-center gap-1">
                                                 <span>{date}</span>
-                                                <span className="text-[10px] bg-orange-200 text-orange-900 px-1 rounded">{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
+                                                <span className={`text-[10px] px-1 rounded ${q.expired ? 'bg-gray-300 text-gray-700' : 'bg-orange-200 text-orange-900'}`}>{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
                                               </span>
                                             ) : isReplacement ? (
                                               <span className="inline-flex items-center gap-1">
                                                 {attended && <span>✓</span>}
                                                 <span>{date}</span>
-                                                <span className="text-[10px] bg-purple-200 text-purple-900 px-1 rounded">{language === 'ar' ? 'بديل' : 'Make-up'}</span>
+                                                <span className={`text-[10px] px-1 rounded ${q.expired ? 'bg-gray-300 text-gray-700' : 'bg-purple-200 text-purple-900'}`}>{language === 'ar' ? 'بديل' : 'Make-up'}</span>
                                               </span>
                                             ) : isOffSchedule ? (
                                               <span className="inline-flex items-center gap-1">
                                                 {attended && <span>✓</span>}
                                                 <span>{date}</span>
-                                                <span className="text-[10px] bg-amber-200 text-amber-900 px-1 rounded">{language === 'ar' ? 'خارج الموعد' : 'Off-day'}</span>
+                                                <span className={`text-[10px] px-1 rounded ${q.expired ? 'bg-gray-300 text-gray-700' : 'bg-amber-200 text-amber-900'}`}>{language === 'ar' ? 'خارج الموعد' : 'Off-day'}</span>
                                               </span>
                                             ) : (
                                               isRegistering ? '...' : attended ? `✓ ${date}` : date
