@@ -125,10 +125,17 @@ def test_overlapping_distinct_purchases_not_deduplicated(monkeypatch):
     first["items"][0]["end_date"] = "2026-10-09"
     second = invoice(10)
     second["items"][0]["start_date"] = "2026-09-28"
-    install(monkeypatch, [first, second])
+    install(monkeypatch, [first, second], records=[
+        {"member_id": "M", "activity_id": "A", "date": "2026-09-28"},
+    ])
     cards = history()
     assert len(cards) == 2
     assert len({c["source_period_key"] for c in cards}) == 2
+    assert cards[0]["attendance_before"] == "2026-09-28"
+    assert cards[0]["period_status"] == "previous"
+    assert cards[0]["expired"] is True
+    assert cards[1]["period_status"] == "current"
+    assert [card["used_sessions"] for card in cards] == [0, 1]
 
 
 def test_same_invoice_exact_period_key_and_shift_no_duplicate(monkeypatch):

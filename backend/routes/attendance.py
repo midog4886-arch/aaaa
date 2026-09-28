@@ -1012,19 +1012,20 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
         next_starts = [c["start_date"] for c in cards if c["start_date"] > start
                        and set(c["count_activity_ids"]) & set(card["count_activity_ids"])]
         next_start = min(next_starts) if next_starts else None
-        off_day = {"off_schedule": True}
+        attendance_dates = {"$gte": min(start, card.get("original_start_date") or start)}
         if next_start:
-            off_day["date"] = {"$lt": next_start}
+            attendance_dates["$lt"] = next_start
         used = await db.attendance.count_documents({
             "member_id": member_id, "activity_id": {"$in": card["count_activity_ids"]},
-            "date": {"$gte": min(start, card.get("original_start_date") or start)}, "$or": [{"date": {"$lte": end}}, off_day],
+            "date": attendance_dates, "$or": [{"date": {"$lte": end}}, {"off_schedule": True}],
         })
+        superseded = bool(next_start and next_start <= today)
         card.update({
             "attendance_before": next_start, "days_per_week": len(days),
             "schedule_days": [ENGLISH_TO_ARABIC_DAY.get(d, d) for d in days],
             "total_allowed": total, "used_sessions": used, "remaining": max(0, total - used),
-            "exceeded": used >= total, "expired": end < today, "upcoming": start > today,
-            "period_status": "upcoming" if start > today else "previous" if end < today else "current",
+            "exceeded": used >= total, "expired": end < today or superseded, "upcoming": start > today,
+            "period_status": "upcoming" if start > today else "previous" if end < today or superseded else "current",
         })
         if not activity_id or card["activity_id"] == activity_id:
             results.append(card)

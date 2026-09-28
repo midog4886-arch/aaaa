@@ -4183,7 +4183,8 @@ export const MembersPage = () => {
                             const isExpanded = expandedQuotaIdx.has(idx);
                             const baseDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
                             const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
-                            const scheduleDates = [...baseDates, ...transferInfo.replacementDates];
+                            const scheduleDates = [...baseDates, ...transferInfo.replacementDates]
+                              .filter(date => !q.attendance_before || date < q.attendance_before);
                             const replacementSet = new Set(transferInfo.replacementDates);
                             const attendedRecords = attendanceForPeriod(memberAttendance?.records || [], q);
                             const attendedDates = new Set(attendedRecords.map(r => r.date));
@@ -4200,7 +4201,8 @@ export const MembersPage = () => {
                             const oldSubDates = allOffScheduleDates.filter(d => q.start_date && d < q.start_date).sort();
                             const offScheduleDates = allOffScheduleDates.filter(d => !(q.start_date && d < q.start_date));
                             const offScheduleSet = new Set(offScheduleDates);
-                            const displayDates = [...new Set([...scheduleDates, ...offScheduleDates])].sort();
+                            const displayDates = [...new Set([...scheduleDates, ...offScheduleDates])]
+                              .filter(date => !q.attendance_before || date < q.attendance_before).sort();
                             const isOldExpanded = expandedOldDatesIdx.has(idx);
                             const todayStr = localDateStr(new Date());
                             const readOnly = periodIsReadOnly(q, todayStr);
