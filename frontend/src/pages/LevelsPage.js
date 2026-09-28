@@ -11,6 +11,7 @@ import { Label } from '../components/ui/label';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/dropdown-menu';
 import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../components/ui/command';
 import { Tabs, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -21,7 +22,7 @@ import LevelsScheduleBuilderDialog from '../components/levels/LevelsScheduleBuil
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
-  GripVertical, Move, ArrowUpDown, ArrowRightLeft, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2, Undo2, Lock, Unlock
+  GripVertical, Move, ArrowUpDown, ArrowRightLeft, SlidersHorizontal, TrendingUp, BarChart3, CheckCircle, Circle, UserCheck, Printer, RefreshCw, Wand2, Undo2, Lock, Unlock, CalendarDays, Settings2
 } from 'lucide-react';
 
 const _actKey = (act) => act?.activity_id || act?.activity_name || '';
@@ -103,7 +104,7 @@ const TIME_SLOTS = ['الساعة 3', 'الساعة 4', 'الساعة 5', 'ال�
 
 export const LevelsPage = () => {
   const { t, language } = useLanguage();
-  const { user, selectedBranchId } = useAuth();
+  const { user, selectedBranchId, switchBranch, isMultiBranch } = useAuth();
   const isAdmin = user?.is_admin === true;
   
   const [levels, setLevels] = useState([]);
@@ -2725,58 +2726,59 @@ ${slotTables}
                 </Button>
               )}
               {currentView === 'days' && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50 text-xs sm:text-sm"
-                    onClick={async () => {
-                      if (!window.confirm(t('سيتم حذف الأعضاء المكررين من جميع المستويات نهائياً. هل تريد المتابعة؟', 'Duplicate member entries will be permanently removed from all levels. Continue?'))) return;
-                      try {
-                        const res = await levelsAPI.cleanupDuplicates();
-                        const d = res.data || res;
-                        toast.success(t(`تم تنظيف ${d.levels_cleaned} مستوى وإزالة ${d.duplicates_removed} تكرار`, `Cleaned ${d.levels_cleaned} levels, removed ${d.duplicates_removed} duplicates`));
-                        loadData();
-                      } catch (e) {
-                        toast.error(t('فشل تنظيف المكررات', 'Failed to clean duplicates'));
-                      }
-                    }}
-                    data-testid="open-levels-cleanup-duplicates-btn"
-                  >
-                    <Trash2 className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">{t('تنظيف الأعضاء المكررين', 'Clean duplicate members')}</span>
-                    <span className="sm:hidden">{t('تنظيف المكررات', 'Dedupe')}</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 border-red-300 text-red-700 hover:bg-red-50 text-xs sm:text-sm"
-                    disabled={cleanupExpiredLoading}
-                    onClick={async () => {
-                      setCleanupExpiredLoading(true);
-                      try {
-                        const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-                        const dry = await levelsAPI.cleanupExpired(true, branchParams);
-                        const d = dry.data || dry;
-                        if (!d.links_removed) {
-                          toast.info(t('لا يوجد أعضاء منتهية اشتراكاتهم مرتبطين بالمستويات', 'No expired members linked to levels'));
-                          return;
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs sm:text-sm">
+                      <Settings2 className="w-4 h-4" /> {t('إجراءات إدارية', 'Admin actions')}
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-64">
+                    <DropdownMenuItem
+                      data-testid="open-levels-cleanup-duplicates-btn"
+                      onSelect={async () => {
+                        const duplicateCount = visibleLevels.reduce((sum, level) => {
+                          const ids = level.members || [];
+                          return sum + ids.length - new Set(ids).size;
+                        }, 0);
+                        if (!window.confirm(t(`السجلات المكررة الظاهرة: ${duplicateCount}. سيتم تنظيف المكررات من جميع المستويات نهائياً. هل تريد المتابعة؟`, `Visible duplicate entries: ${duplicateCount}. Clean duplicates from all levels permanently?`))) return;
+                        try {
+                          const res = await levelsAPI.cleanupDuplicates();
+                          const d = res.data || res;
+                          toast.success(t(`تم تنظيف ${d.levels_cleaned} مستوى وإزالة ${d.duplicates_removed} تكرار`, `Cleaned ${d.levels_cleaned} levels, removed ${d.duplicates_removed} duplicates`));
+                          loadData();
+                        } catch (e) {
+                          toast.error(t('فشل تنظيف المكررات', 'Failed to clean duplicates'));
                         }
-                        // Show the full member list in a dialog before confirming.
-                        setCleanupExpiredPreview({ ...d, branchParams });
-                      } catch (e) {
-                        toast.error(t('فشل تنظيف المنتهين', 'Failed to clean expired members'));
-                      } finally {
-                        setCleanupExpiredLoading(false);
-                      }
-                    }}
-                    data-testid="open-levels-cleanup-expired-btn"
-                  >
-                    <Trash2 className="w-4 h-4 shrink-0" />
-                    <span className="hidden sm:inline">{cleanupExpiredLoading ? t('جارٍ التنظيف...', 'Cleaning...') : t('تنظيف المنتهية اشتراكاتهم', 'Clean expired members')}</span>
-                    <span className="sm:hidden">{t('تنظيف المنتهين', 'Expired')}</span>
-                  </Button>
-                </>
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 me-2" /> {t('تنظيف الأعضاء المكررين', 'Clean duplicate members')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid="open-levels-cleanup-expired-btn"
+                      disabled={cleanupExpiredLoading}
+                      onSelect={async () => {
+                        setCleanupExpiredLoading(true);
+                        try {
+                          const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
+                          const dry = await levelsAPI.cleanupExpired(true, branchParams);
+                          const d = dry.data || dry;
+                          if (!d.links_removed) {
+                            toast.info(t('لا يوجد أعضاء منتهية اشتراكاتهم مرتبطين بالمستويات', 'No expired members linked to levels'));
+                            return;
+                          }
+                          setCleanupExpiredPreview({ ...d, branchParams });
+                        } catch (e) {
+                          toast.error(t('فشل تنظيف المنتهين', 'Failed to clean expired members'));
+                        } finally {
+                          setCleanupExpiredLoading(false);
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 me-2" /> {t('تنظيف المنتهية اشتراكاتهم', 'Clean expired members')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               <Button
                 variant="outline"
@@ -2819,7 +2821,7 @@ ${slotTables}
           <div className={`mb-4 rounded-xl border p-3 flex flex-wrap items-center gap-3 ${mergeBranchId ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Layers className="w-4 h-4 text-amber-600 shrink-0" />
-              {t('دمج مؤقت لعرض مستويات فرع آخر', 'Temporary merge: view another branch')}
+              {t('عرض مستويات فرع آخر (للعرض فقط)', 'View another branch’s levels (read-only)')}
             </div>
             <div className="w-52">
               <Select
@@ -2830,7 +2832,7 @@ ${slotTables}
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">{t('بدون دمج', 'No merge')}</SelectItem>
+                  <SelectItem value="none">{t('الفرع الحالي فقط', 'Current branch only')}</SelectItem>
                   {branches.filter(b => b.id !== selectedBranchId).map(b => (
                     <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>
                   ))}
@@ -2849,7 +2851,7 @@ ${slotTables}
                   onClick={() => setMergeBranchId('')}
                   data-testid="merge-branch-clear-btn"
                 >
-                  {t('إلغاء الدمج', 'End merge')}
+                  {t('إيقاف العرض الإضافي', 'Stop extra view')}
                 </Button>
               </>
             )}
@@ -2859,26 +2861,57 @@ ${slotTables}
         {/* VIEW: Days Selection */}
         {currentView === 'days' && (
           <div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-5 mb-5 shadow-sm" data-testid="levels-scope-bar">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <p className="text-xs font-semibold text-orange-600 mb-1">{t('جدول التدريب', 'Training schedule')}</p>
+                  <h2 className="text-lg font-bold text-slate-900">{t('اختر يومًا لعرض حصصه', 'Choose a day to view its sessions')}</h2>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-700">
+                  <span>{t('الفرع:', 'Branch:')}</span>
+                  {(isAdmin || isMultiBranch) && branches.length > 0 ? (
+                    <Select value={selectedBranchId || 'all'} onValueChange={switchBranch}>
+                      <SelectTrigger className="w-48 bg-slate-50" aria-label={t('اختر الفرع', 'Select branch')}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {isAdmin && <SelectItem value="all">{t('جميع الفروع', 'All branches')}</SelectItem>}
+                        {branches.map(branch => <SelectItem key={branch.id} value={branch.id}>{branch.name_ar || branch.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <strong className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-2">{branches.find(b => b.id === selectedBranchId)?.name_ar || branches.find(b => b.id === selectedBranchId)?.name || t('الفرع المحدد', 'Selected branch')}</strong>
+                  )}
+                  {mergeBranchId && <span className="text-amber-700">+ {branches.find(b => b.id === mergeBranchId)?.name_ar || t('فرع إضافي', 'Extra branch')}</span>}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {visibleWeekdays.map(day => (
+                  <Button key={day.id} variant="outline" size="sm" className="rounded-full border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50" onClick={() => navigateToActivities(day.id)}>
+                    {language === 'ar' ? day.name_ar : day.name_en}
+                  </Button>
+                ))}
+              </div>
+            </div>
             {/* Stats Cards */}
+            <p className="text-xs text-slate-500 mb-3">{t('المؤشرات تخص الفرع المعروض وجميع أيام تدريبه؛ قد يظهر المستوى أو اللاعب في أكثر من يوم.', 'Figures cover the displayed branch and all training days; a level or player may appear on multiple days.')}</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
                 <CardContent className="p-4 text-center">
                   <Layers className="w-8 h-8 text-orange-600 mx-auto mb-2" />
-                  <div className="text-2xl font-bold text-orange-700">{levels.length}</div>
+                  <div className="text-2xl font-bold text-orange-700">{visibleLevels.length}</div>
                   <div className="text-xs text-orange-600">{t('إجمالي المستويات', 'Total Levels')}</div>
                 </CardContent>
               </Card>
               <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
                 <CardContent className="p-4 text-center">
                   <Users className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                  <div className="text-2xl font-bold text-green-700">{levels.reduce((sum, l) => sum + getFilteredLevelForDay(l).members.length, 0)}</div>
-                  <div className="text-xs text-green-600">{t('إجمالي اللاعبين', 'Total Players')}</div>
+                  <div className="text-2xl font-bold text-green-700">{new Set(visibleLevels.flatMap(l => getFilteredLevelForDay(l).members)).size}</div>
+                  <div className="text-xs text-green-600">{t('اللاعبون الفريدون', 'Unique Players')}</div>
                 </CardContent>
               </Card>
               <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
                 <CardContent className="p-4 text-center">
                   <Clock className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                  <div className="text-2xl font-bold text-blue-700">{[...new Set(levels.map(l => l.time_slot))].length}</div>
+                  <div className="text-2xl font-bold text-blue-700">{[...new Set(visibleLevels.map(l => l.time_slot).filter(Boolean))].length}</div>
                   <div className="text-xs text-blue-600">{t('إجمالي الأوقات', 'Total Time Slots')}</div>
                 </CardContent>
               </Card>
@@ -2886,7 +2919,7 @@ ${slotTables}
                 <CardContent className="p-4 text-center">
                   <BarChart3 className="w-8 h-8 text-purple-600 mx-auto mb-2" />
                   <div className="text-2xl font-bold text-purple-700">
-                    {levels.length > 0 ? Math.round(levels.reduce((sum, l) => sum + (getFilteredLevelForDay(l).members.length / (l.capacity || 1)) * 100, 0) / levels.length) : 0}%
+                    {visibleLevels.length > 0 ? Math.round(visibleLevels.reduce((sum, l) => sum + (getFilteredLevelForDay(l).members.length / (l.capacity || 1)) * 100, 0) / visibleLevels.length) : 0}%
                   </div>
                   <div className="text-xs text-purple-600">{t('نسبة الامتلاء', 'Occupancy Rate')}</div>
                 </CardContent>
@@ -2896,24 +2929,25 @@ ${slotTables}
             {/* Weekday Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {visibleWeekdays.map((day) => {
-                const dayMembers = levels.reduce((sum, l) => {
-                  if (!levelMatchesDay(l, day.id)) return sum;
-                  const filtered = (l.members_details || []).filter(m => m.has_active_sub !== false && memberMatchesDay(m, day.id));
-                  return sum + filtered.length;
-                }, 0);
+                const dayLevels = visibleLevels.filter(l => levelMatchesDay(l, day.id));
+                const dayMembers = new Set(dayLevels.flatMap(l => (l.members_details || []).filter(m => m.has_active_sub !== false && memberMatchesDay(m, day.id)).map(m => m.member_id)));
+                const daySessions = new Set(dayLevels.map(l => `${l.activity_name || ''}::${l.time_slot || ''}`));
                 return (
                   <Card
                     key={day.id}
-                    className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] overflow-hidden group"
+                    className="cursor-pointer hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 overflow-hidden group border-slate-200 bg-white"
                     onClick={() => navigateToActivities(day.id)}
                   >
-                    <div className={`bg-gradient-to-br ${day.color} p-6 text-white text-center`}>
-                      <div className="text-4xl mb-3 group-hover:scale-110 transition-transform">{day.icon}</div>
-                      <h3 className="text-xl font-bold">{language === 'ar' ? day.name_ar : day.name_en}</h3>
+                    <div className="p-5 flex items-center justify-between border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <span className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center"><CalendarDays className="w-5 h-5" /></span>
+                        <h3 className="text-lg font-bold text-slate-900">{language === 'ar' ? day.name_ar : day.name_en}</h3>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400 rtl:rotate-180" />
                     </div>
-                    <CardContent className="p-3 text-center">
-                      <p className="text-sm font-bold text-primary">{dayMembers} {t('لاعب', 'player')}</p>
-                      <p className="text-xs text-gray-500">{t('اضغط لعرض الأنشطة', 'Click to view activities')}</p>
+                    <CardContent className="px-5 py-4 flex items-center justify-between text-sm">
+                      <span><strong className="text-slate-900">{daySessions.size}</strong> <span className="text-slate-500">{t('حصة', 'sessions')}</span></span>
+                      <span><strong className="text-slate-900">{dayMembers.size}</strong> <span className="text-slate-500">{t('لاعب', 'players')}</span></span>
                     </CardContent>
                   </Card>
                 );
