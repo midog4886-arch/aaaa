@@ -1,3 +1,4 @@
+import API_URL, { getTenantSlug } from '../../config/api';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
@@ -440,7 +441,7 @@ const MemberDashboard = () => {
   return (
     <MemberLayout>
       <PullToRefresh onRefresh={handleRefresh} disabled={refreshing} className="min-h-[calc(100vh-200px)]">
-        <div className="space-y-5">
+        <div className="member-modern-dashboard space-y-5">
 
           {/* Real-time hooks */}
           <AttendanceToast language={language} />
@@ -451,7 +452,7 @@ const MemberDashboard = () => {
 
           {/* ── Welcome Card ── */}
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-            <Card className="bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white border border-amber-500/10 overflow-hidden">
+            <Card className="member-welcome-card bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white border border-amber-500/10 overflow-hidden">
               <CardContent className="p-5">
                 <div className="flex items-center gap-4">
                   {/* Avatar (photo with initials fallback) */}
@@ -486,6 +487,7 @@ const MemberDashboard = () => {
                   </div>
                 </div>
 
+                <div className="member-brand-hero"><div><h2>{language === 'ar' ? 'جاهز لخطوتك القادمة؟' : 'Ready for your next step?'}</h2><p>{language === 'ar' ? 'بطاقتك، تدريبك واشتراكك في مكان واحد.' : 'Your card, training and subscription in one place.'}</p><Link to="/card">{language === 'ar' ? 'عرض بطاقة العضوية ←' : 'View membership card →'}</Link></div><div className="member-animated-logo"><img src={`${API_URL || ''}/api/tenant/branding/logo?slug=${encodeURIComponent(getTenantSlug())}`} alt={language === 'ar' ? 'شعار الأكاديمية' : 'Academy logo'} onError={e => { if (!e.target.dataset.fb) { e.target.dataset.fb = '1'; e.target.src = '/logo-new.png'; } }} /></div></div>
                 {/* Terms Notice — compact */}
                 <div className="mt-4 p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg">
                   <p className="text-amber-300 text-xs flex items-start gap-1.5">

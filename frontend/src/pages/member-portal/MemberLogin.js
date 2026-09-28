@@ -1,3 +1,4 @@
+import './MemberModern.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -36,7 +37,7 @@ const SplashScreen = ({ onComplete, logo, academyName }) => {
       initial={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-gray-900 via-yellow-900 to-gray-900 overflow-hidden"
+      className="member-modern-splash fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-gray-900 via-yellow-900 to-gray-900 overflow-hidden"
     >
       {/* Animated water waves background */}
       <div className="absolute inset-0 overflow-hidden">
@@ -334,40 +335,7 @@ const MemberLogin = () => {
   }, []);
 
   return (
-    <div className="min-h-screen relative overflow-hidden" dir="rtl">
-      {/* Animated Background - Water/Swimming theme */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-        {/* Golden particles */}
-        {[...Array(15)].map((_, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 100, x: Math.random() * 100 }}
-            animate={{ 
-              opacity: [0, 0.5, 0],
-              y: -200,
-            }}
-            transition={{
-              duration: 4 + Math.random() * 3,
-              delay: i * 0.3,
-              repeat: Infinity,
-            }}
-            className="absolute w-2 h-2 bg-amber-400/40 rounded-full"
-            style={{
-              left: `${(i * 7) % 100}%`,
-              bottom: '10%',
-            }}
-          />
-        ))}
-        
-        {/* Golden glow at bottom */}
-        <motion.div
-          animate={{ y: [0, -15, 0] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-amber-700/20 to-transparent"
-        />
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-amber-500/5 rounded-full blur-3xl" />
-      </div>
-
+    <div className="member-modern-login min-h-screen relative overflow-hidden" dir="rtl">
       {/* Splash Screen */}
       <AnimatePresence>
         {showSplash && <SplashScreen onComplete={handleSplashComplete} logo={logo} academyName={academyName} />}
@@ -379,8 +347,9 @@ const MemberLogin = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="relative z-10 min-h-screen flex items-center justify-center p-4"
+            className="member-login-shell relative z-10 min-h-screen p-4"
           >
+            <section className="member-login-hero"><div className="member-login-logo"><img src={logo} alt="شعار الأكاديمية" /></div><h1>رحلة بطلك<br />تبدأ <span>من هنا.</span></h1><p>تابع الاشتراك، مواعيد التدريب والحضور بسهولة من بوابة الأعضاء.</p></section>
             <motion.div
               initial={{ y: 100, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
@@ -388,9 +357,9 @@ const MemberLogin = () => {
               className="w-full max-w-md"
             >
               {/* Glassmorphism Card */}
-              <Card className="relative overflow-hidden border-0 bg-white/10 backdrop-blur-xl shadow-2xl border border-amber-500/20">
+              <Card className="member-login-card relative overflow-hidden border-0 bg-white/10 backdrop-blur-xl shadow-2xl border border-amber-500/20">
                 {/* Gradient border effect */}
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent pointer-events-none rounded-lg" />
+
                 
                 <CardHeader className="relative text-center pb-2">
                   {/* Logo */}

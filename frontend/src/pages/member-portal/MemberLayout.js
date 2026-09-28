@@ -1,3 +1,4 @@
+import './MemberModern.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
@@ -409,6 +410,7 @@ const MemberLayout = ({ children }) => {
     navigate('/member-login');
   };
 
+  const [motionPaused, setMotionPaused] = useState(false);
   const navItems = [
     { to: '/member-dashboard', icon: Home, labelKey: 'home' },
     { to: '/videos', icon: Video, labelKey: 'dailyVideos' },
@@ -465,10 +467,10 @@ const MemberLayout = ({ children }) => {
   if (!member) return null;
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-stone-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <div className={`member-modern ${darkMode ? 'member-modern-dark' : ''} ${motionPaused ? 'member-motion-paused' : ''} min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-stone-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <header
-        className={`${darkMode ? 'bg-gray-800' : (primary ? '' : 'bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950')} text-white sticky top-0 z-50 shadow-lg safe-area-top`}
+        className={`member-modern-header ${darkMode ? 'bg-gray-800' : (primary ? '' : 'bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950')} text-white sticky top-0 z-50 shadow-lg safe-area-top`}
         style={!darkMode && primary ? { background: `linear-gradient(to right, ${primary}, ${primary}dd, ${primary})` } : undefined}
       >
         <div className="max-w-7xl mx-auto px-4">
@@ -496,7 +498,7 @@ const MemberLayout = ({ children }) => {
             </div>
 
             {/* Desktop Nav */}
-            <nav className="hidden lg:flex items-center gap-1">
+            <nav className="member-old-desktop-nav hidden lg:flex items-center gap-1">
               {navItems.map((item) => (
                 <Link
                   key={item.to}
@@ -535,6 +537,8 @@ const MemberLayout = ({ children }) => {
                 </Button>
               )}
 
+              <Link to="/notifications" className="member-header-bell" aria-label={getText('notifications')}><Bell className="w-5 h-5" />{((notifications.unread_count || 0) + (msgUnreadCount || 0)) > 0 && <span>{(notifications.unread_count || 0) + (msgUnreadCount || 0)}</span>}</Link>
+              <button type="button" className="member-motion-control" aria-pressed={motionPaused} onClick={() => setMotionPaused(v => !v)}>{language === 'ar' ? (motionPaused ? 'تشغيل الحركة' : 'إيقاف الحركة') : (motionPaused ? 'Resume motion' : 'Pause motion')}</button>
               {/* Language Toggle */}
               <Button 
                 variant="ghost" 
@@ -641,11 +645,14 @@ const MemberLayout = ({ children }) => {
       </header>
 
       {/* Main Content - Add padding for bottom nav */}
-      <main className="max-w-7xl mx-auto px-4 py-6 pb-20 mobile-scroll">
+      <div className="member-modern-shell">
+        <aside className="member-modern-sidebar"><nav aria-label={language === 'ar' ? 'قائمة بوابة الأعضاء' : 'Member portal menu'}>{navItems.map(item => <Link key={item.to} to={item.to} className={location.pathname === item.to ? 'active' : ''}><item.icon size={19} /><span>{getText(item.labelKey)}</span>{item.badge > 0 && <b>{item.badge}</b>}</Link>)}</nav></aside>
+      <main className="member-modern-main max-w-7xl mx-auto px-4 py-6 pb-20 mobile-scroll">
         <div className="page-enter">
           {children}
         </div>
       </main>
+      </div>
 
       {/* Bottom Navigation for Mobile */}
       <nav className={`lg:hidden fixed bottom-0 left-0 right-0 z-50 ${
