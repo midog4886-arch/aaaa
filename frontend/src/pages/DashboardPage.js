@@ -15,9 +15,7 @@ import {
   AlertTriangle,
   TrendingUp,
   Calendar,
-  Phone,
   MessageSquare,
-  Bell,
   Send,
   X,
   Receipt,
@@ -46,7 +44,6 @@ import './DashboardPage.css';
 const DEFAULT_WIDGETS = [
   { id: 'stats', visible: true },
   { id: 'details', visible: true },
-  { id: 'expiring', visible: true },
   { id: 'champions', visible: false },
   { id: 'today_attendance', visible: true },
 ];
@@ -808,62 +805,6 @@ export const DashboardPage = () => {
               )}
             </CardContent>
           </Card>
-          );
-
-          if (widget.id === 'expiring') return (
-          <div key="expiring" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card data-testid="expiring-subscriptions">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-amber-500" />
-                    {t('expiring_subscriptions')}
-                  </span>
-                  {expiring.length > 0 && (
-                    <Button size="sm" variant="outline" onClick={sendAllReminders} className="text-amber-600 border-amber-500/30 hover:bg-amber-500/10" data-testid="send-all-reminders-btn">
-                      <Send className="w-4 h-4 me-1" />
-                      {language === 'ar' ? 'إرسال تنبيهات' : 'Send All'}
-                    </Button>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {expiring.length > 0 ? (
-                  <div className="space-y-3 max-h-[250px] overflow-y-auto">
-                    {expiring.slice(0, 5).map((item, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg animate-slide-in" style={{ animationDelay: `${index * 0.05}s` }}>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{item.member_name}</p>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>{item.activity_name}</span>
-                            <span>-</span>
-                            <div className="flex items-center gap-1">
-                              <Phone className="w-3 h-3" />
-                              <span dir="ltr">{item.phone}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => sendWhatsAppReminder(item)} className="p-2 rounded-full hover:bg-green-500/10 text-green-600 transition-colors" title={language === 'ar' ? 'إرسال تنبيه واتساب' : 'Send WhatsApp reminder'} data-testid={`send-reminder-${index}`}>
-                            <MessageSquare className="w-4 h-4" />
-                          </button>
-                          <Badge variant="outline" className={`${item.days_remaining <= 3 ? 'bg-red-500/10 text-red-500 border-red-500/30' : 'bg-amber-500/10 text-amber-500 border-amber-500/30'}`}>
-                            <Calendar className="w-3 h-3 me-1" />
-                            {item.days_remaining} {t('days')}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="empty-state">
-                    <Bell className="empty-state-icon" />
-                    <p>{language === 'ar' ? 'لا توجد اشتراكات تنتهي قريباً' : 'No expiring subscriptions'}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
           );
 
           if (widget.id === 'champions') return (
