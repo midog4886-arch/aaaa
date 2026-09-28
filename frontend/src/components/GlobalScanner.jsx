@@ -217,6 +217,8 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   // Fetch member data and show dialog; auto check-in when member has exactly one active unrecorded activity
   const handleScan = useCallback(async (scannedData) => {
     if (!scannedData) return;
+    // Keep an in-progress invoice form in place when a hardware QR scanner fires.
+    if (document.querySelector('[data-invoice-editor="true"]')) return;
     
     const now = Date.now();
     const memberCode = extractMemberCode(scannedData);
