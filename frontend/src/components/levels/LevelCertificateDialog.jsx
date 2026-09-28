@@ -3,11 +3,11 @@ import axios from 'axios';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Button } from '../ui/button';
 import LevelCertificateSheet from './LevelCertificateSheet';
-import LevelCertificateSeal from './LevelCertificateSeal';
 
 export default function LevelCertificateDialog({ open, onOpenChange, member }) {
   const [candidates, setCandidates] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [nameAr, setNameAr] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [issued, setIssued] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -16,9 +16,9 @@ export default function LevelCertificateDialog({ open, onOpenChange, member }) {
   useEffect(() => {
     if (!open || !member?.id) return;
     let active = true;
-    setCandidates([]); setSelected(null); setIssued(null); setError(''); setNameEn(''); setLoading(true);
+    setCandidates([]); setSelected(null); setIssued(null); setError(''); setNameAr(''); setNameEn(''); setLoading(true);
     axios.get(`/api/level-certificates/candidates/${encodeURIComponent(member.id)}`)
-      .then(({ data }) => { if (active) { setCandidates(data); setSelected(data[0] || null); setNameEn(data[0]?.member_name_en || ''); } })
+      .then(({ data }) => { if (active) { setCandidates(data); setSelected(data[0] || null); setNameAr(data[0]?.member_name || ''); setNameEn(data[0]?.member_name_en || ''); } })
       .catch(e => { if (active) setError(e.response?.data?.detail || 'تعذّر تحميل الترقيات'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -35,11 +35,11 @@ export default function LevelCertificateDialog({ open, onOpenChange, member }) {
 
   const issue = async () => {
     if (!selected || loading) return;
-    if (!nameEn.trim()) { setError('أدخل اسم اللاعب بالإنجليزية قبل الإصدار'); return; }
+    if (!nameAr.trim() || !nameEn.trim()) { setError('أدخل اسم اللاعب بالعربية والإنجليزية قبل الإصدار'); return; }
     setLoading(true); setError('');
     try {
       const { data } = await axios.post('/api/level-certificates', {
-        transfer_audit_id: selected.transfer_audit_id, member_name_en: nameEn.trim(),
+        transfer_audit_id: selected.transfer_audit_id, member_name_ar: nameAr.trim(), member_name_en: nameEn.trim(),
       });
       setIssued(data);
       setCandidates(prev => prev.map(item => item.transfer_audit_id === selected.transfer_audit_id
@@ -48,7 +48,7 @@ export default function LevelCertificateDialog({ open, onOpenChange, member }) {
     finally { setLoading(false); }
   };
 
-  const certificate = issued || (selected ? { ...selected, member_name_en: nameEn } : null);
+  const certificate = issued || (selected ? { ...selected, member_name: nameAr, member_name_en: nameEn } : null);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
       <DialogHeader><DialogTitle>شهادة اجتياز المستوى</DialogTitle></DialogHeader>
@@ -57,19 +57,21 @@ export default function LevelCertificateDialog({ open, onOpenChange, member }) {
       {!loading && !error && candidates.length === 0 && <p className="text-amber-700">لا توجد ترقية موثقة إلى مستوى أعلى لهذا اللاعب.</p>}
       {candidates.length > 0 && <label className="block text-sm">الترقية
         <select className="block w-full border rounded-lg p-2 mt-1" value={selected?.transfer_audit_id || ''}
-          onChange={e => { const next = candidates.find(x => x.transfer_audit_id === e.target.value); setSelected(next); setNameEn(next?.member_name_en || ''); setIssued(null); }}>
+          onChange={e => { const next = candidates.find(x => x.transfer_audit_id === e.target.value); setSelected(next); setNameAr(next?.member_name || ''); setNameEn(next?.member_name_en || ''); setIssued(null); }}>
           {candidates.map(row => <option key={row.transfer_audit_id} value={row.transfer_audit_id}>
             {row.activity_name}: المستوى {row.from_level_number} ← المستوى {row.to_level_number}{row.certificate_id ? ' · صادرة' : ''}
           </option>)}
         </select>
       </label>}
       {selected && <>
-        <div className="rounded-lg bg-gray-50 p-3 text-sm">{selected.activity_name} · المستوى {selected.from_level_number} ← المستوى {selected.to_level_number}<br />اسم اللاعب بالعربية: {selected.member_name}</div>
+        <div className="rounded-lg bg-gray-50 p-3 text-sm">{selected.activity_name} · المستوى {selected.from_level_number} ← المستوى {selected.to_level_number}</div>
+        {!selected.certificate_id && <label className="block text-sm">اسم الطالب بالعربية *
+          <input className="block w-full border rounded-lg p-2 mt-1" dir="rtl" maxLength={120} value={nameAr} onChange={e => setNameAr(e.target.value)} placeholder="اسم الطالب بالعربية" />
+        </label>}
         {!selected.certificate_id && <label className="block text-sm">اسم اللاعب بالإنجليزية *
           <input className="block w-full border rounded-lg p-2 mt-1" maxLength={120} value={nameEn} onChange={e => setNameEn(e.target.value)} placeholder="Player name in English" />
         </label>}
         <LevelCertificateSheet certificate={certificate} />
-        <LevelCertificateSeal certificate={issued} />
         {selected.certificate_id && !issued && <p className="text-green-700 text-sm">هذه الترقية لها شهادة صادرة بالفعل. يمكن فتحها من بوابة العضو.</p>}
         <div className="flex gap-2">
           {!selected.certificate_id && <Button onClick={issue} disabled={loading}>{loading ? 'جارٍ الإصدار...' : 'اعتماد وإصدار الشهادة'}</Button>}

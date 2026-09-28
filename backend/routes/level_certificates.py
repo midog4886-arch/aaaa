@@ -38,7 +38,16 @@ def _seal_valid(doc):
 
 class IssueCertificate(BaseModel):
     transfer_audit_id: str
+    member_name_ar: str = Field(min_length=2, max_length=120)
     member_name_en: str = Field(min_length=2, max_length=120)
+
+    @field_validator("member_name_ar")
+    @classmethod
+    def arabic_name_required(cls, value):
+        name = value.strip()
+        if not any("\u0600" <= ch <= "\u06ff" for ch in name):
+            raise ValueError("أدخل اسم اللاعب بالعربية")
+        return name
 
     @field_validator("member_name_en")
     @classmethod
@@ -142,7 +151,7 @@ async def issue_certificate(payload: IssueCertificate, user: dict = Depends(get_
     approver = await db.users.find_one({"id": user.get("user_id")}, {"_id": 0, "name": 1})
     doc = {
         "id": str(uuid4()), "transfer_audit_id": audit["id"],
-        "member_id": member["id"], "member_name": member.get("name_ar") or member.get("name") or "",
+        "member_id": member["id"], "member_name": payload.member_name_ar,
         "member_name_en": payload.member_name_en,
         "branch_id": branch, "activity_name": source.get("activity_name") or "",
         "from_level_name": source.get("custom_name") or source.get("activity_name") or "",

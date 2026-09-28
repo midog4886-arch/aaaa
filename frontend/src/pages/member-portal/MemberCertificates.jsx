@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import MemberLayout, { memberAPI } from './MemberLayout';
 import LevelCertificateSheet from '../../components/levels/LevelCertificateSheet';
-import LevelCertificateSeal from '../../components/levels/LevelCertificateSeal';
 
 export default function MemberCertificates({ verification = false }) {
   const { certificateId } = useParams();
@@ -37,7 +36,6 @@ export default function MemberCertificates({ verification = false }) {
         <div><strong>بيانات الشهادة</strong><p>{selected.activity_name} · اجتياز المستوى {selected.from_level_number} والانتقال إلى {selected.to_level_number}</p><p>رقم الشهادة: <span dir="ltr">{selected.id}</span></p></div>
         <div className="ms-auto"><QRCodeSVG value={`${window.location.origin}/certificate/verify/${encodeURIComponent(selected.id)}`} size={78} /><small className="block text-center">التحقق</small></div>
       </div>
-      <LevelCertificateSeal certificate={selected} />
       <div className="mt-4 flex gap-3">
       <button className="bg-purple-700 text-white px-5 py-3 rounded-xl" onClick={() => window.print()}>طباعة / حفظ PDF</button>
       {!verification && <a className="border px-5 py-3 rounded-xl" href={`/certificate/verify/${encodeURIComponent(selected.id)}`} target="_blank" rel="noopener noreferrer">رابط التحقق</a>}

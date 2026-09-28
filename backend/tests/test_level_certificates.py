@@ -49,12 +49,13 @@ def fake_db(monkeypatch):
 
 def test_approval_issues_once_from_audited_promotion(fake_db):
     user={'is_admin':True,'user_id':'staff'}
-    request=certificates.IssueCertificate(transfer_audit_id='audit-1',member_name_en='Test Player')
+    request=certificates.IssueCertificate(transfer_audit_id='audit-1',member_name_ar='لاعب تجريبي',member_name_en='Test Player')
     first=asyncio.run(certificates.issue_certificate(request,user))
     second=asyncio.run(certificates.issue_certificate(request,user))
     assert first['id']==second['id']
     assert first['from_level_number']==1 and first['to_level_number']==2
     assert first['member_name_en']=='Test Player'
+    assert first['member_name']=='لاعب تجريبي'
     assert fake_db.level_certificates.inserted==1
     assert fake_db.level_certificates.rows[0]['issued_by']=='staff'
     assert first['issued_by_name']=='الموظف المعتمد'
@@ -70,6 +71,6 @@ def test_lateral_move_is_not_a_certificate(fake_db):
     result=asyncio.run(certificates.certificate_candidates('m1',user))
     assert result==[]
     with pytest.raises(HTTPException) as exc:
-        asyncio.run(certificates.issue_certificate(certificates.IssueCertificate(transfer_audit_id='audit-1',member_name_en='Test Player'),user))
+        asyncio.run(certificates.issue_certificate(certificates.IssueCertificate(transfer_audit_id='audit-1',member_name_ar='لاعب تجريبي',member_name_en='Test Player'),user))
     assert exc.value.status_code==409
     assert fake_db.level_certificates.inserted==0
