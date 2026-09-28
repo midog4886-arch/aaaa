@@ -117,6 +117,7 @@ import bcrypt
 from routes.users import router as users_router
 from routes.levels import router as levels_router
 from routes.level_certificates import router as level_certificates_router
+from routes.certificates import router as certificates_router
 from routes.branches import router as branches_router
 from routes.activities import router as activities_router
 from routes.registration_requests import router as registration_requests_router
@@ -198,6 +199,7 @@ security = HTTPBearer()
 api_router.include_router(users_router)
 api_router.include_router(levels_router)
 api_router.include_router(level_certificates_router)
+api_router.include_router(certificates_router)
 api_router.include_router(branches_router)
 api_router.include_router(activities_router)
 api_router.include_router(registration_requests_router)
@@ -3710,7 +3712,7 @@ _ALL_COLLECTIONS = [
     "registration_forms", "public_registration_links", "session_transfers", "supplier_payments", "suppliers", "users",
     "video_views", "whatsapp_settings", "whatsapp_send_log",
     "registration_requests", "registration_followup_stops", "marketers",
-    "level_certificates",
+    "level_certificates", "certificates",
     "activity_logs", "audit_logs", "branch_counters", "campaign_inquiries",
     "coach_advances", "coach_salaries", "coach_notes", "coach_photos",
     "day_extensions", "member_photos", "notifications_settings", "ops_alerts",

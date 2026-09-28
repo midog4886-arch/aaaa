@@ -37,6 +37,7 @@ const ALL_PERMISSIONS = [
   { key: 'invoices-refund', label_ar: 'استرجاع الفواتير (إشعار دائن)', label_en: 'Refund Invoices (Credit Note)' },
   { key: 'activities', label_ar: 'الأنشطة', label_en: 'Activities' },
   { key: 'levels', label_ar: 'المستويات', label_en: 'Levels' },
+  { key: 'certificates', label_ar: 'إصدار الشهادات', label_en: 'Issue Certificates' },
   { key: 'schedule', label_ar: 'الجدول', label_en: 'Schedule' },
   { key: 'attendance', label_ar: 'الحضور', label_en: 'Attendance' },
   { key: 'scanner-station', label_ar: 'محطة المسح (تابلت)', label_en: 'Scanner Station (Tablet)' },

@@ -18,6 +18,7 @@ import {
   Users, 
   Dumbbell, 
   Layers, 
+  Award,
   Receipt, 
   BarChart3, 
   MessageSquare, 
@@ -189,6 +190,10 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/today-attendance', icon: CheckCheck, label: 'today_attendance', permission: 'attendance', feature: 'attendance' },
         { to: '/admin/scanner-station', icon: ScanLine, label: 'scanner_station', permission: 'scanner-station', feature: 'attendance' },
       ]
+    },
+    {
+      id: 'certificates', label_ar: 'الشهادات', label_en: 'Certificates', icon: Award, single: true,
+      items: [{ to: '/admin/certificates', icon: Award, label_ar: 'الشهادات', label_en: 'Certificates', permission: 'certificates' }],
     },
     {
       id: 'activities',
