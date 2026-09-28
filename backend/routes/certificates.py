@@ -1,12 +1,13 @@
-"""Manual certificates, independent of members, activities and levels."""
+"""Manual certificates with optional member linkage, independent of levels."""
 from datetime import datetime, timezone
+import re
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from database import db
-from utils.auth import get_current_user, require_permission
+from utils.auth import get_current_user, require_permission, resolve_branch_filter
 
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
 
@@ -14,6 +15,7 @@ router = APIRouter(prefix="/certificates", tags=["Certificates"])
 class IssueCertificate(BaseModel):
     student_name_ar: str = Field(min_length=2, max_length=120)
     student_name_en: str = Field(min_length=2, max_length=120)
+    member_id: str | None = None
 
     @field_validator("student_name_ar")
     @classmethod
@@ -38,9 +40,31 @@ async def list_certificates(user: dict = Depends(get_current_user)):
     return await db.certificates.find({}, {"_id": 0}).sort("issued_at", -1).to_list(500)
 
 
+@router.get("/member-search")
+async def search_certificate_members(search: str = Query(min_length=2, max_length=80), user: dict = Depends(get_current_user)):
+    await require_permission(user, "certificates")
+    query = {"$or": [
+        {field: {"$regex": re.escape(search.strip()), "$options": "i"}}
+        for field in ("name_ar", "name", "member_code", "phone")
+    ]}
+    branch_id = resolve_branch_filter(user, None)
+    if branch_id:
+        query["branch_id"] = branch_id
+    return await db.members.find(query, {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1}).limit(20).to_list(20)
+
+
 @router.post("", status_code=201)
 async def issue_certificate(payload: IssueCertificate, user: dict = Depends(get_current_user)):
     await require_permission(user, "certificates")
+    member = None
+    if payload.member_id:
+        query = {"id": payload.member_id}
+        branch_id = resolve_branch_filter(user, None)
+        if branch_id:
+            query["branch_id"] = branch_id
+        member = await db.members.find_one(query, {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1})
+        if not member:
+            raise HTTPException(status_code=404, detail="العضو المحدد غير موجود أو خارج نطاق الفرع")
     doc = {
         "id": str(uuid4()),
         "student_name_ar": payload.student_name_ar,
@@ -49,6 +73,9 @@ async def issue_certificate(payload: IssueCertificate, user: dict = Depends(get_
         "issued_by": user.get("user_id"),
         "issued_by_name": user.get("username") or user.get("name") or "",
     }
+    if member:
+        doc["member_id"] = member["id"]
+        doc["member_code"] = member.get("member_code") or ""
     await db.certificates.insert_one(doc)
     doc.pop("_id", None)
     return doc

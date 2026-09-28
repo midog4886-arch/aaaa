@@ -54,3 +54,17 @@ def test_names_and_permission_are_checked(monkeypatch):
             {"is_admin": False},
         ))
     assert exc.value.status_code == 403
+
+
+def test_optional_member_link_is_validated_and_saved(monkeypatch):
+    store = Collection()
+    class Members:
+        async def find_one(self, query, projection):
+            assert query == {"id": "member-1", "branch_id": "branch-1"}
+            return {"id": "member-1", "member_code": "AB-123"}
+    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=store, members=Members()))
+    monkeypatch.setattr(certificates, "resolve_branch_filter", lambda *_: "branch-1")
+    payload = certificates.IssueCertificate(student_name_ar="أحمد علي", student_name_en="Ahmed Ali", member_id="member-1")
+    issued = asyncio.run(certificates.issue_certificate(payload, {"is_admin": True, "user_id": "owner"}))
+    assert issued["member_id"] == "member-1"
+    assert issued["member_code"] == "AB-123"

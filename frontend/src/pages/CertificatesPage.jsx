@@ -16,6 +16,9 @@ const asSheet = item => ({ member_name: item.student_name_ar, member_name_en: it
 export default function CertificatesPage() {
   const [nameAr, setNameAr] = useState('');
   const [nameEn, setNameEn] = useState('');
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberResults, setMemberResults] = useState([]);
+  const [linkedMember, setLinkedMember] = useState(null);
   const [issued, setIssued] = useState([]);
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +30,17 @@ export default function CertificatesPage() {
     axios.get('/api/certificates').then(({ data }) => setIssued(data)).catch(() => toast.error('تعذر تحميل الشهادات')).finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (linkedMember || memberSearch.trim().length < 2) { setMemberResults([]); return; }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      axios.get('/api/certificates/member-search', { params: { search: memberSearch.trim() }, signal: controller.signal })
+        .then(({ data }) => setMemberResults(data))
+        .catch(error => { if (error.code !== 'ERR_CANCELED') toast.error('تعذر البحث عن الأعضاء'); });
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [memberSearch, linkedMember]);
+
   const create = async (event) => {
     event.preventDefault();
     if (!/[\u0600-\u06ff]/.test(nameAr) || !/[A-Za-z]/.test(nameEn) || /[\u0600-\u06ff]/.test(nameEn)) {
@@ -35,11 +49,13 @@ export default function CertificatesPage() {
     }
     setSaving(true);
     try {
-      const { data } = await axios.post('/api/certificates', { student_name_ar: nameAr.trim(), student_name_en: nameEn.trim() });
+      const { data } = await axios.post('/api/certificates', { student_name_ar: nameAr.trim(), student_name_en: nameEn.trim(), member_id: linkedMember?.id || null });
       setIssued(current => [data, ...current]);
       setSelected(data);
       setNameAr('');
       setNameEn('');
+      setLinkedMember(null);
+      setMemberSearch('');
       toast.success('صدرت الشهادة، ويمكنك حفظها PDF أو طباعتها الآن');
     } catch (error) {
       toast.error(error.response?.data?.detail?.[0]?.msg || error.response?.data?.detail || 'تعذر إصدار الشهادة');
@@ -86,12 +102,17 @@ export default function CertificatesPage() {
   return <Layout title="الشهادات">
     <div className="certificates-page" dir="rtl">
       <div className="certificates-heading">
-        <div><h1><Award size={27} /> الشهادات</h1><p>أدخل الاسم بالعربية والإنجليزية، ثم أصدر الشهادة مباشرة. لا يلزم اختيار عضو أو مستوى.</p></div>
+        <div><h1><Award size={27} /> الشهادات</h1><p>أدخل الاسم بالعربية والإنجليزية، ويمكنك ربط الشهادة بعضو اختياريًا. لا يلزم اختيار مستوى.</p></div>
       </div>
       <div className="certificates-grid">
         <section className="certificates-panel">
           <h2>إصدار شهادة جديدة</h2>
           <form onSubmit={create}>
+            <Label htmlFor="certificate-member-search">ربط بعضو (اختياري)</Label>
+            {linkedMember ? <div className="certificates-linked-member"><span>{linkedMember.name_ar || linkedMember.name} {linkedMember.member_code ? `— ${linkedMember.member_code}` : ''}</span><Button type="button" variant="outline" onClick={() => { setLinkedMember(null); setMemberSearch(''); setSelected(null); }}>إلغاء الربط</Button></div> : <>
+              <Input id="certificate-member-search" value={memberSearch} onChange={e => setMemberSearch(e.target.value)} placeholder="ابحث بالاسم أو رقم العضوية" autoComplete="off" />
+              {memberResults.length > 0 && <div className="certificates-member-results">{memberResults.map(member => <button type="button" key={member.id} onClick={() => { setLinkedMember(member); setMemberSearch(''); setMemberResults([]); setNameAr(member.name_ar || ''); setNameEn(/^[\x00-\x7F]+$/.test(member.name || '') ? member.name : ''); setSelected(null); }}>{member.name_ar || member.name} {member.member_code ? <small>{member.member_code}</small> : null}</button>)}</div>}
+            </>}
             <Label htmlFor="certificate-name-ar">اسم الطالب بالعربية</Label>
             <Input id="certificate-name-ar" value={nameAr} onChange={e => { setNameAr(e.target.value); setSelected(null); }} placeholder="اسم الطالب بالعربية" required minLength={2} maxLength={120} autoComplete="off" />
             <Label htmlFor="certificate-name-en">اسم الطالب بالإنجليزية</Label>
@@ -107,7 +128,7 @@ export default function CertificatesPage() {
       </div>
       <section className="certificates-panel certificates-history">
         <h2>الشهادات الصادرة</h2>
-        {loading ? <p>جارٍ التحميل…</p> : issued.length === 0 ? <p>لا توجد شهادات صادرة بعد.</p> : <div className="certificates-list">{issued.map(item => <button key={item.id} type="button" onClick={() => setSelected(item)} className={selected?.id === item.id ? 'active' : ''}><strong>{item.student_name_ar}</strong><span dir="ltr">{item.student_name_en}</span><small>{new Date(item.issued_at).toLocaleDateString('ar-SA')}</small><Printer size={17} /></button>)}</div>}
+        {loading ? <p>جارٍ التحميل…</p> : issued.length === 0 ? <p>لا توجد شهادات صادرة بعد.</p> : <div className="certificates-list">{issued.map(item => <button key={item.id} type="button" onClick={() => setSelected(item)} className={selected?.id === item.id ? 'active' : ''}><strong>{item.student_name_ar}</strong><span dir="ltr">{item.student_name_en}</span>{item.member_id && <span className="certificates-member-badge">عضو {item.member_code || 'مرتبط'}</span>}<small>{new Date(item.issued_at).toLocaleDateString('ar-SA')}</small><Printer size={17} /></button>)}</div>}
       </section>
     </div>
   </Layout>;
