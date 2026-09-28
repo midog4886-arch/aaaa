@@ -71,8 +71,10 @@ export default function CertificatesPage() {
           sheet.querySelector('span').style.fontSize = '17px';
         },
       });
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 17.25, 0, 262.5, 210);
+      const pageWidth = 297;
+      const pageHeight = pageWidth * 1122 / 1402;
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pageWidth, pageHeight] });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageWidth, pageHeight);
       pdf.save(`certificate-${selected.id}.pdf`);
     } catch (error) {
       toast.error('تعذر حفظ ملف PDF. حاول مجددًا.');
