@@ -1,0 +1,34 @@
+/* Shared visual language for every page rendered inside the admin Layout. */
+.admin-modern{--admin-ink:#192342;--admin-line:#e6e7f0;--admin-violet:#62429b;color:var(--admin-ink)}
+.admin-modern .main-content{background:radial-gradient(circle at 6% 0%,#f1edff 0,transparent 380px),radial-gradient(circle at 100% 16%,#eaf8f5 0,transparent 330px),#f7f8fc}
+.admin-modern .top-header{height:72px;background:#ffffffeb;backdrop-filter:blur(16px);border-bottom:1px solid var(--admin-line);box-shadow:0 3px 18px #1e27480a}
+.admin-modern .top-header h1,.admin-modern .top-header h2{color:var(--admin-ink);font-weight:800}
+.admin-modern .sidebar{background:linear-gradient(180deg,#fff 0%,#faf9ff 100%);border-color:var(--admin-line);box-shadow:-8px 0 28px #27225209}
+.admin-modern .sidebar-header{min-height:88px;border-color:var(--admin-line)}
+.admin-modern .sidebar-header img{background:#fff;border-radius:10px}
+.admin-modern .sidebar-nav{padding:14px 10px}
+.admin-modern .nav-group-header{border-radius:12px;color:#263454;transition:background .2s,color .2s}
+.admin-modern .nav-group-header:hover{background:#f1edfa;color:#594097}
+.admin-modern .nav-item{border-radius:10px;margin:3px 2px;transition:background .2s,color .2s,transform .2s}
+.admin-modern .nav-item:hover{background:#f0edfa;color:#53398d;transform:translateX(-2px)}
+.admin-modern .nav-item.active{background:#eee8fa;color:#573994;border-inline-start:3px solid #7555b3;border-right:0;font-weight:700}
+.admin-modern .page-content{max-width:1700px;margin-inline:auto;padding:28px clamp(16px,2.1vw,36px) 44px}
+.admin-modern .page-content h1,.admin-modern .page-content h2{letter-spacing:-.025em}
+.admin-modern .page-content .bg-card.border{border-color:var(--admin-line);border-radius:20px;box-shadow:0 9px 26px #2024470a}
+.admin-modern .page-content .rounded-xl.border.bg-card{border-radius:20px}
+.admin-modern .page-content input:not([type=checkbox]):not([type=radio]),.admin-modern .page-content select,.admin-modern .page-content textarea{border-radius:11px;border-color:#dce0ec;transition:border-color .2s,box-shadow .2s}
+.admin-modern .page-content input:focus,.admin-modern .page-content select:focus,.admin-modern .page-content textarea:focus{border-color:#9374cf;box-shadow:0 0 0 3px #8060be20}
+.admin-modern .page-content button:not(.daily-action-card),.admin-modern .page-content a.rounded-lg{transition:transform .18s,box-shadow .18s}
+.admin-modern .page-content button:not(.daily-action-card):hover:not(:disabled),.admin-modern .page-content a.rounded-lg:hover{box-shadow:0 5px 13px #25204716}
+.admin-modern .page-content table{border-collapse:separate;border-spacing:0}
+.admin-modern .page-content thead{background:#f4f3fa;color:#3b4260}
+.admin-modern .page-content th{font-weight:700}
+.admin-modern .page-content tbody tr{transition:background .15s}
+.admin-modern .page-content tbody tr:hover{background:#f8f6fc}
+.admin-modern .daily-tasks-hero{position:relative;overflow:hidden;padding:30px 34px;border:0;border-radius:24px;background:linear-gradient(120deg,#211848,#3b2974 55%,#7250b4);box-shadow:0 18px 40px #25194d24;color:#fff}
+.admin-modern .daily-tasks-hero::after{content:"";position:absolute;width:350px;height:350px;border-radius:50%;inset:auto -110px -270px auto;background:radial-gradient(circle,#35bedb80,transparent 68%);pointer-events:none}
+.admin-modern .daily-tasks-hero h1{position:relative;color:#fff;font-size:clamp(25px,2.3vw,34px)}.admin-modern .daily-tasks-hero p{position:relative;color:#e9e4f8}.admin-modern .daily-tasks-hero a{position:relative;border-color:#ffffff57;background:#ffffff1b;color:#fff;border-radius:12px}.admin-modern .daily-tasks-hero a:hover{background:#ffffff30}
+.admin-modern .daily-actions{padding:22px 24px 24px;border:1px solid var(--admin-line);border-radius:24px;background:#fff;box-shadow:0 10px 28px #2024470a}.admin-modern .daily-actions h2{font-size:23px;color:var(--admin-ink)}
+.admin-modern .daily-action-card{position:relative;overflow:hidden;min-height:174px;padding:18px;border-color:#e9e8f1;border-radius:18px;background:linear-gradient(160deg,#fff 60%,#faf9ff);box-shadow:0 5px 15px #20244708;transition:transform .2s,box-shadow .2s,border-color .2s}.admin-modern .daily-action-card::before{content:"";position:absolute;inset:0 0 auto;height:4px;background:#7d5ac2}.admin-modern .daily-action-card:hover:not(:disabled){transform:translateY(-4px);border-color:#c7b4ea;box-shadow:0 14px 24px #39266f1a}.admin-modern .daily-action-card strong{font-size:30px;line-height:1.1;color:var(--admin-ink)}.admin-modern .daily-action-card>span:last-child{font-size:11px;line-height:1.5}.admin-modern .daily-action-card--expiring::before{background:#e6a222}.admin-modern .daily-action-card--absence::before{background:#f07663}.admin-modern .daily-action-card--registrations::before{background:#3b9ba5}.admin-modern .daily-action-card--conversations::before{background:#6b63d8}.admin-modern .daily-action-card--failures::before{background:#e26a4f}
+@media(max-width:768px){.admin-modern .top-header{height:64px}.admin-modern .page-content{padding:18px 14px 28px}.admin-modern .sidebar-nav{padding:10px 8px}}
+@media(prefers-reduced-motion:reduce){.admin-modern .nav-item,.admin-modern .page-content button,.admin-modern .page-content a{transition:none}.admin-modern .nav-item:hover{transform:none}}

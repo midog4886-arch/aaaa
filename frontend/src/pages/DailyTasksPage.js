@@ -11,8 +11,8 @@ export default function DailyTasksPage() {
   const ar = language === 'ar';
   const allowed = permission => isAdmin || user?.permissions?.includes(permission);
   return <Layout title={ar ? 'مهام اليوم' : 'Today’s tasks'}>
-    <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-5">
+    <div className="daily-tasks-page space-y-6">
+      <div className="daily-tasks-hero rounded-xl border bg-card p-5">
         <h1 className="text-2xl font-bold">{ar ? 'مهام اليوم' : 'Today’s tasks'}</h1>
         <p className="mt-2 text-sm text-muted-foreground">{ar ? 'تابع الحالات التي تحتاج إجراءً بحسب الفرع المحدد وصلاحياتك. تتحدث البيانات كل دقيقة.' : 'Follow up on actionable cases for your selected branch and permissions. Data refreshes every minute.'}</p>
         <div className="mt-4 flex flex-wrap gap-3">

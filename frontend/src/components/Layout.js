@@ -1,4 +1,5 @@
 import { getAcademyLogoUrl, getAcademyName } from '../services/branding';
+import './AdminModern.css';
 import SubscriptionBanner from './SubscriptionBanner';
 import OnboardingGuard from './OnboardingGuard';
 import React, { useState, useEffect, useRef } from 'react';
@@ -925,7 +926,7 @@ export const Layout = ({ children, title }) => {
   const { language } = useLanguage();
 
   return (
-    <div className="app-container">
+    <div className="app-container admin-modern">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="main-content">
         <TopHeader onMenuClick={() => setSidebarOpen(true)} title={title} />
