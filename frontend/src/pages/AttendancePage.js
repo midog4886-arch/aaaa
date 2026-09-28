@@ -88,7 +88,7 @@ export default function AttendancePage() {
   const [reportSelectedLevelId, setReportSelectedLevelId] = useState('');
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('quick'); // quick, record, qr, kiosk, reports
+  const [activeTab, setActiveTab] = useState('quick'); // quick, qr, kiosk
 
   // Day mapping for today's sessions
   const dayMap = {
@@ -995,14 +995,6 @@ export default function AttendancePage() {
             {t('تسجيل سريع', 'Quick Check-in')}
           </Button>
           <Button
-            variant={activeTab === 'record' ? 'default' : 'ghost'}
-            onClick={() => setActiveTab('record')}
-            className="gap-2"
-          >
-            <Users className="w-4 h-4" />
-            {t('تسجيل الحضور', 'Record Attendance')}
-          </Button>
-          <Button
             variant={activeTab === 'qr' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('qr')}
             className="gap-2"
@@ -1017,14 +1009,6 @@ export default function AttendancePage() {
           >
             <Scan className="w-4 h-4" />
             {t('جهاز المسح', 'Scanner Device')}
-          </Button>
-          <Button
-            variant={activeTab === 'reports' ? 'default' : 'ghost'}
-            onClick={() => setActiveTab('reports')}
-            className="gap-2"
-          >
-            <Calendar className="w-4 h-4" />
-            {t('التقارير', 'Reports')}
           </Button>
         </div>
 
