@@ -1181,7 +1181,6 @@ async def get_today_summary(
 
     today_records = await _attendance_task
     active_member_ids = {m.get("id") for m in members if m.get("id") and m.get("status", "active") == "active"}
-    member_created_at = {m.get("id"): (m.get("created_at") or "") for m in members if m.get("id")}
     member_ids_all = [m.get("id") for m in members if m.get("id")]
 
     def _has_active_subscription(mid):
@@ -1443,9 +1442,15 @@ async def get_today_summary(
     expected.sort(key=lambda e: str(e.get("created_at") or ""), reverse=True)
     absent = [e for e in expected if not e["is_present"]]
 
+    # Show the most recently recorded check-in first, including members with
+    # multiple attendance records today. Older records may lack created_at.
     present_list = sorted(
         present_by_member.values(),
-        key=lambda p: str(member_created_at.get(p.get("member_id"), "") or ""),
+        key=lambda p: max(
+            (str(r.get("created_at") or f"{today_str}T{r.get('check_in_time') or '00:00'}")
+             for r in p["records"]),
+            default="",
+        ),
         reverse=True,
     )
 
