@@ -109,6 +109,20 @@ async def require_permission(current_user: dict, permission_key: str):
     return current_user
 
 
+async def require_any_permission(current_user: dict, permission_keys):
+    """Return an allowed permission after checking the current user record."""
+    keys = tuple(permission_keys)
+    if current_user.get("is_admin", False):
+        return keys[0]
+    from database import db
+    user_doc = await db.users.find_one({"id": current_user.get("user_id")}, {"_id": 0, "permissions": 1})
+    permissions = (user_doc or {}).get("permissions") or []
+    for key in keys:
+        if key in permissions:
+            return key
+    raise HTTPException(status_code=403, detail=f"إحدى الصلاحيات التالية مطلوبة: {', '.join(keys)}")
+
+
 def get_allowed_branch_ids(current_user: dict) -> list:
     """Return the list of branch ids a non-admin user is scoped to.
 

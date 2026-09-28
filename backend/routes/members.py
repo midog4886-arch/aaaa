@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .common import db, get_current_user
-from utils.auth import require_branch_scope, resolve_branch_filter, require_permission
+from utils.auth import require_branch_scope, resolve_branch_filter, require_permission, require_any_permission
 from utils.sequences import get_branch_seq_start
 from utils.member_code import generate_member_code
 from utils.cache import cache_invalidate, invalidate_dashboard_caches
@@ -1203,10 +1203,26 @@ class ScheduleChangeRequest(BaseModel):
     preview_token: Optional[str] = None
 
 
+async def _authorize_schedule_change(current_user: dict, member_id: str, activity_id: str, activity: MemberActivity):
+    granted = await require_any_permission(current_user, ("members-edit", "members-schedule-edit"))
+    if granted == "members-edit":
+        return
+    member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0, "activities": 1})
+    old = next((a for a in (member or {}).get("activities", []) if a.get("activity_id") == activity_id), None)
+    if old is None:
+        raise HTTPException(status_code=404, detail="Member activity not found")
+    schedule_fields = {"schedule", "training_days", "training_time", "day_times"}
+    old_data = {**old, "activity_name": old.get("activity_name") or activity.activity_name}
+    before = MemberActivity.model_validate(old_data).model_dump(exclude=schedule_fields)
+    after = activity.model_dump(exclude=schedule_fields)
+    if before != after:
+        raise HTTPException(status_code=403, detail="صلاحية تعديل المواعيد لا تسمح بتغيير بيانات الاشتراك الأخرى")
+
+
 @router.post("/{member_id}/activities/{activity_id}/schedule-change/preview")
 async def preview_schedule_change(member_id: str, activity_id: str, data: ScheduleChangeRequest,
                                   current_user: dict = Depends(get_current_user)):
-    await require_permission(current_user, "members-edit")
+    await _authorize_schedule_change(current_user, member_id, activity_id, data.activity)
     from utils.schedule_changes import build_plan
     from utils.subscription_dates import validate_subscription_windows
     validate_subscription_windows([data.activity])
@@ -1220,7 +1236,7 @@ async def preview_schedule_change(member_id: str, activity_id: str, data: Schedu
 async def confirm_schedule_change(member_id: str, activity_id: str, data: ScheduleChangeRequest,
                                   current_user: dict = Depends(get_current_user),
                                   notify_whatsapp: bool = Query(True)):
-    await require_permission(current_user, "members-edit")
+    await _authorize_schedule_change(current_user, member_id, activity_id, data.activity)
     from utils.schedule_changes import commit_plan
     from utils.subscription_dates import validate_subscription_windows
     validate_subscription_windows([data.activity])

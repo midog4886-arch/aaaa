@@ -456,11 +456,11 @@ def test_endpoint_permission_denied_before_lookup(monkeypatch):
     from routes import members
     calls = []
 
-    async def deny(user, permission):
-        calls.append(permission)
+    async def deny(user, permissions):
+        calls.append(tuple(permissions))
         raise HTTPException(403, detail="permission denied")
 
-    monkeypatch.setattr(members, "require_permission", deny)
+    monkeypatch.setattr(members, "require_any_permission", deny)
     db, member, payload = fixture()
     payload["activity"]["activity_name"] = "Swimming"
     request = members.ScheduleChangeRequest(**payload)
@@ -468,7 +468,35 @@ def test_endpoint_permission_denied_before_lookup(monkeypatch):
         with pytest.raises(HTTPException) as exc:
             asyncio.run(endpoint("m", "a", request, current_user={"user_id": "staff"}))
         assert exc.value.status_code == 403
-    assert calls == ["members-edit", "members-edit"]
+    assert calls == [("members-edit", "members-schedule-edit")] * 2
+
+
+def test_schedule_only_permission_cannot_change_subscription_or_transfer_sessions(monkeypatch):
+    from routes import members
+    db, member, payload = fixture()
+    monkeypatch.setattr(members, "db", db)
+
+    async def schedule_only(*args):
+        return "members-schedule-edit"
+
+    monkeypatch.setattr(members, "require_any_permission", schedule_only)
+    activity = members.MemberActivity(**{**payload["activity"], "activity_name": "Swimming"})
+    activity.schedule = "monday thursday"
+    asyncio.run(members._authorize_schedule_change({"branch_id": "b"}, "m", "a", activity))
+
+    activity.fee = 350
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(members._authorize_schedule_change({"branch_id": "b"}, "m", "a", activity))
+    assert exc.value.status_code == 403
+
+    async def deny(*args):
+        raise HTTPException(403, detail="members-edit required")
+
+    monkeypatch.setattr(members, "require_permission", deny)
+    transfer = members.SessionTransferRequest(recipient_id="other", sessions=1, reason="test")
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(members.transfer_sessions("m", "a", "preview", transfer, current_user={"branch_id": "b"}))
+    assert exc.value.status_code == 403
 
 
 def test_admin_preview_and_crossbranch_route(monkeypatch):
@@ -488,8 +516,8 @@ def test_admin_preview_and_crossbranch_route(monkeypatch):
     assert preview["total_allowed"] == 8
     # Model a permission-authorized non-admin; branch guard still hides member.
     async def permitted(*args):
-        return None
-    monkeypatch.setattr(members, "require_permission", permitted)
+        return "members-edit"
+    monkeypatch.setattr(members, "require_any_permission", permitted)
     with pytest.raises(HTTPException) as exc:
         asyncio.run(members.preview_schedule_change("m", "a", request, current_user={"branch_id": "other"}))
     assert exc.value.status_code == 404

@@ -29,6 +29,8 @@ import {
 const ALL_PERMISSIONS = [
   { key: 'dashboard', label_ar: 'لوحة التحكم', label_en: 'Dashboard' },
   { key: 'members', label_ar: 'الأعضاء', label_en: 'Members' },
+  { key: 'members-edit', label_ar: 'تعديل الاشتراكات ونقل الحصص', label_en: 'Edit Subscriptions & Transfer Sessions' },
+  { key: 'members-schedule-edit', label_ar: 'تعديل مواعيد الأعضاء فقط', label_en: 'Edit Member Schedules Only' },
   { key: 'members-create', label_ar: 'إضافة عضو جديد', label_en: 'Add New Member' },
   { key: 'members-add-activity', label_ar: 'إضافة نشاط لعضو', label_en: 'Add Activity to Member' },
   { key: 'attendance-delete', label_ar: 'حذف سجل حضور', label_en: 'Delete Attendance Record' },
