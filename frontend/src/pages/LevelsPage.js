@@ -18,6 +18,7 @@ import { levelsAPI, membersAPI, branchesAPI, activitiesAPI, attendanceAPI, coach
 import { toast } from 'sonner';
 import LevelsCleanupDialog from '../components/levels/LevelsCleanupDialog';
 import LevelsScheduleBuilderDialog from '../components/levels/LevelsScheduleBuilderDialog';
+import LevelCertificateDialog from '../components/levels/LevelCertificateDialog';
 import { 
   Plus, Edit, Trash2, Loader2, Layers, Users, Dumbbell, UserPlus, UserMinus, UserX, Search,
   ChevronDown, ChevronUp, ChevronRight, Clock, AlertTriangle, ArrowRight, ArrowLeft, Home,
@@ -196,6 +197,7 @@ export const LevelsPage = () => {
   const [transferPickerOpen, setTransferPickerOpen] = useState(false);
   const [transferTarget, setTransferTarget] = useState(null); // { member, activity, fromLevel }
   const [transferring, setTransferring] = useState(false);
+  const [certificateMember, setCertificateMember] = useState(null);
 
   // Auto-assign dialog
   const [isAutoAssignOpen, setIsAutoAssignOpen] = useState(false);
@@ -2054,6 +2056,9 @@ ${slotTables}
 
       setTransferPickerOpen(false);
       setTransferTarget(null);
+      if (Number(targetLevel.level_number) > Number(fromLevel.level_number)) {
+        setCertificateMember(member);
+      }
 
       // Refresh + re-sync the open dialog's source-level panel.
       const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
@@ -3881,6 +3886,10 @@ ${slotTables}
                         >
                           <ArrowRightLeft className="w-4 h-4" />
                         </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-purple-700 hover:bg-purple-50 flex-shrink-0"
+                          onClick={() => setCertificateMember(member)} title={t('شهادة اجتياز المستوى', 'Level achievement certificate')}>
+                          <Printer className="w-4 h-4" />
+                        </Button>
                         <Button
                           size="icon"
                           variant="ghost"
@@ -4365,6 +4374,8 @@ ${slotTables}
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <LevelCertificateDialog open={!!certificateMember} onOpenChange={open => { if (!open) setCertificateMember(null); }} member={certificateMember} />
 
         {/* Quick transfer picker (نقل سريع) */}
         <Dialog open={transferPickerOpen} onOpenChange={(o) => { setTransferPickerOpen(o); if (!o) setTransferTarget(null); }}>

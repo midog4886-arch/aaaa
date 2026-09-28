@@ -57,6 +57,7 @@ const PublicRegistrationPage = lazy(() => import('./pages/PublicRegistrationPage
 const RegistrationRequestsPage = lazy(() => import('./pages/RegistrationRequestsPage'));
 const CampaignInquiriesPage = lazy(() => import('./pages/CampaignInquiriesPage'));
 const LevelsPage = lazy(() => import('./pages/LevelsPage'));
+const MemberCertificates = lazy(() => import('./pages/member-portal/MemberCertificates'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
@@ -245,7 +246,7 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr', '/register', '/join', '/marketer'];
+const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr', '/register', '/join', '/marketer', '/certificate/verify'];
 
 const AcademyGuard = ({ children }) => {
   const location = useLocation();
@@ -311,6 +312,8 @@ function AppRoutes() {
       {/* Member Portal Routes */}
       <Route path="/member-login" element={<MemberLogin />} />
       <Route path="/member-dashboard" element={<MemberDashboard />} />
+      <Route path="/member-certificates" element={<MemberCertificates />} />
+      <Route path="/certificate/verify/:certificateId" element={<MemberCertificates verification />} />
       <Route path="/subscriptions" element={<MemberSubscriptions />} />
       <Route path="/member-schedule" element={<MemberSchedule />} />
       <Route path="/card" element={<MemberQRCard />} />

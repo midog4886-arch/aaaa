@@ -2,7 +2,7 @@ import './MemberModern.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
-  Trophy, Home, CreditCard, Calendar, Bell, QrCode,
+  Trophy, Home, CreditCard, Calendar, Bell, QrCode, Award,
   LogOut, Menu, X, Clock, CheckCircle, AlertTriangle,
   Moon, Sun, Star, Activity, Video, Languages, Download, Smartphone, Phone, Mail, User
 } from 'lucide-react';
@@ -208,6 +208,7 @@ const MemberLayout = ({ children }) => {
       dailyVideos: { ar: 'الفيديوهات اليومية', en: 'Daily Videos' },
       attendance: { ar: 'سجل الحضور', en: 'Attendance' },
       memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
+      certificates: { ar: 'شهاداتي', en: 'Certificates' },
       rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
       notifications: { ar: 'الإشعارات', en: 'Notifications' },
       install: { ar: 'تثبيت', en: 'Install' },
@@ -422,6 +423,7 @@ const MemberLayout = ({ children }) => {
       ? [{ to: '/my-tournaments', icon: Trophy, labelKey: 'tournaments' }]
       : []),
     { to: '/card', icon: QrCode, labelKey: 'memberCard' },
+    { to: '/member-certificates', icon: Award, labelKey: 'certificates' },
     { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
     { to: '/notifications', icon: Bell, labelKey: 'notifications', badge: (notifications.unread_count || 0) + (msgUnreadCount || 0) },
     { to: '/member-profile', icon: User, labelKey: 'profile' },
@@ -439,6 +441,7 @@ const MemberLayout = ({ children }) => {
       loyalty: { ar: 'نقاط الولاء', en: 'Loyalty Points' },
       tournaments: { ar: 'بطولاتي', en: 'My Tournaments' },
       memberCard: { ar: 'بطاقة العضوية', en: 'Member Card' },
+      certificates: { ar: 'شهاداتي', en: 'Certificates' },
       rateCoaches: { ar: 'تقييم المدربين', en: 'Rate Coaches' },
       messages: { ar: 'الرسائل', en: 'Messages' },
       notifications: { ar: 'الإشعارات والرسائل', en: 'Notifications & Messages' },
@@ -665,6 +668,7 @@ const MemberLayout = ({ children }) => {
             { to: '/', icon: Home, label: getText('home') },
             { to: '/videos', icon: Video, label: language === 'ar' ? 'الفيديوهات' : 'Videos' },
             { to: '/card', icon: QrCode, label: language === 'ar' ? 'البطاقة' : 'Card' },
+            { to: '/member-certificates', icon: Award, label: language === 'ar' ? 'الشهادات' : 'Awards' },
             { to: '/loyalty-points', icon: Trophy, label: language === 'ar' ? 'النقاط' : 'Points' },
             { to: '/subscriptions', icon: CreditCard, label: language === 'ar' ? 'الاشتراكات' : 'Subs' },
             { to: '/notifications', icon: Bell, label: language === 'ar' ? 'الإشعارات' : 'Inbox', badge: (notifications.unread_count || 0) + (msgUnreadCount || 0) },
