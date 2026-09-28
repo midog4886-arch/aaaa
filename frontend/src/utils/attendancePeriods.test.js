@@ -1,4 +1,4 @@
-import { attendanceForPeriod, periodIsReadOnly, canRecordToday } from './attendancePeriods';
+import { attendanceForPeriod, periodIsReadOnly, canRecordToday, sortAttendancePeriods } from './attendancePeriods';
 
 const period = {
   activity_id: 'swim', count_activity_ids: ['swim', 'legacy'],
@@ -40,4 +40,16 @@ test('today action allows a current purchased period while retaining historical 
   const renewed = { ...purchased, attendance_before: '2026-10-10' };
   expect(periodIsReadOnly(renewed, '2026-10-10')).toBe(true);
   expect(canRecordToday(renewed, '2026-10-10')).toBe(false);
+});
+
+test('current and upcoming subscriptions precede expired ones, newest history first', () => {
+  const periods = [
+    { id: 'july', start_date: '2026-07-13', end_date: '2026-08-08', expired: true },
+    { id: 'august', start_date: '2026-08-10', end_date: '2026-09-05', expired: true },
+    { id: 'september', start_date: '2026-09-06', end_date: '2026-10-10' },
+    { id: 'november', start_date: '2026-11-01', end_date: '2026-11-30', upcoming: true },
+  ];
+  expect(sortAttendancePeriods(periods, '2026-09-28').map(p => p.id))
+    .toEqual(['september', 'november', 'august', 'july']);
+  expect(periods[0].id).toBe('july');
 });

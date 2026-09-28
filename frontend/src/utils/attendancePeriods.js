@@ -19,3 +19,19 @@ export const canRecordToday = (period, today) => Boolean(period.activity_id
   && period.start_date <= today && today <= period.end_date
   && (!period.attendance_before || today < period.attendance_before)
   && !period.expired && !period.upcoming && period.remaining > 0);
+
+export const sortAttendancePeriods = (periods, today) => {
+  const group = period => {
+    if (period.expired || period.end_date < today
+      || (period.attendance_before && period.attendance_before <= today)) return 2;
+    if (period.upcoming || period.start_date > today) return 1;
+    return 0;
+  };
+  return [...periods].sort((a, b) => {
+    const difference = group(a) - group(b);
+    if (difference) return difference;
+    const aStart = a.start_date || '';
+    const bStart = b.start_date || '';
+    return group(a) === 1 ? aStart.localeCompare(bStart) : bStart.localeCompare(aStart);
+  });
+};

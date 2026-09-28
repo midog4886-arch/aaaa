@@ -4,7 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
-import { attendanceForPeriod, periodIsReadOnly, canRecordToday } from '../utils/attendancePeriods';
+import { attendanceForPeriod, periodIsReadOnly, canRecordToday, sortAttendancePeriods } from '../utils/attendancePeriods';
 import { NationalitySelect } from '../components/NationalitySelect';
 import MemberAvatar from '../components/MemberAvatar';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
@@ -4179,7 +4179,7 @@ export const MembersPage = () => {
                           {language === 'ar' ? 'حصص الاشتراك' : 'Session Quota'}
                         </h4>
                         <div className="space-y-2">
-                          {memberSessionQuota.map((q, idx) => {
+                          {sortAttendancePeriods(memberSessionQuota, localDateStr(new Date())).map((q, idx) => {
                             const isExpanded = expandedQuotaIdx.has(idx);
                             const baseDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
                             const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
