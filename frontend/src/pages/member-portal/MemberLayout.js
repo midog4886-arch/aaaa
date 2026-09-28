@@ -1,4 +1,5 @@
 import './MemberModern.css';
+import './MemberPages.css';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
@@ -467,10 +468,23 @@ const MemberLayout = ({ children }) => {
     return texts[key]?.[language] || key;
   };
 
+  const extraPageLabels = {
+    '/member-invoices': { ar: 'فواتيري', en: 'My invoices', icon: CreditCard },
+    '/member-registration-forms': { ar: 'نماذج التسجيل', en: 'Registration forms', icon: Award },
+    '/member-messages': { ar: 'الرسائل', en: 'Messages', icon: Mail },
+  };
+  const activePage = navItems.find(item => item.to === location.pathname);
+  const extraPage = location.pathname.startsWith('/coach-profile/')
+    ? { ar: 'المدرب', en: 'Coach', icon: User }
+    : extraPageLabels[location.pathname];
+  const pageLabel = activePage ? getText(activePage.labelKey) : extraPage?.[language];
+  const PageIcon = activePage?.icon || extraPage?.icon || Home;
+  const showPageHeading = location.pathname !== '/' && location.pathname !== '/member-dashboard' && !!pageLabel;
+
   if (!member) return null;
 
   return (
-    <div className={`member-modern ${darkMode ? 'member-modern-dark' : ''} ${motionPaused ? 'member-motion-paused' : ''} min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-stone-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <div className={`member-modern ${darkMode ? 'member-modern-dark' : ''} ${motionPaused ? 'member-motion-paused' : ''} min-h-screen transition-colors duration-300 ${darkMode ? 'bg-gray-900' : 'bg-stone-50'}`} dir={language === 'ar' ? 'rtl' : 'ltr'} style={{ '--member-accent': primary || '#65409d' }}>
       {/* Header */}
       <header
         className={`member-modern-header ${darkMode ? 'bg-gray-800' : (primary ? '' : 'bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950')} text-white sticky top-0 z-50 shadow-lg safe-area-top`}
@@ -651,6 +665,15 @@ const MemberLayout = ({ children }) => {
       <div className="member-modern-shell">
         <aside className="member-modern-sidebar"><nav aria-label={language === 'ar' ? 'قائمة بوابة الأعضاء' : 'Member portal menu'}>{navItems.map(item => <Link key={item.to} to={item.to} className={location.pathname === item.to ? 'active' : ''}><item.icon size={19} /><span>{getText(item.labelKey)}</span>{item.badge > 0 && <b>{item.badge}</b>}</Link>)}</nav></aside>
       <main className="member-modern-main max-w-7xl mx-auto px-4 py-6 pb-20 mobile-scroll">
+        {showPageHeading && (
+          <div className="member-page-heading" aria-label={pageLabel}>
+            <span className="member-page-heading-icon"><PageIcon size={22} /></span>
+            <div>
+              <span className="member-page-eyebrow">{getText('memberPortal')}</span>
+              <h1>{pageLabel}</h1>
+            </div>
+          </div>
+        )}
         <div className="page-enter">
           {children}
         </div>
