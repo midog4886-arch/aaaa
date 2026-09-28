@@ -47,8 +47,8 @@ def _normalize_branch_ids(branch_ids, branch_id):
     return out
 
 ALL_PERMISSIONS = [
-    'dashboard', 'members', 'members-create', 'invoices', 'activities', 'levels', 'schedule', 'attendance',
-    'coach-ratings', 'coach-attendance', 'coaches', 'advertisements', 'daily-videos',
+    'dashboard', 'members', 'members-create', 'member-phones', 'invoices', 'invoices-refund', 'activities', 'levels', 'certificates', 'schedule', 'attendance',
+    'coach-ratings', 'coach-attendance', 'coach-notes', 'coaches', 'advertisements', 'daily-videos',
     'loyalty', 'store', 'accounting', 'reports', 'messages', 'branches', 'users',
     'settings', 'tournaments', 'social-publisher', 'renewals', 'daily-ledger',
     'day-extensions', 'backup', 'push-notifications', 'member-card', 'salaries',
