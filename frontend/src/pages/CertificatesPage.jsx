@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import { Award, Loader2, Printer } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { Award, Download, Loader2, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/button';
@@ -18,6 +20,8 @@ export default function CertificatesPage() {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const sheetRef = useRef(null);
 
   useEffect(() => {
     axios.get('/api/certificates').then(({ data }) => setIssued(data)).catch(() => toast.error('تعذر تحميل الشهادات')).finally(() => setLoading(false));
@@ -36,7 +40,7 @@ export default function CertificatesPage() {
       setSelected(data);
       setNameAr('');
       setNameEn('');
-      toast.success('صدرت الشهادة، ويمكنك طباعتها الآن');
+      toast.success('صدرت الشهادة، ويمكنك حفظها PDF أو طباعتها الآن');
     } catch (error) {
       toast.error(error.response?.data?.detail?.[0]?.msg || error.response?.data?.detail || 'تعذر إصدار الشهادة');
     } finally {
@@ -45,6 +49,37 @@ export default function CertificatesPage() {
   };
 
   const preview = selected || { student_name_ar: nameAr, student_name_en: nameEn };
+
+  const savePdf = async () => {
+    if (!selected || !sheetRef.current || downloading) return;
+    setDownloading(true);
+    try {
+      const image = sheetRef.current.querySelector('img');
+      if (image && !image.complete) await new Promise((resolve, reject) => {
+        image.addEventListener('load', resolve, { once: true });
+        image.addEventListener('error', reject, { once: true });
+      });
+      if (!image?.naturalWidth) throw new Error('Certificate artwork did not load');
+      const canvas = await html2canvas(sheetRef.current, {
+        backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false,
+        windowWidth: 1600,
+        onclone: clonedDocument => {
+          const sheet = clonedDocument.querySelector('[data-certificate-export] .level-certificate-sheet');
+          sheet.style.width = '1402px';
+          sheet.style.height = '1122px';
+          sheet.querySelector('strong').style.fontSize = '29px';
+          sheet.querySelector('span').style.fontSize = '17px';
+        },
+      });
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 17.25, 0, 262.5, 210);
+      pdf.save(`certificate-${selected.id}.pdf`);
+    } catch (error) {
+      toast.error('تعذر حفظ ملف PDF. حاول مجددًا.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return <Layout title="الشهادات">
     <div className="certificates-page" dir="rtl">
@@ -61,11 +96,11 @@ export default function CertificatesPage() {
             <Input id="certificate-name-en" value={nameEn} onChange={e => { setNameEn(e.target.value); setSelected(null); }} placeholder="Student name in English" required minLength={2} maxLength={120} dir="ltr" autoComplete="off" />
             <Button type="submit" disabled={saving}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} إصدار الشهادة</Button>
           </form>
-          {selected && <div className="certificates-issued"><span>الشهادة جاهزة: {selected.student_name_ar}</span><Button type="button" onClick={() => window.print()}><Printer size={16} /> طباعة الشهادة</Button></div>}
+          {selected && <div className="certificates-issued"><span>الشهادة جاهزة: {selected.student_name_ar}</span><Button type="button" onClick={savePdf} disabled={downloading}>{downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} حفظ PDF</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer size={16} /> طباعة الشهادة</Button></div>}
         </section>
         <section className="certificates-panel certificates-preview">
           <div className="certificates-preview-header"><h2>معاينة الشهادة</h2><span>التصميم الأصلي مع الاسم فقط</span></div>
-          <LevelCertificateSheet certificate={asSheet(preview)} />
+          <div data-certificate-export><LevelCertificateSheet ref={sheetRef} certificate={asSheet(preview)} /></div>
         </section>
       </div>
       <section className="certificates-panel certificates-history">
