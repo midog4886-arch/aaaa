@@ -41,6 +41,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import WelcomeOnboardingDialog from '../components/WelcomeOnboardingDialog';
 import DailyActions from '../components/DailyActions';
+import './DashboardPage.css';
 
 const DEFAULT_WIDGETS = [
   { id: 'stats', visible: true },
@@ -352,7 +353,20 @@ export const DashboardPage = () => {
   return (
     <Layout title={t('dashboard')}>
       <WelcomeOnboardingDialog />
-      <div className="space-y-6 animate-fade-in" data-testid="dashboard-page">
+      <div className="dashboard-page space-y-6 animate-fade-in" data-testid="dashboard-page">
+        <div className="dashboard-hero">
+          <div className="dashboard-hero-copy">
+            <span className="dashboard-hero-eyebrow">{language === 'ar' ? 'مساحة العمل' : 'WORKSPACE'}</span>
+            <h1>{language === 'ar' ? 'لوحة تحكم الأكاديمية' : 'Academy dashboard'}</h1>
+            <p>{language === 'ar' ? 'متابعة ما يهم اليوم، وإدارة الأعضاء والتسجيل من مكان واحد.' : 'Keep up with today and manage members and registrations in one place.'}</p>
+            <span className="dashboard-hero-date">{new Date().toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+          </div>
+          <div className="dashboard-hero-links">
+            <a href="/admin/registration-requests">{language === 'ar' ? 'طلبات التسجيل' : 'Registration requests'} <span aria-hidden="true">↗</span></a>
+            <a href="/admin/today-attendance">{language === 'ar' ? 'حضور اليوم' : "Today's attendance"} <span aria-hidden="true">↗</span></a>
+            <a href="/admin/members">{language === 'ar' ? 'الأعضاء' : 'Members'} <span aria-hidden="true">↗</span></a>
+          </div>
+        </div>
         <DailyActions />
         {/* Dashboard Controls */}
         <div className="flex items-center justify-between gap-2">

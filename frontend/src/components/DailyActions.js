@@ -137,7 +137,7 @@ export default function DailyActions() {
           {groups.map(group => {
             const Icon = iconFor(group.key); const text = label(group.key);
             const unavailable = group.status === 'error' || group.count === null;
-            return <button type="button" key={group.key} onClick={() => !unavailable && setOpenKey(group.key)} className="text-start rounded-xl border bg-card p-4 hover:border-primary/50 hover:-translate-y-0.5 transition-transform disabled:opacity-60" disabled={unavailable} aria-label={`${text[0]}: ${unavailable ? (language === 'ar' ? 'غير متاح' : 'Unavailable') : group.count}`}>
+            return <button type="button" key={group.key} onClick={() => !unavailable && setOpenKey(group.key)} className={`daily-action-card daily-action-card--${group.key} text-start rounded-xl border bg-card p-4 disabled:opacity-60`} disabled={unavailable} aria-label={`${text[0]}: ${unavailable ? (language === 'ar' ? 'غير متاح' : 'Unavailable') : group.count}`}>
               <div className="flex justify-between gap-2"><Icon className="w-5 h-5 text-primary" /><ChevronRight className="w-4 h-4 text-muted-foreground rtl:rotate-180" /></div>
               <strong className="block text-2xl mt-3">{unavailable ? '—' : group.count}</strong><span className="block text-sm font-semibold mt-1">{text[0]}</span><span className="block text-xs text-muted-foreground mt-1 leading-relaxed">{group.status === 'error' ? (language === 'ar' ? 'غير متاح حالياً — أعد المحاولة' : 'Unavailable right now — retry') : (group.note || text[1])}</span>
             </button>;
