@@ -1148,6 +1148,15 @@ async def get_today_summary(
             {**query, "date": today_str}, {"_id": 0}
         ).sort("created_at", -1).to_list(5000)
     )
+    # Freeze changes must take effect immediately even when another worker
+    # still holds a stale today-summary cache entry.
+    _freezes_task = _aio.ensure_future(
+        db.member_freezes.find(
+            {"status": "active", "start_date": {"$lte": today_str},
+             "end_date": {"$gte": today_str}},
+            {"_id": 0, "member_id": 1}
+        ).to_list(100000)
+    )
 
     async def _load_heavy():
         # Lean projections + concurrent fetches — full member docs embed
@@ -1169,33 +1178,22 @@ async def get_today_summary(
         )
         _member_ids = [m.get("id") for m in _members if m.get("id")]
         _inv_by_member = {}
-        _freezes = set()
         if _member_ids:
-            _inv_docs, _freeze_docs = await _aio.gather(
-                db.invoices.find(
-                    {"member_id": {"$in": _member_ids}, "status": {"$in": ["paid", "partial"]}},
-                    {"_id": 0, "member_id": 1, "items.start_date": 1, "items.end_date": 1,
-                     "items.activity_id": 1, "items.activity_name": 1, "items.schedule": 1}
-                ).to_list(100000),
-                db.member_freezes.find(
-                    {"member_id": {"$in": _member_ids}, "status": "active",
-                     "start_date": {"$lte": today_str}, "end_date": {"$gte": today_str}},
-                    {"_id": 0, "member_id": 1}
-                ).to_list(100000),
-            )
+            _inv_docs = await db.invoices.find(
+                {"member_id": {"$in": _member_ids}, "status": {"$in": ["paid", "partial"]}},
+                {"_id": 0, "member_id": 1, "items.start_date": 1, "items.end_date": 1,
+                 "items.activity_id": 1, "items.activity_name": 1, "items.schedule": 1}
+            ).to_list(100000)
             for inv in _inv_docs:
                 _inv_by_member.setdefault(inv.get("member_id"), []).append(inv)
-            for f in _freeze_docs:
-                _freezes.add(f.get("member_id"))
         return {
             "members": _members,
             "levels_docs": _levels,
             "invoices_by_member": _inv_by_member,
-            "active_freezes": list(_freezes),
         }
 
     # The heavy, rarely-changing inputs (members' schedules, paid invoices,
-    # levels, freezes) use a stale-while-revalidate cache. Atlas free tier caps
+    # levels) use a stale-while-revalidate cache. Atlas free tier caps
     # wire throughput (~100KB/s, no compression), so re-fetching ~1.2MB on
     # every dashboard load cost 14s+ for the all-branches view. Staleness only
     # delays NEW members/renewals appearing in the "expected" list; present
@@ -1205,7 +1203,7 @@ async def get_today_summary(
     members = _heavy["members"]
     levels_docs = _heavy["levels_docs"]
     invoices_by_member_pre = _heavy["invoices_by_member"]
-    active_freezes = set(_heavy["active_freezes"])
+    active_freezes = {f.get("member_id") for f in await _freezes_task if f.get("member_id")}
 
     today_records = await _attendance_task
     active_member_ids = {m.get("id") for m in members if m.get("id") and m.get("status", "active") == "active"}
