@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import { Award, Download, Loader2, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Layout } from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -14,6 +15,9 @@ import './CertificatesPage.css';
 const asSheet = item => ({ member_name: item.student_name_ar, member_name_en: item.student_name_en });
 
 export default function CertificatesPage() {
+  const { selectedBranchId, user } = useAuth();
+  const branchFilter = selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : null;
+  const needsBranch = Boolean(user?.is_admin && !branchFilter);
   const [nameAr, setNameAr] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [memberSearch, setMemberSearch] = useState('');
@@ -31,15 +35,21 @@ export default function CertificatesPage() {
   }, []);
 
   useEffect(() => {
-    if (linkedMember || memberSearch.trim().length < 2) { setMemberResults([]); return; }
+    if (linkedMember || needsBranch || memberSearch.trim().length < 2) { setMemberResults([]); return; }
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      axios.get('/api/certificates/member-search', { params: { search: memberSearch.trim() }, signal: controller.signal })
+      axios.get('/api/certificates/member-search', { params: { search: memberSearch.trim(), ...(branchFilter ? { branch_filter: branchFilter } : {}) }, signal: controller.signal })
         .then(({ data }) => setMemberResults(data))
         .catch(error => { if (error.code !== 'ERR_CANCELED') toast.error('تعذر البحث عن الأعضاء'); });
     }, 300);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [memberSearch, linkedMember]);
+  }, [memberSearch, linkedMember, branchFilter, needsBranch]);
+
+  useEffect(() => {
+    setLinkedMember(null);
+    setMemberSearch('');
+    setMemberResults([]);
+  }, [selectedBranchId]);
 
   const create = async (event) => {
     event.preventDefault();
@@ -49,7 +59,7 @@ export default function CertificatesPage() {
     }
     setSaving(true);
     try {
-      const { data } = await axios.post('/api/certificates', { student_name_ar: nameAr.trim(), student_name_en: nameEn.trim(), member_id: linkedMember?.id || null });
+      const { data } = await axios.post('/api/certificates', { student_name_ar: nameAr.trim(), student_name_en: nameEn.trim(), member_id: linkedMember?.id || null, branch_filter: branchFilter });
       setIssued(current => [data, ...current]);
       setSelected(data);
       setNameAr('');
@@ -110,7 +120,7 @@ export default function CertificatesPage() {
           <form onSubmit={create}>
             <Label htmlFor="certificate-member-search">ربط بعضو (اختياري)</Label>
             {linkedMember ? <div className="certificates-linked-member"><span>{linkedMember.name_ar || linkedMember.name} {linkedMember.member_code ? `— ${linkedMember.member_code}` : ''}</span><Button type="button" variant="outline" onClick={() => { setLinkedMember(null); setMemberSearch(''); setSelected(null); }}>إلغاء الربط</Button></div> : <>
-              <Input id="certificate-member-search" value={memberSearch} onChange={e => setMemberSearch(e.target.value)} placeholder="ابحث بالاسم أو رقم العضوية" autoComplete="off" />
+              <Input id="certificate-member-search" value={memberSearch} onChange={e => setMemberSearch(e.target.value)} placeholder={needsBranch ? 'اختر الفرع أولاً' : 'ابحث بالاسم أو رقم العضوية'} disabled={needsBranch} autoComplete="off" />
               {memberResults.length > 0 && <div className="certificates-member-results">{memberResults.map(member => <button type="button" key={member.id} onClick={() => { setLinkedMember(member); setMemberSearch(''); setMemberResults([]); setNameAr(member.name_ar || ''); setNameEn(/^[\x00-\x7F]+$/.test(member.name || '') ? member.name : ''); setSelected(null); }}>{member.name_ar || member.name} {member.member_code ? <small>{member.member_code}</small> : null}</button>)}</div>}
             </>}
             <Label htmlFor="certificate-name-ar">اسم الطالب بالعربية</Label>

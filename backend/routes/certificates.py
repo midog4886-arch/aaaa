@@ -16,6 +16,7 @@ class IssueCertificate(BaseModel):
     student_name_ar: str = Field(min_length=2, max_length=120)
     student_name_en: str = Field(min_length=2, max_length=120)
     member_id: str | None = None
+    branch_filter: str | None = None
 
     @field_validator("student_name_ar")
     @classmethod
@@ -41,15 +42,16 @@ async def list_certificates(user: dict = Depends(get_current_user)):
 
 
 @router.get("/member-search")
-async def search_certificate_members(search: str = Query(min_length=2, max_length=80), user: dict = Depends(get_current_user)):
+async def search_certificate_members(search: str = Query(min_length=2, max_length=80), branch_filter: str | None = None, user: dict = Depends(get_current_user)):
     await require_permission(user, "certificates")
     query = {"$or": [
         {field: {"$regex": re.escape(search.strip()), "$options": "i"}}
         for field in ("name_ar", "name", "member_code", "phone")
     ]}
-    branch_id = resolve_branch_filter(user, None)
-    if branch_id:
-        query["branch_id"] = branch_id
+    branch_id = resolve_branch_filter(user, branch_filter)
+    if not branch_id:
+        raise HTTPException(status_code=400, detail="اختر الفرع أولاً للبحث عن عضو")
+    query["branch_id"] = branch_id
     return await db.members.find(query, {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1}).limit(20).to_list(20)
 
 
@@ -59,9 +61,10 @@ async def issue_certificate(payload: IssueCertificate, user: dict = Depends(get_
     member = None
     if payload.member_id:
         query = {"id": payload.member_id}
-        branch_id = resolve_branch_filter(user, None)
-        if branch_id:
-            query["branch_id"] = branch_id
+        branch_id = resolve_branch_filter(user, payload.branch_filter)
+        if not branch_id:
+            raise HTTPException(status_code=400, detail="اختر الفرع أولاً لربط الشهادة بعضو")
+        query["branch_id"] = branch_id
         member = await db.members.find_one(query, {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1})
         if not member:
             raise HTTPException(status_code=404, detail="العضو المحدد غير موجود أو خارج نطاق الفرع")
