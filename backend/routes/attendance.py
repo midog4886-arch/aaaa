@@ -518,6 +518,21 @@ async def enforce_attendance_window(member_id: str, activity_id: str, check_date
         branch = resolve_branch_filter(current_user, None)
         if not branch or (member.get("branch_id") != branch and not member.get("is_vip")):
             raise HTTPException(403, detail="لا يمكن تسجيل حضور عضو من فرع آخر")
+    # Select the latest purchased period containing this date. Renewals can
+    # overlap a previous invoice, and a profile row may still point at an
+    # older/future period. A date move must stay within the selected period.
+    if getattr(db, "invoices", None) is not None:
+        purchased = await get_member_subscription_history(member_id, activity_id, member=member)
+        matching = [p for p in purchased if p["start_date"] <= check_date <= p["end_date"]
+                    and (not p.get("attendance_before") or check_date < p["attendance_before"])]
+        if matching:
+            current = max(matching, key=lambda p: p["start_date"])
+            if not previous_date or (
+                current["start_date"] <= previous_date <= current["end_date"]
+                and (not current.get("attendance_before") or previous_date < current["attendance_before"])
+            ):
+                return
+            raise HTTPException(400, detail="لا يمكن نقل الحضور بين فترتي اشتراك مختلفتين")
     linked = [a for a in member.get("activities", []) if a.get("activity_id") == activity_id]
     if linked:
         windows = [a for a in linked if a.get("status", "active") in ("active", "expired")]
@@ -538,6 +553,18 @@ async def enforce_session_cap(member_id: str, activity_id: str, check_date: str)
     `check_date`. Uses the same calculation as check_member_session_quota so
     the total honours days_per_week × weeks (e.g. 2 days/week → 8/month)."""
     await enforce_attendance_window(member_id, activity_id, check_date)
+    if getattr(db, "invoices", None) is not None:
+        periods = await get_member_subscription_history(member_id, activity_id)
+        matching = [p for p in periods if p["start_date"] <= check_date <= p["end_date"]
+                    and (not p.get("attendance_before") or check_date < p["attendance_before"])]
+        if matching:
+            current = max(matching, key=lambda p: p["start_date"])
+            if current["used_sessions"] >= current["total_allowed"]:
+                raise HTTPException(400, detail=(
+                    f"تم استنفاد عدد الحصص المسموح به ({current['used_sessions']}/"
+                    f"{current['total_allowed']}) — لا يمكن تسجيل حصة إضافية"
+                ))
+            return
     quotas = await check_member_session_quota(member_id, activity_id)
     for q in quotas:
         if q.get("activity_id") != activity_id:
@@ -905,7 +932,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None, se
 
 
 async def get_member_subscription_history(member_id: str, activity_id: str = None, member: dict = None):
-    """Read-only purchased-period view. Never used by attendance/quota guards."""
+    """Purchased-period view shared by history and paid-renewal attendance guards."""
     today = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")
     if member is None:
         member = await db.members.find_one(

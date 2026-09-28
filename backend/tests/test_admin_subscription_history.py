@@ -138,6 +138,34 @@ def test_overlapping_distinct_purchases_not_deduplicated(monkeypatch):
     assert [card["used_sessions"] for card in cards] == [0, 1]
 
 
+def test_paid_renewal_allows_attendance_before_profile_reconciliation(monkeypatch):
+    old = invoice(8)
+    old["items"][0]["start_date"] = "2026-08-12"
+    old["items"][0]["end_date"] = "2026-10-09"
+    renewal = invoice(9)
+    renewal["items"][0]["start_date"] = "2026-09-28"
+    renewal["items"][0]["end_date"] = "2026-10-21"
+    future = invoice(11)
+    future["items"][0]["start_date"] = "2026-10-02"
+    future["items"][0]["end_date"] = "2026-11-25"
+    profile = {**future["items"][0], "source": "invoice", "source_id": future["id"]}
+    install(monkeypatch, [old, renewal, future], [profile])
+    asyncio.run(att.enforce_attendance_window("M", "A", "2026-09-28", {"is_admin": True}))
+    asyncio.run(att.enforce_session_cap("M", "A", "2026-09-28"))
+    with pytest.raises(HTTPException, match="فترتي اشتراك"):
+        asyncio.run(att.enforce_attendance_window("M", "A", "2026-09-28",
+                                                   {"is_admin": True}, previous_date="2026-09-21"))
+
+    records = [{"member_id": "M", "activity_id": "A", "date": f"2026-09-{day:02}"}
+               for day in range(20, 28)]
+    records += [{"member_id": "M", "activity_id": "A", "date": "2026-09-28"}
+                for _ in range(8)]
+    install(monkeypatch, [old, renewal, future], [profile], records)
+    with pytest.raises(HTTPException, match="استنفاد") as exc:
+        asyncio.run(att.enforce_session_cap("M", "A", "2026-09-28"))
+    assert exc.value.status_code == 400
+
+
 def test_same_invoice_exact_period_key_and_shift_no_duplicate(monkeypatch):
     inv = invoice(10)
     inv["items"].append(invoice(11)["items"][0])
