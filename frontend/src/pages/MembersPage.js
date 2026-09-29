@@ -1367,36 +1367,34 @@ export const MembersPage = () => {
     setMemberFreezes([]);
     setMemberFreezeStats(null);
     setMemberAuditLog([]);
-    try {
-      const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes, closuresRes, fullMemberRes] = await Promise.all([
+    {
+      const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes, closuresRes, fullMemberRes] = await Promise.allSettled([
         invoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getMemberReport(member.id),
         productInvoicesAPI.getAll({ member_id: member.id }),
         attendanceAPI.getSessionQuota(member.id, undefined, true),
-        tournamentsAPI.getByMember(member.id).catch(() => ({ data: [] })),
-        dayExtensionsAPI.getClosures().catch(() => ({ data: [] })),
+        tournamentsAPI.getByMember(member.id),
+        dayExtensionsAPI.getClosures(),
         // List rows are fetched with exclude_photo — pull the full doc so the
         // header avatar has the photo (falls back to initials on failure).
-        membersAPI.getById(member.id).catch(() => null)
+        membersAPI.getById(member.id)
       ]);
       if (!fresh()) return;
-      if (fullMemberRes?.data?.id === member.id) {
-        setSelectedMember(prev => (prev && prev.id === member.id ? { ...prev, ...fullMemberRes.data } : prev));
+      const data = result => result.status === 'fulfilled' ? result.value?.data : null;
+      const fullMember = data(fullMemberRes);
+      if (fullMember?.id === member.id) {
+        setSelectedMember(prev => (prev && prev.id === member.id ? { ...prev, ...fullMember } : prev));
       }
-      setMemberInvoices(invoicesRes.data);
-      setMemberAttendance(attendanceRes.data);
-      setMemberProductPurchases(Array.isArray(productInvRes.data) ? productInvRes.data : []);
-      setMemberSessionQuota(Array.isArray(quotaRes.data) ? quotaRes.data : []);
-      setMemberTournaments(Array.isArray(tournamentsRes.data) ? tournamentsRes.data : []);
-      const closuresList = Array.isArray(closuresRes.data) ? closuresRes.data : [];
+      setMemberInvoices(Array.isArray(data(invoicesRes)) ? data(invoicesRes) : []);
+      setMemberAttendance(data(attendanceRes));
+      setMemberProductPurchases(Array.isArray(data(productInvRes)) ? data(productInvRes) : []);
+      setMemberSessionQuota(Array.isArray(data(quotaRes)) ? data(quotaRes) : []);
+      setMemberTournaments(Array.isArray(data(tournamentsRes)) ? data(tournamentsRes) : []);
+      const closuresList = Array.isArray(data(closuresRes)) ? data(closuresRes) : [];
       setAppliedClosures(closuresList.filter(c => c.applied));
-    } catch (error) {
-      if (!fresh()) return;
-      console.error('Failed to load member data:', error);
-      setMemberInvoices([]);
-      setMemberAttendance(null);
-      setMemberProductPurchases([]);
-      setMemberSessionQuota([]);
+      [invoicesRes, attendanceRes, productInvRes, quotaRes].forEach((result, index) => {
+        if (result.status === 'rejected') console.error(['Member invoices', 'Member attendance', 'Member purchases', 'Member quota'][index], result.reason);
+      });
     }
     try {
       const [freezesRes, statsRes] = await Promise.all([
