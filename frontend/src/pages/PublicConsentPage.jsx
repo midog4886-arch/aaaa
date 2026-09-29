@@ -32,7 +32,10 @@ export default function PublicConsentPage() {
     request().then(result => {
       if (!active) return;
       setData(result);
-      setForm(previous => ({ ...previous, child_name: result.invoice.customer_name_ar || result.invoice.member_name || '' }));
+      setForm(previous => ({ ...previous,
+        child_name: result.invoice.customer_name_ar || result.invoice.member_name || '',
+        guardian_name: result.guardian_name || '',
+      }));
     }).catch(e => { if (active) setError(e.message); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

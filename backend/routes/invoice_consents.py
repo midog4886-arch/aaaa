@@ -242,7 +242,16 @@ async def mark_registration_consent_whatsapp_opened(invoice_id: str, link_id: st
 async def get_public_registration_consent(token: str):
     link, invoice, settings, signed = await public_link(token)
     snapshot = invoice_snapshot(invoice)
+    guardian_name = (invoice.get("guardian_name_ar") or invoice.get("guardian_name") or "").strip()
+    if not guardian_name and invoice.get("member_id"):
+        member = await db.members.find_one(
+            {"id": invoice["member_id"]},
+            {"guardian_name_ar": 1, "guardian_name": 1, "_id": 0},
+        )
+        if member:
+            guardian_name = (member.get("guardian_name_ar") or member.get("guardian_name") or "").strip()
     return {"status": "signed" if signed else "pending", "invoice": snapshot,
+            "guardian_name": guardian_name,
             "invoice_hash": link["invoice_hash"], "terms_version": link["terms_version"],
             "title": settings["title"], "title_en": settings["title_en"],
             "company_name": settings["company_name"], "company_name_en": settings["company_name_en"],

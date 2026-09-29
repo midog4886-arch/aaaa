@@ -51,7 +51,7 @@ class Collection:
 def fixture_db(monkeypatch):
     invoice = {'id': 'i1', 'invoice_number': '530405', 'branch_id': 'b1', 'status': 'pending',
                'customer_name_ar': 'طفل', 'total': 500, 'items': [{'activity_name': 'سباحة يومين', 'is_product': False}]}
-    database = SimpleNamespace(invoices=Collection([invoice]), invoice_consents=Collection(), invoice_consent_links=Collection(), registration_consent_settings=Collection())
+    database = SimpleNamespace(invoices=Collection([invoice]), members=Collection(), invoice_consents=Collection(), invoice_consent_links=Collection(), registration_consent_settings=Collection())
     monkeypatch.setattr(route, 'db', database)
     user = {'is_admin': False, 'branch_id': 'b1', 'username': 'staff'}
     return invoice, database, user
@@ -124,3 +124,20 @@ def test_mobile_link_signs_once_and_invalidates_when_invoice_changes(monkeypatch
     with pytest.raises(HTTPException) as changed:
         asyncio.run(route.get_public_registration_consent(created['token']))
     assert changed.value.status_code == 410
+
+
+def test_mobile_form_prefills_guardian_name_without_changing_invoice_revision(monkeypatch):
+    invoice, database, user = fixture_db(monkeypatch)
+    async def allow(_user, _permission):
+        return None
+    monkeypatch.setattr(route, 'require_permission', allow)
+    invoice['member_id'] = 'm1'
+    database.invoices.rows[0]['member_id'] = 'm1'
+    database.members.rows.append({'id': 'm1', 'guardian_name_ar': 'أحمد محمد'})
+    created = asyncio.run(route.create_registration_consent_link('i1', user))
+    state = asyncio.run(route.get_public_registration_consent(created['token']))
+    assert state['guardian_name'] == 'أحمد محمد'
+    assert state['invoice_hash'] == route.snapshot_hash(route.invoice_snapshot(invoice))
+    database.invoices.rows[0]['guardian_name_ar'] = 'محمد أحمد'
+    state = asyncio.run(route.get_public_registration_consent(created['token']))
+    assert state['guardian_name'] == 'محمد أحمد'
