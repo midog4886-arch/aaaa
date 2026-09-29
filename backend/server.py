@@ -5932,6 +5932,7 @@ async def recover_september_members(
     except (KeyError, TypeError, ValueError, IndexError) as exc:
         raise HTTPException(status_code=400, detail="ملف الاستعادة المحددة غير صالح") from exc
 
+    number_changes = {}
     for member_id, (code, number) in expected.items():
         member = members[member_id]
         invoice = invoices[member_id]
@@ -5940,10 +5941,18 @@ async def recover_september_members(
             {"phone": member["phone"], "name_ar": member["name_ar"]},
         ]}, {"_id": 1}):
             raise HTTPException(status_code=409, detail=f"العضو {code} موجود أو متعارض")
-        if await db.invoices.find_one({"$or": [
-            {"id": invoice["id"]}, {"invoice_number": number},
-        ]}, {"_id": 1}):
-            raise HTTPException(status_code=409, detail=f"الفاتورة {number} موجودة أو متعارضة")
+        if await db.invoices.find_one({"id": invoice["id"]}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail=f"معرّف الفاتورة {number} موجود")
+        if await db.invoices.find_one({"invoice_number": number}, {"_id": 1}):
+            # Both systems issued these sequence numbers after the migration.
+            # Preserve the original number and use a distinct displayed number.
+            replacement = f"RBL-{number}"
+            if await db.invoices.find_one({"invoice_number": replacement}, {"_id": 1}):
+                raise HTTPException(status_code=409, detail=f"رقم الاستعادة {replacement} موجود")
+            invoice["legacy_invoice_number"] = number
+            invoice["invoice_number"] = replacement
+            invoice["notes"] = (invoice.get("notes") or "") + f" | رقم الفاتورة الأصلي في Replit: {number}"
+            number_changes[number] = replacement
         if not await db.branches.find_one({"id": member["branch_id"]}, {"_id": 1}):
             raise HTTPException(status_code=409, detail="الفرع المرتبط غير موجود")
         activity = member["activities"][0]
@@ -5957,7 +5966,7 @@ async def recover_september_members(
 
     counts = {name: len(records[name]) for name in names}
     if not apply:
-        return {"ready": True, "applied": False, "counts": counts}
+        return {"ready": True, "applied": False, "counts": counts, "number_changes": number_changes}
 
     inserted = []
     try:
@@ -5969,7 +5978,7 @@ async def recover_september_members(
         for name, object_id in reversed(inserted):
             await db[name].delete_one({"_id": object_id})
         raise
-    return {"ready": True, "applied": True, "counts": counts}
+    return {"ready": True, "applied": True, "counts": counts, "number_changes": number_changes}
 
 
 @api_router.delete("/backup/{filename}")

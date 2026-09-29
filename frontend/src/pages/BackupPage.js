@@ -207,7 +207,7 @@ const BackupPage = () => {
     setRecovery({ file, counts: null, loading: true });
     try {
       const result = await backupAPI.recoverSeptemberMembers(file, false);
-      setRecovery({ file, counts: result.data?.counts, loading: false });
+      setRecovery({ file, counts: result.data?.counts, numberChanges: result.data?.number_changes || {}, loading: false });
     } catch (error) {
       setRecovery({ file: null, counts: null, loading: false });
       toast.error(error.response?.data?.detail || (isAr ? 'تعذر فحص سجلات الاستعادة' : 'Recovery check failed'));
@@ -448,6 +448,9 @@ const BackupPage = () => {
             </DialogDescription>
           </DialogHeader>
           <p className="text-sm">{Object.entries(recovery.counts || {}).map(([name, count]) => `${name}: ${count}`).join(' · ')}</p>
+          {Object.entries(recovery.numberChanges || {}).map(([original, replacement]) => (
+            <p key={original} className="text-sm text-orange-700" dir="ltr">{original} → {replacement}</p>
+          ))}
           <DialogFooter className="gap-2">
             <Button variant="outline" disabled={recovery.loading} onClick={() => setRecovery({ file: null, counts: null, loading: false })}>
               {isAr ? 'إلغاء' : 'Cancel'}
