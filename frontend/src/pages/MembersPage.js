@@ -4185,8 +4185,9 @@ export const MembersPage = () => {
                           {language === 'ar' ? 'حصص الاشتراك' : 'Session Quota'}
                         </h4>
                         <div className="space-y-2">
-                          {sortAttendancePeriods(memberSessionQuota, localDateStr(new Date())).map((q, idx) => {
+                          {sortAttendancePeriods(memberSessionQuota, localDateStr(new Date())).map((q, idx, periods) => {
                             const isExpanded = expandedQuotaIdx.has(idx);
+                            const sharesEarlierInvoice = q.source_id && periods.slice(0, idx).some(period => period.source_id === q.source_id);
                             const baseDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
                             const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
                             const scheduleDates = [...baseDates, ...transferInfo.replacementDates]
@@ -4236,7 +4237,11 @@ export const MembersPage = () => {
                                     </span>
                                   </div>
                                   <div className="text-xs text-gray-600 mb-2" dir="ltr">
-                                    {q.start_date} — {q.end_date}{q.invoice_number ? ` · #${q.invoice_number}` : ''}
+                                    {q.start_date} — {q.end_date}{q.invoice_number
+                                      ? ` · ${sharesEarlierInvoice
+                                        ? (language === 'ar' ? 'فترة أخرى ضمن الفاتورة نفسها' : 'Another period on the same invoice')
+                                        : `#${q.invoice_number}`}`
+                                      : ''}
                                   </div>
                                   <div className="text-xs text-gray-500 mb-1">
                                     {q.profile_subscription
