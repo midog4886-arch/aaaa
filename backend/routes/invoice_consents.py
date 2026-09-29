@@ -1,4 +1,4 @@
-"""Signed swimming registration forms derived from saved invoices."""
+"""Signed activity registration forms derived from saved invoices."""
 import base64
 import hashlib
 import io
@@ -61,6 +61,21 @@ for term, (section_en, text_en) in zip(TERMS, TERMS_EN):
     term["section_en"] = section_en
     term["text_en"] = text_en
 
+# Keep the existing swimming form and its links unchanged. Other activities use
+# only the clauses that apply regardless of the sport.
+GENERAL_TERMS = [TERMS[index] for index in (0, 1, 2, 6, 7, 8, 11)]
+
+
+def consent_form_type(invoice):
+    return "swimming" if any(
+        not item.get("is_product") and re.search(r"سباح|swim", item.get("activity_name") or "", re.I)
+        for item in invoice.get("items", [])
+    ) else "general"
+
+
+def has_activity(invoice):
+    return any(not item.get("is_product") for item in invoice.get("items", []))
+
 
 class ConsentInput(BaseModel):
     expected_invoice_hash: str = Field(min_length=64, max_length=64)
@@ -86,6 +101,7 @@ class TermsItem(BaseModel):
 
 
 class TermsUpdate(BaseModel):
+    form_type: str = Field(default="swimming", pattern="^(swimming|general)$")
     title: str = Field(min_length=5, max_length=160)
     title_en: str = Field(min_length=5, max_length=160)
     company_name: str = Field(min_length=2, max_length=120)
@@ -95,12 +111,14 @@ class TermsUpdate(BaseModel):
     declaration_en: str = Field(min_length=20, max_length=3000)
 
 
-async def current_terms():
-    saved = await db.registration_consent_settings.find_one({"id": "activity-registration"}, {"_id": 0})
-    return saved or {"id": "activity-registration", "version": TERMS_VERSION,
+async def current_terms(form_type="swimming"):
+    settings_id = "activity-registration" if form_type == "swimming" else "activity-registration-general"
+    saved = await db.registration_consent_settings.find_one({"id": settings_id}, {"_id": 0})
+    return saved or {"id": settings_id, "version": TERMS_VERSION if form_type == "swimming" else "general-2026-09-29",
                      "title": FORM_TITLE, "title_en": FORM_TITLE_EN,
                      "company_name": COMPANY_NAME, "company_name_en": COMPANY_NAME_EN,
-                     "terms": TERMS, "declaration": DECLARATION, "declaration_en": DECLARATION_EN}
+                     "terms": TERMS if form_type == "swimming" else GENERAL_TERMS,
+                     "declaration": DECLARATION, "declaration_en": DECLARATION_EN}
 
 
 @router.get("/registration-consent-terms")
@@ -112,7 +130,7 @@ async def get_registration_consent_terms(user: dict = Depends(get_current_user))
 async def update_registration_consent_terms(payload: TermsUpdate, user: dict = Depends(get_current_user)):
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Only administrators may edit form terms")
-    doc = {"id": "activity-registration", "version": str(uuid.uuid4()),
+    doc = {"id": "activity-registration" if payload.form_type == "swimming" else "activity-registration-general", "version": str(uuid.uuid4()),
            "title": payload.title.strip(), "title_en": payload.title_en.strip(),
            "company_name": payload.company_name.strip(), "company_name_en": payload.company_name_en.strip(),
            "terms": [item.model_dump() for item in payload.terms],
@@ -188,7 +206,7 @@ async def public_link(token: str):
         raise HTTPException(status_code=410, detail="انتهت صلاحية الرابط")
     if link["invoice_hash"] != snapshot_hash(invoice_snapshot(invoice)):
         raise HTTPException(status_code=410, detail="تغيّرت بيانات الفاتورة؛ اطلب رابطًا جديدًا")
-    settings = await current_terms()
+    settings = await current_terms(consent_form_type(invoice))
     if link["terms_version"] != settings["version"]:
         raise HTTPException(status_code=410, detail="تغيّرت بنود الاستمارة؛ اطلب رابطًا جديدًا")
     signed = await db.invoice_consents.find_one({"invoice_id": invoice["id"], "invoice_hash": link["invoice_hash"], "terms_version": link["terms_version"]}, {"_id": 0})
@@ -201,9 +219,9 @@ async def create_registration_consent_link(invoice_id: str, user: dict = Depends
     invoice = await scoped_invoice(invoice_id, user)
     if invoice.get("status") in {"cancelled", "canceled", "void"}:
         raise HTTPException(status_code=409, detail="لا يمكن إنشاء رابط لفاتورة ملغاة")
-    if not any(not item.get("is_product") and re.search(r"سباح|swim", item.get("activity_name", ""), re.I) for item in invoice.get("items", [])):
-        raise HTTPException(status_code=422, detail="الاستمارة متاحة لنشاط السباحة حاليًا")
-    settings = await current_terms()
+    if not has_activity(invoice):
+        raise HTTPException(status_code=422, detail="الاستمارة متاحة لفواتير الأنشطة فقط")
+    settings = await current_terms(consent_form_type(invoice))
     snapshot = invoice_snapshot(invoice)
     existing = await db.invoice_consents.find_one({"invoice_id": invoice_id, "invoice_hash": snapshot_hash(snapshot), "terms_version": settings["version"]}, {"_id": 0})
     if existing:
@@ -222,7 +240,7 @@ async def create_registration_consent_link(invoice_id: str, user: dict = Depends
 async def get_registration_consent_links(invoice_id: str, user: dict = Depends(get_current_user)):
     await require_permission(user, "invoices")
     invoice = await scoped_invoice(invoice_id, user)
-    return {"links": await link_history(invoice, await current_terms())}
+    return {"links": await link_history(invoice, await current_terms(consent_form_type(invoice)))}
 
 
 @router.post("/{invoice_id}/registration-consent-links/{link_id}/whatsapp-opened")
@@ -273,10 +291,11 @@ async def sign_public_registration_consent(token: str, payload: ConsentInput):
 @router.get("/{invoice_id}/registration-consent")
 async def get_registration_consent(invoice_id: str, user: dict = Depends(get_current_user)):
     invoice = await scoped_invoice(invoice_id, user)
-    settings = await current_terms()
+    settings = await current_terms(consent_form_type(invoice))
     latest = await db.invoice_consents.find_one({"invoice_id": invoice_id}, {"_id": 0}, sort=[("version", -1)])
     snapshot = invoice_snapshot(invoice)
     return {"invoice": snapshot, "invoice_hash": snapshot_hash(snapshot), "terms_version": settings["version"],
+            "form_type": consent_form_type(invoice),
             "title": settings["title"], "title_en": settings["title_en"],
             "company_name": settings["company_name"], "company_name_en": settings["company_name_en"],
             "terms": settings["terms"], "declaration": settings["declaration"], "declaration_en": settings["declaration_en"], "signed": latest,
@@ -286,11 +305,11 @@ async def get_registration_consent(invoice_id: str, user: dict = Depends(get_cur
 @router.post("/{invoice_id}/registration-consent")
 async def sign_registration_consent(invoice_id: str, payload: ConsentInput, user: dict = Depends(get_current_user)):
     invoice = await scoped_invoice(invoice_id, user)
-    settings = await current_terms()
+    settings = await current_terms(consent_form_type(invoice))
     if invoice.get("status") == "cancelled":
         raise HTTPException(status_code=409, detail="Cannot sign a cancelled invoice")
-    if not any(not item.get("is_product") and re.search(r"سباح|swim", item.get("activity_name", ""), re.I) for item in invoice.get("items", [])):
-        raise HTTPException(status_code=422, detail="This form currently applies to swimming activities")
+    if not has_activity(invoice):
+        raise HTTPException(status_code=422, detail="This form applies to activity invoices")
     if not payload.accepted:
         raise HTTPException(status_code=422, detail="Terms must be accepted")
     if payload.has_medical_condition and not payload.medical_details.strip():

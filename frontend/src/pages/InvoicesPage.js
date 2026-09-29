@@ -479,7 +479,7 @@ export const InvoicesPage = () => {
                             <div className="flex gap-1 flex-wrap">
                               <Button variant="ghost" size="sm" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" /></Button>
                               {['pending', 'partial'].includes(inv.status) && <Button variant="outline" size="sm" onClick={() => setBalanceInvoice(inv)}>دفعة / متابعة</Button>}
-                              {(inv.items || []).some(item => !item.is_product && /سباح|swim/i.test(item.activity_name || '')) && <Button variant="outline" size="sm" onClick={() => setConsentInvoice(inv)}>استمارة وتوقيع</Button>}
+                              {(inv.items || []).some(item => !item.is_product) && <Button variant="outline" size="sm" onClick={() => setConsentInvoice(inv)}>استمارة وتوقيع</Button>}
                               <Button variant="ghost" size="sm" onClick={() => openEditDialog(inv)}><Edit className="w-4 h-4" /></Button>
                               {inv.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleMarkPaid(inv.id)} className="text-green-600"><CheckCircle className="w-4 h-4" /></Button>}
                               {inv.status === 'cancelled' && <Button variant="ghost" size="sm" onClick={() => handleRestoreInvoice(inv.id)} className="text-blue-600"><RotateCcw className="w-4 h-4" /></Button>}

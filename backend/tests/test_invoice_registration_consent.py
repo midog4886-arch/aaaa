@@ -141,3 +141,41 @@ def test_mobile_form_prefills_guardian_name_without_changing_invoice_revision(mo
     database.invoices.rows[0]['guardian_name_ar'] = 'محمد أحمد'
     state = asyncio.run(route.get_public_registration_consent(created['token']))
     assert state['guardian_name'] == 'محمد أحمد'
+
+
+def test_existing_and_new_non_swimming_activities_get_general_form(monkeypatch):
+    invoice, database, user = fixture_db(monkeypatch)
+    async def allow(_user, _permission):
+        return None
+    monkeypatch.setattr(route, 'require_permission', allow)
+    # Older invoice items may not have an is_product flag.
+    invoice['items'] = [{'activity_name': 'كرة قدم'}]
+    database.invoices.rows[0]['items'] = invoice['items']
+    state = asyncio.run(route.get_registration_consent('i1', user))
+    assert state['form_type'] == 'general'
+    assert state['terms_version'] != route.TERMS_VERSION
+    assert all('سباح' not in item['text'] and 'pool' not in item['text_en'] for item in state['terms'])
+    created = asyncio.run(route.create_registration_consent_link('i1', user))
+    assert asyncio.run(route.get_public_registration_consent(created['token']))['status'] == 'pending'
+    form = payload(invoice)
+    form.expected_terms_version = state['terms_version']
+    assert asyncio.run(route.sign_public_registration_consent(created['token'], form))['status'] == 'signed'
+
+    new_invoice = {'id': 'i2', 'invoice_number': '530406', 'branch_id': 'b1', 'status': 'pending',
+                   'customer_name_ar': 'طفل', 'total': 500,
+                   'items': [{'activity_name': 'كاراتيه', 'is_product': False}]}
+    database.invoices.rows.append(new_invoice)
+    assert asyncio.run(route.get_registration_consent('i2', user))['form_type'] == 'general'
+    assert 'token' in asyncio.run(route.create_registration_consent_link('i2', user))
+
+
+def test_product_only_invoice_cannot_create_activity_form(monkeypatch):
+    invoice, database, user = fixture_db(monkeypatch)
+    async def allow(_user, _permission):
+        return None
+    monkeypatch.setattr(route, 'require_permission', allow)
+    invoice['items'] = [{'activity_name': 'نظارة سباحة', 'is_product': True}]
+    database.invoices.rows[0]['items'] = invoice['items']
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(route.create_registration_consent_link('i1', user))
+    assert error.value.status_code == 422

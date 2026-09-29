@@ -33,7 +33,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
     setShareLinkId('');
     setForm({ ...empty, child_name: invoice.customer_name_ar || invoice.member_name || '' });
     ink.current = false;
-    invoicesAPI.getRegistrationConsent(invoice.id).then(r => { setData(r.data); setTermsDraft({ title: r.data.title, title_en: r.data.title_en, company_name: r.data.company_name, company_name_en: r.data.company_name_en, terms: r.data.terms.map(item => ({ ...item })), declaration: r.data.declaration, declaration_en: r.data.declaration_en }); }).catch(() => toast.error('تعذر تحميل الاستمارة')).finally(() => setLoading(false));
+    invoicesAPI.getRegistrationConsent(invoice.id).then(r => { setData(r.data); setTermsDraft({ form_type: r.data.form_type, title: r.data.title, title_en: r.data.title_en, company_name: r.data.company_name, company_name_en: r.data.company_name_en, terms: r.data.terms.map(item => ({ ...item })), declaration: r.data.declaration, declaration_en: r.data.declaration_en }); }).catch(() => toast.error('تعذر تحميل الاستمارة')).finally(() => setLoading(false));
     invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => setLinkHistory([]));
   }, [invoice?.id, open]);
   useEffect(() => {
