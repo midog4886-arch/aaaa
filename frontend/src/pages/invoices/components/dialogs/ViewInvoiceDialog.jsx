@@ -96,7 +96,8 @@ export const ViewInvoiceDialog = ({
                   selectedInvoice.payment_method === 'split' ? (isAr ? 'دفع مقسّم' : 'Split') :
                   selectedInvoice.payment_method
                 }</div>
-                <div><strong>{isAr ? 'الحالة:' : 'Status:'}</strong> {selectedInvoice.status === 'paid' ? (isAr ? '✅ مدفوعة' : '✅ Paid') : selectedInvoice.status === 'pending' ? (isAr ? '⏳ غير مدفوعة' : '⏳ Pending') : (isAr ? '❌ ملغاة' : '❌ Cancelled')}</div>
+                <div><strong>{isAr ? 'الحالة:' : 'Status:'}</strong> {selectedInvoice.status === 'paid' ? (isAr ? '✅ مدفوعة' : '✅ Paid') : selectedInvoice.status === 'partial' ? (isAr ? 'مدفوعة جزئيًا' : 'Partially paid') : selectedInvoice.status === 'pending' ? (isAr ? '⏳ غير مدفوعة' : '⏳ Pending') : (isAr ? '❌ ملغاة' : '❌ Cancelled')}</div>
+                {selectedInvoice.status === 'partial' && <div><strong>{isAr ? 'المتبقي:' : 'Remaining:'}</strong> {Math.max(0, (selectedInvoice.total || 0) - (selectedInvoice.paid_amount || 0)).toFixed(2)} {isAr ? 'ر.س' : 'SAR'}</div>}
                 {selectedInvoice.supervisor_name && (
                   <div className="col-span-2 mt-2 pt-2 border-t border-blue-200"><strong>{isAr ? '👤 مشرف الفاتورة:' : '👤 Invoice Supervisor:'}</strong> {selectedInvoice.supervisor_name}</div>
                 )}

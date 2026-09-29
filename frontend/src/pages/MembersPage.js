@@ -4034,6 +4034,10 @@ export const MembersPage = () => {
                       <Receipt className="w-5 h-5 text-primary" />
                       {t('invoices')}
                     </h3>
+                    {memberInvoices.some(i => ['pending', 'partial'].includes(i.status)) && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                      <span>{language === 'ar' ? 'إجمالي المبالغ المتبقية على العضو' : 'Outstanding balance'}</span>
+                      <strong className="block text-xl text-amber-800">{memberInvoices.filter(i => ['pending', 'partial'].includes(i.status)).reduce((sum, i) => sum + Math.max(0, (i.total || 0) - (i.paid_amount || 0)), 0).toFixed(2)} {t('sar')}</strong>
+                    </div>}
                     
                     {memberInvoices.length > 0 ? (
                       <div className="space-y-2">
@@ -4053,11 +4057,13 @@ export const MembersPage = () => {
                               </div>
                               <div className="text-end">
                                 <p className="font-bold text-primary">{invoice.total} {t('sar')}</p>
+                                {['pending', 'partial'].includes(invoice.status) && <p className="text-xs text-amber-700">{language === 'ar' ? 'المتبقي' : 'Remaining'}: {Math.max(0, (invoice.total || 0) - (invoice.paid_amount || 0)).toFixed(2)} {t('sar')}</p>}
+                                {invoice.payment_due_date && <p className="text-xs text-muted-foreground">{language === 'ar' ? 'الاستحقاق' : 'Due'}: {invoice.payment_due_date}</p>}
                                 <Badge 
                                   variant="outline" 
                                   className={invoice.status === 'paid' ? 'bg-green-500/15 text-green-600' : 'bg-amber-500/15 text-amber-600'}
                                 >
-                                  {invoice.status === 'paid' ? t('paid') : t('unpaid')}
+                                  {invoice.status === 'paid' ? t('paid') : invoice.status === 'partial' ? (language === 'ar' ? 'مدفوعة جزئيًا' : 'Partially paid') : t('unpaid')}
                                 </Badge>
                               </div>
                             </div>

@@ -213,6 +213,7 @@ export const useViewInvoiceHandlers = ({
       ? (inv.customer_name_ar || inv.member_name || '-')
       : (inv.customer_name_en || inv.customer_name_ar || inv.member_name || '-');
     const statusLabel = inv.status === 'paid' ? L('✅ مدفوعة', '✅ Paid')
+      : inv.status === 'partial' ? L('مدفوعة جزئيًا', 'Partially paid')
       : inv.status === 'cancelled' ? L('❌ ملغاة', '❌ Cancelled')
       : L('⏳ غير مدفوعة', '⏳ Unpaid');
     const statusClass = inv.status === 'paid' ? 'status-paid' : inv.status === 'cancelled' ? 'status-cancelled' : 'status-pending';

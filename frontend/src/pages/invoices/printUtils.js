@@ -269,7 +269,7 @@ export const printInvoice = (invoice, items) => {
               <h2>فاتورة ضريبية</h2>
               <p>رقم الفاتورة: ${invoice.invoice_number}</p>
               <p>التاريخ: ${new Date(invoice.created_at).toLocaleDateString('ar-SA')} - ${new Date(invoice.created_at).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Riyadh' })}</p>
-              <p>الحالة: ${invoice.status === 'paid' ? 'مدفوع' : 'معلق'}</p>
+              <p>الحالة: ${invoice.status === 'paid' ? 'مدفوع' : invoice.status === 'partial' ? 'مدفوع جزئيًا' : 'معلق'}</p>
             </div>
           </div>
           

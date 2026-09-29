@@ -1,11 +1,12 @@
 """Invoices routes"""
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 import uuid
 import asyncio
 import logging
 import copy
+import math
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,11 @@ class Invoice(BaseModel):
     vat_amount: float = 0
     total: float
     status: str = "pending"
+    paid_amount: float = 0
+    remaining_amount: Optional[float] = None
+    payment_records: List[dict] = []
+    payment_due_date: Optional[str] = None
+    payment_followups: List[dict] = []
     payment_method: str
     payment_split: Optional[Dict[str, float]] = None
     notes: Optional[str] = ""
@@ -574,6 +580,9 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         "vat_amount": vat_amount,
         "total": total,
         "status": "pending",
+        "paid_amount": 0,
+        "remaining_amount": total,
+        "payment_records": [],
         "payment_method": payment_method,
         "payment_split": payment_split,
         "notes": invoice.notes,
@@ -673,8 +682,92 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
     
     return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id" and k != "additional_members"})
 
+class InvoicePaymentInput(BaseModel):
+    amount: float
+    method: str = "cash"
+    reference: str = Field(default="", max_length=120)
+    payment_id: str = Field(min_length=8, max_length=100)
+    due_date: Optional[str] = None
+
+
+class InvoicePaymentFollowupInput(BaseModel):
+    note: str = Field(min_length=1, max_length=500)
+    due_date: Optional[str] = None
+
+
+@router.post("/{invoice_id}/payment-followups")
+async def record_invoice_payment_followup(invoice_id: str, followup: InvoicePaymentFollowupInput, current_user: dict = Depends(get_current_user)):
+    invoice = await db.invoices.find_one(_scoped_invoice_query(invoice_id, current_user), {"_id": 0})
+    if not invoice:
+        raise HTTPException(404, "الفاتورة غير موجودة")
+    if invoice.get('status') not in {'pending', 'partial'}:
+        raise HTTPException(409, 'لا يوجد رصيد مستحق لهذه الفاتورة')
+    if followup.due_date:
+        try:
+            datetime.strptime(followup.due_date, '%Y-%m-%d')
+        except ValueError:
+            raise HTTPException(400, 'تاريخ الاستحقاق غير صحيح')
+    event = {'at': datetime.now(timezone.utc).isoformat(), 'note': followup.note.strip(),
+             'actor': current_user.get('name') or current_user.get('username') or 'موظف'}
+    update = {'$push': {'payment_followups': {'$each': [event], '$slice': -100}}}
+    if followup.due_date:
+        update['$set'] = {'payment_due_date': followup.due_date}
+    await db.invoices.update_one(_scoped_invoice_query(invoice_id, current_user), update)
+    return {'success': True}
+
+
+@router.post("/{invoice_id}/payments")
+async def record_invoice_partial_payment(invoice_id: str, payment: InvoicePaymentInput, current_user: dict = Depends(get_current_user)):
+    """Record a partial collection without activating a fully paid invoice."""
+    if payment.method not in {"cash", "card", "transfer"}:
+        raise HTTPException(400, "طريقة دفع غير صحيحة")
+    invoice = await db.invoices.find_one(_scoped_invoice_query(invoice_id, current_user), {"_id": 0})
+    if not invoice:
+        raise HTTPException(404, "الفاتورة غير موجودة")
+    if not math.isfinite(payment.amount):
+        raise HTTPException(400, 'مبلغ غير صحيح')
+    previous = next((row for row in invoice.get('payment_records', []) if row.get('id') == payment.payment_id), None)
+    if previous:
+        if round(float(previous.get('amount', 0)) * 100) != round(payment.amount * 100):
+            raise HTTPException(409, 'مرجع الدفعة مستخدم لمبلغ مختلف')
+        return {"invoice": invoice, "already_recorded": True}
+    if invoice.get('status') not in {'pending', 'partial'} or invoice.get('online_payment_link_id'):
+        raise HTTPException(409, "لا يمكن تسجيل دفعة لهذه الفاتورة")
+    total_cents = round(float(invoice['total']) * 100)
+    paid_cents = round(float(invoice.get('paid_amount') or 0) * 100)
+    amount_cents = round(payment.amount * 100)
+    remaining_cents = total_cents - paid_cents
+    if amount_cents <= 0 or abs(payment.amount * 100 - amount_cents) > 0.001 or amount_cents >= remaining_cents:
+        raise HTTPException(400, "أدخل مبلغًا أكبر من صفر وأقل من الرصيد المتبقي؛ للسداد الكامل استخدم زر دفع الفاتورة")
+    if payment.due_date:
+        try:
+            datetime.strptime(payment.due_date, '%Y-%m-%d')
+        except ValueError:
+            raise HTTPException(400, "تاريخ الاستحقاق غير صحيح")
+    now = datetime.now(timezone.utc).isoformat()
+    row = {"id": payment.payment_id, "amount": amount_cents / 100, "method": payment.method,
+           "reference": payment.reference.strip(), "created_at": now,
+           "created_by": current_user.get('name') or current_user.get('username') or 'موظف'}
+    update = {"$set": {"paid_amount": (paid_cents + amount_cents) / 100,
+                       "remaining_amount": (remaining_cents - amount_cents) / 100, "status": "partial"},
+              "$push": {"payment_records": row}}
+    if payment.due_date:
+        update['$set']['payment_due_date'] = payment.due_date
+    expected = {**_scoped_invoice_query(invoice_id, current_user),
+        'status': invoice['status'],
+        'online_payment_link_id': invoice.get('online_payment_link_id'),
+        'payment_records.id': {'$ne': payment.payment_id}}
+    if 'paid_amount' in invoice:
+        expected['paid_amount'] = invoice['paid_amount']
+    result = await db.invoices.update_one(expected, update)
+    if not result.modified_count:
+        raise HTTPException(409, "تغير رصيد الفاتورة؛ حدّث الصفحة قبل تسجيل الدفعة")
+    updated = await db.invoices.find_one(_scoped_invoice_query(invoice_id, current_user), {"_id": 0})
+    return {"invoice": updated, "already_recorded": False}
+
+
 @router.put("/{invoice_id}/pay")
-async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_user), payment: Optional[InvoicePaymentInput] = None):
     """Mark an invoice as paid (branch-scoped for non-admins)"""
     scoped_invoice_query = _scoped_invoice_query(invoice_id, current_user)
     invoice = await db.invoices.find_one(scoped_invoice_query)
@@ -687,6 +780,12 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=409, detail='الفاتورة ليست معلقة')
     if invoice.get('online_payment_link_id') and current_user.get('_verified_gateway_link') != invoice['online_payment_link_id']:
         raise HTTPException(status_code=409, detail='توجد عملية دفع إلكترونية؛ تحقق منها أو ألغِ رابط الدفع أولًا')
+    remaining_cents = round(float(invoice['total']) * 100) - round(float(invoice.get('paid_amount') or 0) * 100)
+    if payment:
+        if not math.isfinite(payment.amount) or payment.method not in {'cash', 'card', 'transfer'} or round(payment.amount * 100) != remaining_cents:
+            raise HTTPException(400, 'يجب أن تساوي الدفعة الرصيد المتبقي')
+        if any(row.get('id') == payment.payment_id for row in invoice.get('payment_records', [])):
+            raise HTTPException(409, 'هذه الدفعة مسجلة بالفعل')
     
     # Deduct stock for product items
     for item in invoice.get("items", []):
@@ -714,13 +813,20 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
     paid_at = datetime.now(timezone.utc).isoformat()
     # Conditional transition: only ONE concurrent /pay call can win, so the
     # side effects below (admin notification, activity merge) run once.
-    pay_result = await db.invoices.update_one(
-        {**scoped_invoice_query, "status": invoice.get('status'), 'online_payment_link_id': invoice.get('online_payment_link_id')},
-        {"$set": {
+    payment_update = {"$set": {
             "status": "paid",
-            "paid_at": paid_at
+            "paid_at": paid_at,
+            "paid_amount": invoice['total'], "remaining_amount": 0,
         }}
-    )
+    if payment:
+        payment_update['$push'] = {'payment_records': {'id': payment.payment_id, 'amount': remaining_cents / 100,
+            'method': payment.method, 'reference': payment.reference.strip(), 'created_at': paid_at,
+            'created_by': current_user.get('name') or current_user.get('username') or 'موظف'}}
+    expected = {**scoped_invoice_query, "status": invoice.get('status'),
+                'online_payment_link_id': invoice.get('online_payment_link_id')}
+    if 'paid_amount' in invoice:
+        expected['paid_amount'] = invoice['paid_amount']
+    pay_result = await db.invoices.update_one(expected, payment_update)
     if getattr(pay_result, "modified_count", 1) == 0:
         raise HTTPException(status_code=400, detail="Invoice already paid")
     # Customer WhatsApp receipt runs outside the payment critical path. It is
@@ -1087,11 +1193,13 @@ async def pay_invoice(invoice_id: str, current_user: dict = Depends(get_current_
 async def cancel_invoice(invoice_id: str, current_user: dict = Depends(get_current_user)):
     """Cancel an invoice (branch-scoped for non-admins)"""
     before = await db.invoices.find_one(_scoped_invoice_query(invoice_id, current_user), {"_id": 0})
+    if (before or {}).get('paid_amount', 0) > 0:
+        raise HTTPException(409, 'سُجلت دفعات لهذه الفاتورة؛ عالج الاسترداد قبل الإلغاء')
     if (before or {}).get('online_payment_link_id'):
         from routes.payment_links import cancel_link
         await cancel_link(before['online_payment_link_id'], current_user)
     result = await db.invoices.update_one(
-        {**_scoped_invoice_query(invoice_id, current_user), 'online_payment_link_id': None},
+        {**_scoped_invoice_query(invoice_id, current_user), 'online_payment_link_id': None, 'paid_amount': {'$in': [0, None]}},
         {"$set": {"status": "cancelled"}}
     )
     if result.matched_count == 0:
@@ -1131,10 +1239,12 @@ async def delete_invoice(invoice_id: str, current_user: dict = Depends(get_curre
 
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="Cannot delete paid invoice")
+    if invoice.get('paid_amount', 0) > 0:
+        raise HTTPException(409, 'لا يمكن حذف فاتورة سُجلت عليها دفعات')
     if invoice.get('online_payment_link_id'):
         raise HTTPException(status_code=409, detail='ألغِ رابط الدفع الإلكتروني قبل حذف الفاتورة')
 
-    delete_result = await db.invoices.delete_one({**scoped, 'online_payment_link_id': None})
+    delete_result = await db.invoices.delete_one({**scoped, 'online_payment_link_id': None, 'paid_amount': {'$in': [0, None]}})
     if getattr(delete_result, 'deleted_count', 1) == 0:
         raise HTTPException(status_code=409, detail='بدأت عملية دفع؛ تعذّر حذف الفاتورة')
     from utils.audit import log_audit

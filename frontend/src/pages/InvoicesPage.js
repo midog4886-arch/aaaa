@@ -30,6 +30,7 @@ import { AddMemberDialog } from './invoices/components/dialogs/AddMemberDialog';
 import { CreateEditInvoiceDialog } from './invoices/components/dialogs/CreateEditInvoiceDialog';
 import { ViewInvoiceDialog } from './invoices/components/dialogs/ViewInvoiceDialog';
 import { RefundDialog } from './invoices/components/dialogs/RefundDialog';
+import { InvoiceBalanceDialog } from './invoices/components/dialogs/InvoiceBalanceDialog';
 import { ViewCreditNoteDialog } from './invoices/components/dialogs/ViewCreditNoteDialog';
 import { RegFormsPasswordDialog } from './invoices/components/dialogs/RegFormsPasswordDialog';
 import { RegistrationFormDialog } from './invoices/components/dialogs/RegistrationFormDialog';
@@ -62,6 +63,7 @@ export const InvoicesPage = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [balanceInvoice, setBalanceInvoice] = useState(null);
   const [filterRenewalOnly, setFilterRenewalOnly] = useState(false);
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStartDate, setFilterStartDate] = useState('');
@@ -110,6 +112,7 @@ export const InvoicesPage = () => {
     const map = {
       paid: { label: t('paid'), icon: CheckCircle, cls: 'bg-green-500/15 text-green-600 border-green-500/30' },
       pending: { label: t('unpaid'), icon: Clock, cls: 'bg-amber-500/15 text-amber-600 border-amber-500/30' },
+      partial: { label: language === 'ar' ? 'مدفوعة جزئيًا' : 'Partially paid', icon: Clock, cls: 'bg-orange-500/15 text-orange-700 border-orange-500/30' },
       cancelled: { label: t('cancelled'), icon: XCircle, cls: 'bg-red-500/15 text-red-600 border-red-500/30' },
       refunded: { label: language === 'ar' ? 'مسترجع' : 'Refunded', icon: RefreshCcw, cls: 'bg-purple-500/15 text-purple-600 border-purple-500/30' },
       partially_refunded: { label: language === 'ar' ? 'مسترجع جزئياً' : 'Partially Refunded', icon: RefreshCcw, cls: 'bg-purple-500/15 text-purple-600 border-purple-500/30' }
@@ -118,9 +121,11 @@ export const InvoicesPage = () => {
     return <Badge variant="outline" className={cls}><Icon className="w-3 h-3 me-1" />{label}</Badge>;
   };
 
+  const todayRiyadh = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
   const filteredInvoices = invoices.filter(inv => {
     const matchSearch = !searchTerm || inv.member_name?.toLowerCase().includes(searchTerm.toLowerCase()) || inv.id?.includes(searchTerm) || inv.customer_phone?.includes(searchTerm);
-    const matchStatus = filterStatus === 'all' || inv.status === filterStatus;
+    const matchStatus = filterStatus === 'all' || (filterStatus === 'due' ? ['pending', 'partial'].includes(inv.status) && ((inv.total || 0) - (inv.paid_amount || 0)) > 0 : inv.status === filterStatus);
     const isRenewalInv = inv.is_renewal || (inv.notes || '').includes('تجديد');
     const matchRenewal = !filterRenewalOnly || isRenewalInv;
     const matchActivity = filterActivity === 'all' || inv.items?.some(item => item.activity_id === filterActivity);
@@ -128,7 +133,7 @@ export const InvoicesPage = () => {
     const matchStart = !filterStartDate || invDate >= filterStartDate;
     const matchEnd = !filterEndDate || invDate <= filterEndDate;
     return matchSearch && matchStatus && matchRenewal && matchActivity && matchStart && matchEnd;
-  });
+  }).sort((a, b) => filterStatus === 'due' ? Number(Boolean(b.payment_due_date && b.payment_due_date < todayRiyadh)) - Number(Boolean(a.payment_due_date && a.payment_due_date < todayRiyadh)) : 0);
 
   const qrCardHook = useQRCardPrint({ language });
   const { isQRCardDialogOpen, setIsQRCardDialogOpen, qrCardMember, setQrCardMember, qrCardSubscription, setQrCardSubscription, handleOpenQRCard, handlePrintQRCard, handleSendQRCardWhatsApp } = qrCardHook;
@@ -338,6 +343,8 @@ export const InvoicesPage = () => {
                 <SelectContent>
                   <SelectItem value="all">{language === 'ar' ? 'الكل' : 'All'}</SelectItem>
                   <SelectItem value="pending">{t('unpaid')}</SelectItem>
+                  <SelectItem value="partial">{language === 'ar' ? 'مدفوعة جزئيًا' : 'Partially paid'}</SelectItem>
+                  <SelectItem value="due">{language === 'ar' ? 'مبالغ مستحقة' : 'Balances due'}</SelectItem>
                   <SelectItem value="paid">{t('paid')}</SelectItem>
                   <SelectItem value="cancelled">{t('cancelled')}</SelectItem>
                 </SelectContent>
@@ -396,6 +403,11 @@ export const InvoicesPage = () => {
           </TabsList>
 
           <TabsContent value="invoices">
+            <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="invoice-balance-summary">
+              <button type="button" onClick={() => setFilterStatus('due')} className="rounded-xl border bg-white p-3 text-start text-sm">مبالغ مستحقة<strong className="block text-xl text-amber-700">{invoices.filter(i => ['pending', 'partial'].includes(i.status)).reduce((sum, i) => sum + Math.max(0, (i.total || 0) - (i.paid_amount || 0)), 0).toFixed(2)} ر.س</strong></button>
+              <button type="button" onClick={() => setFilterStatus('partial')} className="rounded-xl border bg-white p-3 text-start text-sm">مدفوعة جزئيًا<strong className="block text-xl">{invoices.filter(i => i.status === 'partial').length}</strong></button>
+              <button type="button" onClick={() => setFilterStatus('due')} className="rounded-xl border bg-white p-3 text-start text-sm">متأخرة عن موعد السداد<strong className="block text-xl text-red-600">{invoices.filter(i => ['pending', 'partial'].includes(i.status) && i.payment_due_date && i.payment_due_date < todayRiyadh).length}</strong></button>
+            </div>
             {filterRenewalOnly && (
               <div className="mb-3 flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm text-purple-800" data-testid="renewal-summary-bar">
                 <RefreshCcw className="w-4 h-4" />
@@ -438,7 +450,7 @@ export const InvoicesPage = () => {
                             )}
                             <div className="text-xs text-muted-foreground">{inv.customer_phone}</div>
                           </td>
-                          <td className="p-3 font-semibold">{inv.total?.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}</td>
+                          <td className="p-3 font-semibold">{inv.total?.toFixed(2)} {language === 'ar' ? 'ر.س' : 'SAR'}{['pending', 'partial'].includes(inv.status) && <span className="block text-xs text-amber-700">المتبقي: {Math.max(0, (inv.total || 0) - (inv.paid_amount || 0)).toFixed(2)} ر.س</span>}{inv.payment_due_date && <span className="block text-xs text-muted-foreground">الاستحقاق: {inv.payment_due_date}</span>}</td>
                           <td className="p-3">
                             <div className="flex flex-col items-start gap-1">
                               {getStatusBadge(inv.status)}
@@ -464,6 +476,7 @@ export const InvoicesPage = () => {
                           <td className="p-3">
                             <div className="flex gap-1 flex-wrap">
                               <Button variant="ghost" size="sm" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" /></Button>
+                              {['pending', 'partial'].includes(inv.status) && <Button variant="outline" size="sm" onClick={() => setBalanceInvoice(inv)}>دفعة / متابعة</Button>}
                               <Button variant="ghost" size="sm" onClick={() => openEditDialog(inv)}><Edit className="w-4 h-4" /></Button>
                               {inv.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleMarkPaid(inv.id)} className="text-green-600"><CheckCircle className="w-4 h-4" /></Button>}
                               {inv.status === 'cancelled' && <Button variant="ghost" size="sm" onClick={() => handleRestoreInvoice(inv.id)} className="text-blue-600"><RotateCcw className="w-4 h-4" /></Button>}
@@ -640,6 +653,7 @@ export const InvoicesPage = () => {
           refundReason={refundReason} setRefundReason={setRefundReason}
           saving={refundSaving} onRefund={handleRefund} language={language} t={t}
         />
+        <InvoiceBalanceDialog invoice={balanceInvoice} open={Boolean(balanceInvoice)} onOpenChange={open => { if (!open) setBalanceInvoice(null); }} onChanged={loadData} />
 
         <ViewCreditNoteDialog
           isOpen={isViewCreditNoteDialogOpen} onOpenChange={setIsViewCreditNoteDialogOpen}
