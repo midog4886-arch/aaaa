@@ -84,7 +84,8 @@ def render_signed_consent_pdf(signed):
              Paragraph(_en(signed.get("title_en")), english)])
     if snapshot.get("commercial_reg"):
         story.append(Paragraph(_ar(f"السجل التجاري: {snapshot['commercial_reg']}"), small))
-    story.append(Paragraph(_ar(f"فاتورة رقم {snapshot.get('invoice_number', '—')}  |  النسخة {signed.get('version', '—')}  |  تاريخ التوقيع {signed.get('signed_at', '—')[:10]}"), small))
+    story.append(Paragraph(_ar(f"فاتورة رقم {snapshot.get('invoice_number', '—')}  |  النسخة {signed.get('version', '—')}  |  وقت التوقيع UTC: {signed.get('signed_at', '—')}"), small))
+    story.append(Paragraph(_ar(f"معرّف الفاتورة المحفوظة: {str(signed.get('invoice_hash') or '—')[:20]}  |  إصدار البنود: {signed.get('terms_version', '—')}"), small))
     story.append(Spacer(1, 4 * mm))
 
     story.append(Paragraph(_ar("بيانات التسجيل"), heading))

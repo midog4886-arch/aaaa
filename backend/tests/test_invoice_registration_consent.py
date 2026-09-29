@@ -44,7 +44,7 @@ class Collection:
 
     async def update_one(self, query, change):
         for row in self.rows:
-            if all(row.get(k) == v for k, v in query.items()):
+            if all((k not in row if v.get('$exists') is False else k in row) if isinstance(v, dict) and '$exists' in v else row.get(k) == v for k, v in query.items()):
                 row.update(change['$set'])
                 return
 
@@ -105,13 +105,20 @@ def test_mobile_link_signs_once_and_invalidates_when_invoice_changes(monkeypatch
     created = asyncio.run(route.create_registration_consent_link('i1', user))
     assert 'token' in created
     assert 'token' not in database.invoice_consent_links.rows[0]
+    history = asyncio.run(route.get_registration_consent_links('i1', user))['links']
+    assert history[0]['status'] == 'created'
+    asyncio.run(route.mark_registration_consent_sent('i1', created['id'], user))
+    assert asyncio.run(route.get_registration_consent_links('i1', user))['links'][0]['status'] == 'sent'
     state = asyncio.run(route.get_public_registration_consent(created['token']))
     assert state['status'] == 'pending'
     history = asyncio.run(route.get_registration_consent_links('i1', user))['links']
-    assert history[0]['status'] == 'created'
+    assert history[0]['status'] == 'opened'
+    assert history[0]['opened_at']
     assert history[0]['created_by'] == 'staff'
     asyncio.run(route.mark_registration_consent_whatsapp_opened('i1', created['id'], user))
-    assert asyncio.run(route.get_registration_consent_links('i1', user))['links'][0]['status'] == 'awaiting_signature'
+    asyncio.run(route.mark_registration_consent_sent('i1', created['id'], user))
+    assert asyncio.run(route.get_registration_consent_links('i1', user))['links'][0]['status'] == 'opened'
+    assert asyncio.run(route.get_registration_consent_links('i1', user))['links'][0]['sent_by'] == 'staff'
     result = asyncio.run(route.sign_public_registration_consent(created['token'], payload(invoice)))
     assert result['status'] == 'signed'
     assert asyncio.run(route.get_registration_consent_links('i1', user))['links'][0]['status'] == 'signed'
@@ -191,9 +198,30 @@ def test_signed_pdf_download_uses_saved_form_and_is_branch_scoped(monkeypatch):
     pdf = render_signed_consent_pdf(signed).getvalue()
     assert pdf.startswith(b'%PDF-')
     assert len(pdf) > 5000
-    response = asyncio.run(route.download_registration_consent_pdf('i1', user))
+    response = asyncio.run(route.download_registration_consent_pdf('i1', user=user))
     assert response.media_type == 'application/pdf'
     assert 'signed-consent-530405.pdf' in response.headers['content-disposition']
     with pytest.raises(HTTPException) as forbidden:
-        asyncio.run(route.download_registration_consent_pdf('i1', {'is_admin': False, 'branch_id': 'b2'}))
+        asyncio.run(route.download_registration_consent_pdf('i1', user={'is_admin': False, 'branch_id': 'b2'}))
     assert forbidden.value.status_code == 403
+
+
+def test_saved_versions_and_historical_pdf_survive_later_changes(monkeypatch):
+    invoice, database, user = fixture_db(monkeypatch)
+    async def allow(_user, _permission):
+        return None
+    monkeypatch.setattr(route, 'require_permission', allow)
+    first = asyncio.run(route.sign_registration_consent('i1', payload(invoice), user))
+    invoice['total'] = 600
+    database.invoices.rows[0]['total'] = 600
+    second = asyncio.run(route.sign_registration_consent('i1', payload(invoice), user))
+    history = asyncio.run(route.get_registration_consent_history('i1', user))['versions']
+    assert [row['version'] for row in history] == [2, 1]
+    assert database.invoice_consents.rows[0]['invoice_snapshot']['total'] == 500
+    assert database.invoice_consents.rows[1]['invoice_snapshot']['total'] == 600
+    assert first['signed_at'] and second['signed_at']
+    old_pdf = asyncio.run(route.download_registration_consent_pdf('i1', 1, user))
+    assert 'v1.pdf' in old_pdf.headers['content-disposition']
+    with pytest.raises(HTTPException) as missing:
+        asyncio.run(route.download_registration_consent_pdf('i1', 3, user))
+    assert missing.value.status_code == 404

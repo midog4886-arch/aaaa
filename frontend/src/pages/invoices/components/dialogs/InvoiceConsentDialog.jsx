@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../../../components/ui/dialog';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
@@ -22,6 +22,12 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
   const [sharePhone, setSharePhone] = useState('');
   const [shareLinkId, setShareLinkId] = useState('');
   const [linkHistory, setLinkHistory] = useState([]);
+  const [versions, setVersions] = useState([]);
+  const refreshHistory = useCallback(() => {
+    if (!invoice?.id) return;
+    invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => {});
+    invoicesAPI.getRegistrationConsentHistory(invoice.id).then(r => setVersions(r.data.versions || [])).catch(() => {});
+  }, [invoice?.id]);
   useEffect(() => {
     if (!invoice || !open) return;
     setLoading(true);
@@ -32,8 +38,10 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
     setForm({ ...empty, child_name: invoice.customer_name_ar || invoice.member_name || '' });
     ink.current = false;
     invoicesAPI.getRegistrationConsent(invoice.id).then(r => { setData(r.data); setTermsDraft({ form_type: r.data.form_type, title: r.data.title, title_en: r.data.title_en, company_name: r.data.company_name, company_name_en: r.data.company_name_en, terms: r.data.terms.map(item => ({ ...item })), declaration: r.data.declaration, declaration_en: r.data.declaration_en }); }).catch(() => toast.error('تعذر تحميل الاستمارة')).finally(() => setLoading(false));
-    invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => setLinkHistory([]));
-  }, [invoice?.id, open]);
+    setLinkHistory([]);
+    setVersions([]);
+    refreshHistory();
+  }, [invoice?.id, open, refreshHistory]);
   useEffect(() => {
     if (!open || !data || (data.signed && !data.needs_resign)) return;
     const el = canvas.current;
@@ -54,13 +62,13 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
         if (response.data.signed && !response.data.needs_resign) {
           setData(response.data);
           setShareLink('');
-          invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => {});
+          refreshHistory();
           toast.success('تم اعتماد الاستمارة من جوال ولي الأمر');
         }
       }).catch(() => {});
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [open, shareLink, invoice?.id]);
+  }, [open, shareLink, invoice?.id, refreshHistory]);
   if (!invoice) return null;
   const update = (key, value) => setForm(previous => ({ ...previous, [key]: value }));
   const point = event => { const r = canvas.current.getBoundingClientRect(); return { x: event.clientX - r.left, y: event.clientY - r.top }; };
@@ -76,6 +84,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
     try {
       const signed = await invoicesAPI.signRegistrationConsent(invoice.id, { ...form, expected_invoice_hash: data.invoice_hash, expected_terms_version: data.terms_version, signature_png: canvas.current.toDataURL('image/png') });
       setData(previous => ({ ...previous, signed: signed.data, needs_resign: false }));
+      refreshHistory();
       toast.success('حُفظت الاستمارة الموقّعة');
     } catch (error) { toast.error(error.response?.data?.detail || 'تعذر حفظ التوقيع'); }
     finally { setBusy(false); }
@@ -102,7 +111,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
       setShareLink(`${window.location.origin}/consent/${encodeURIComponent(link.token)}?tenant=${encodeURIComponent(tenant)}`);
       setShareLinkId(link.id);
       setSharePhone((link.customer_phone || '').replace(/\D/g, '').replace(/^0/, '966'));
-      invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => {});
+      refreshHistory();
       toast.success('الرابط جاهز للإرسال، وصلاحيته 7 أيام');
     } catch (error) { toast.error(error.response?.data?.detail || 'تعذر إنشاء الرابط'); }
     finally { setBusy(false); }
@@ -110,21 +119,21 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
   const markWhatsAppOpened = () => {
     if (!shareLinkId) return;
     invoicesAPI.markRegistrationConsentWhatsAppOpened(invoice.id, shareLinkId)
-      .then(() => invoicesAPI.getRegistrationConsentLinks(invoice.id))
-      .then(r => setLinkHistory(r.data.links || []))
+      .then(refreshHistory)
       .catch(() => {});
   };
-  const linkStatus = { created: 'الرابط أُنشئ', awaiting_signature: 'بانتظار التوقيع', signed: 'تم التوقيع', expired: 'انتهت الصلاحية', invalid: 'الرابط غير صالح' };
+  const markSent = linkId => invoicesAPI.markRegistrationConsentSent(invoice.id, linkId).then(refreshHistory).catch(() => toast.error('تعذر تحديث حالة الإرسال'));
+  const linkStatus = { created: 'لم يُرسل', sent: 'الرابط مُرسل', opened: 'فُتح الرابط', signed: 'موقّع', expired: 'منتهي الصلاحية', invalid: 'الرابط غير صالح؛ أُنشئ إصدار جديد' };
   const dateTime = value => value ? new Date(value).toLocaleString('ar-SA') : '—';
-  const printSigned = async () => {
+  const printSigned = async (version) => {
     setBusy(true);
     try {
-      const response = await invoicesAPI.downloadRegistrationConsentPdf(invoice.id);
+      const response = await invoicesAPI.downloadRegistrationConsentPdf(invoice.id, version);
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `استمارة_موقعة_${invoice.invoice_number || invoice.id}.pdf`;
+      link.download = `استمارة_موقعة_${invoice.invoice_number || invoice.id}${version ? `_نسخة_${version}` : ''}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -145,8 +154,20 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
       <div className="flex items-center gap-3 rounded-xl border border-violet-200 bg-gradient-to-l from-violet-50 to-white p-3"><img src={getAcademyLogoUrl()} alt="شعار الأكاديمية" className="h-16 w-16 rounded-lg bg-white object-contain p-1" /><p className="font-semibold text-violet-900">{data.company_name} <span dir="ltr" className="block text-xs font-normal">{data.company_name_en}</span></p></div>
       {data.invoice.commercial_reg && <p className="text-xs text-slate-600">السجل التجاري / Commercial Registration: {data.invoice.commercial_reg}</p>}
       <p className="rounded-lg bg-slate-50 p-3 text-slate-700">التوقيع اختياري حاليًا. يمكنك إنشاء الفاتورة ومتابعة الدفع دون توقيع الاستمارة، ثم توقيعها لاحقًا عند الحاجة.</p>
-      {canSign && <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50 p-3"><p className="font-semibold text-violet-900">التوقيع من جوال ولي الأمر</p><Button variant="outline" disabled={busy} onClick={createShareLink}>إنشاء رابط توقيع لمدة 7 أيام</Button>{shareLink && <><Input dir="ltr" readOnly value={shareLink} aria-label="رابط توقيع الاستمارة" /><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => navigator.clipboard.writeText(shareLink).then(() => toast.success('نُسخ الرابط')).catch(() => toast.error('تعذر نسخ الرابط'))}>نسخ الرابط</Button><a onClick={markWhatsAppOpened} className="rounded-md bg-emerald-600 px-4 py-2 text-white" href={`https://wa.me/${sharePhone}?text=${encodeURIComponent(`يرجى مراجعة استمارة تسجيل النشاط والتوقيع عليها من الرابط التالي:\n${shareLink}`)}`} target="_blank" rel="noopener noreferrer">فتح واتساب للإرسال</a></div><p className="text-xs text-slate-600">فتح واتساب لا يؤكد الإرسال؛ الاعتماد يظهر بعد توقيع ولي الأمر وحفظه.</p></>}</div>}
-      <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><strong>سجل روابط التوقيع</strong><Button variant="outline" size="sm" onClick={() => invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => toast.error('تعذر تحديث السجل'))}>تحديث الحالة</Button></div>{linkHistory.length ? <div className="space-y-2">{linkHistory.map(link => <div key={link.id} className="rounded-lg bg-slate-50 p-2 text-xs"><div className="flex flex-wrap justify-between gap-2"><strong className={link.status === 'signed' ? 'text-emerald-700' : link.status === 'expired' || link.status === 'invalid' ? 'text-red-700' : 'text-violet-700'}>{linkStatus[link.status] || link.status}</strong><span>أنشأه: {link.created_by || '—'}</span></div><p>الإنشاء: {dateTime(link.created_at)} · الصلاحية حتى: {dateTime(link.expires_at)}</p>{link.whatsapp_opened_at && <p>فُتح واتساب: {dateTime(link.whatsapp_opened_at)} (لا يؤكد إرسال الرسالة)</p>}{link.signed_at && <p>اعتماد التوقيع: {dateTime(link.signed_at)}</p>}</div>)}</div> : <p className="text-xs text-slate-500">لا توجد روابط توقيع لهذه الفاتورة بعد.</p>}</div>
+      {canSign && <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50 p-3"><p className="font-semibold text-violet-900">التوقيع من جوال ولي الأمر</p><Button variant="outline" disabled={busy} onClick={createShareLink}>إنشاء رابط توقيع لمدة 7 أيام</Button>{shareLink && <><Input dir="ltr" readOnly value={shareLink} aria-label="رابط توقيع الاستمارة" /><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => navigator.clipboard.writeText(shareLink).then(() => toast.success('نُسخ الرابط')).catch(() => toast.error('تعذر نسخ الرابط'))}>نسخ الرابط</Button><a onClick={markWhatsAppOpened} className="rounded-md bg-emerald-600 px-4 py-2 text-white" href={`https://wa.me/${sharePhone}?text=${encodeURIComponent(`يرجى مراجعة استمارة تسجيل النشاط والتوقيع عليها من الرابط التالي:\n${shareLink}`)}`} target="_blank" rel="noopener noreferrer">فتح واتساب للإرسال</a></div><p className="text-xs text-slate-600">بعد إرسال الرسالة، اضغط «تأكيد إرسال الرابط» في السجل. فتح واتساب وحده لا يؤكد الإرسال.</p></>}</div>}
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
+        <div className="mb-2 flex items-center justify-between"><strong>سجل روابط التوقيع</strong><Button variant="outline" size="sm" onClick={refreshHistory}>تحديث الحالة</Button></div>
+        {linkHistory.length ? <div className="space-y-2">{linkHistory.map(link => <div key={link.id} className="rounded-lg bg-slate-50 p-2 text-xs">
+          <div className="flex flex-wrap justify-between gap-2"><strong className={link.status === 'signed' ? 'text-emerald-700' : link.status === 'expired' || link.status === 'invalid' ? 'text-red-700' : 'text-violet-700'}>{linkStatus[link.status] || link.status}</strong><span>أنشأه: {link.created_by || '—'}</span></div>
+          <p>إنشاء الرابط: {dateTime(link.created_at)} · انتهاء الصلاحية: {dateTime(link.expires_at)}</p>
+          {link.whatsapp_opened_at && <p>فتح الموظف واتساب: {dateTime(link.whatsapp_opened_at)}</p>}
+          {link.sent_at && <p>تأكيد الإرسال بواسطة {link.sent_by || 'الموظف'}: {dateTime(link.sent_at)}</p>}
+          {link.opened_at && <p>فتح رابط الاستمارة: {dateTime(link.opened_at)}</p>}
+          {link.signed_at && <p>التوقيع: {dateTime(link.signed_at)} · نسخة {link.signed_version}</p>}
+          {!link.sent_at && !link.signed_at && link.status !== 'invalid' && link.status !== 'expired' && <Button variant="outline" size="sm" onClick={() => markSent(link.id)}>تأكيد إرسال الرابط</Button>}
+        </div>)}</div> : <p className="text-xs text-slate-500">لم يُنشأ رابط توقيع لهذه الفاتورة.</p>}
+      </div>
+      {versions.length > 0 && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><strong>النسخ الموقّعة المحفوظة</strong><div className="mt-2 space-y-2">{versions.map(item => <div key={item.version} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-2 text-xs"><span>النسخة {item.version} · {item.signer_name || '—'} · {dateTime(item.signed_at)} · سُجّلت بواسطة {item.recorded_by || '—'}</span><Button variant="outline" size="sm" disabled={busy} onClick={() => printSigned(item.version)}>تنزيل PDF</Button></div>)}</div></div>}
       {isAdmin && <Button variant="outline" onClick={() => setEditingTerms(value => !value)}>{editingTerms ? 'إغلاق تحرير البنود' : 'تعديل بنود الاستمارة'}</Button>}
       {editingTerms && isAdmin && termsDraft && <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
         <p className="font-semibold">تعديل النص ينشئ إصدارًا جديدًا. النسخ الموقّعة سابقًا تحتفظ بنصها الأصلي.</p>
@@ -166,7 +187,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
         <label className="block">Acknowledgment in English<textarea dir="ltr" className="mt-1 min-h-24 w-full rounded-md border p-2" value={termsDraft.declaration_en} onChange={e => setTermsDraft(previous => ({ ...previous, declaration_en: e.target.value }))} /></label>
         <Button disabled={busy} onClick={saveTerms}>حفظ إصدار البنود</Button>
       </div>}
-      {signed && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><strong>{data.needs_resign ? 'تغيّرت بيانات الفاتورة أو بنود الاستمارة بعد التوقيع؛ يمكنك توقيع نسخة جديدة' : 'الاستمارة موقّعة ومحفوظة'}</strong><div className="mt-2"><Button variant="outline" disabled={busy} onClick={printSigned}>{busy ? 'جارٍ تجهيز PDF…' : 'تنزيل PDF للنسخة الموقّعة'}</Button></div></div>}
+      {signed && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><strong>{data.needs_resign ? 'تغيّرت بيانات الفاتورة أو بنود الاستمارة بعد التوقيع؛ يمكنك توقيع نسخة جديدة' : 'الاستمارة موقّعة ومحفوظة'}</strong><div className="mt-2"><Button variant="outline" disabled={busy} onClick={() => printSigned(signed.version)}>{busy ? 'جارٍ تجهيز PDF…' : 'تنزيل PDF للنسخة الموقّعة'}</Button></div></div>}
       <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3"><div>العضو: <strong>{data.invoice.customer_name_ar || data.invoice.member_name}</strong></div><div>المبلغ: <strong>{data.invoice.total} ر.س</strong></div><div className="col-span-2">الأنشطة: {(data.invoice.items || []).map(item => item.activity_name).join('، ')}</div></div>
       {canSign && <>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{[

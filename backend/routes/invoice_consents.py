@@ -1,5 +1,6 @@
 """Signed activity registration forms derived from saved invoices."""
 import base64
+import copy
 import hashlib
 import io
 import json
@@ -185,13 +186,18 @@ async def link_history(invoice, settings):
             status = "invalid"
         elif datetime.fromisoformat(link["expires_at"]) <= datetime.now(timezone.utc):
             status = "expired"
-        elif link.get("whatsapp_opened_at"):
-            status = "awaiting_signature"
+        elif link.get("opened_at"):
+            status = "opened"
+        elif link.get("sent_at"):
+            status = "sent"
         else:
             status = "created"
         history.append({"id": link["id"], "status": status, "created_at": link["created_at"],
                         "expires_at": link["expires_at"], "created_by": link.get("created_by", ""),
-                        "whatsapp_opened_at": link.get("whatsapp_opened_at"), "signed_at": signed.get("signed_at") if signed else None})
+                        "whatsapp_opened_at": link.get("whatsapp_opened_at"), "sent_at": link.get("sent_at"),
+                        "sent_by": link.get("sent_by"), "opened_at": link.get("opened_at"),
+                        "signed_at": signed.get("signed_at") if signed else None,
+                        "signed_version": signed.get("version") if signed else None})
     return history
 
 
@@ -258,9 +264,25 @@ async def mark_registration_consent_whatsapp_opened(invoice_id: str, link_id: st
     return {"ok": True}
 
 
+@router.post("/{invoice_id}/registration-consent-links/{link_id}/sent")
+async def mark_registration_consent_sent(invoice_id: str, link_id: str, user: dict = Depends(get_current_user)):
+    await require_permission(user, "invoices")
+    await scoped_invoice(invoice_id, user)
+    link = await db.invoice_consent_links.find_one({"id": link_id, "invoice_id": invoice_id}, {"_id": 0})
+    if not link:
+        raise HTTPException(status_code=404, detail="الرابط غير موجود")
+    if not link.get("sent_at"):
+        await db.invoice_consent_links.update_one({"id": link_id, "invoice_id": invoice_id, "sent_at": {"$exists": False}}, {"$set": {
+            "sent_at": datetime.now(timezone.utc).isoformat(), "sent_by": user.get("username", "")}})
+    return {"ok": True}
+
+
 @router.get("/public/registration-consent/{token}")
 async def get_public_registration_consent(token: str):
     link, invoice, settings, signed = await public_link(token)
+    if not link.get("opened_at"):
+        await db.invoice_consent_links.update_one({"id": link["id"], "opened_at": {"$exists": False}}, {"$set": {
+            "opened_at": datetime.now(timezone.utc).isoformat()}})
     snapshot = invoice_snapshot(invoice)
     guardian_name = (invoice.get("guardian_name_ar") or invoice.get("guardian_name") or "").strip()
     if not guardian_name and invoice.get("member_id"):
@@ -305,18 +327,34 @@ async def get_registration_consent(invoice_id: str, user: dict = Depends(get_cur
 
 
 @router.get("/{invoice_id}/registration-consent/pdf")
-async def download_registration_consent_pdf(invoice_id: str, user: dict = Depends(get_current_user)):
+async def download_registration_consent_pdf(invoice_id: str, version: Optional[int] = None, user: dict = Depends(get_current_user)):
     await require_permission(user, "invoices")
     await scoped_invoice(invoice_id, user)
-    signed = await db.invoice_consents.find_one({"invoice_id": invoice_id}, {"_id": 0}, sort=[("version", -1)])
+    if version is not None and version < 1:
+        raise HTTPException(status_code=422, detail="رقم النسخة غير صالح")
+    query = {"invoice_id": invoice_id}
+    if version is not None:
+        query["version"] = version
+    signed = await db.invoice_consents.find_one(query, {"_id": 0}, sort=[("version", -1)])
     if not signed:
         raise HTTPException(status_code=404, detail="لا توجد استمارة موقّعة لهذه الفاتورة")
     pdf = render_signed_consent_pdf(signed)
     number = re.sub(r"[^A-Za-z0-9_-]", "", str(signed.get("invoice_snapshot", {}).get("invoice_number") or invoice_id))
     return StreamingResponse(pdf, media_type="application/pdf", headers={
-        "Content-Disposition": f'attachment; filename="signed-consent-{number}.pdf"',
+        "Content-Disposition": f'attachment; filename="signed-consent-{number}' + (f'-v{version}' if version is not None else '') + '.pdf"',
         "Cache-Control": "no-store",
     })
+
+
+@router.get("/{invoice_id}/registration-consent/history")
+async def get_registration_consent_history(invoice_id: str, user: dict = Depends(get_current_user)):
+    await require_permission(user, "invoices")
+    await scoped_invoice(invoice_id, user)
+    rows = await db.invoice_consents.find({"invoice_id": invoice_id}, {"_id": 0, "signature_png": 0}).sort("version", -1).to_list(100)
+    return {"versions": [{"version": row["version"], "signed_at": row.get("signed_at"),
+             "signer_name": row.get("signer_name"), "recorded_by": row.get("recorded_by"),
+             "terms_version": row.get("terms_version"), "invoice_hash": row.get("invoice_hash")}
+            for row in rows]}
 
 
 @router.post("/{invoice_id}/registration-consent")
@@ -357,9 +395,9 @@ async def sign_registration_consent(invoice_id: str, payload: ConsentInput, user
         raise HTTPException(status_code=409, detail="This invoice already has a signed form")
     version = (latest or {}).get("version", 0) + 1
     doc = {"_id": f"{invoice_id}:{version}", "id": str(uuid.uuid4()), "invoice_id": invoice_id, "branch_id": invoice.get("branch_id"),
-           "version": version, "invoice_snapshot": snapshot,
+           "version": version, "invoice_snapshot": copy.deepcopy(snapshot),
            "invoice_hash": snapshot_hash(snapshot), "terms_version": settings["version"], "title": settings["title"], "title_en": settings["title_en"],
-           "company_name": settings["company_name"], "company_name_en": settings["company_name_en"], "terms": settings["terms"],
+           "company_name": settings["company_name"], "company_name_en": settings["company_name_en"], "terms": copy.deepcopy(settings["terms"]),
            "declaration": settings["declaration"], "declaration_en": settings["declaration_en"], "fields": payload.model_dump(exclude={"signature_png", "accepted", "expected_invoice_hash", "expected_terms_version"}),
            "signer_name": payload.signer_name, "signature_png": payload.signature_png,
            "signed_at": datetime.now(timezone.utc).isoformat(), "recorded_by": user.get("username", "")}
