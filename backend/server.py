@@ -5886,6 +5886,92 @@ async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Que
     }
 
 
+@api_router.post("/backup/recover-september-members")
+async def recover_september_members(
+    file: UploadFile = File(...),
+    token: Optional[str] = Query(None),
+    apply: bool = Query(False),
+):
+    """Merge the two post-migration members without replacing live collections.
+
+    This deliberately accepts only their ten verified source records. A dry run
+    checks the live database before a separate apply request.
+    """
+    _require_export_admin_token(token)
+    expected = {
+        "154ccccb-c7ca-47d0-9032-f288143a9098": ("DEFA-B11-2395", "630767"),
+        "d6406ec7-891c-4787-97b1-d906db85e9ed": ("DEFA-B11-2396", "630768"),
+    }
+    names = ("members", "invoices", "level_subscriptions", "member_points", "points_history")
+    content = await file.read()
+    if len(content) > 100_000:
+        raise HTTPException(status_code=400, detail="ملف الاستعادة المحددة كبير أو غير صالح")
+    try:
+        payload = json.loads(content)
+        records = payload["collections"]
+        if set(records) != set(names) or any(len(records[name]) != 2 for name in names):
+            raise ValueError("Unexpected collection counts")
+        members = {row["id"]: row for row in records["members"]}
+        invoices = {row["member_id"]: row for row in records["invoices"]}
+        if set(members) != set(expected) or set(invoices) != set(expected):
+            raise ValueError("Unexpected members")
+        for member_id, (code, number) in expected.items():
+            member, invoice = members[member_id], invoices[member_id]
+            if member["member_code"] != code or invoice["invoice_number"] != number:
+                raise ValueError("Member or invoice identity differs")
+            if invoice["id"] != member["activities"][0]["source_id"]:
+                raise ValueError("Invoice and activity differ")
+            if invoice["status"] != "paid":
+                raise ValueError("Invoice is not paid")
+        for name in names[2:]:
+            if {row["member_id"] for row in records[name]} != set(expected):
+                raise ValueError("Related records differ")
+        for row in records["level_subscriptions"]:
+            if row["invoice_id"] != invoices[row["member_id"]]["id"]:
+                raise ValueError("Subscription invoice differs")
+    except (KeyError, TypeError, ValueError, IndexError) as exc:
+        raise HTTPException(status_code=400, detail="ملف الاستعادة المحددة غير صالح") from exc
+
+    for member_id, (code, number) in expected.items():
+        member = members[member_id]
+        invoice = invoices[member_id]
+        if await db.members.find_one({"$or": [
+            {"id": member_id}, {"member_code": code},
+            {"phone": member["phone"], "name_ar": member["name_ar"]},
+        ]}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail=f"العضو {code} موجود أو متعارض")
+        if await db.invoices.find_one({"$or": [
+            {"id": invoice["id"]}, {"invoice_number": number},
+        ]}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail=f"الفاتورة {number} موجودة أو متعارضة")
+        if not await db.branches.find_one({"id": member["branch_id"]}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="الفرع المرتبط غير موجود")
+        activity = member["activities"][0]
+        if not await db.activities.find_one({"id": activity["activity_id"]}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="النشاط المرتبط غير موجود")
+        if not await db.levels.find_one({"id": activity["level_id"]}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="المستوى المرتبط غير موجود")
+        for name in names[2:]:
+            if await db[name].find_one({"member_id": member_id}, {"_id": 1}):
+                raise HTTPException(status_code=409, detail=f"سجل مرتبط موجود في {name}")
+
+    counts = {name: len(records[name]) for name in names}
+    if not apply:
+        return {"ready": True, "applied": False, "counts": counts}
+
+    inserted = []
+    try:
+        for name in names:
+            for row in records[name]:
+                result = await db[name].insert_one(row)
+                inserted.append((name, result.inserted_id))
+    except Exception:
+        for name, object_id in reversed(inserted):
+            await db[name].delete_one({"_id": object_id})
+        raise
+    return {"ready": True, "applied": True, "counts": counts}
+
+
 @api_router.delete("/backup/{filename}")
 async def delete_backup(filename: str, token: Optional[str] = None):
     actor_payload = _require_export_admin_token(token)

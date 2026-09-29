@@ -61,9 +61,11 @@ const BackupPage = () => {
   const [restoring, setRestoring] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [recovery, setRecovery] = useState({ file: null, counts: null, loading: false });
   const [restoreDialog, setRestoreDialog] = useState({ open: false, filename: null });
   const [deleteDialog, setDeleteDialog] = useState({ open: false, filename: null });
   const fileInputRef = React.useRef(null);
+  const recoveryInputRef = React.useRef(null);
 
   const isAr = language === 'ar';
 
@@ -199,6 +201,33 @@ const BackupPage = () => {
     }
   };
 
+  const handleRecoveryFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setRecovery({ file, counts: null, loading: true });
+    try {
+      const result = await backupAPI.recoverSeptemberMembers(file, false);
+      setRecovery({ file, counts: result.data?.counts, loading: false });
+    } catch (error) {
+      setRecovery({ file: null, counts: null, loading: false });
+      toast.error(error.response?.data?.detail || (isAr ? 'تعذر فحص سجلات الاستعادة' : 'Recovery check failed'));
+    }
+    event.target.value = '';
+  };
+
+  const applyRecovery = async () => {
+    if (!recovery.file || !recovery.counts) return;
+    setRecovery(previous => ({ ...previous, loading: true }));
+    try {
+      await backupAPI.recoverSeptemberMembers(recovery.file, true);
+      setRecovery({ file: null, counts: null, loading: false });
+      toast.success(isAr ? 'تم نقل العضوين وفواتيرهما واشتراكاتهما' : 'Both members and their records were recovered');
+    } catch (error) {
+      setRecovery(previous => ({ ...previous, loading: false }));
+      toast.error(error.response?.data?.detail || (isAr ? 'فشل نقل السجلات' : 'Recovery failed'));
+    }
+  };
+
   const totalSize = backups.reduce((sum, b) => sum + (b.size || 0), 0);
 
   return (
@@ -281,6 +310,22 @@ const BackupPage = () => {
             </CardContent>
           </Card>
         </div>
+
+        {user?.is_admin && (
+          <Card>
+            <CardContent className="p-4 flex flex-wrap items-center gap-3">
+              <div className="flex-1 text-sm">
+                <strong>{isAr ? 'استعادة عضوي 27 سبتمبر' : 'Recover September 27 members'}</strong>
+                <p className="text-muted-foreground">{isAr ? 'يفحص ملف السجلين المحدد ثم يضيفهما دون استبدال بيانات النظام.' : 'Checks the two-member file, then adds records without replacing live data.'}</p>
+              </div>
+              <Button variant="outline" disabled={recovery.loading} onClick={() => recoveryInputRef.current?.click()}>
+                {recovery.loading ? <Loader2 className="w-4 h-4 me-2 animate-spin" /> : <Upload className="w-4 h-4 me-2" />}
+                {isAr ? 'اختيار ملف الاستعادة المحددة' : 'Select recovery file'}
+              </Button>
+              <input ref={recoveryInputRef} type="file" accept=".json" className="hidden" onChange={handleRecoveryFile} />
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
@@ -391,6 +436,29 @@ const BackupPage = () => {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={Boolean(recovery.counts)} onOpenChange={(open) => {
+        if (!open) setRecovery({ file: null, counts: null, loading: false });
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{isAr ? 'نتيجة فحص استعادة العضوين' : 'Two-member recovery check'}</DialogTitle>
+            <DialogDescription>
+              {isAr ? 'لا توجد تعارضات. سيُضاف عضوان وفاتورتان مدفوعتان واشتراكان وسجلات النقاط المرتبطة فقط.' : 'No conflicts. Only the two members, paid invoices, subscriptions, and related points will be added.'}
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm">{Object.entries(recovery.counts || {}).map(([name, count]) => `${name}: ${count}`).join(' · ')}</p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" disabled={recovery.loading} onClick={() => setRecovery({ file: null, counts: null, loading: false })}>
+              {isAr ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button disabled={recovery.loading} onClick={applyRecovery}>
+              {recovery.loading && <Loader2 className="w-4 h-4 me-2 animate-spin" />}
+              {isAr ? 'نقل السجلين' : 'Recover records'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={restoreDialog.open}

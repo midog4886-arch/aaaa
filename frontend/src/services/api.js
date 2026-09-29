@@ -504,6 +504,13 @@ export const backupAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  recoverSeptemberMembers: (file, apply = false) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return axios.post(`${API}/backup/recover-september-members?token=${localStorage.getItem('token')}&apply=${apply}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // Chart of Accounts API
