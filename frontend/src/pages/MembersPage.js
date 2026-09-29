@@ -249,6 +249,7 @@ export const MembersPage = () => {
   const [memberAttendance, setMemberAttendance] = useState(null);
   const [memberSessionQuota, setMemberSessionQuota] = useState([]);
   const [expandedQuotaIdx, setExpandedQuotaIdx] = useState(new Set());
+  const [expandedFutureQuotaIdx, setExpandedFutureQuotaIdx] = useState(new Set());
   const [expandedOldDatesIdx, setExpandedOldDatesIdx] = useState(new Set());
   const [registeringDate, setRegisteringDate] = useState(null);
   const attendanceRegistrationLock = useRef(false);
@@ -1357,6 +1358,7 @@ export const MembersPage = () => {
     setViewTab(initialTab);
     setMemberReminders([]);
     setExpandedQuotaIdx(new Set());
+    setExpandedFutureQuotaIdx(new Set());
     setExpandedOldDatesIdx(new Set());
     setIsViewDialogOpen(true);
     setMemberAttendance(null);
@@ -4184,9 +4186,17 @@ export const MembersPage = () => {
                           <AlertTriangle className="w-4 h-4 text-amber-500" />
                           {language === 'ar' ? 'حصص الاشتراك' : 'Session Quota'}
                         </h4>
+                        {memberSessionQuota.some((period, index) => period.source_id && memberSessionQuota.slice(0, index).some(previous => previous.source_id === period.source_id)) && (
+                          <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            {language === 'ar'
+                              ? 'فاتورة واحدة تشمل أكثر من فترة اشتراك. لكل فترة مواعيدها وحصصها المستقلة.'
+                              : 'One invoice covers multiple subscription periods. Each period has its own schedule and sessions.'}
+                          </div>
+                        )}
                         <div className="space-y-2">
                           {sortAttendancePeriods(memberSessionQuota, localDateStr(new Date())).map((q, idx, periods) => {
                             const isExpanded = expandedQuotaIdx.has(idx);
+                            const showFutureDetails = !q.upcoming || expandedFutureQuotaIdx.has(idx);
                             const sharesEarlierInvoice = q.source_id && periods.slice(0, idx).some(period => period.source_id === q.source_id);
                             const baseDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
                             const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
@@ -4243,6 +4253,32 @@ export const MembersPage = () => {
                                         : `#${q.invoice_number}`}`
                                       : ''}
                                   </div>
+                                  {q.invoice_number && q.source_id && !sharesEarlierInvoice && (
+                                    <button
+                                      type="button"
+                                      className="mb-2 rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50"
+                                      onClick={() => navigate(`/admin/invoices?view=${encodeURIComponent(q.source_id)}`)}
+                                    >
+                                      {language === 'ar' ? `عرض الفاتورة #${q.invoice_number}` : `View invoice #${q.invoice_number}`}
+                                    </button>
+                                  )}
+                                  {q.upcoming && (
+                                    <button
+                                      type="button"
+                                      aria-expanded={showFutureDetails}
+                                      className="mb-2 text-xs font-medium text-blue-700 hover:text-blue-900"
+                                      onClick={() => setExpandedFutureQuotaIdx(previous => {
+                                        const next = new Set(previous);
+                                        if (next.has(idx)) next.delete(idx); else next.add(idx);
+                                        return next;
+                                      })}
+                                    >
+                                      {showFutureDetails
+                                        ? (language === 'ar' ? 'إخفاء تفاصيل الفترة القادمة ▲' : 'Hide upcoming period details ▲')
+                                        : (language === 'ar' ? 'عرض تفاصيل الفترة القادمة ▼' : 'Show upcoming period details ▼')}
+                                    </button>
+                                  )}
+                                  {showFutureDetails && <>
                                   <div className="text-xs text-gray-500 mb-1">
                                     {q.profile_subscription
                                       ? (language === 'ar' ? 'اشتراك الملف الشخصي' : 'Profile subscription')
@@ -4282,9 +4318,10 @@ export const MembersPage = () => {
                                         : (language === 'ar' ? `عرض التواريخ (${displayDates.length})` : `Show Dates (${displayDates.length})`)}
                                     </button>
                                   )}
+                                  </>}
                                 </div>
 
-                                {isExpanded && (
+                                {isExpanded && showFutureDetails && (
                                   <div className="border-t px-3 pb-3 pt-2">
                                     <p className="text-xs text-gray-500 mb-2">
                                       {readOnly ? (todayAvailable ? (language === 'ar' ? 'اضغط على تاريخ اليوم لتحضير العضو؛ باقي التواريخ للعرض فقط' : 'Click today to record attendance; other dates are view only') : (language === 'ar' ? 'للعرض فقط' : 'View only')) : language === 'ar'
