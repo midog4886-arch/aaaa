@@ -4,11 +4,9 @@ import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
 import { invoicesAPI } from '../../../../services/api';
 import { toast } from 'sonner';
-import html2pdf from 'html2pdf.js';
 import { getAcademyLogoUrl } from '../../../../services/branding';
 
 const empty = { child_name: '', birth_date: '', guardian_name: '', relationship: '', guardian_identity: '', has_medical_condition: false, medical_details: '', signer_name: '', accepted: false };
-const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
   const canvas = useRef(null);
@@ -119,23 +117,26 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
   const linkStatus = { created: 'الرابط أُنشئ', awaiting_signature: 'بانتظار التوقيع', signed: 'تم التوقيع', expired: 'انتهت الصلاحية', invalid: 'الرابط غير صالح' };
   const dateTime = value => value ? new Date(value).toLocaleString('ar-SA') : '—';
   const printSigned = async () => {
-    const signed = data?.signed;
-    if (!signed) return;
-    const inv = signed.invoice_snapshot || {};
-    const fields = signed.fields || {};
-    const rows = (inv.items || []).map(item => `<tr><td>${esc(item.activity_name)}</td><td>${esc(item.schedule)}</td><td>${esc(item.start_date)} — ${esc(item.end_date)}</td><td>${esc(item.fee)}</td></tr>`).join('');
-    const terms = (signed.terms || []).map(item => `<li><strong>${esc(item.section)}:</strong> ${esc(item.text)}<div dir="ltr" style="text-align:left;color:#536478">${esc(item.section_en)}: ${esc(item.text_en)}</div></li>`).join('');
-    const element = document.createElement('div');
-    element.dir = 'rtl';
-    element.style.cssText = 'width:750px;background:#fff;color:#172744;padding:22px;font:13px/1.8 Arial,sans-serif';
-    element.innerHTML = `<div style="text-align:center;border-bottom:2px solid #493493;padding-bottom:12px"><img style="width:95px;height:95px;object-fit:contain" src="${esc(getAcademyLogoUrl())}" alt="شعار الأكاديمية"><h1 style="color:#31257e;font-size:22px;margin:4px 0">${esc(signed.company_name)}<br><span style="font-size:15px">${esc(signed.company_name_en)}</span><br>${esc(signed.title)}<br><span style="font-size:15px">${esc(signed.title_en)}</span></h1>${inv.commercial_reg ? `<p style="margin:4px 0">السجل التجاري / Commercial Registration: ${esc(inv.commercial_reg)}</p>` : ''}</div><p style="background:#f2efff;padding:10px">رقم الفاتورة: ${esc(inv.invoice_number)} · رقم النسخة: ${esc(signed.version)} · تاريخ التوقيع: ${esc(new Date(signed.signed_at).toLocaleString('ar-SA'))}</p><h2>بيانات التسجيل / Registration details</h2><p>الطفل / Child: ${esc(fields.child_name)} · تاريخ الميلاد / Date of birth: ${esc(fields.birth_date || '—')} · ولي الأمر / Guardian: ${esc(fields.guardian_name)} · صلة القرابة / Relationship: ${esc(fields.relationship)}</p><p>رقم الهوية / ID: ${esc(fields.guardian_identity)} · الجوال / Phone: ${esc(inv.customer_phone)}${fields.emergency_phone ? ` · طوارئ / Emergency: ${esc(fields.emergency_phone)}` : ""}</p><p>الحالة الصحية / Health: ${fields.has_medical_condition ? esc(fields.medical_details) : 'لا توجد حالة مُفصح عنها / No condition disclosed'}</p><table style="width:100%;border-collapse:collapse"><thead><tr><th>النشاط</th><th>المواعيد</th><th>الفترة</th><th>الرسوم</th></tr></thead><tbody>${rows}</tbody></table><p>إجمالي الفاتورة وقت التوقيع / Invoice total at signing: ${esc(inv.total)} ر.س</p><h2>الشروط والإقرار / Terms and acknowledgment</h2><ol>${terms}</ol><p>${esc(signed.declaration)}</p><p dir="ltr" style="text-align:left">${esc(signed.declaration_en)}</p><h2>التوقيع / Signature</h2><p>الموقّع / Signer: ${esc(signed.signer_name)} · سُجّل بواسطة / Recorded by: ${esc(signed.recorded_by)}</p><img style="height:80px;max-width:250px" src="${signed.signature_png}" alt="توقيع ولي الأمر">`;
-    document.body.appendChild(element);
+    setBusy(true);
     try {
-      await html2pdf().set({ margin: 10, filename: `استمارة_موقعة_${inv.invoice_number || invoice.id}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }).from(element).save();
-      toast.success('تم حفظ نسخة PDF');
-    } catch { toast.error('تعذر حفظ PDF'); }
-    finally { document.body.removeChild(element); }
+      const response = await invoicesAPI.downloadRegistrationConsentPdf(invoice.id);
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `استمارة_موقعة_${invoice.invoice_number || invoice.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast.success('بدأ تنزيل نسخة PDF الموقّعة');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'تعذر تنزيل PDF. حاول مرة أخرى.');
+    } finally {
+      setBusy(false);
+    }
   };
+
   const signed = data?.signed;
   const canSign = !signed || data?.needs_resign;
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto" dir="rtl">
@@ -165,7 +166,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
         <label className="block">Acknowledgment in English<textarea dir="ltr" className="mt-1 min-h-24 w-full rounded-md border p-2" value={termsDraft.declaration_en} onChange={e => setTermsDraft(previous => ({ ...previous, declaration_en: e.target.value }))} /></label>
         <Button disabled={busy} onClick={saveTerms}>حفظ إصدار البنود</Button>
       </div>}
-      {signed && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><strong>{data.needs_resign ? 'تغيّرت بيانات الفاتورة أو بنود الاستمارة بعد التوقيع؛ يمكنك توقيع نسخة جديدة' : 'الاستمارة موقّعة ومحفوظة'}</strong><div className="mt-2"><Button variant="outline" onClick={printSigned}>تنزيل PDF للنسخة الموقّعة</Button></div></div>}
+      {signed && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><strong>{data.needs_resign ? 'تغيّرت بيانات الفاتورة أو بنود الاستمارة بعد التوقيع؛ يمكنك توقيع نسخة جديدة' : 'الاستمارة موقّعة ومحفوظة'}</strong><div className="mt-2"><Button variant="outline" disabled={busy} onClick={printSigned}>{busy ? 'جارٍ تجهيز PDF…' : 'تنزيل PDF للنسخة الموقّعة'}</Button></div></div>}
       <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3"><div>العضو: <strong>{data.invoice.customer_name_ar || data.invoice.member_name}</strong></div><div>المبلغ: <strong>{data.invoice.total} ر.س</strong></div><div className="col-span-2">الأنشطة: {(data.invoice.items || []).map(item => item.activity_name).join('، ')}</div></div>
       {canSign && <>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{[

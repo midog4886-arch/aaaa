@@ -10,11 +10,13 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 from PIL import Image, UnidentifiedImageError
 
 from .common import db, get_current_user
+from services.consent_pdf import render_signed_consent_pdf
 from utils.auth import require_branch_scope, require_permission
 from utils.tenant import get_current_tenant
 
@@ -300,6 +302,21 @@ async def get_registration_consent(invoice_id: str, user: dict = Depends(get_cur
             "company_name": settings["company_name"], "company_name_en": settings["company_name_en"],
             "terms": settings["terms"], "declaration": settings["declaration"], "declaration_en": settings["declaration_en"], "signed": latest,
             "needs_resign": bool(latest and (latest.get("invoice_hash") != snapshot_hash(snapshot) or latest.get("terms_version") != settings["version"]))}
+
+
+@router.get("/{invoice_id}/registration-consent/pdf")
+async def download_registration_consent_pdf(invoice_id: str, user: dict = Depends(get_current_user)):
+    await require_permission(user, "invoices")
+    await scoped_invoice(invoice_id, user)
+    signed = await db.invoice_consents.find_one({"invoice_id": invoice_id}, {"_id": 0}, sort=[("version", -1)])
+    if not signed:
+        raise HTTPException(status_code=404, detail="لا توجد استمارة موقّعة لهذه الفاتورة")
+    pdf = render_signed_consent_pdf(signed)
+    number = re.sub(r"[^A-Za-z0-9_-]", "", str(signed.get("invoice_snapshot", {}).get("invoice_number") or invoice_id))
+    return StreamingResponse(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="signed-consent-{number}.pdf"',
+        "Cache-Control": "no-store",
+    })
 
 
 @router.post("/{invoice_id}/registration-consent")

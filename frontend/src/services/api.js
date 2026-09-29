@@ -244,6 +244,7 @@ export const invoicesAPI = {
   getAll: (params = {}) => axios.get(`${API}/invoices`, { params }),
   getById: (id) => axios.get(`${API}/invoices/${id}`),
   getRegistrationConsent: (id) => axios.get(`${API}/invoices/${id}/registration-consent`),
+  downloadRegistrationConsentPdf: (id) => axios.get(`${API}/invoices/${id}/registration-consent/pdf`, { responseType: 'blob' }),
   signRegistrationConsent: (id, data) => axios.post(`${API}/invoices/${id}/registration-consent`, data),
   createRegistrationConsentLink: (id) => axios.post(`${API}/invoices/${id}/registration-consent-link`),
   getRegistrationConsentLinks: (id) => axios.get(`${API}/invoices/${id}/registration-consent-links`),

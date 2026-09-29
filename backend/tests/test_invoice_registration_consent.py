@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from routes import invoice_consents as route
+from services.consent_pdf import render_signed_consent_pdf
 from PIL import Image
 
 
@@ -179,3 +180,20 @@ def test_product_only_invoice_cannot_create_activity_form(monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(route.create_registration_consent_link('i1', user))
     assert error.value.status_code == 422
+
+
+def test_signed_pdf_download_uses_saved_form_and_is_branch_scoped(monkeypatch):
+    invoice, database, user = fixture_db(monkeypatch)
+    async def allow(_user, _permission):
+        return None
+    monkeypatch.setattr(route, 'require_permission', allow)
+    signed = asyncio.run(route.sign_registration_consent('i1', payload(invoice), user))
+    pdf = render_signed_consent_pdf(signed).getvalue()
+    assert pdf.startswith(b'%PDF-')
+    assert len(pdf) > 5000
+    response = asyncio.run(route.download_registration_consent_pdf('i1', user))
+    assert response.media_type == 'application/pdf'
+    assert 'signed-consent-530405.pdf' in response.headers['content-disposition']
+    with pytest.raises(HTTPException) as forbidden:
+        asyncio.run(route.download_registration_consent_pdf('i1', {'is_admin': False, 'branch_id': 'b2'}))
+    assert forbidden.value.status_code == 403
