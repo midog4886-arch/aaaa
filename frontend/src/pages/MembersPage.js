@@ -3411,7 +3411,9 @@ export const MembersPage = () => {
                       <div>
                         <p className="text-sm text-muted-foreground">{t('guardian_name')}</p>
                         <p className="font-medium">
-                          {language === 'ar' ? selectedMember.guardian_name_ar : selectedMember.guardian_name}
+                          {(language === 'ar'
+                            ? selectedMember.guardian_name_ar || selectedMember.guardian_name
+                            : selectedMember.guardian_name || selectedMember.guardian_name_ar) || '—'}
                         </p>
                       </div>
                       <div>
