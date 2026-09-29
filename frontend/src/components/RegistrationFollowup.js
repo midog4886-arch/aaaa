@@ -34,7 +34,8 @@ const reasons = {
 export default function RegistrationFollowup({ request, onChanged }) {
   const [busy, setBusy] = useState(false);
   const status = request.followup_status;
-  const canStop = request.followup_enrolled === true && request.status === 'pending' && !['completed', 'stopped'].includes(status);
+  const canConfirmContact = request.status === 'pending' && !request.followup_staff_contacted && request.followup_stop_reason !== 'opted_out';
+  const canOptOut = request.followup_enrolled === true && request.status === 'pending' && !['completed', 'stopped'].includes(status);
   const stop = async (reason) => {
     if (reason === 'opted_out' && !window.confirm('تأكيد أن العميل طلب عدم التواصل؟ ستتوقف متابعة هذا الرقم.')) return;
     setBusy(true);
@@ -54,14 +55,15 @@ export default function RegistrationFollowup({ request, onChanged }) {
       {request.followup_stop_reason && ` — ${reasons[request.followup_stop_reason] || 'توقفت المتابعة لهذا الرقم'}`}
     </p>
     <p className="mt-2">آخر تواصل: {request.last_contact_at ? new Date(request.last_contact_at).toLocaleString('ar-SA') : 'لم يُسجل تواصل'} · المتابعة القادمة: {request.next_followup_at ? new Date(request.next_followup_at).toLocaleString('ar-SA') : 'لا توجد متابعة مجدولة'} {request.followup_overdue && <strong className="text-red-600"> — متأخرة</strong>}</p>
+    {request.followup_overdue && request.status === 'pending' && <p className="mt-2 font-medium text-red-700">الإجراء التالي: تواصل مع العميل، ثم أكد التواصل هنا أو سجل سبب إيقاف المتابعة.</p>}
     {['compatible_provider_unavailable', 'provider_unavailable', 'branch_send_lane_frozen'].includes(request.followup_stop_reason) && <a href="/admin/branches" className="mt-2 inline-block rounded border px-3 py-2 text-emerald-700">إصلاح اتصال واتساب</a>}
-    {canStop && <div className="flex flex-wrap gap-2 mt-2">
-      <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => stop('contacted')}>
-        {busy && <Loader2 className="w-3 h-3 animate-spin ms-1" />} تم التواصل — إيقاف المتابعة
-      </Button>
-      <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => stop('opted_out')}>
+    {(canConfirmContact || canOptOut) && <div className="flex flex-wrap gap-2 mt-2">
+      {canConfirmContact && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => stop('contacted')}>
+        {busy && <Loader2 className="w-3 h-3 animate-spin ms-1" />} تأكيد أنه تم التواصل
+      </Button>}
+      {canOptOut && <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => stop('opted_out')}>
         طلب عدم التواصل
-      </Button>
+      </Button>}
     </div>}
   </div>;
 }

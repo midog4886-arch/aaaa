@@ -165,6 +165,7 @@ export const PublicRegistrationPage = () => {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [requestNumber, setRequestNumber] = useState('');
   const [formError, setFormError] = useState('');
 
   useEffect(() => {
@@ -316,7 +317,7 @@ export const PublicRegistrationPage = () => {
       // Submitted values stay Arabic (canonical) regardless of the visitor's
       // display language — that is what supervisors read in the review queue.
       const selectedDays = WEEK_DAYS.filter(d => days.includes(d.key)).map(d => d.label);
-      await api.post(`/api/public/registration/${selectedBranchId}`, {
+      const response = await api.post(`/api/public/registration/${selectedBranchId}`, {
         customer_name: name.trim(),
         age: parsedAge,
         expected_start_date: expectedStartDate,
@@ -330,6 +331,7 @@ export const PublicRegistrationPage = () => {
         referral_code: referralCode,
         source,
       });
+      setRequestNumber(response.data?.request_number || '');
       setSubmitted(true);
     } catch (e) {
       // Only render string details; anything else (e.g. a 422 object list)
@@ -398,6 +400,9 @@ export const PublicRegistrationPage = () => {
             </div>
             <h2 className="text-lg font-bold text-gray-800 mb-2">{t.submittedTitle}</h2>
             <p className="text-sm text-gray-600">{t.submittedBody}</p>
+            {requestNumber && <p className="mt-4 rounded-xl bg-emerald-50 p-3 font-semibold text-emerald-800">{lang === 'ar' ? 'رقم طلبك' : 'Your request reference'}: <span dir="ltr">{requestNumber}</span></p>}
+            <p className="mt-3 text-sm text-gray-600">{lang === 'ar' ? 'يرجى الاحتفاظ برقم الطلب عند التواصل مع الفرع. سيُراجع طلبك خلال يوم عمل.' : 'Keep this reference when contacting the branch. Your request will be reviewed within one business day.'}</p>
+            {selectedBranchInfo?.phone && <a href={`tel:${selectedBranchInfo.phone}`} className="mt-3 inline-flex rounded-xl border border-emerald-200 px-4 py-2 text-emerald-700" dir="ltr">{selectedBranchInfo.phone}</a>}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="registration-form space-y-4">

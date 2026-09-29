@@ -139,8 +139,9 @@ export const RegistrationRequestsPage = () => {
       const phone = normalizeDigits(r.customer_phone || '').replace(/\D/g, '');
       const marketer = (r.marketer_name || '').toLowerCase();
       const activity = (r.activity_name || '').toLowerCase();
+      const reference = (r.id || '').slice(0, 8).toLowerCase();
       const qDigits = q.replace(/\D/g, '');
-      return name.includes(q) || marketer.includes(q) || activity.includes(q) ||
+      return name.includes(q) || marketer.includes(q) || activity.includes(q) || reference.includes(q.replace(/^#/, '')) ||
         (qDigits.length >= 3 && phone.includes(qDigits));
     }).sort((a, b) => (sortOrder === 'priority' ? Number(Boolean(b.followup_overdue)) - Number(Boolean(a.followup_overdue)) : 0) || (sortOrder === 'oldest' || sortOrder === 'priority' ? new Date(a.created_at) - new Date(b.created_at) : new Date(b.created_at) - new Date(a.created_at)));
   }, [requests, searchQuery, activityFilter, ownerFilter, dateFrom, dateTo, stageFilter, sortOrder]);
@@ -274,8 +275,10 @@ export const RegistrationRequestsPage = () => {
   };
 
   const handleArchive = async (req) => {
+    const reason = window.prompt('سبب إيقاف الطلب أو أرشفته (مطلوب):');
+    if (!reason?.trim()) return;
     try {
-      await registrationRequestsAPI.updateStatus(req.id, 'archived');
+      await registrationRequestsAPI.updateStatus(req.id, 'archived', reason.trim());
       if (statusFilter !== 'archived') {
         setRequests(prev => prev.filter(r => r.id !== req.id));
       }
@@ -524,7 +527,7 @@ export const RegistrationRequestsPage = () => {
             {familyGroups.map(([familyKey, family]) => <section key={familyKey} className={family.length > 1 ? 'rounded-xl border-2 border-sky-100 bg-sky-50/30 p-3 space-y-3' : 'space-y-3'}>
               {family.length > 1 && <p className="font-semibold text-sky-800">طلبات أسرة واحدة · {family.length} طلبات · {branchName(family[0].branch_id)} <span className="text-xs font-normal">كل طفل له تسجيل مستقل</span></p>}
               {family.map(req => (
-              <Card key={req.id} className="overflow-hidden">
+              <Card key={req.id} className={`overflow-hidden ${req.followup_overdue ? 'border-red-200' : ''}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0 flex-1">
@@ -532,7 +535,7 @@ export const RegistrationRequestsPage = () => {
                         <h3 className="font-semibold text-gray-800">{req.customer_name}</h3>
                         {req.workflow_stage && <span className="rounded-full bg-blue-50 px-2 py-1 text-xs text-blue-800">{STAGES[req.workflow_stage]}</span>}
                         <span className="text-xs text-gray-500">المسؤول: {req.assignee_name || 'لم يُعيّن'}</span>
-                        {req.followup_overdue && <span className="text-xs text-red-600">متابعة متأخرة</span>}
+                        {req.followup_overdue && <span className="text-xs font-semibold text-red-600">متابعة متأخرة{req.next_followup_at ? ` · ${Math.max(1, Math.floor((Date.now() - new Date(req.next_followup_at).getTime()) / 86400000))} يوم` : ''}</span>}
                         {isAdmin && <span className="text-[11px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">{branchName(req.branch_id)}</span>}
                         {(() => { const b = STATUS_BADGE[req.status] || STATUS_BADGE.pending; return (
                           <span className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${b.cls}`}>{b.label}</span>
@@ -542,6 +545,7 @@ export const RegistrationRequestsPage = () => {
                             أرشفة سابقة بسبب تطابق الرقم — الطلبات الآن مستقلة ويمكن استعادتها
                           </span>
                         )}
+                        {req.status === 'archived' && req.archived_reason && req.archived_reason !== 'member_phone_match_same_branch' && <span className="text-xs text-gray-500">سبب الإيقاف: {req.archived_reason}</span>}
                         {req.followup_staff_contacted && (
                           <span
                             className="text-[11px] rounded-full px-2 py-0.5 font-medium bg-sky-100 text-sky-700 inline-flex items-center gap-1"
@@ -587,10 +591,7 @@ export const RegistrationRequestsPage = () => {
                         ) : (
                           <span className="flex items-center gap-1" dir="ltr"><Phone className="w-3.5 h-3.5" />{req.customer_phone}</span>
                         )}
-                        {req.expected_start_date && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />البداية المتوقعة: {req.expected_start_date}</span>}
                         {req.activity_name && <span className="flex items-center gap-1"><FileText className="w-3.5 h-3.5" />{req.activity_name}</span>}
-                        {(req.preferred_days || []).length > 0 && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{(req.preferred_days || []).join('، ')}</span>}
-                        {req.preferred_time && <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{req.preferred_time}</span>}
                       </div>
                       {canViewMembers && (req.matching_members || []).length > 0 && (
                         <div className="mt-2 flex flex-wrap items-center gap-2" data-testid={`matching-members-${req.id}`}>
@@ -613,6 +614,10 @@ export const RegistrationRequestsPage = () => {
                         </div>
                       )}
                       <details className="mt-3 rounded border p-3"><summary className="cursor-pointer text-sm text-emerald-700">عرض التفاصيل</summary>
+                        <p className="mt-2 text-xs">رقم الطلب: {(req.id || '').slice(0, 8).toUpperCase()}</p>
+                        {req.expected_start_date && <p className="mt-2 text-xs">البداية المتوقعة: {req.expected_start_date}</p>}
+                        {(req.preferred_days || []).length > 0 && <p className="mt-2 text-xs">الأيام المفضلة: {(req.preferred_days || []).join('، ')}</p>}
+                        {req.preferred_time && <p className="mt-2 text-xs">الوقت المفضل: {req.preferred_time}</p>}
                         <p className="mt-2 text-xs">{req.nationality} · العمر: {req.age || '—'} سنة</p>
                         {req.notes && <p className="mt-2 text-xs text-gray-500 bg-gray-50 rounded p-2">{req.notes}</p>}
                         <RegistrationManagement key={`${req.id}:${req.assignee_id || ''}`} request={req} assignees={assignees} onChanged={loadRequests} />

@@ -408,7 +408,7 @@ export const registrationRequestsAPI = {
   stopFollowup: (id, reason) => axios.post(`${API}/registration-requests/${id}/followup-stop`, { reason }),
   getAll: (params = {}) => axios.get(`${API}/registration-requests`, { params }),
   getPendingCount: (params = {}) => axios.get(`${API}/registration-requests/count`, { params }),
-  updateStatus: (id, status) => axios.put(`${API}/registration-requests/${id}`, { status }),
+  updateStatus: (id, status, reason = '') => axios.put(`${API}/registration-requests/${id}`, { status, reason }),
   delete: (id) => axios.delete(`${API}/registration-requests/${id}`),
 };
 

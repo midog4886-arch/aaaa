@@ -500,6 +500,7 @@ class PublicRegistrationCreate(BaseModel):
 
 class RegistrationRequestUpdate(BaseModel):
     status: str
+    reason: str = Field(default='', max_length=500)
 
 
 class RegistrationFollowupStop(BaseModel):
@@ -765,7 +766,7 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     except Exception:
         pass
 
-    return {"success": True, "message": "تم استلام طلب التسجيل بنجاح"}
+    return {"success": True, "message": "تم استلام طلب التسجيل بنجاح", "request_number": doc["id"][:8].upper()}
 
 
 # ============ ADMIN ROUTES (auth + branch scope) ============
@@ -948,6 +949,9 @@ async def update_registration_request(
         if req.get("status") != "archived":
             update["archived_from"] = req.get("status") or "pending"
         update["archived_at"] = datetime.now(timezone.utc).isoformat()
+        if payload.reason.strip():
+            update['archived_reason'] = payload.reason.strip()
+            update['archived_by'] = current_user.get('name') or current_user.get('username') or 'موظف'
     await db.registration_requests.update_one({"id": req_id}, {"$set": update})
     if payload.status in {"processed", "rejected", "archived"}:
         from services import registration_followups
@@ -971,6 +975,15 @@ async def stop_registration_followup(
         raise HTTPException(status_code=403, detail="غير مصرح لك بهذا الطلب")
     from services import registration_followups
     await registration_followups.stop_request(req, payload.reason)
+    now = datetime.now(timezone.utc).isoformat()
+    actor = current_user.get('name') or current_user.get('username') or 'موظف'
+    await db.registration_requests.update_one(
+        {'id': req_id},
+        {'$push': {'staff_history': {'$each': [{
+            'at': now, 'actor': actor,
+            'text': 'تأكيد التواصل مع العميل' if payload.reason == 'contacted' else 'تأكيد طلب عدم التواصل',
+        }], '$slice': -100}}},
+    )
     updated = await db.registration_requests.find_one({"id": req_id}, {"_id": 0})
     if not updated:
         raise HTTPException(status_code=404, detail="Request not found")
