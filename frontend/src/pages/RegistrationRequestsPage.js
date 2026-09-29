@@ -154,7 +154,7 @@ export const RegistrationRequestsPage = () => {
   const registrationLink = useMemo(() => {
     if (!linkBranch || shortLink?.branchId !== linkBranch || shortLink?.tenant !== tenantSlug) return '';
     const path = tenantSlug === 'default' ? '' : `${encodeURIComponent(tenantSlug)}/`;
-    return `${getPublicBaseUrl()}/r/${path}${shortLink.slug}`;
+    return `${getPublicBaseUrl()}/r/${path}${shortLink.slug}?preview=20260929`;
   }, [linkBranch, tenantSlug, shortLink]);
 
   useEffect(() => {
