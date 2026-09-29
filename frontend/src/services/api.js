@@ -243,6 +243,13 @@ export const socialAPI = {
 export const invoicesAPI = {
   getAll: (params = {}) => axios.get(`${API}/invoices`, { params }),
   getById: (id) => axios.get(`${API}/invoices/${id}`),
+  getRegistrationConsent: (id) => axios.get(`${API}/invoices/${id}/registration-consent`),
+  signRegistrationConsent: (id, data) => axios.post(`${API}/invoices/${id}/registration-consent`, data),
+  createRegistrationConsentLink: (id) => axios.post(`${API}/invoices/${id}/registration-consent-link`),
+  getRegistrationConsentLinks: (id) => axios.get(`${API}/invoices/${id}/registration-consent-links`),
+  markRegistrationConsentWhatsAppOpened: (invoiceId, linkId) => axios.post(`${API}/invoices/${invoiceId}/registration-consent-links/${linkId}/whatsapp-opened`),
+  getRegistrationConsentTerms: () => axios.get(`${API}/invoices/registration-consent-terms`),
+  updateRegistrationConsentTerms: (data) => axios.put(`${API}/invoices/registration-consent-terms`, data),
   create: (data) => axios.post(`${API}/invoices`, data),
   update: (id, data) => axios.put(`${API}/invoices/${id}`, data),
   pay: (id) => axios.put(`${API}/invoices/${id}/pay`),

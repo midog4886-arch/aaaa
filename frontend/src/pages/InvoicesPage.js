@@ -31,6 +31,7 @@ import { CreateEditInvoiceDialog } from './invoices/components/dialogs/CreateEdi
 import { ViewInvoiceDialog } from './invoices/components/dialogs/ViewInvoiceDialog';
 import { RefundDialog } from './invoices/components/dialogs/RefundDialog';
 import { InvoiceBalanceDialog } from './invoices/components/dialogs/InvoiceBalanceDialog';
+import { InvoiceConsentDialog } from './invoices/components/dialogs/InvoiceConsentDialog';
 import { ViewCreditNoteDialog } from './invoices/components/dialogs/ViewCreditNoteDialog';
 import { RegFormsPasswordDialog } from './invoices/components/dialogs/RegFormsPasswordDialog';
 import { RegistrationFormDialog } from './invoices/components/dialogs/RegistrationFormDialog';
@@ -64,6 +65,7 @@ export const InvoicesPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [balanceInvoice, setBalanceInvoice] = useState(null);
+  const [consentInvoice, setConsentInvoice] = useState(null);
   const [filterRenewalOnly, setFilterRenewalOnly] = useState(false);
   const [filterActivity, setFilterActivity] = useState('all');
   const [filterStartDate, setFilterStartDate] = useState('');
@@ -477,6 +479,7 @@ export const InvoicesPage = () => {
                             <div className="flex gap-1 flex-wrap">
                               <Button variant="ghost" size="sm" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" /></Button>
                               {['pending', 'partial'].includes(inv.status) && <Button variant="outline" size="sm" onClick={() => setBalanceInvoice(inv)}>دفعة / متابعة</Button>}
+                              {(inv.items || []).some(item => !item.is_product && /سباح|swim/i.test(item.activity_name || '')) && <Button variant="outline" size="sm" onClick={() => setConsentInvoice(inv)}>استمارة وتوقيع</Button>}
                               <Button variant="ghost" size="sm" onClick={() => openEditDialog(inv)}><Edit className="w-4 h-4" /></Button>
                               {inv.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleMarkPaid(inv.id)} className="text-green-600"><CheckCircle className="w-4 h-4" /></Button>}
                               {inv.status === 'cancelled' && <Button variant="ghost" size="sm" onClick={() => handleRestoreInvoice(inv.id)} className="text-blue-600"><RotateCcw className="w-4 h-4" /></Button>}
@@ -654,6 +657,7 @@ export const InvoicesPage = () => {
           saving={refundSaving} onRefund={handleRefund} language={language} t={t}
         />
         <InvoiceBalanceDialog invoice={balanceInvoice} open={Boolean(balanceInvoice)} onOpenChange={open => { if (!open) setBalanceInvoice(null); }} onChanged={loadData} />
+        <InvoiceConsentDialog invoice={consentInvoice} open={Boolean(consentInvoice)} isAdmin={isAdmin} onOpenChange={open => { if (!open) setConsentInvoice(null); }} />
 
         <ViewCreditNoteDialog
           isOpen={isViewCreditNoteDialogOpen} onOpenChange={setIsViewCreditNoteDialogOpen}

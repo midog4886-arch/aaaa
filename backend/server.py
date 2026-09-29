@@ -127,6 +127,7 @@ from routes.coaches import router as coaches_router
 from routes.member_portal import router as member_portal_router
 from routes.members import router as members_router
 from routes.invoices import router as invoices_router, set_loyalty_award_function as set_invoices_loyalty
+from routes.invoice_consents import router as invoice_consents_router
 from routes.attendance import router as attendance_router, set_loyalty_award_function
 from routes.notifications import router as notifications_router
 from routes.bank_reports import router as bank_reports_router
@@ -207,6 +208,7 @@ api_router.include_router(campaign_inquiries_router)
 api_router.include_router(marketers_router)
 api_router.include_router(coaches_router)
 api_router.include_router(members_router)
+api_router.include_router(invoice_consents_router)
 api_router.include_router(invoices_router)
 api_router.include_router(attendance_router)
 api_router.include_router(notifications_router)
