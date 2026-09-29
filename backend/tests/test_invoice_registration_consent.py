@@ -60,7 +60,7 @@ def fixture_db(monkeypatch):
 def payload(invoice):
     return route.ConsentInput(expected_invoice_hash=route.snapshot_hash(route.invoice_snapshot(invoice)), expected_terms_version=route.TERMS_VERSION,
         child_name='اسم الطفل', guardian_name='اسم ولي الأمر', relationship='الأب',
-        guardian_identity='1234567890', emergency_phone='0500000000', has_medical_condition=False,
+        guardian_identity='1234567890', has_medical_condition=False,
         signer_name='اسم ولي الأمر', accepted=True, signature_png=sample_signature())
 
 

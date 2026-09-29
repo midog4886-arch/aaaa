@@ -70,7 +70,7 @@ class ConsentInput(BaseModel):
     guardian_name: str = Field(min_length=2, max_length=160)
     relationship: str = Field(min_length=2, max_length=60)
     guardian_identity: str = Field(min_length=4, max_length=30)
-    emergency_phone: str = Field(min_length=8, max_length=25)
+    emergency_phone: Optional[str] = Field(default=None, max_length=25)
     has_medical_condition: bool
     medical_details: str = Field(default="", max_length=2000)
     signer_name: str = Field(min_length=2, max_length=160)
