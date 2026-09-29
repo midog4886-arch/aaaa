@@ -131,7 +131,7 @@ export const CreateEditInvoiceDialog = ({
   initLevelSelector, goBackLevelSelector, resetLevelSelector,
   selectLevelActivity, selectLevelTime, updateItemLevel,
   handleAcceptFullLevel, handleRejectFullLevel,
-  unlockFeeEdit, validateCoupon, clearScopedCoupon,
+  unlockFeeEdit, validateCoupon, removeCoupon, clearScopedCoupon,
   closeCreateDialog, handleCreateInvoice,
   calcEndDate, parseActivityForLevel,
   language, t
@@ -948,7 +948,12 @@ export const CreateEditInvoiceDialog = ({
                     <p className="text-sm text-green-600">{appliedCoupon.value} {t('sar')} {language === 'ar' ? 'خصم' : 'off'}</p>
                   </div>
                 </div>
-                <span className="text-lg font-bold text-green-700">-{couponDiscount} {t('sar')}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-bold text-green-700">-{couponDiscount} {t('sar')}</span>
+                  <Button type="button" variant="outline" size="sm" onClick={removeCoupon} data-testid="remove-coupon-btn">
+                    <X className="w-4 h-4 me-1" />{language === 'ar' ? 'إلغاء الخصم' : 'Remove discount'}
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="flex gap-2">

@@ -76,6 +76,7 @@ export const useInvoiceForm = ({
   setQrCardMember, setQrCardSubscription, setIsQRCardDialogOpen
 }) => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingInvoiceId, setEditingInvoiceId] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -529,25 +530,35 @@ export const useInvoiceForm = ({
   // Discard the saved draft and clear the form, keeping the dialog open for a fresh start.
   const discardDraftAndReset = () => { clearInvoiceDraft(); resetFormFields(); };
 
-  // Manual "New invoice" entry point: restores an unfinished draft if one exists.
+  // Let the user decide whether to continue an unfinished invoice.
   const openCreateDialog = () => {
     const draft = readInvoiceDraft();
     if (draftHasContent(draft)) {
-      applyDraft(draft);
-      toast.info(
-        language === 'ar' ? 'تم استرجاع مسودة فاتورة غير مكتملة' : 'Restored an unfinished invoice draft',
-        { action: { label: language === 'ar' ? 'بدء فاتورة جديدة' : 'Start fresh', onClick: () => discardDraftAndReset() } }
-      );
+      setPendingDraft(draft);
     } else {
       resetFormFields();
+      setIsCreateDialogOpen(true);
     }
+  };
+
+  const continueDraft = () => {
+    if (!pendingDraft) return;
+    applyDraft(pendingDraft);
+    setPendingDraft(null);
+    setIsCreateDialogOpen(true);
+  };
+
+  const startFreshInvoice = () => {
+    setPendingDraft(null);
+    discardDraftAndReset();
     setIsCreateDialogOpen(true);
   };
 
   const { subtotal, vatAmount, totalBeforeDiscount, totalDiscount, marketerDiscount, total } = calculateTotals();
 
   return {
-    isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, editingInvoiceId, selectedMember, setSelectedMember,
+    isCreateDialogOpen, setIsCreateDialogOpen, pendingDraft, setPendingDraft, continueDraft, startFreshInvoice,
+    isEditMode, editingInvoiceId, selectedMember, setSelectedMember,
     invoiceItems, setInvoiceItems, discount, setDiscount, notes, setNotes, paymentMethod, setPaymentMethod,
     splitEnabled, setSplitEnabled, paymentSplit, setPaymentSplit,
     saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon, couponDiscount, setCouponDiscount,

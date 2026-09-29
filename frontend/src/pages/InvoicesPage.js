@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import PaymentLinksPanel from '../components/PaymentLinksPanel';
 import { Layout } from '../components/Layout';
 import { Card, CardContent } from '../components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -174,7 +175,8 @@ export const InvoicesPage = () => {
     language, t, getBranchName, setIsViewDialogOpen, langOverride, branches
   });
 
-  const { isCreateDialogOpen, setIsCreateDialogOpen, isEditMode, selectedMember, setSelectedMember, invoiceItems, setInvoiceItems,
+  const { isCreateDialogOpen, setIsCreateDialogOpen, pendingDraft, setPendingDraft, continueDraft, startFreshInvoice,
+    isEditMode, selectedMember, setSelectedMember, invoiceItems, setInvoiceItems,
     notes, setNotes, paymentMethod, setPaymentMethod, splitEnabled, setSplitEnabled, paymentSplit, setPaymentSplit, saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon,
     couponDiscount, setCouponDiscount, marketerDiscount, marketerDiscountPercent, setMarketerDiscountPercent, marketerName, setMarketerName,
     validatingCoupon, itemType, setItemType, feeEditUnlocked, additionalMembers, setAdditionalMembers,
@@ -602,6 +604,17 @@ export const InvoicesPage = () => {
           </TabsContent>
         </Tabs>
 
+        <Dialog open={!!pendingDraft} onOpenChange={open => { if (!open) setPendingDraft(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader><DialogTitle>{language === 'ar' ? 'مسودة فاتورة محفوظة' : 'Saved invoice draft'}</DialogTitle></DialogHeader>
+            <p className="text-sm text-muted-foreground">{language === 'ar' ? 'هل تريد استكمال المسودة أو بدء فاتورة جديدة؟' : 'Continue the draft or start a new invoice?'}</p>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <Button variant="outline" onClick={startFreshInvoice}>{language === 'ar' ? 'فاتورة جديدة' : 'New invoice'}</Button>
+              <Button onClick={continueDraft}>{language === 'ar' ? 'استكمال المسودة' : 'Continue draft'}</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <CreateEditInvoiceDialog
           isOpen={isCreateDialogOpen} onOpenChange={open => { if (!open) closeCreateDialog(); else setIsCreateDialogOpen(true); }}
           isEditMode={isEditMode} members={members} activities={activities} products={products} levels={levels} coaches={coaches}
@@ -628,7 +641,7 @@ export const InvoicesPage = () => {
           initLevelSelector={initLevelSelector} goBackLevelSelector={goBackLevelSelector} resetLevelSelector={resetLevelSelector}
           selectLevelActivity={selectLevelActivity} selectLevelTime={selectLevelTime} updateItemLevel={updateItemLevel}
           handleAcceptFullLevel={handleAcceptFullLevel} handleRejectFullLevel={handleRejectFullLevel}
-          unlockFeeEdit={unlockFeeEdit} validateCoupon={validateCoupon} clearScopedCoupon={clearScopedCoupon}
+          unlockFeeEdit={unlockFeeEdit} validateCoupon={validateCoupon} removeCoupon={removeCoupon} clearScopedCoupon={clearScopedCoupon}
           closeCreateDialog={closeCreateDialog} handleCreateInvoice={handleCreateInvoice}
           calcEndDate={calcEndDate} parseActivityForLevel={parseActivityForLevel}
           language={language} t={t}

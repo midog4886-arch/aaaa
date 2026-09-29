@@ -26,7 +26,11 @@ const TestHarness = () => {
   return (
     <>
       <button onClick={form.openCreateDialog}>open</button>
+      <button onClick={form.continueDraft}>continue</button>
+      <button onClick={form.startFreshInvoice}>new</button>
       <button onClick={form.discardDraftAndReset}>discard</button>
+      <span data-testid="draft-prompt">{form.pendingDraft ? 'shown' : 'hidden'}</span>
+      <span data-testid="invoice-open">{form.isCreateDialogOpen ? 'yes' : 'no'}</span>
       <span data-testid="registration-request-id">{form.registrationRequestId}</span>
     </>
   );
@@ -47,6 +51,9 @@ test('restores registration request id with an invoice draft and clears it on di
 
   render(<TestHarness />);
   fireEvent.click(screen.getByText('open'));
+  expect(screen.getByTestId('draft-prompt').textContent).toBe('shown');
+  expect(screen.getByTestId('invoice-open').textContent).toBe('no');
+  fireEvent.click(screen.getByText('continue'));
 
   await waitFor(() => {
     expect(screen.getByTestId('registration-request-id').textContent).toBe('request-draft-1');
@@ -58,4 +65,14 @@ test('restores registration request id with an invoice draft and clears it on di
     expect(localStorage.getItem('invoiceCreateDraft_v1')).toBeNull();
     expect(screen.getByTestId('registration-request-id').textContent).toBe('');
   });
+});
+
+test('starts a fresh invoice when a draft exists', () => {
+  localStorage.setItem('invoiceCreateDraft_v1', JSON.stringify({ customerNameAr: 'سارة', savedAt: Date.now() }));
+  render(<TestHarness />);
+  fireEvent.click(screen.getByText('open'));
+  fireEvent.click(screen.getByText('new'));
+  expect(screen.getByTestId('draft-prompt').textContent).toBe('hidden');
+  expect(screen.getByTestId('invoice-open').textContent).toBe('yes');
+  expect(localStorage.getItem('invoiceCreateDraft_v1')).toBeNull();
 });
