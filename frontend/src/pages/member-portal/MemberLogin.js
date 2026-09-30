@@ -259,6 +259,12 @@ const MemberLogin = () => {
         timeout: 15000,
       });
 
+      // Keep the member portal separate from a staff login on shared devices.
+      localStorage.removeItem('token');
+      localStorage.removeItem('selectedBranchId');
+      if (axios.defaults?.headers?.common) {
+        delete axios.defaults.headers.common['Authorization'];
+      }
       localStorage.setItem('member_token', response.data.access_token);
       localStorage.setItem('member_data', JSON.stringify(response.data.member));
       const savedLang = response.data.member?.language;

@@ -160,8 +160,14 @@ const ProtectedRoute = ({ children, permission }) => {
       </div>
     );
   }
+
+  // A member session must never expose a stale staff session left in the
+  // same browser. Staff can explicitly sign in again from /login.
+  if (localStorage.getItem('member_token')) {
+    return <Navigate to="/member-dashboard" replace />;
+  }
   
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !localStorage.getItem('token')) {
     return <Navigate to="/login" replace />;
   }
   
@@ -205,7 +211,7 @@ const SmartRedirect = () => {
     );
   }
   
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !localStorage.getItem('token')) {
     const memberToken = localStorage.getItem('member_token');
     if (memberToken) {
       return <Navigate to="/member-dashboard" replace />;
@@ -237,7 +243,7 @@ const PublicRoute = ({ children }) => {
     );
   }
   
-  if (isAuthenticated) {
+  if (isAuthenticated && localStorage.getItem('token')) {
     if (isAdmin) {
       return <Navigate to="/admin/dashboard" replace />;
     }

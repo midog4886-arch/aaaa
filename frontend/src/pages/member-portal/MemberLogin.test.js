@@ -30,6 +30,8 @@ afterEach(() => {
 
 test('member login submits values supplied by native autofill without change events', async () => {
   localStorage.setItem('tenant_slug', 'academy-one');
+  localStorage.setItem('token', 'previous-staff-session');
+  localStorage.setItem('selectedBranchId', 'previous-branch');
   localStorage.setItem('member_login_phone:academy-one', '0500000000');
   axios.post.mockResolvedValueOnce({ data: { access_token: 'test-token', member: { name_ar: 'Test' } } });
   render(<MemoryRouter><MemberLogin /></MemoryRouter>);
@@ -41,6 +43,9 @@ test('member login submits values supplied by native autofill without change eve
     { phone: '0551234567', member_code: 'ACA-321' },
     { headers: { 'X-Tenant-Slug': 'academy-one' }, timeout: 15000 },
   ));
+  await waitFor(() => expect(localStorage.getItem('member_token')).toBe('test-token'));
+  expect(localStorage.getItem('token')).toBeNull();
+  expect(localStorage.getItem('selectedBranchId')).toBeNull();
 });
 
 test('picker continue reads native autofill values and uses a bounded request', async () => {

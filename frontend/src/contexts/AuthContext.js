@@ -76,6 +76,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await axios.post(`${API}/auth/login`, { username, password });
       const { access_token, user: userData } = response.data;
+
+      // Entering the staff area ends any member session in this browser.
+      localStorage.removeItem('member_token');
+      localStorage.removeItem('member_data');
       
       localStorage.setItem('token', access_token);
       axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
@@ -120,7 +124,9 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('selectedBranchId', branchId);
   };
 
-  const isAuthenticated = !!token && !!user;
+  // A member login may clear the staff token in this same tab. Do not keep
+  // treating the previous staff React state as an authenticated session.
+  const isAuthenticated = !!token && !!user && !!localStorage.getItem('token');
   const isAdmin = user?.is_admin === true;
   const allowedBranchIds = getAllowedBranchIds(user);
   const isMultiBranch = !isAdmin && allowedBranchIds.length > 1;
