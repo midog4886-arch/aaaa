@@ -44,6 +44,8 @@ import { RegFormCardPrintDialog } from './invoices/components/dialogs/RegFormCar
 
 import { verifyOperationPassword } from '../utils/operationPassword';
 
+const getInvoiceMemberId = (invoice) => invoice.member_id || (invoice.items || []).find(item => item.member_id)?.member_id;
+
 export const InvoicesPage = () => {
   const { t, language } = useLanguage();
   const { user, selectedBranchId, isAdmin } = useAuth();
@@ -448,12 +450,12 @@ export const InvoicesPage = () => {
                             </div>
                           </td>
                           <td className="p-3">
-                            {(inv.member_id || (inv.items || []).find(item => item.member_id)?.member_id) ? (
+                            {getInvoiceMemberId(inv) ? (
                               <button
                                 type="button"
                                 className="font-medium text-blue-700 hover:text-blue-900 hover:underline underline-offset-2 text-start"
                                 onClick={() => {
-                                  const memberId = inv.member_id || (inv.items || []).find(item => item.member_id)?.member_id;
+                                  const memberId = getInvoiceMemberId(inv);
                                   navigate(`/admin/members?focus=${encodeURIComponent(memberId)}`);
                                 }}
                                 title={language === 'ar' ? 'فتح ملف العضو' : 'Open member profile'}
@@ -462,6 +464,11 @@ export const InvoicesPage = () => {
                               </button>
                             ) : (
                               <div className="font-medium">{inv.customer_name_ar || inv.member_name}</div>
+                            )}
+                            {inv.member_card_printed_at && (
+                              <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700" title={inv.member_card_printed_at}>
+                                <Printer className="h-3 w-3" />{language === 'ar' ? 'طُلبت طباعة الكارت' : 'Card print requested'}
+                              </span>
                             )}
                             {(inv.guardian_name_ar || inv.guardian_name) && (
                               <div className="text-xs text-blue-600">{language === 'ar' ? 'ولي الأمر' : 'Guardian'}: {inv.guardian_name_ar || inv.guardian_name}</div>

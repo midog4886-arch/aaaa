@@ -99,6 +99,7 @@ class Invoice(BaseModel):
     member_id: Optional[str] = None
     member_name: Optional[str] = ""
     member_code: Optional[str] = ""
+    member_card_printed_at: Optional[str] = None
     items: List[InvoiceItem]
     subtotal: float
     discount: float
@@ -270,13 +271,14 @@ async def get_invoices(
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
-    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id")]))
+    member_ids = list({mid for inv in invoices if (mid := (inv.get("member_id") or next((item.get("member_id") for item in inv.get("items", []) if item.get("member_id")), None)))})
     if member_ids:
-        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "guardian_name": 1, "_id": 0}).to_list(len(member_ids))
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "guardian_name": 1, "card_printed_at": 1, "_id": 0}).to_list(len(member_ids))
         members_map = {m["id"]: m for m in members}
         for inv in invoices:
-            mid = inv.get("member_id")
+            mid = inv.get("member_id") or next((item.get("member_id") for item in inv.get("items", []) if item.get("member_id")), None)
             if mid and mid in members_map:
+                inv["member_card_printed_at"] = members_map[mid].get("card_printed_at")
                 if not inv.get("member_code"):
                     inv["member_code"] = members_map[mid].get("member_code", "")
                 if not inv.get("guardian_name_ar"):
@@ -326,13 +328,14 @@ async def search_invoices(
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
-    member_ids = list(set([inv.get("member_id") for inv in invoices if inv.get("member_id")]))
+    member_ids = list({mid for inv in invoices if (mid := (inv.get("member_id") or next((item.get("member_id") for item in inv.get("items", []) if item.get("member_id")), None)))})
     if member_ids:
-        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "guardian_name": 1, "_id": 0}).to_list(len(member_ids))
+        members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "guardian_name": 1, "card_printed_at": 1, "_id": 0}).to_list(len(member_ids))
         members_map = {m["id"]: m for m in members}
         for inv in invoices:
-            mid = inv.get("member_id")
+            mid = inv.get("member_id") or next((item.get("member_id") for item in inv.get("items", []) if item.get("member_id")), None)
             if mid and mid in members_map:
+                inv["member_card_printed_at"] = members_map[mid].get("card_printed_at")
                 if not inv.get("member_code"):
                     inv["member_code"] = members_map[mid].get("member_code", "")
                 if not inv.get("guardian_name_ar"):
