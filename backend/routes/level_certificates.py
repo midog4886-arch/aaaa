@@ -16,6 +16,7 @@ from pymongo.errors import DuplicateKeyError
 from database import JWT_SECRET, db
 from routes.member_portal import get_current_member
 from utils.auth import get_current_user, require_branch_scope, require_permission
+from utils.certificate_artwork import branch_artwork
 
 
 router = APIRouter(prefix="/level-certificates", tags=["Level certificates"])
@@ -26,7 +27,8 @@ _SEAL_FIELDS = ("id", "transfer_audit_id", "member_id", "member_name",
 
 
 def _seal(doc):
-    message = json.dumps({key: doc.get(key) for key in _SEAL_FIELDS},
+    fields = _SEAL_FIELDS + (("artwork",) if doc.get("seal_version") == 2 else ())
+    message = json.dumps({key: doc.get(key) for key in fields},
                          ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hmac.new(JWT_SECRET.encode(), message.encode(), hashlib.sha256).hexdigest()
 
@@ -63,6 +65,7 @@ def _public_certificate(doc):
         "id", "member_name", "member_name_en", "activity_name", "from_level_name",
         "to_level_name", "from_level_number", "to_level_number",
         "issued_at", "issued_by_name", "branch_id", "status",
+        "artwork",
     )}
     result["seal_valid"] = _seal_valid(doc)
     return result
@@ -162,6 +165,8 @@ async def issue_certificate(payload: IssueCertificate, user: dict = Depends(get_
         "issued_at": datetime.now(timezone.utc).isoformat(),
         "issued_by": user.get("user_id"),
         "issued_by_name": (approver or {}).get("name") or "موظف الأكاديمية",
+        "artwork": await branch_artwork(db, branch),
+        "seal_version": 2,
     }
     doc["seal_signature"] = _seal(doc)
     try:

@@ -45,7 +45,7 @@ export default function MemberCertificates({ verification = false }) {
     {rows.length > 1 && <div className="flex flex-wrap gap-2 mb-5">{rows.map(row => <button key={row.id} onClick={() => setSelected(row)}
       className={`border rounded-lg px-3 py-2 text-sm ${selected?.id === row.id ? 'bg-purple-700 text-white' : 'bg-white text-purple-700'}`}>
       {row.kind === 'manual' ? `شهادة ${row.student_name_ar}` : `${row.activity_name} · مستوى ${row.to_level_number}`}</button>)}</div>}
-    {selected && <><LevelCertificateSheet certificate={selected.kind === 'manual' ? { member_name: selected.student_name_ar, member_name_en: selected.student_name_en, issued_at: selected.issued_at } : selected} />
+    {selected && <><LevelCertificateSheet certificate={selected.kind === 'manual' ? { member_name: selected.student_name_ar, member_name_en: selected.student_name_en, issued_at: selected.issued_at, artwork: selected.artwork } : selected} />
       <div className="mt-4 p-4 rounded-xl border bg-white text-sm flex flex-wrap items-center gap-5">
         <div><strong>بيانات الشهادة</strong><p>{selected.kind === 'manual' ? 'شهادة صادرة من أكاديمية أداء الأبطال' : `${selected.activity_name} · اجتياز المستوى ${selected.from_level_number} والانتقال إلى ${selected.to_level_number}`}</p><p>رقم الشهادة: <span dir="ltr">{selected.id}</span></p></div>
         {selected.kind === 'level' && <div className="ms-auto"><QRCodeSVG value={`${window.location.origin}/certificate/verify/${encodeURIComponent(selected.id)}`} size={78} /><small className="block text-center">التحقق</small></div>}

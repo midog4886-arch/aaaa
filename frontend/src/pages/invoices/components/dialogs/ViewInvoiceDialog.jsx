@@ -10,7 +10,7 @@ export const ViewInvoiceDialog = ({
   isOpen, onOpenChange, selectedInvoice, qrCode, printRef,
   getBranchName, getStatusBadge,
   onPrint, onShareWhatsApp, onSaveAsPdf, onSaveAsPdfOnly,
-  onPrintRegistrationForm, onEdit, onMarkPaid, onRestoreInvoice,
+  onEdit, onMarkPaid, onRestoreInvoice,
   onOpenRefund, onDelete, canRefund,
   sharingWhatsApp, savingPdf, saving, isAdmin,
   langOverride, setLangOverride,
@@ -214,10 +214,6 @@ export const ViewInvoiceDialog = ({
             </Button>
           </div>
           <div className="flex flex-wrap gap-2 justify-center">
-            <Button variant="outline" onClick={onPrintRegistrationForm} size="sm" className="bg-gray-800 border-gray-700 text-white hover:bg-gray-900">
-              <FileText className="w-4 h-4 me-1" />
-              {language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}
-            </Button>
             {selectedInvoice?.status === 'pending' && <Button variant="outline" size="sm" className="text-blue-600 border-blue-300" onClick={() => onEdit(selectedInvoice)}><Edit className="w-4 h-4 me-1" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>}
             {selectedInvoice?.status === 'pending' && <Button size="sm" onClick={() => onMarkPaid(selectedInvoice.id)}><CheckCircle className="w-4 h-4 me-1" />{language === 'ar' ? 'تم الدفع' : 'Mark Paid'}</Button>}
             {selectedInvoice?.status === 'cancelled' && <Button variant="outline" size="sm" onClick={() => onRestoreInvoice(selectedInvoice.id)}><RotateCcw className="w-4 h-4 me-1" />{language === 'ar' ? 'استرجاع' : 'Restore'}</Button>}

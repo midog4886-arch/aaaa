@@ -43,6 +43,7 @@ def fake_db(monkeypatch):
         users=Collection([{'id':'staff','name':'الموظف المعتمد'}]),
         levels=LevelCollection([{'id':'l1','branch_id':'b1','level_number':1,'activity_name':'السباحة'},
                                 {'id':'l2','branch_id':'b1','level_number':2,'activity_name':'السباحة'}]),
+        certificate_artwork_settings=Collection([{'branch_id':'b1','design_id':'design-one','stamp_id':'stamp-one'}]),
         level_certificates=CertificateCollection([]))
     monkeypatch.setattr(certificates,'db',store)
     return store
@@ -60,6 +61,12 @@ def test_approval_issues_once_from_audited_promotion(fake_db):
     assert fake_db.level_certificates.rows[0]['issued_by']=='staff'
     assert first['issued_by_name']=='الموظف المعتمد'
     assert first['seal_valid'] is True
+    assert first['artwork']['design_id']=='design-one'
+    fake_db.certificate_artwork_settings.rows[0]['design_id']='design-two'
+    assert fake_db.level_certificates.rows[0]['artwork']['design_id']=='design-one'
+    fake_db.level_certificates.rows[0]['artwork']['stamp_id']='tampered'
+    assert certificates._seal_valid(fake_db.level_certificates.rows[0]) is False
+    fake_db.level_certificates.rows[0]['artwork']['stamp_id']='stamp-one'
     fake_db.level_certificates.rows[0]['member_name_en'] = 'Tampered Name'
     with pytest.raises(HTTPException) as exc:
         asyncio.run(certificates.verify_certificate(first['id']))

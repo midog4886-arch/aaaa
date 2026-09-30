@@ -29,15 +29,34 @@ class Collection:
         return [{k: v for k, v in row.items() if k != "_id"} for row in self.rows]
 
 
+class Branches:
+    async def find_one(self, query, projection):
+        return {"id": query["id"]} if query["id"] == "branch-1" else None
+
+
+class Settings:
+    def __init__(self, design_id="first-design"):
+        self.design_id = design_id
+
+    async def find_one(self, query, projection):
+        assert query == {"branch_id": "branch-1"}
+        return {"design_id": self.design_id, "stamp_id": "first-stamp"}
+
+
 def test_issue_without_member_or_level(monkeypatch):
     store = Collection()
-    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=store))
+    settings = Settings()
+    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=store, branches=Branches(), certificate_artwork_settings=settings))
     user = {"is_admin": True, "user_id": "owner", "username": "Owner"}
-    payload = certificates.IssueCertificate(student_name_ar="  أحمد   علي  ", student_name_en=" Ahmed  Ali ")
+    payload = certificates.IssueCertificate(student_name_ar="  أحمد   علي  ", student_name_en=" Ahmed  Ali ", branch_filter="branch-1")
     issued = asyncio.run(certificates.issue_certificate(payload, user))
     assert issued["student_name_ar"] == "أحمد علي"
     assert issued["student_name_en"] == "Ahmed Ali"
     assert not any(key in issued for key in ("member_id", "level_id", "transfer_audit_id"))
+    assert issued["branch_id"] == "branch-1"
+    assert issued["artwork"]["design_id"] == "first-design"
+    settings.design_id = "replacement-design"
+    assert store.rows[0]["artwork"]["design_id"] == "first-design"
     assert asyncio.run(certificates.list_certificates(user))[0]["id"] == issued["id"]
 
 
@@ -62,7 +81,7 @@ def test_optional_member_link_is_validated_and_saved(monkeypatch):
         async def find_one(self, query, projection):
             assert query == {"id": "member-1", "branch_id": "branch-1"}
             return {"id": "member-1", "member_code": "AB-123"}
-    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=store, members=Members()))
+    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=store, members=Members(), branches=Branches(), certificate_artwork_settings=Settings()))
     monkeypatch.setattr(certificates, "resolve_branch_filter", lambda *_: "branch-1")
     payload = certificates.IssueCertificate(student_name_ar="أحمد علي", student_name_en="Ahmed Ali", member_id="member-1", branch_filter="branch-1")
     issued = asyncio.run(certificates.issue_certificate(payload, {"is_admin": True, "user_id": "owner"}))

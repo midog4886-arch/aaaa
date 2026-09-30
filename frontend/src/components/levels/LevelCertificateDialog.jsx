@@ -10,6 +10,7 @@ export default function LevelCertificateDialog({ open, onOpenChange, member }) {
   const [nameAr, setNameAr] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [issued, setIssued] = useState(null);
+  const [artwork, setArtwork] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,6 +24,15 @@ export default function LevelCertificateDialog({ open, onOpenChange, member }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [open, member?.id]);
+
+  useEffect(() => {
+    if (!open || !member?.branch_id) { setArtwork(null); return; }
+    let active = true;
+    axios.get('/api/certificates/branch-artwork', { params: { branch_filter: member.branch_id } })
+      .then(({ data }) => { if (active) setArtwork(data); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [open, member?.branch_id]);
 
   useEffect(() => {
     if (!selected?.certificate_id) return;
@@ -48,11 +58,11 @@ export default function LevelCertificateDialog({ open, onOpenChange, member }) {
     finally { setLoading(false); }
   };
 
-  const certificate = issued || (selected ? { ...selected, member_name: nameAr, member_name_en: nameEn } : null);
+  const certificate = issued || (selected ? { ...selected, member_name: nameAr, member_name_en: nameEn, artwork } : null);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" dir="rtl">
       <DialogHeader><DialogTitle>شهادة اجتياز المستوى</DialogTitle></DialogHeader>
-      <p className="text-sm text-gray-600">الصورة الأصلية للشهادة محفوظة كما هي. يُضاف اسم اللاعب بالعربية والإنجليزية فقط، ثم تصدر الشهادة بعد مراجعة الترقية.</p>
+      <p className="text-sm text-gray-600">يُستخدم تصميم وختم الفرع وقت الإصدار، ثم تُحفظ صورتهما مع الشهادة. يُضاف اسم اللاعب بالعربية والإنجليزية بعد مراجعة الترقية.</p>
       {loading && !selected && <p>جارٍ تحميل الترقيات...</p>}
       {!loading && !error && candidates.length === 0 && <p className="text-amber-700">لا توجد ترقية موثقة إلى مستوى أعلى لهذا اللاعب.</p>}
       {candidates.length > 0 && <label className="block text-sm">الترقية

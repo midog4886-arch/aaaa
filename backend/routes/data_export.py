@@ -28,6 +28,7 @@ router = APIRouter(prefix="/tenant", tags=["tenant-data"])
 _COLLECTIONS = [
     "accounts", "activities", "activity_notes", "advertisements",
     "attendance", "audit_logs", "bank_reports", "branches", "closures",
+    "certificates", "level_certificates", "certificate_artwork_settings", "certificate_artwork_assets",
     "coach_attendance", "coaches", "coach_ratings", "counters",
     "credit_notes", "daily_videos", "dashboard_settings", "discounts",
     "expenses", "extension_logs", "internal_expense_payments",

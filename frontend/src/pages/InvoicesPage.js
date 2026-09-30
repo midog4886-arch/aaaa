@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import {
   Plus, Search, Eye, Printer, Receipt, CheckCircle, XCircle, Clock,
   Filter, MessageSquare, X, Trash2, RotateCcw, FileSpreadsheet, Edit,
-  FileText, RefreshCcw, ClipboardList, ArrowRightCircle, CreditCard, Check, Circle
+  FileText, RefreshCcw, ArrowRightCircle, CreditCard, Check, Circle
 } from 'lucide-react';
 import { COMPANY_INFO } from './invoices/constants';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
@@ -191,7 +191,7 @@ export const InvoicesPage = () => {
     openCreateDialog, setRegistrationRequestId
   } = invoiceForm;
 
-  const { savingPdf, sharingWhatsApp, handleSaveAsPdfOnly, handleSaveAsPdf, handleShareWhatsApp, handleSendWhatsApp, handlePrint, handlePrintRegistrationForm } = viewHandlers;
+  const { savingPdf, sharingWhatsApp, handleSaveAsPdfOnly, handleSaveAsPdf, handleShareWhatsApp, handleSendWhatsApp, handlePrint } = viewHandlers;
 
   // Auto-open an invoice when navigated here with ?view=<invoice_id> (e.g. from global search).
   useEffect(() => {
@@ -297,10 +297,6 @@ export const InvoicesPage = () => {
     setActiveTab(tab);
   };
 
-  const handleOpenRegistrationForm = () => {
-    setRegFormsPasswordAction('create'); setRegFormsPasswordInput(''); setShowRegFormsPasswordDialog(true);
-  };
-
   const handleRegFormsPasswordConfirm = async () => {
     const ok = await verifyOperationPassword('reg_forms', regFormsPasswordInput, selectedBranchId);
     if (!ok) { toast.error(language === 'ar' ? 'كلمة المرور غير صحيحة' : 'Incorrect password'); setRegFormsPasswordInput(''); return; }
@@ -381,7 +377,6 @@ export const InvoicesPage = () => {
               <Button variant="outline" onClick={handleExportAllData} data-testid="export-all-btn"><FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير Excel' : 'Export Excel'}</Button>
               <Button variant="outline" onClick={() => { const token = localStorage.getItem('token'); window.open(exportAPI.invoicesPdf() + `&token=${token}`, '_blank'); }}><FileSpreadsheet className="w-4 h-4 me-2" />{language === 'ar' ? 'تصدير PDF' : 'Export PDF'}</Button>
               </>)}
-              <Button variant="outline" onClick={handleOpenRegistrationForm} className="bg-gray-800 text-white hover:bg-gray-900" data-testid="create-registration-form-btn"><FileText className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارة تسجيل' : 'Registration Form'}</Button>
               <Button onClick={() => openCreateDialog()} data-testid="create-invoice-btn"><Plus className="w-4 h-4 me-2" />{t('create_invoice')}</Button>
             </div>
           </div>
@@ -405,7 +400,6 @@ export const InvoicesPage = () => {
           <TabsList>
             <TabsTrigger value="invoices"><Receipt className="w-4 h-4 me-2" />{t('invoices')}</TabsTrigger>
             <TabsTrigger value="credit_notes"><RefreshCcw className="w-4 h-4 me-2" />{language === 'ar' ? 'إشعارات الدائن' : 'Credit Notes'}</TabsTrigger>
-            <TabsTrigger value="forms"><ClipboardList className="w-4 h-4 me-2" />{language === 'ar' ? 'استمارات التسجيل' : 'Registration Forms'}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="invoices">
@@ -673,7 +667,6 @@ export const InvoicesPage = () => {
           getBranchName={getBranchName} getStatusBadge={getStatusBadge}
           onPrint={handlePrint} onShareWhatsApp={handleShareWhatsApp}
           onSaveAsPdf={handleSaveAsPdf} onSaveAsPdfOnly={handleSaveAsPdfOnly}
-          onPrintRegistrationForm={handlePrintRegistrationForm}
           onEdit={openEditDialog} onMarkPaid={handleMarkPaid}
           onRestoreInvoice={handleRestoreInvoice} onOpenRefund={openRefundDialog}
           onDelete={handleDeleteInvoice} canRefund={canRefund}
