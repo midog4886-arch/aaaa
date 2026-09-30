@@ -12,7 +12,7 @@ import { Label } from '../components/ui/label';
 import LevelCertificateSheet from '../components/levels/LevelCertificateSheet';
 import './CertificatesPage.css';
 
-const asSheet = item => ({ member_name: item.student_name_ar, member_name_en: item.student_name_en });
+const asSheet = item => ({ member_name: item.student_name_ar, member_name_en: item.student_name_en, issued_at: item.issued_at });
 
 export default function CertificatesPage() {
   const { selectedBranchId, user } = useAuth();
@@ -151,7 +151,7 @@ export default function CertificatesPage() {
           {selected && <div className="certificates-issued"><span>الشهادة جاهزة: {selected.student_name_ar}</span>{selected.member_id ? <span>مرتبطة بعضو {selected.member_code || ''} وتظهر في تطبيقه</span> : <span>غير مرتبطة بعضو، ولن تظهر في تطبيق العضو</span>}{linkedMember && linkedMember.id !== selected.member_id && <Button type="button" variant="outline" onClick={linkSelected} disabled={linking}>{linking && <Loader2 size={16} className="animate-spin" />} {selected.member_id ? 'نقل ربط الشهادة إلى العضو المحدد' : 'ربط الشهادة الحالية بالعضو المحدد'}</Button>}<Button type="button" onClick={savePdf} disabled={downloading}>{downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} حفظ PDF</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer size={16} /> طباعة الشهادة</Button></div>}
         </section>
         <section className="certificates-panel certificates-preview">
-          <div className="certificates-preview-header"><h2>معاينة الشهادة</h2><span>التصميم الأصلي مع الاسم فقط</span></div>
+          <div className="certificates-preview-header"><h2>معاينة الشهادة</h2><span>الاسم وتاريخ الإصدار</span></div>
           <div data-certificate-export><LevelCertificateSheet ref={sheetRef} certificate={asSheet(preview)} /></div>
         </section>
       </div>

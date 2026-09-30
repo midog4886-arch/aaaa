@@ -78,7 +78,7 @@ export const InvoicesPage = () => {
 
   const [isAddMemberDialogOpen, setIsAddMemberDialogOpen] = useState(false);
   const [addMemberSource, setAddMemberSource] = useState('invoice');
-  const [newMemberData, setNewMemberData] = useState({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', is_vip: false });
+  const [newMemberData, setNewMemberData] = useState({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', preferred_language: 'ar', is_vip: false });
 
   const [showRegFormsPasswordDialog, setShowRegFormsPasswordDialog] = useState(false);
   const [regFormsPasswordInput, setRegFormsPasswordInput] = useState('');
@@ -241,7 +241,7 @@ export const InvoicesPage = () => {
       setPrefillAddMemberActive(false);
       setPrefillBranchId('');
       setPrefillMarketerId('');
-      setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', is_vip: false });
+      setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', preferred_language: 'ar', is_vip: false });
     }
   };
 
@@ -320,7 +320,7 @@ export const InvoicesPage = () => {
       const memRes = await membersAPI.getAll({ exclude_photo: true }); setMembers(memRes.data);
       if (addMemberSource === 'registration') { setRegFormData({ ...regFormData, customer_name: res.data.name_ar, customer_phone: res.data.phone }); }
       else { setSelectedMember(res.data); setCustomerNameAr(res.data.name_ar); setCustomerPhone(res.data.phone); }
-      setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', is_vip: false });
+      setIsAddMemberDialogOpen(false); setNewMemberData({ name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '', nationality: '', preferred_language: 'ar', is_vip: false });
       setPrefillMarketerId('');
       setPrefillBranchId('');
       setPrefillAddMemberActive(false);

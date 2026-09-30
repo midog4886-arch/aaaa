@@ -47,6 +47,18 @@ export const AddMemberDialog = ({
               />
             </div>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="invoice-member-language">{language === 'ar' ? 'لغة المشترك' : 'Member language'}</Label>
+            <select
+              id="invoice-member-language"
+              value={newMemberData.preferred_language || 'ar'}
+              onChange={(e) => setNewMemberData({ ...newMemberData, preferred_language: e.target.value })}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="ar">{language === 'ar' ? 'العربية' : 'Arabic'}</option>
+              <option value="en">{language === 'ar' ? 'الإنجليزية' : 'English'}</option>
+            </select>
+          </div>
           <label className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3 cursor-pointer" data-testid="invoice-member-vip-toggle">
             <div className="flex items-center gap-2">
               <Crown className="w-5 h-5 text-amber-500" />
