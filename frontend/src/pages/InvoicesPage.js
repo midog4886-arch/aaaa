@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import {
   Plus, Search, Eye, Printer, Receipt, CheckCircle, XCircle, Clock,
   Filter, MessageSquare, X, Trash2, RotateCcw, FileSpreadsheet, Edit,
-  FileText, RefreshCcw, ClipboardList, ArrowRightCircle, CreditCard, QrCode, Check, Circle
+  FileText, RefreshCcw, ClipboardList, ArrowRightCircle, CreditCard, Check, Circle
 } from 'lucide-react';
 import { COMPANY_INFO } from './invoices/constants';
 import { calcEndDate } from './invoices/hooks/useInvoiceForm';
@@ -448,7 +448,21 @@ export const InvoicesPage = () => {
                             </div>
                           </td>
                           <td className="p-3">
-                            <div className="font-medium">{inv.customer_name_ar || inv.member_name}</div>
+                            {(inv.member_id || (inv.items || []).find(item => item.member_id)?.member_id) ? (
+                              <button
+                                type="button"
+                                className="font-medium text-blue-700 hover:text-blue-900 hover:underline underline-offset-2 text-start"
+                                onClick={() => {
+                                  const memberId = inv.member_id || (inv.items || []).find(item => item.member_id)?.member_id;
+                                  navigate(`/admin/members?focus=${encodeURIComponent(memberId)}`);
+                                }}
+                                title={language === 'ar' ? 'فتح ملف العضو' : 'Open member profile'}
+                              >
+                                {inv.customer_name_ar || inv.member_name}
+                              </button>
+                            ) : (
+                              <div className="font-medium">{inv.customer_name_ar || inv.member_name}</div>
+                            )}
                             {(inv.guardian_name_ar || inv.guardian_name) && (
                               <div className="text-xs text-blue-600">{language === 'ar' ? 'ولي الأمر' : 'Guardian'}: {inv.guardian_name_ar || inv.guardian_name}</div>
                             )}
@@ -478,19 +492,17 @@ export const InvoicesPage = () => {
                             </span>
                           </td>
                           <td className="p-3">
-                            <div className="flex gap-1 flex-wrap">
-                              <Button variant="ghost" size="sm" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" /></Button>
-                              {['pending', 'partial'].includes(inv.status) && <Button variant="outline" size="sm" onClick={() => setBalanceInvoice(inv)}>دفعة / متابعة</Button>}
-                              {(inv.items || []).some(item => !item.is_product) && <Button variant="outline" size="sm" onClick={() => setConsentInvoice(inv)}>استمارة وتوقيع</Button>}
-                              <Button variant="ghost" size="sm" onClick={() => openEditDialog(inv)}><Edit className="w-4 h-4" /></Button>
-                              {inv.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleMarkPaid(inv.id)} className="text-green-600"><CheckCircle className="w-4 h-4" /></Button>}
-                              {inv.status === 'cancelled' && <Button variant="ghost" size="sm" onClick={() => handleRestoreInvoice(inv.id)} className="text-blue-600"><RotateCcw className="w-4 h-4" /></Button>}
-                              {inv.status === 'pending' && <Button variant="ghost" size="sm" onClick={() => handleCancelInvoice(inv.id)} className="text-orange-500"><XCircle className="w-4 h-4" /></Button>}
-                              {inv.status === 'paid' && canRefund && <Button variant="ghost" size="sm" onClick={() => openRefundDialog(inv)} className="text-purple-600"><RefreshCcw className="w-4 h-4" /></Button>}
-                              <Button variant="ghost" size="sm" onClick={() => handleSendWhatsApp(inv)} className="text-green-500"><MessageSquare className="w-4 h-4" /></Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleOpenCardPrint(inv)} className="text-blue-500"><CreditCard className="w-4 h-4" /></Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleOpenQRCard(inv)} className="text-indigo-500"><QrCode className="w-4 h-4" /></Button>
-                              {isAdmin && <Button variant="ghost" size="sm" onClick={() => handleDeleteInvoice(inv.id, inv.status, inv.branch_id)} className="text-red-500"><Trash2 className="w-4 h-4" /></Button>}
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" />{language === 'ar' ? 'عرض' : 'View'}</Button>
+                              {(inv.items || []).some(item => !item.is_product) && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setConsentInvoice(inv)}><FileText className="w-4 h-4" />{language === 'ar' ? 'الاستمارة' : 'Form'}</Button>}
+                              {['pending', 'partial'].includes(inv.status) && <Button variant="outline" size="sm" onClick={() => setBalanceInvoice(inv)}>{language === 'ar' ? 'دفعة / متابعة' : 'Payment / Follow-up'}</Button>}
+                              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openEditDialog(inv)}><Edit className="w-4 h-4" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>
+                              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleSendWhatsApp(inv)}><MessageSquare className="w-4 h-4" />{language === 'ar' ? 'واتساب' : 'WhatsApp'}</Button>
+                              {inv.status === 'pending' && <Button variant="outline" size="sm" className="gap-1.5 text-green-700" onClick={() => handleMarkPaid(inv.id)}><CheckCircle className="w-4 h-4" />{language === 'ar' ? 'تسجيل الدفع' : 'Mark paid'}</Button>}
+                              {inv.status === 'cancelled' && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleRestoreInvoice(inv.id)}><RotateCcw className="w-4 h-4" />{language === 'ar' ? 'استعادة' : 'Restore'}</Button>}
+                              {inv.status === 'pending' && <Button variant="outline" size="sm" className="gap-1.5 text-orange-700" onClick={() => handleCancelInvoice(inv.id)}><XCircle className="w-4 h-4" />{language === 'ar' ? 'إلغاء' : 'Cancel'}</Button>}
+                              {inv.status === 'paid' && canRefund && <Button variant="outline" size="sm" className="gap-1.5 text-purple-700" onClick={() => openRefundDialog(inv)}><RefreshCcw className="w-4 h-4" />{language === 'ar' ? 'استرداد' : 'Refund'}</Button>}
+                              {isAdmin && <Button variant="outline" size="sm" className="gap-1.5 text-red-600 hover:text-red-700" onClick={() => handleDeleteInvoice(inv.id, inv.status, inv.branch_id)}><Trash2 className="w-4 h-4" />{language === 'ar' ? 'حذف' : 'Delete'}</Button>}
                             </div>
                           </td>
                         </tr>
