@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import html2pdf from 'html2pdf.js';
-import { registrationFormsAPI, discountsAPI, levelsAPI, membersAPI } from '../../../services/api';
+import { registrationFormsAPI, discountsAPI, levelsAPI } from '../../../services/api';
 import { COMPANY_INFO } from '../constants';
 import { calcEndDate, stripTransient } from './useInvoiceForm';
 
 export const useRegFormState = ({
   activities, products, levels, selectedBranchId, language, t, loadData,
   loyaltySettings, loyaltyLevelSettings, branches, getBranchName,
-  setMembers, setIsAddMemberDialogOpen, setAddMemberSource, setRegistrationForms
+  setRegistrationForms
 }) => {
   const [isRegistrationFormDialogOpen, setIsRegistrationFormDialogOpen] = useState(false);
   const [isViewRegFormDialogOpen, setIsViewRegFormDialogOpen] = useState(false);
@@ -25,8 +25,6 @@ export const useRegFormState = ({
   const [regFormAppliedCoupon, setRegFormAppliedCoupon] = useState(null);
   const [regFormCouponDiscount, setRegFormCouponDiscount] = useState(0);
   const [regFormItemType, setRegFormItemType] = useState('activity');
-  const [regFormAdditionalMembers, setRegFormAdditionalMembers] = useState([]);
-  const [regFormAdditionalMemberNewForm, setRegFormAdditionalMemberNewForm] = useState({ show: false, index: -1, data: { name_ar: '' } });
   const [regFormLevelWarnings, setRegFormLevelWarnings] = useState({});
   const [regFormLevelSelectorState, setRegFormLevelSelectorState] = useState({});
 
@@ -114,7 +112,6 @@ export const useRegFormState = ({
     setIsRegistrationFormDialogOpen(false); setRegFormData({ customer_name: '', customer_phone: '' });
     setRegFormItems([]); setRegFormDiscount(0); setRegFormNotes(''); setRegFormPaymentMethod('cash');
     setRegFormCouponCode(''); setRegFormAppliedCoupon(null); setRegFormCouponDiscount(0); setRegFormItemType('activity');
-    setRegFormAdditionalMembers([]); setRegFormAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '' } });
   };
 
   const closeEditRegFormDialog = () => {
@@ -127,17 +124,13 @@ export const useRegFormState = ({
     const formSubtotal = regFormItems.reduce((sum, item) => sum + ((item.fee || 0) * (item.quantity || 1)), 0);
     const totalDiscountAmount = regFormDiscount + regFormCouponDiscount;
     const formTotal = formSubtotal - totalDiscountAmount;
-    const payload = {
+    return {
       customer_name: regFormData.customer_name, customer_phone: regFormData.customer_phone,
       items: regFormItems.map(stripTransient), subtotal: formSubtotal, discount: totalDiscountAmount,
       discount_code: regFormAppliedCoupon?.code || '', vat_amount: 0, total: formTotal,
       payment_method: regFormPaymentMethod, notes: regFormNotes,
       branch_id: selectedBranchId !== 'all' ? selectedBranchId : null
     };
-    if (regFormAdditionalMembers.length > 0) {
-      payload.additional_members = regFormAdditionalMembers.filter(am => am.member && am.items.length > 0).map(am => ({ member_id: am.member.id, member_name: am.member.name_ar || am.member.name, member_code: am.member.member_code || '', items: am.items.map(stripTransient) }));
-    }
-    return payload;
   };
 
   const validateRegFormLevels = () => {
@@ -148,18 +141,6 @@ export const useRegFormState = ({
         ? `يجب اختيار المستوى للعضو "${mainLabel}" - النشاط: ${missingMain.activity_name || ''}`
         : `Please select a level for member "${mainLabel}" - activity: ${missingMain.activity_name || ''}`);
       return false;
-    }
-    for (let i = 0; i < (regFormAdditionalMembers || []).length; i++) {
-      const am = regFormAdditionalMembers[i];
-      if (!am.member || !(am.items || []).length) continue;
-      const memberLabel = am.member?.name_ar || am.member?.name || (language === 'ar' ? `العضو ${i + 2}` : `Member ${i + 2}`);
-      const missing = (am.items || []).find(it => !it.is_product && !it.level_id);
-      if (missing) {
-        toast.error(language === 'ar'
-          ? `يجب اختيار المستوى للعضو "${memberLabel}" - النشاط: ${missing.activity_name || ''}`
-          : `Please select a level for member "${memberLabel}" - activity: ${missing.activity_name || ''}`);
-        return false;
-      }
     }
     return true;
   };
@@ -294,8 +275,7 @@ export const useRegFormState = ({
     regFormDiscount, setRegFormDiscount, regFormNotes, setRegFormNotes,
     regFormPaymentMethod, setRegFormPaymentMethod, regFormCouponCode, setRegFormCouponCode,
     regFormAppliedCoupon, setRegFormAppliedCoupon, regFormCouponDiscount, setRegFormCouponDiscount,
-    regFormItemType, setRegFormItemType, regFormAdditionalMembers, setRegFormAdditionalMembers,
-    regFormAdditionalMemberNewForm, setRegFormAdditionalMemberNewForm,
+    regFormItemType, setRegFormItemType,
     regFormLevelWarnings, setRegFormLevelWarnings, regFormLevelSelectorState, setRegFormLevelSelectorState,
     addActivityToRegForm, addProductToRegForm, removeActivityFromRegForm,
     initRegFormLevelSelector, selectRegFormLevelActivity, selectRegFormLevelTime,

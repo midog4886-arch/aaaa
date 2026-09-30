@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../components/ui/dialog';
 import { Button } from '../../../../components/ui/button';
-import { CheckCircle, Edit, FileText, Loader2, MessageSquare, Printer, Receipt, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react';
+import { CheckCircle, Edit, Loader2, MessageSquare, Printer, Receipt, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react';
 import { COMPANY_INFO, INVOICE_TERMS } from '../../constants';
 import { translateSchedule, translateActivityName, translatePeriod } from '../../invoiceI18n';
 import { invoicesAPI } from '../../../../services/api';
@@ -9,10 +9,10 @@ import { invoicesAPI } from '../../../../services/api';
 export const ViewInvoiceDialog = ({
   isOpen, onOpenChange, selectedInvoice, qrCode, printRef,
   getBranchName, getStatusBadge,
-  onPrint, onShareWhatsApp, onSaveAsPdf, onSaveAsPdfOnly,
+  onPrint, onSaveAsPdf,
   onEdit, onMarkPaid, onRestoreInvoice,
   onOpenRefund, onDelete, canRefund,
-  sharingWhatsApp, savingPdf, saving, isAdmin,
+  savingPdf, saving, isAdmin,
   langOverride, setLangOverride,
   language, t
 }) => {
@@ -200,17 +200,9 @@ export const ViewInvoiceDialog = ({
         <DialogFooter className="flex flex-col gap-3 sm:flex-col">
           <div className="flex flex-wrap gap-2 justify-center border-b pb-3">
             <Button variant="outline" onClick={onPrint} size="sm"><Printer className="w-4 h-4 me-1" />{t('print')}</Button>
-            <Button variant="outline" onClick={onShareWhatsApp} disabled={sharingWhatsApp} size="sm" className="bg-green-50 border-green-400 text-green-700 hover:bg-green-100">
-              {sharingWhatsApp ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <MessageSquare className="w-4 h-4 me-1" />}
-              {language === 'ar' ? 'واتساب' : 'WhatsApp'}
-            </Button>
-            <Button variant="outline" onClick={onSaveAsPdfOnly} disabled={savingPdf} size="sm" className="bg-blue-50 border-blue-400 text-blue-700 hover:bg-blue-100">
-              {savingPdf ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <FileText className="w-4 h-4 me-1" />}
-              PDF
-            </Button>
             <Button variant="outline" onClick={onSaveAsPdf} disabled={savingPdf} size="sm" className="bg-emerald-50 border-emerald-400 text-emerald-700 hover:bg-emerald-100">
               {savingPdf ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <MessageSquare className="w-4 h-4 me-1" />}
-              PDF + {language === 'ar' ? 'واتساب' : 'WA'}
+              PDF + {language === 'ar' ? 'واتساب' : 'WhatsApp'}
             </Button>
           </div>
           <div className="flex flex-wrap gap-2 justify-center">

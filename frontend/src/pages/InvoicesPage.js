@@ -161,7 +161,7 @@ export const InvoicesPage = () => {
   const regFormHook = useRegFormState({
     activities, products, levels, selectedBranchId, language, t, loadData,
     loyaltySettings, loyaltyLevelSettings, branches, getBranchName,
-    setMembers, setIsAddMemberDialogOpen, setAddMemberSource, setRegistrationForms
+    setRegistrationForms
   });
 
   const invoiceForm = useInvoiceForm({
@@ -181,8 +181,8 @@ export const InvoicesPage = () => {
     isEditMode, selectedMember, setSelectedMember, invoiceItems, setInvoiceItems,
     notes, setNotes, paymentMethod, setPaymentMethod, splitEnabled, setSplitEnabled, paymentSplit, setPaymentSplit, saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon,
     couponDiscount, setCouponDiscount, marketerDiscount, marketerDiscountPercent, setMarketerDiscountPercent, marketerName, setMarketerName,
-    validatingCoupon, itemType, setItemType, feeEditUnlocked, additionalMembers, setAdditionalMembers,
-    additionalMemberNewForm, setAdditionalMemberNewForm, levelCapacityWarnings, levelSelectorState, customerNameAr, setCustomerNameAr,
+    validatingCoupon, itemType, setItemType, feeEditUnlocked,
+    levelCapacityWarnings, levelSelectorState, customerNameAr, setCustomerNameAr,
     customerPhone, setCustomerPhone, customerAddress, setCustomerAddress, MAIN_ACTIVITIES_FOR_LEVELS, groupedLevelsForSelector, getGroupedLevelsForDays,
     parseActivityForLevel, subtotal, vatAmount, totalBeforeDiscount, totalDiscount, total, handleMemberSelect, addProductToInvoice,
     addActivityToInvoice, validateCoupon, removeCoupon, clearScopedCoupon, updateItemFee, updateItemDate, updateItemWeeks, removeItem, updateItemSchedule,
@@ -191,7 +191,7 @@ export const InvoicesPage = () => {
     openCreateDialog, setRegistrationRequestId
   } = invoiceForm;
 
-  const { savingPdf, sharingWhatsApp, handleSaveAsPdfOnly, handleSaveAsPdf, handleShareWhatsApp, handleSendWhatsApp, handlePrint } = viewHandlers;
+  const { savingPdf, handleSaveAsPdf, handleSendWhatsApp, handlePrint } = viewHandlers;
 
   // Auto-open an invoice when navigated here with ?view=<invoice_id> (e.g. from global search).
   useEffect(() => {
@@ -213,8 +213,8 @@ export const InvoicesPage = () => {
     isEditRegFormDialogOpen, setIsEditRegFormDialogOpen, selectedRegForm, editRegFormId, regFormData, setRegFormData,
     regFormItems, setRegFormItems, regFormDiscount, setRegFormDiscount, regFormNotes, setRegFormNotes, regFormPaymentMethod,
     setRegFormPaymentMethod, regFormCouponCode, setRegFormCouponCode, regFormAppliedCoupon, setRegFormAppliedCoupon,
-    regFormCouponDiscount, setRegFormCouponDiscount, regFormItemType, setRegFormItemType, regFormAdditionalMembers, setRegFormAdditionalMembers,
-    regFormAdditionalMemberNewForm, setRegFormAdditionalMemberNewForm, regFormLevelWarnings, regFormLevelSelectorState,
+    regFormCouponDiscount, setRegFormCouponDiscount, regFormItemType, setRegFormItemType,
+    regFormLevelWarnings, regFormLevelSelectorState,
     addActivityToRegForm, addProductToRegForm, removeActivityFromRegForm, initRegFormLevelSelector, selectRegFormLevelActivity,
     selectRegFormLevelTime, goBackRegFormLevelSelector, resetRegFormLevelSelector, updateRegFormItemLevel,
     handleAcceptRegFormFullLevel, handleRejectRegFormFullLevel, validateRegFormCoupon, closeRegistrationFormDialog, closeEditRegFormDialog,
@@ -647,8 +647,7 @@ export const InvoicesPage = () => {
           marketerDiscount={marketerDiscount} marketerDiscountPercent={marketerDiscountPercent} marketerName={marketerName}
           validatingCoupon={validatingCoupon} notes={notes} setNotes={setNotes}
           subtotal={subtotal} vatAmount={vatAmount} total={total}
-          saving={saving} additionalMembers={additionalMembers} setAdditionalMembers={setAdditionalMembers}
-          additionalMemberNewForm={additionalMemberNewForm} setAdditionalMemberNewForm={setAdditionalMemberNewForm}
+          saving={saving}
           levelSelectorState={levelSelectorState} levelCapacityWarnings={levelCapacityWarnings}
           feeEditUnlocked={feeEditUnlocked} groupedLevelsForSelector={groupedLevelsForSelector} getGroupedLevelsForDays={getGroupedLevelsForDays}
           addActivityToInvoice={addActivityToInvoice} addProductToInvoice={addProductToInvoice} removeItem={removeItem}
@@ -656,7 +655,7 @@ export const InvoicesPage = () => {
           initLevelSelector={initLevelSelector} goBackLevelSelector={goBackLevelSelector} resetLevelSelector={resetLevelSelector}
           selectLevelActivity={selectLevelActivity} selectLevelTime={selectLevelTime} updateItemLevel={updateItemLevel}
           handleAcceptFullLevel={handleAcceptFullLevel} handleRejectFullLevel={handleRejectFullLevel}
-          unlockFeeEdit={unlockFeeEdit} validateCoupon={validateCoupon} removeCoupon={removeCoupon} clearScopedCoupon={clearScopedCoupon}
+          unlockFeeEdit={unlockFeeEdit} validateCoupon={validateCoupon} removeCoupon={removeCoupon}
           closeCreateDialog={closeCreateDialog} handleCreateInvoice={handleCreateInvoice}
           calcEndDate={calcEndDate} parseActivityForLevel={parseActivityForLevel}
           language={language} t={t}
@@ -666,12 +665,11 @@ export const InvoicesPage = () => {
           isOpen={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}
           selectedInvoice={selectedInvoice} qrCode={qrCode} printRef={printRef}
           getBranchName={getBranchName} getStatusBadge={getStatusBadge}
-          onPrint={handlePrint} onShareWhatsApp={handleShareWhatsApp}
-          onSaveAsPdf={handleSaveAsPdf} onSaveAsPdfOnly={handleSaveAsPdfOnly}
+          onPrint={handlePrint} onSaveAsPdf={handleSaveAsPdf}
           onEdit={openEditDialog} onMarkPaid={handleMarkPaid}
           onRestoreInvoice={handleRestoreInvoice} onOpenRefund={openRefundDialog}
           onDelete={handleDeleteInvoice} canRefund={canRefund}
-          sharingWhatsApp={sharingWhatsApp} savingPdf={savingPdf} saving={saving} isAdmin={isAdmin}
+          savingPdf={savingPdf} saving={saving} isAdmin={isAdmin}
           langOverride={langOverride} setLangOverride={setLangOverride}
           language={language} t={t}
         />
@@ -711,8 +709,6 @@ export const InvoicesPage = () => {
           regFormAppliedCoupon={regFormAppliedCoupon} setRegFormAppliedCoupon={setRegFormAppliedCoupon}
           regFormCouponDiscount={regFormCouponDiscount} setRegFormCouponDiscount={setRegFormCouponDiscount}
           regFormDiscount={regFormDiscount}
-          regFormAdditionalMembers={regFormAdditionalMembers} setRegFormAdditionalMembers={setRegFormAdditionalMembers}
-          regFormAdditionalMemberNewForm={regFormAdditionalMemberNewForm} setRegFormAdditionalMemberNewForm={setRegFormAdditionalMemberNewForm}
           regFormLevelSelectorState={regFormLevelSelectorState} regFormLevelWarnings={regFormLevelWarnings}
           addActivityToRegForm={addActivityToRegForm} addProductToRegForm={addProductToRegForm} removeActivityFromRegForm={removeActivityFromRegForm}
           initRegFormLevelSelector={initRegFormLevelSelector} goBackRegFormLevelSelector={goBackRegFormLevelSelector}
@@ -724,7 +720,7 @@ export const InvoicesPage = () => {
           handleSaveRegistrationFormOnly={handleSaveRegistrationFormOnly}
           handlePrintNewRegistrationForm={handlePrintNewRegistrationForm}
           calcEndDate={calcEndDate} groupedLevelsForSelector={groupedLevelsForSelector} getGroupedLevelsForDays={getGroupedLevelsForDays}
-          setAddMemberSource={setAddMemberSource} setIsAddMemberDialogOpen={setIsAddMemberDialogOpen} setMembers={setMembers}
+          setAddMemberSource={setAddMemberSource} setIsAddMemberDialogOpen={setIsAddMemberDialogOpen}
           coaches={coaches} selectedBranchId={selectedBranchId}
           language={language} t={t}
         />

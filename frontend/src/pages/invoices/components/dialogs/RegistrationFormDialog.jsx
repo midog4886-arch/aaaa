@@ -9,10 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Popover, PopoverContent, PopoverTrigger } from '../../../../components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../../../../components/ui/command';
 import { Textarea } from '../../../../components/ui/textarea';
-import { CheckCircle, ChevronsUpDown, FileText, Plus, Printer, Trash2, UserPlus, X } from 'lucide-react';
+import { CheckCircle, ChevronsUpDown, FileText, Plus, Printer, Trash2, X } from 'lucide-react';
 import { MAIN_ACTIVITIES_FOR_LEVELS } from '../../constants';
-import { membersAPI } from '../../../../services/api';
-import { toast } from 'sonner';
 
 const MemberCombobox = ({ members, selectedLabel, onSelect, onAddNew, language }) => {
   const [open, setOpen] = React.useState(false);
@@ -88,8 +86,6 @@ export const RegistrationFormDialog = ({
   regFormAppliedCoupon, setRegFormAppliedCoupon,
   regFormCouponDiscount, setRegFormCouponDiscount,
   regFormDiscount,
-  regFormAdditionalMembers, setRegFormAdditionalMembers,
-  regFormAdditionalMemberNewForm, setRegFormAdditionalMemberNewForm,
   regFormLevelSelectorState, regFormLevelWarnings,
   addActivityToRegForm, addProductToRegForm, removeActivityFromRegForm,
   initRegFormLevelSelector, goBackRegFormLevelSelector, resetRegFormLevelSelector,
@@ -100,12 +96,12 @@ export const RegistrationFormDialog = ({
   calcEndDate,
   groupedLevelsForSelector,
   getGroupedLevelsForDays,
-  setAddMemberSource, setIsAddMemberDialogOpen, setMembers,
+  setAddMemberSource, setIsAddMemberDialogOpen,
   selectedBranchId,
   language, t
 }) => {
   // Levels are branch-bound: when a specific branch is selected, hide other
-  // branches' levels from the sibling level picker. Levels without branch_id
+  // branches' levels from the level picker. Levels without branch_id
   // (legacy/global) stay visible everywhere.
   const levelPickerBranch = (selectedBranchId && selectedBranchId !== 'all') ? selectedBranchId : '';
   const branchScopedLevels = levelPickerBranch
@@ -443,180 +439,6 @@ export const RegistrationFormDialog = ({
             </div>
             {regFormAppliedCoupon && <p className="text-sm text-green-600">✅ {language === 'ar' ? `تم تطبيق الكوبون: ${regFormAppliedCoupon.code}` : `Coupon applied: ${regFormAppliedCoupon.code}`}</p>}
           </div>
-
-          <Card className="p-3 border-blue-200 bg-blue-50/30">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-bold text-blue-700 flex items-center gap-2">
-                <UserPlus className="w-4 h-4" />{language === 'ar' ? 'أعضاء إضافيين (إخوة)' : 'Additional Members (Siblings)'}
-              </h4>
-              <Button type="button" size="sm" variant="outline" className="border-blue-400 text-blue-700 hover:bg-blue-100" onClick={() => setRegFormAdditionalMembers([...regFormAdditionalMembers, { member: null, items: [] }])}>
-                <UserPlus className="w-4 h-4 me-1" />{language === 'ar' ? 'إضافة عضو آخر' : 'Add Another Member'}
-              </Button>
-            </div>
-            {regFormAdditionalMembers.length > 0 && (
-              <div className="space-y-4">
-                {regFormAdditionalMembers.map((am, amIdx) => (
-                  <div key={amIdx} className="p-3 bg-white rounded-lg border border-blue-200">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-bold text-blue-700">{language === 'ar' ? `العضو ${amIdx + 2}` : `Member ${amIdx + 2}`}{am.member && ` - ${am.member.name_ar || am.member.name}`}</span>
-                      <Button type="button" size="sm" variant="ghost" className="text-red-500 h-7 w-7 p-0" onClick={() => setRegFormAdditionalMembers(regFormAdditionalMembers.filter((_, i) => i !== amIdx))}><Trash2 className="w-4 h-4" /></Button>
-                    </div>
-                    <Select value={am.member?.id || 'none'} onValueChange={(val) => {
-                      if (val === 'none') return;
-                      if (val === 'new_member') { setRegFormAdditionalMemberNewForm({ show: true, index: amIdx, data: { name_ar: '' } }); return; }
-                      const member = members.find(m => m.id === val);
-                      const updated = [...regFormAdditionalMembers]; updated[amIdx] = { ...updated[amIdx], member }; setRegFormAdditionalMembers(updated);
-                    }}>
-                      <SelectTrigger className="mb-2"><SelectValue placeholder={language === 'ar' ? 'اختر العضو...' : 'Select member...'} /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">{language === 'ar' ? '-- اختر --' : '-- Select --'}</SelectItem>
-                        <SelectItem value="new_member" className="text-primary font-medium"><UserPlus className="w-4 h-4 inline me-2" />{language === 'ar' ? 'إضافة عضو جديد' : 'Add new member'}</SelectItem>
-                        {(members || []).filter(m => m.id && !regFormAdditionalMembers.some((a, i) => i !== amIdx && a.member?.id === m.id)).map(m => <SelectItem key={m.id} value={m.id}>{m.member_id && <span className="font-mono text-primary font-semibold me-1">#{m.member_id}</span>}{language === 'ar' ? m.name_ar : m.name} - {m.phone}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    {regFormAdditionalMemberNewForm.show && regFormAdditionalMemberNewForm.index === amIdx && (
-                      <div className="p-3 mb-2 bg-green-50 border border-green-300 rounded-lg space-y-2">
-                        <h5 className="text-sm font-bold text-green-800">{language === 'ar' ? 'إضافة عضو جديد' : 'Add New Member'}</h5>
-                        <Input placeholder={language === 'ar' ? 'اسم العميل *' : 'Customer name *'} value={regFormAdditionalMemberNewForm.data.name_ar} onChange={(e) => setRegFormAdditionalMemberNewForm(prev => ({ ...prev, data: { ...prev.data, name_ar: e.target.value } }))} />
-                        <div className="flex gap-2 justify-end">
-                          <Button type="button" size="sm" variant="outline" onClick={() => setRegFormAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '' } })}>{language === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
-                          <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" disabled={!regFormAdditionalMemberNewForm.data.name_ar} onClick={async () => {
-                            try {
-                              const res = await membersAPI.quickCreate({ name_ar: regFormAdditionalMemberNewForm.data.name_ar, name: regFormAdditionalMemberNewForm.data.name_ar, phone: regFormData?.customer_phone || '', status: 'active' });
-                              const newMember = res.data;
-                              if (setMembers) setMembers(prev => [...prev, newMember]);
-                              const updated = [...regFormAdditionalMembers]; updated[amIdx] = { ...updated[amIdx], member: newMember }; setRegFormAdditionalMembers(updated);
-                              setRegFormAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '' } });
-                              toast.success(language === 'ar' ? 'تم إضافة العضو بنجاح' : 'Member added successfully');
-                            } catch (error) { toast.error(language === 'ar' ? 'خطأ في إضافة العضو' : 'Error adding member'); }
-                          }}><UserPlus className="w-4 h-4 me-1" />{language === 'ar' ? 'حفظ' : 'Save'}</Button>
-                        </div>
-                      </div>
-                    )}
-                    {am.member && (
-                      <>
-                        <Select value="" onValueChange={(actId) => {
-                          const activity = activities.find(a => a.id === actId);
-                          if (!activity) return;
-                          const today = new Date().toISOString().split('T')[0];
-                          const defaultWeeks = 4;
-                          const endDate = calcEndDate(today, defaultWeeks);
-                          const newItem = { activity_id: activity.id, activity_name: activity.name_ar || activity.name, fee: activity.monthly_fee || 0, period: `${today} - ${endDate}`, schedule: activity.schedule || '', start_date: today, end_date: endDate, weeks: defaultWeeks, is_product: false, training_days: [], training_time: '', training_time_hour: '', level_id: '', level_name: '' };
-                          const updated = [...regFormAdditionalMembers]; updated[amIdx] = { ...updated[amIdx], items: [...updated[amIdx].items, newItem] }; setRegFormAdditionalMembers(updated);
-                        }}>
-                          <SelectTrigger className="mb-2"><SelectValue placeholder={language === 'ar' ? '+ اختر نشاط...' : '+ Select activity...'} /></SelectTrigger>
-                          <SelectContent>{(activities || []).filter(a => a.id).map(a => <SelectItem key={a.id} value={a.id}>{a.name_ar || a.name} - {a.monthly_fee} {language === 'ar' ? 'ر.س' : 'SAR'}</SelectItem>)}</SelectContent>
-                        </Select>
-                        {am.items.length > 0 && (
-                          <div className="space-y-2">
-                            {am.items.map((item, itemIdx) => (
-                              <div key={itemIdx} className="p-2 bg-blue-50 rounded text-sm space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-medium">{item.activity_name}</span>
-                                  <div className="flex items-center gap-2">
-                                    <Input type="number" value={item.fee} onChange={(e) => { const updated = [...regFormAdditionalMembers]; updated[amIdx].items[itemIdx].fee = parseFloat(e.target.value) || 0; setRegFormAdditionalMembers(updated); }} className="w-20 h-7 text-sm text-center" />
-                                    <span className="text-xs text-muted-foreground">{language === 'ar' ? 'ر.س' : 'SAR'}</span>
-                                    <Button type="button" size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => { const updated = [...regFormAdditionalMembers]; updated[amIdx].items = updated[amIdx].items.filter((_, i) => i !== itemIdx); setRegFormAdditionalMembers(updated); }}><X className="w-3 h-3" /></Button>
-                                  </div>
-                                </div>
-                                {!item.is_product && (
-                                  <div className="space-y-2">
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div className="space-y-1">
-                                        <Label className="text-xs">{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
-                                        <Input type="date" value={item.start_date || ''} onChange={(e) => { const updated = [...regFormAdditionalMembers]; updated[amIdx].items[itemIdx].start_date = e.target.value; const w = updated[amIdx].items[itemIdx].weeks ?? 4; updated[amIdx].items[itemIdx].end_date = calcEndDate(e.target.value, w, updated[amIdx].items[itemIdx].training_days); updated[amIdx].items[itemIdx].period = `${e.target.value} - ${updated[amIdx].items[itemIdx].end_date}`; setRegFormAdditionalMembers(updated); }} className="h-7 text-xs" />
-                                      </div>
-                                      <div className="space-y-1">
-                                        <Label className="text-xs flex items-center gap-1">{language === 'ar' ? 'تاريخ النهاية' : 'End Date'}
-                                          <span className="flex items-center gap-0.5 bg-blue-50 border border-blue-200 rounded px-1 py-0.5">
-                                            <input type="number" min="1" max="52" value={item.weeks ?? 4} onChange={(e) => { const updated = [...regFormAdditionalMembers]; updated[amIdx].items[itemIdx].weeks = parseInt(e.target.value, 10) || 4; if (updated[amIdx].items[itemIdx].start_date) { updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, updated[amIdx].items[itemIdx].weeks, updated[amIdx].items[itemIdx].training_days); updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`; } setRegFormAdditionalMembers(updated); }} className="w-7 text-xs text-center bg-transparent outline-none font-semibold text-blue-700" />
-                                            <span className="text-xs text-blue-600">{language === 'ar' ? 'أ' : 'w'}</span>
-                                          </span>
-                                        </Label>
-                                        <Input type="date" value={item.end_date || ''} onChange={(e) => { const updated = [...regFormAdditionalMembers]; updated[amIdx].items[itemIdx].end_date = e.target.value; updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${e.target.value}`; setRegFormAdditionalMembers(updated); }} className="h-7 text-xs" />
-                                      </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <Label className="text-xs">{language === 'ar' ? 'أيام التدريب' : 'Training Days'}</Label>
-                                      <div className="flex flex-wrap gap-1">
-                                        {['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'].map((day) => (
-                                          <button key={day} type="button" onClick={() => {
-                                            const currentDays = item.training_days || [];
-                                            const newDays = currentDays.includes(day) ? currentDays.filter(d => d !== day) : [...currentDays, day];
-                                            const updated = [...regFormAdditionalMembers];
-                                            updated[amIdx].items[itemIdx].training_days = newDays;
-                                            if (updated[amIdx].items[itemIdx].start_date) { const w = updated[amIdx].items[itemIdx].weeks ?? 4; updated[amIdx].items[itemIdx].end_date = calcEndDate(updated[amIdx].items[itemIdx].start_date, w, newDays); updated[amIdx].items[itemIdx].period = `${updated[amIdx].items[itemIdx].start_date} - ${updated[amIdx].items[itemIdx].end_date}`; }
-                                            const formatSchedule = (days, time) => { if (days.length === 0) return time || ''; const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']; const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)); let daysStr; if (sortedDays.length === 1) { daysStr = sortedDays[0]; } else { const lastDay = sortedDays.pop(); daysStr = sortedDays.join('، ') + ' و ' + lastDay; } return time ? `${daysStr} - ${time}` : daysStr; };
-                                            updated[amIdx].items[itemIdx].schedule = formatSchedule(newDays, item.training_time);
-                                            setRegFormAdditionalMembers(updated);
-                                          }} className={`px-2 py-1 text-xs rounded border transition-colors ${(item.training_days || []).includes(day) ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}>{day}</button>
-                                        ))}
-                                      </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                      <div className="space-y-1">
-                                        <Label className="text-xs">{language === 'ar' ? 'الساعة' : 'Time'}</Label>
-                                        <Input type="number" min="1" max="12" onWheel={(e) => e.currentTarget.blur()} placeholder={language === 'ar' ? 'مثال: 4' : 'e.g., 4'} value={item.training_time_hour || ''} onChange={(e) => { const hour = e.target.value; const updated = [...regFormAdditionalMembers]; updated[amIdx].items[itemIdx].training_time_hour = hour; const timeStr = hour ? `${hour}:00 م` : ''; updated[amIdx].items[itemIdx].training_time = timeStr; const formatSchedule = (days, time) => { if (!days || days.length === 0) return time || ''; const dayOrder = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت']; const sortedDays = [...days].sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b)); let daysStr; if (sortedDays.length === 1) { daysStr = sortedDays[0]; } else { const lastDay = sortedDays.pop(); daysStr = sortedDays.join('، ') + ' و ' + lastDay; } return time ? `${daysStr} - ${time}` : daysStr; }; updated[amIdx].items[itemIdx].schedule = formatSchedule(updated[amIdx].items[itemIdx].training_days, timeStr); setRegFormAdditionalMembers(updated); }} className="h-7 text-sm" />
-                                        {item.training_time && <p className="text-xs text-muted-foreground mt-1">{item.training_time}</p>}
-                                      </div>
-                                      <div className="space-y-1">
-                                        <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
-                                        <Select value={item.level_id || 'none'} onValueChange={(val) => { const updated = [...regFormAdditionalMembers]; if (val === 'none') { updated[amIdx].items[itemIdx].level_id = ''; updated[amIdx].items[itemIdx].level_name = ''; } else { const level = levels.find(l => l.id === val); const levelLabel = level ? `${level.activity_name || ''} - ${language === 'ar' ? 'مستوى' : 'Level'} ${level.level_number}` : ''; updated[amIdx].items[itemIdx].level_id = val; updated[amIdx].items[itemIdx].level_name = levelLabel; } setRegFormAdditionalMembers(updated); }}>
-                                          <SelectTrigger className="h-7 text-sm"><SelectValue placeholder={language === 'ar' ? 'اختياري' : 'Optional'} /></SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="none">{language === 'ar' ? '-- بدون --' : '-- None --'}</SelectItem>
-                                            {(() => {
-                                              // Smart level filtering for the additional-sibling row:
-                                              // 1) Prefer EXACT activity_name match (our naming
-                                              //    convention encodes the time slot in the name).
-                                              // 2) When the row has a training_time, restrict to
-                                              //    levels whose time_slot/schedule matches it so a
-                                              //    sibling at 5pm karate doesn't see 6pm karate.
-                                              // 3) Fallback to the looser activity_name === item.activity_name
-                                              //    || empty when no exact-match levels exist.
-                                              // Hide temporarily-closed levels from NEW choices, but
-                                              // always keep the one already selected on this item so an
-                                              // existing/edit selection is never silently dropped.
-                                              const all = branchScopedLevels.filter(l => l.id && (l.is_active !== false || l.id === item.level_id));
-                                              const targetTime = (item.training_time || '').trim();
-                                              const norm = (s) => (s || '').toString().trim();
-                                              const exact = all.filter(l => norm(l.activity_name) === norm(item.activity_name));
-                                              let pool = exact.length ? exact : all.filter(l => norm(l.activity_name) === norm(item.activity_name) || !l.activity_name);
-                                              if (targetTime) {
-                                                const timeMatched = pool.filter(l => {
-                                                  const slot = norm(l.time_slot) || norm(l.schedule);
-                                                  if (!slot) return true; // legacy levels with no time → keep
-                                                  return slot.includes(targetTime) || targetTime.includes(slot);
-                                                });
-                                                if (timeMatched.length) pool = timeMatched;
-                                              }
-                                              return pool.map(l => {
-                                                const slot = norm(l.time_slot) || norm(l.schedule);
-                                                return (
-                                                  <SelectItem key={l.id} value={l.id}>
-                                                    {l.activity_name} - {language === 'ar' ? 'مستوى' : 'Level'} {l.level_number}
-                                                    {slot ? ` 🕐 ${slot}` : ''}
-                                                  </SelectItem>
-                                                );
-                                              });
-                                            })()}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
 
           <div className="space-y-2">
             <Label>{language === 'ar' ? 'ملاحظات' : 'Notes'}</Label>

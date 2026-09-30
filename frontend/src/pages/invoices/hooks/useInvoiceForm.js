@@ -59,7 +59,6 @@ const draftHasContent = (d) => {
   return (Array.isArray(d.invoiceItems) && d.invoiceItems.length > 0)
     || !!(d.customerNameAr && d.customerNameAr.trim())
     || !!d.selectedMember
-    || (Array.isArray(d.additionalMembers) && d.additionalMembers.length > 0)
     || !!(d.notes && d.notes.trim())
     || !!(d.customerPhone && d.customerPhone.trim())
     || !!(d.customerAddress && d.customerAddress.trim())
@@ -98,8 +97,6 @@ export const useInvoiceForm = ({
   const [marketerName, setMarketerName] = useState('');
   const [itemType, setItemType] = useState('activity');
   const [feeEditUnlocked, setFeeEditUnlocked] = useState(false);
-  const [additionalMembers, setAdditionalMembers] = useState([]);
-  const [additionalMemberNewForm, setAdditionalMemberNewForm] = useState({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
   const [levelCapacityWarnings, setLevelCapacityWarnings] = useState({});
   const [levelSelectorState, setLevelSelectorState] = useState({});
   const [customerNameAr, setCustomerNameAr] = useState('');
@@ -118,7 +115,7 @@ export const useInvoiceForm = ({
       selectedMember, invoiceItems, discount, notes, paymentMethod,
       couponCode, appliedCoupon, couponDiscount,
       marketerDiscountPercent, marketerName, itemType,
-      additionalMembers, customerNameAr, customerPhone, customerAddress,
+      customerNameAr, customerPhone, customerAddress,
       registrationRequestId,
       savedAt: Date.now(),
     };
@@ -127,7 +124,7 @@ export const useInvoiceForm = ({
     }
   }, [isCreateDialogOpen, isEditMode, selectedMember, invoiceItems, discount, notes, paymentMethod,
     couponCode, appliedCoupon, couponDiscount, marketerDiscountPercent, marketerName, itemType,
-    additionalMembers, customerNameAr, customerPhone, customerAddress, registrationRequestId]);
+    customerNameAr, customerPhone, customerAddress, registrationRequestId]);
 
   // Mirrors LevelsPage identity rule: for "<activity> - <slot>" names the
   // prefix IS the activity — built-in only on an EXACT sport-name match,
@@ -214,9 +211,7 @@ export const useInvoiceForm = ({
   };
 
   const calculateTotals = () => {
-    const primarySubtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
-    const additionalSubtotal = additionalMembers.reduce((sum, am) => sum + am.items.reduce((s, item) => s + item.fee, 0), 0);
-    const subtotal = primarySubtotal + additionalSubtotal;
+    const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
     const vatAmount = Math.round(subtotal * (COMPANY_INFO.vat_rate / 100) * 100) / 100;
     const totalBeforeDiscount = Math.round((subtotal + vatAmount) * 100) / 100;
     // Marketer discount is computed on the subtotal (matching the backend formula)
@@ -260,12 +255,7 @@ export const useInvoiceForm = ({
     setValidatingCoupon(true);
     try {
       const subtotal = invoiceItems.reduce((sum, item) => sum + item.fee, 0);
-      // Activity ids present in the invoice (primary + additional members),
-      // needed so activity-scoped (bundle offer) coupons can be validated.
-      const activityIds = [
-        ...invoiceItems,
-        ...additionalMembers.flatMap(am => am.items || []),
-      ].filter(i => !i.is_product && i.activity_id).map(i => i.activity_id);
+      const activityIds = invoiceItems.filter(i => !i.is_product && i.activity_id).map(i => i.activity_id);
       const res = await discountsAPI.validate(couponCode, subtotal, activityIds);
       const amount = res.data.discount_amount ?? res.data.discount.value;
       setAppliedCoupon(res.data.discount);
@@ -406,17 +396,6 @@ export const useInvoiceForm = ({
           : `Please select a level for member "${mainLabel}" - activity: ${missingLevelMain.activity_name || ''}`);
         return;
       }
-      for (let i = 0; i < (additionalMembers || []).length; i++) {
-        const am = additionalMembers[i];
-        const memberLabel = am.member?.name_ar || am.member?.name || (language === 'ar' ? `العضو ${i + 2}` : `Member ${i + 2}`);
-        const missing = (am.items || []).find(it => !it.is_product && !it.level_id);
-        if (missing) {
-          toast.error(language === 'ar'
-            ? `يجب اختيار المستوى للعضو "${memberLabel}" - النشاط: ${missing.activity_name || ''}`
-            : `Please select a level for member "${memberLabel}" - activity: ${missing.activity_name || ''}`);
-          return;
-        }
-      }
     }
     const hasUnacceptedFullLevel = Object.values(levelCapacityWarnings).some(w => w.isFull && !w.isAccepted);
     if (hasUnacceptedFullLevel) { toast.error(language === 'ar' ? 'يوجد مستوى مكتمل العدد، يرجى الموافقة أو اختيار مستوى آخر.' : 'A selected level is full, please accept or choose another level.'); return; }
@@ -448,9 +427,6 @@ export const useInvoiceForm = ({
           const split = {};
           ['cash', 'card', 'transfer'].forEach(k => { const v = parseFloat(paymentSplit[k]); if (v > 0) split[k] = v; });
           if (Object.keys(split).length > 0) createPayload.payment_split = split;
-        }
-        if (additionalMembers.length > 0) {
-          createPayload.additional_members = additionalMembers.map(am => ({ member_id: am.member.id, member_name: am.member.name_ar || am.member.name, member_code: am.member.member_code || '', items: am.items.map(stripTransient) }));
         }
         await invoicesAPI.create(createPayload);
         toast.success(t('success'));
@@ -495,7 +471,6 @@ export const useInvoiceForm = ({
     setCustomerNameAr(''); setCustomerPhone(''); setCustomerAddress(''); setIsEditMode(false); setEditingInvoiceId(null);
     setRegistrationRequestId('');
     setCouponCode(''); setAppliedCoupon(null); setCouponDiscount(0); setMarketerDiscountPercent(0); setMarketerName(''); setItemType('activity'); setFeeEditUnlocked(false);
-    setAdditionalMembers([]); setAdditionalMemberNewForm({ show: false, index: -1, data: { name_ar: '', name: '', age: '', guardian_name_ar: '', guardian_name: '', phone: '' } });
   };
 
   // Closing the dialog only resets the in-memory form. The localStorage draft is
@@ -519,7 +494,6 @@ export const useInvoiceForm = ({
     setMarketerDiscountPercent(d.marketerDiscountPercent || 0);
     setMarketerName(d.marketerName || '');
     setItemType(d.itemType || 'activity');
-    setAdditionalMembers(Array.isArray(d.additionalMembers) ? d.additionalMembers : []);
     setCustomerNameAr(d.customerNameAr || '');
     setCustomerPhone(d.customerPhone || '');
     setCustomerAddress(d.customerAddress || '');
@@ -564,7 +538,6 @@ export const useInvoiceForm = ({
     saving, setSaving, couponCode, setCouponCode, appliedCoupon, setAppliedCoupon, couponDiscount, setCouponDiscount,
     marketerDiscountPercent, setMarketerDiscountPercent, marketerName, setMarketerName, marketerDiscount,
     validatingCoupon, itemType, setItemType, feeEditUnlocked, setFeeEditUnlocked,
-    additionalMembers, setAdditionalMembers, additionalMemberNewForm, setAdditionalMemberNewForm,
     levelCapacityWarnings, setLevelCapacityWarnings, levelSelectorState, setLevelSelectorState,
     customerNameAr, setCustomerNameAr, customerPhone, setCustomerPhone, customerAddress, setCustomerAddress,
     registrationRequestId, setRegistrationRequestId,
