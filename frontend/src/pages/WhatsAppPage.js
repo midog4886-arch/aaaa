@@ -1067,11 +1067,9 @@ export default function WhatsAppPage() {
       mediaMessages.forEach(message => {
         loadCloudMedia(message, branchKey, authScope, viewKey, conversationId);
       });
-      // The detail GET marks inbound messages read. Reconcile the selected
-      // branch's list/count only after that request succeeds so the badge and
-      // both inbox views reflect the server's authoritative state. Do not
-      // optimistically remove an unread conversation: a stale list response
-      // must remain visible until the authoritative refresh arrives.
+      // Opening a mirrored phone chat does not mark it read on the device.
+      // Refresh the list from the server so phone unread counts remain the
+      // source of truth; never clear an unread row optimistically.
       //
       // Polls refresh the open detail as well, but should not issue another
       // inbox request every ten seconds after the thread is already read.
@@ -3755,8 +3753,8 @@ export default function WhatsAppPage() {
                   </div>
                   <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
                     {t(
-                      'فتح المحادثة يحدّث حالة القراءة فقط؛ «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
-                      'Opening a conversation updates read status only; “Needs reply” tracks inbound messages that have not received a reply.'
+                      'فتح محادثة الجوال هنا لا يجعلها مقروءة على الجوال؛ زر المزامنة يجلب حالة القراءة الحالية. «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
+                      'Opening a phone chat here does not mark it read on the phone; Sync fetches the current unread state. “Needs reply” tracks inbound messages without a reply.'
                     )}
                   </p>
                   {loadingCloudInbox && !cloudConversations.length ? (
@@ -3893,6 +3891,15 @@ export default function WhatsAppPage() {
                       <Building2 className="w-3 h-3" />{cloudThread?.branch_name}
                     </Badge>
                      <Badge variant="outline" className="text-[10px]">{cloudThread?.provider === 'waha' ? 'WAHA' : cloudThread?.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
+                      {cloudThread?.phone_mirrored && (
+                        <Badge variant={cloudThread.phone_unread_known && cloudThread.phone_unread_count > 0 ? 'destructive' : 'outline'} className="text-[10px]" title={cloudThread.phone_synced_at || ''}>
+                          {cloudThread.phone_unread_known
+                            ? cloudThread.phone_unread_count > 0
+                              ? t(`${cloudThread.phone_unread_count} غير مقروءة حسب مزامنة الجوال`, `${cloudThread.phone_unread_count} unread in phone sync`)
+                              : t('مقروءة حسب آخر مزامنة للجوال', 'Read in last phone sync')
+                            : t('حالة القراءة على الجوال غير مؤكدة', 'Phone read state unknown')}
+                        </Badge>
+                      )}
                       <CloudMemberAssociation
                         memberLink={cloudThread?.member_link}
                         isRTL={isRTL}

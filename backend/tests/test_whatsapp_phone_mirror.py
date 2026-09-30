@@ -120,3 +120,35 @@ def test_phone_sync_denies_other_branch_before_provider_call(monkeypatch):
         run(mod.enable_phone_mirror('other', {'role': 'manager', 'branch_id': 'mine'}))
     assert error.value.status_code == 403
     refresh.assert_not_called()
+
+
+def test_opening_mirrored_thread_does_not_mark_phone_messages_read(monkeypatch):
+    conversation = {
+        'id': 'a:123@lid', 'branch_id': 'a', 'remote_jid': '123@lid',
+        'phone_mirrored': True, 'read_only_chat': True, 'unread_count': 2,
+    }
+    db = {
+        'whatsapp_cloud_conversations': AsyncMock(),
+        'branches': AsyncMock(),
+    }
+    db['whatsapp_cloud_conversations'].find_one.return_value = conversation.copy()
+    db['branches'].find_one.return_value = {'name': 'Branch A'}
+    monkeypatch.setattr(mod, '_db', db)
+    monkeypatch.setattr(mod, '_require_bulk_whatsapp_access', lambda _: None)
+    client = AsyncMock()
+    history = {'records': [record('123@lid')], 'has_more': False, 'total': 1}
+    messages = [{'id': 'message-1', 'direction': 'inbound', 'unread': True}]
+    monkeypatch.setattr(mod, '_import_phone_history', AsyncMock(return_value=(client, history, messages)))
+    refresh = AsyncMock(return_value={'unread_chats': 1})
+    monkeypatch.setattr(mod, '_refresh_phone_snapshot', refresh)
+    async def passthrough(rows, *args, **kwargs):
+        return rows
+    monkeypatch.setattr(mod, '_enrich_member_phone_matches', passthrough)
+    monkeypatch.setattr(mod.campaign_inbox, 'merge_messages', lambda cloud, campaign: cloud)
+
+    result = run(mod.get_cloud_inbox_thread('a:123@lid', {'is_admin': True}))
+
+    assert result['conversation']['unread_count'] == 2
+    assert result['messages'][0]['unread'] is True
+    client.mark_messages_read.assert_not_called()
+    refresh.assert_awaited_once_with('a')

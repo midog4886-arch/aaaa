@@ -5590,7 +5590,7 @@ async def get_cloud_inbox_thread(
     phone_history = None
     if conversation.get('phone_mirrored'):
         try:
-            phone_client, phone_history, phone_messages = await _import_phone_history(conversation)
+            _, phone_history, phone_messages = await _import_phone_history(conversation)
             cloud_rows, campaign_messages = list(reversed(phone_messages)), []
         except HTTPException as exc:
             if exc.status_code not in (409, 502):
@@ -5620,17 +5620,17 @@ async def get_cloud_inbox_thread(
         cloud_messages, campaign_messages
     )
     if phone_history:
-        # Send read receipts for exact inbound keys on the fetched provider page.
-        # Never infer that the customer reading an outbound message read our inbox.
-        keys = [r['key'] for r in phone_history['records']
-                if isinstance(r.get('key'), dict) and r['key'].get('fromMe') is False]
-        if keys and (conversation.get('unread_count') or 0) > 0:
-            ok, _, _ = await phone_client.mark_messages_read(keys)
-            if not ok:
-                raise HTTPException(502, 'Could not synchronize read state with the phone')
-            await _refresh_phone_snapshot(conversation['branch_id'], force=True)
-        else:
-            await _refresh_phone_snapshot(conversation['branch_id'])
+        # Viewing a mirrored chat is read-only. The phone's unread state comes
+        # from the provider snapshot; opening this page must not acknowledge
+        # messages or clear an unread flag on a linked device.
+        await _refresh_phone_snapshot(conversation['branch_id'])
+        refreshed_conversation = await _db["whatsapp_cloud_conversations"].find_one(
+            {"id": conversation_id, "branch_id": conversation["branch_id"]},
+            {"_id": 0, "unread_count": 1, "phone_unread_count": 1,
+             "phone_unread_known": 1, "phone_synced_at": 1},
+        )
+        if refreshed_conversation:
+            conversation.update(refreshed_conversation)
     elif not conversation.get('phone_mirrored'):
         await _mark_cloud_inbound_read(
             conversation_id, conversation.get("branch_id") or "", cloud_messages,
