@@ -3,9 +3,19 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import MemberLayout, { memberAPI } from './MemberLayout';
 import LevelCertificateSheet from '../../components/levels/LevelCertificateSheet';
 import { QRCodeSVG } from 'qrcode.react';
+
+const CertificateFile = registerPlugin('CertificateFile');
+
+const readBase64 = blob => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result).split(',')[1]);
+  reader.onerror = () => reject(reader.error || new Error('Could not read PDF'));
+  reader.readAsDataURL(blob);
+});
 
 export default function MemberCertificates({ verification = false }) {
   const { certificateId } = useParams();
@@ -16,6 +26,8 @@ export default function MemberCertificates({ verification = false }) {
   const [pdf, setPdf] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+  const [saving, setSaving] = useState(false);
   const sheetRef = useRef(null);
   useEffect(() => {
     let active = true;
@@ -48,6 +60,7 @@ export default function MemberCertificates({ verification = false }) {
     let url = null;
     setPdf(null);
     setPdfError('');
+    setSaveMessage('');
     setPdfLoading(true);
     const buildPdf = async () => {
       try {
@@ -69,8 +82,9 @@ export default function MemberCertificates({ verification = false }) {
         });
         const output = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [297, 237.7] });
         output.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 297, 237.7);
-        url = URL.createObjectURL(output.output('blob'));
-        if (!cancelled) setPdf({ id: selected.id, url });
+        const blob = output.output('blob');
+        url = URL.createObjectURL(blob);
+        if (!cancelled) setPdf({ id: selected.id, url, blob });
         else URL.revokeObjectURL(url);
       } catch (err) {
         if (!cancelled) setPdfError('تعذر تجهيز PDF للشهادة. حدّث الصفحة وحاول مجددًا.');
@@ -83,6 +97,42 @@ export default function MemberCertificates({ verification = false }) {
   }, [selected]);
 
   const pdfUrl = pdf && selected && pdf.id === selected.id ? pdf.url : null;
+  const pdfFileName = selected ? `certificate-${selected.id}.pdf` : 'certificate.pdf';
+  const isNativeApp = Capacitor.isNativePlatform();
+
+  const savePdf = async () => {
+    if (!pdfUrl || !pdf?.blob || saving) return;
+    setSaving(true);
+    setSaveMessage('');
+    try {
+      if (isNativeApp && Capacitor.isPluginAvailable('CertificateFile')) {
+        await CertificateFile.savePdf({ filename: pdfFileName, data: await readBase64(pdf.blob) });
+        setSaveMessage('تم حفظ الشهادة في المكان الذي اخترته.');
+        return;
+      }
+      const file = new File([pdf.blob], pdfFileName, { type: 'application/pdf' });
+      if ((isNativeApp || /Android|iPad|iPhone|iPod/i.test(navigator.userAgent)) && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'شهادة أكاديمية أداء الأبطال' });
+        setSaveMessage('تم إرسال الشهادة إلى التطبيق الذي اخترته للحفظ أو الطباعة.');
+        return;
+      }
+      if (isNativeApp) {
+        setSaveMessage('هذه النسخة من التطبيق لا تدعم حفظ PDF. حدّث التطبيق أو افتح بوابة الأعضاء في متصفح الهاتف للحفظ.');
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.download = pdfFileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setSaveMessage('بدأ تنزيل الشهادة. تحقق من مجلد التنزيلات.');
+    } catch (err) {
+      if (err?.name !== 'AbortError' && err?.code !== 'CANCELLED') setSaveMessage('تعذّر حفظ الشهادة. حاول مرة أخرى أو افتحها للطباعة من المتصفح.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const content = <div className="max-w-5xl mx-auto p-4" dir="rtl">
     <h1 className="text-2xl font-bold mb-2">{verification ? 'التحقق من شهادة اجتياز المستوى' : 'شهاداتي'}</h1>
@@ -102,10 +152,10 @@ export default function MemberCertificates({ verification = false }) {
       <div className="mt-4 flex flex-wrap gap-3">
       {pdfLoading && <span role="status" className="text-sm text-gray-500">جارٍ تجهيز PDF…</span>}
       {pdfError && <span role="alert" className="text-sm text-red-600">{pdfError}</span>}
-      {pdfUrl && <><a className="bg-purple-700 text-white px-5 py-3 rounded-xl" href={pdfUrl} download={`certificate-${selected.id}.pdf`}>حفظ PDF</a>
-        <a className="border border-purple-700 text-purple-700 px-5 py-3 rounded-xl" href={pdfUrl} target="_blank" rel="noopener noreferrer">فتح PDF للطباعة</a></>}
+      {pdfUrl && <><button type="button" className="bg-purple-700 text-white px-5 py-3 rounded-xl" onClick={savePdf} disabled={saving}>{saving ? 'جارٍ الحفظ…' : 'حفظ PDF'}</button>
+        {!isNativeApp && <a className="border border-purple-700 text-purple-700 px-5 py-3 rounded-xl" href={pdfUrl} target="_blank" rel="noopener noreferrer">فتح PDF للطباعة</a>}</>}
       {!verification && selected.kind === 'level' && <a className="border px-5 py-3 rounded-xl" href={`/certificate/verify/${encodeURIComponent(selected.id)}`} target="_blank" rel="noopener noreferrer">رابط التحقق</a>}
-    </div>{pdfUrl && <p className="mt-2 text-xs text-gray-500">على iPhone: افتح PDF ثم اختر مشاركة لحفظه في الملفات أو طباعته.</p>}</>}
+    </div>{saveMessage && <p role="status" className="mt-2 text-sm text-purple-700">{saveMessage}</p>}</>}
   </div>;
   return verification ? <main className="min-h-screen bg-gray-50">{content}</main> : <MemberLayout>{content}</MemberLayout>;
 }
