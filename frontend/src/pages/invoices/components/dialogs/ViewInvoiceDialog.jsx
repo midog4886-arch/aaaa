@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../components/ui/dialog';
 import { Button } from '../../../../components/ui/button';
 import { CheckCircle, Edit, FileText, Loader2, MessageSquare, Printer, Receipt, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react';
 import { COMPANY_INFO, INVOICE_TERMS } from '../../constants';
 import { translateSchedule, translateActivityName, translatePeriod } from '../../invoiceI18n';
+import { invoicesAPI } from '../../../../services/api';
 
 export const ViewInvoiceDialog = ({
   isOpen, onOpenChange, selectedInvoice, qrCode, printRef,
@@ -15,6 +16,28 @@ export const ViewInvoiceDialog = ({
   langOverride, setLangOverride,
   language, t
 }) => {
+  const [paymentNotice, setPaymentNotice] = useState(null);
+  const [paymentNoticeLoading, setPaymentNoticeLoading] = useState(false);
+  useEffect(() => {
+    if (!isOpen || !selectedInvoice?.id || selectedInvoice.status !== 'paid') {
+      setPaymentNotice(null);
+      return;
+    }
+    let active = true;
+    setPaymentNotice(null);
+    setPaymentNoticeLoading(true);
+    invoicesAPI.getPaymentNotice(selectedInvoice.id)
+      .then(({ data }) => { if (active) setPaymentNotice(data); })
+      .catch(() => { if (active) setPaymentNotice({ notice_status: 'unavailable' }); })
+      .finally(() => { if (active) setPaymentNoticeLoading(false); });
+    return () => { active = false; };
+  }, [isOpen, selectedInvoice?.id, selectedInvoice?.status]);
+
+  const paymentNoticeLabel = {
+    pending: 'مجدولة للإرسال', processing: 'الإرسال جارٍ', failed: 'تعذّر الإرسال',
+    unknown: 'نتيجة الإرسال غير مؤكدة', delivered: 'قبلها مزود واتساب',
+    not_queued: 'لم تُجدول رسالة تلقائية', unavailable: 'تعذّر قراءة حالة الإرسال',
+  };
   const customerLang = selectedInvoice?.customer_preferred_language === 'en' ? 'en' : 'ar';
   const effectiveLang = (langOverride === 'ar' || langOverride === 'en') ? langOverride : customerLang;
   const isAr = effectiveLang === 'ar';
@@ -157,6 +180,21 @@ export const ViewInvoiceDialog = ({
               {(selectedInvoice.payment_split.card > 0) && <span>{isAr ? 'شبكة (بطاقة)' : 'Card'}: <strong>{Number(selectedInvoice.payment_split.card).toFixed(2)}</strong></span>}
               {(selectedInvoice.payment_split.transfer > 0) && <span>{isAr ? 'تحويل' : 'Transfer'}: <strong>{Number(selectedInvoice.payment_split.transfer).toFixed(2)}</strong></span>}
             </div>
+          </div>
+        )}
+        {selectedInvoice?.status === 'paid' && (
+          <div className="rounded-lg border bg-muted/40 p-3 text-sm" role="status">
+            <strong>رسالة إيصال الدفع التلقائية: </strong>
+            {paymentNoticeLoading ? 'جارٍ التحقق…' : paymentNoticeLabel[paymentNotice?.notice_status] || 'غير معروفة'}
+            {paymentNotice && !paymentNoticeLoading && paymentNotice.notice_status !== 'unavailable' && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                {paymentNotice.notice_status === 'not_queued' && !paymentNotice.automatic_send_enabled
+                  ? 'الإرسال التلقائي غير مفعّل لهذا الفرع.'
+                  : `عدد المحاولات: ${paymentNotice.attempts || 0}`}
+                {paymentNotice.last_error && ` · الخطأ: ${paymentNotice.last_error}`}
+                {paymentNotice.notice_status === 'delivered' && ' · قبول المزود لا يؤكد وصولها إلى الجوال.'}
+              </div>
+            )}
           </div>
         )}
         <DialogFooter className="flex flex-col gap-3 sm:flex-col">

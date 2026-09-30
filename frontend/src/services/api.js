@@ -243,6 +243,7 @@ export const socialAPI = {
 export const invoicesAPI = {
   getAll: (params = {}) => axios.get(`${API}/invoices`, { params }),
   getById: (id) => axios.get(`${API}/invoices/${id}`),
+  getPaymentNotice: (id) => axios.get(`${API}/invoices/${id}/payment-notice`),
   getRegistrationConsent: (id) => axios.get(`${API}/invoices/${id}/registration-consent`),
   downloadRegistrationConsentPdf: (id, version) => axios.get(`${API}/invoices/${id}/registration-consent/pdf`, { params: version ? { version } : {}, responseType: 'blob' }),
   getRegistrationConsentHistory: (id) => axios.get(`${API}/invoices/${id}/registration-consent/history`),

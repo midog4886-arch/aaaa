@@ -368,6 +368,49 @@ async def get_invoice(invoice_id: str, current_user: dict = Depends(get_current_
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
 
+
+@router.get("/{invoice_id}/payment-notice")
+async def get_invoice_payment_notice(invoice_id: str, current_user: dict = Depends(get_current_user)):
+    """Read-only receipt dispatch evidence for staff who can see this invoice.
+
+    An outbox ``delivered`` status means the provider accepted the send; it
+    cannot prove delivery to or reading on the recipient's phone.
+    """
+    invoice = await db.invoices.find_one(
+        _scoped_invoice_query(invoice_id, current_user),
+        {"_id": 0, "id": 1, "status": 1, "branch_id": 1, "customer_phone": 1},
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    outbox = await db.whatsapp_invoice_payment_outbox.find_one(
+        {"invoice_id": invoice_id},
+        {"_id": 0, "status": 1, "attempts": 1, "last_error": 1,
+         "last_attempt_at": 1, "updated_at": 1},
+    )
+    sent_log = await db.whatsapp_send_log.find_one(
+        {"invoice_id": invoice_id, "type": "invoice_payment_cloud"},
+        {"_id": 0, "success": 1, "sent_at": 1, "transport": 1},
+        sort=[("sent_at", -1)],
+    )
+    config = await db.whatsapp_branch_configs.find_one(
+        {"branch_id": invoice.get("branch_id")},
+        {"_id": 0, "enabled": 1, "provider": 1},
+    ) if invoice.get("branch_id") else None
+    return {
+        "invoice_status": invoice.get("status"),
+        "has_phone": bool(invoice.get("customer_phone")),
+        "automatic_send_enabled": bool(config and config.get("enabled")),
+        "provider": (config or {}).get("provider"),
+        "notice_status": (outbox or {}).get("status") or "not_queued",
+        "attempts": (outbox or {}).get("attempts", 0),
+        "last_error": (outbox or {}).get("last_error"),
+        "last_attempt_at": (outbox or {}).get("last_attempt_at"),
+        "updated_at": (outbox or {}).get("updated_at"),
+        "provider_accepted": bool(sent_log and sent_log.get("success")),
+        "provider_accepted_at": (sent_log or {}).get("sent_at") if sent_log and sent_log.get("success") else None,
+    }
+
 @router.post("", response_model=Invoice)
 async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(get_current_user)):
     """Create a new invoice"""
