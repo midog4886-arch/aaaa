@@ -502,6 +502,7 @@ export const InvoicesPage = () => {
                             <div className="flex items-center gap-2 whitespace-nowrap">
                               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" />{language === 'ar' ? 'عرض' : 'View'}</Button>
                               {(inv.items || []).some(item => !item.is_product) && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setConsentInvoice(inv)}><FileText className="w-4 h-4" />{language === 'ar' ? 'الاستمارة' : 'Form'}</Button>}
+                              {inv.status === 'paid' && getInvoiceMemberId(inv) && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleOpenCardPrint({ ...inv, member_id: getInvoiceMemberId(inv) })}><Printer className="w-4 h-4" />{language === 'ar' ? 'طباعة الكرت' : 'Print card'}</Button>}
                               {['pending', 'partial'].includes(inv.status) && <Button variant="outline" size="sm" onClick={() => setBalanceInvoice(inv)}>{language === 'ar' ? 'دفعة / متابعة' : 'Payment / Follow-up'}</Button>}
                               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openEditDialog(inv)}><Edit className="w-4 h-4" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>
                               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleSendWhatsApp(inv)}><MessageSquare className="w-4 h-4" />{language === 'ar' ? 'واتساب' : 'WhatsApp'}</Button>
