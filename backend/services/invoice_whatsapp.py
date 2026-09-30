@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 ANDROID_MEMBER_APP_URL = (
     "https://play.google.com/store/apps/details?id=com.champions.academy.member"
 )
-DEFAULT_PUBLIC_BASE_URL = "https://adaa-alabtal.replit.app"
+DEFAULT_PUBLIC_BASE_URL = "https://adaa-alabtal.com"
 DEFAULT_COMPANY_NAME = "شركة اداء الابطال العالمية للرياضة"
 DEFAULT_TAX_NUMBER = "312655637900003"
 DEFAULT_COMMERCIAL_REG = "7043630230"
@@ -178,7 +178,7 @@ def member_portal_url(
     branch: Mapping[str, Any] | None = None,
     tenant: Mapping[str, Any] | None = None,
 ) -> str:
-    """Build a public member-login URL carrying the tenant when available.
+    """Build a public member dashboard URL carrying the tenant when available.
 
     A saved tenant-provided portal URL wins.  The query parameter is consumed
     by the member login page before it makes its tenant-scoped API request;
@@ -202,7 +202,7 @@ def member_portal_url(
         or public_base_url()
     )
     base = str(base).strip().rstrip("/")
-    url = f"{base}/member-login"
+    url = f"{base}/member-dashboard"
     tenant_slug = _tenant_slug(invoice, branch, tenant)
     if tenant_slug and tenant_slug != DEFAULT_TENANT_SLUG:
         url += f"?tenant={quote(tenant_slug, safe='')}"
@@ -222,7 +222,7 @@ def invoice_links(
         logger.warning("Omitting invalid branch WhatsApp invite from invoice caption")
     return [
         ("تطبيق الأعضاء للأندرويد / Android member app", ANDROID_MEMBER_APP_URL),
-        ("بوابة الأعضاء للايفون / Member portal for iPhone", member_portal_url(
+        ("بوابة الأعضاء / Member portal", member_portal_url(
             invoice, branch, tenant
         )),
         *([("مجموعة الواتساب / Branch WhatsApp group", group_url)] if group_url else []),

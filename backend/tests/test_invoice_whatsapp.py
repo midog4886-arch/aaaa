@@ -75,8 +75,8 @@ def test_caption_contains_public_links_once_and_keeps_urls_complete():
     )
     assert ANDROID_MEMBER_APP_URL in caption
     assert caption.count(ANDROID_MEMBER_APP_URL) == 1
-    assert "https://adaa-alabtal.replit.app/member-login?tenant=academy-a" in caption
-    assert caption.count("https://adaa-alabtal.replit.app/member-login?tenant=academy-a") == 1
+    assert "https://adaa-alabtal.com/member-dashboard?tenant=academy-a" in caption
+    assert caption.count("https://adaa-alabtal.com/member-dashboard?tenant=academy-a") == 1
     assert caption.count("https://chat.whatsapp.com/BranchA") == 1
     assert "230955" in caption
     assert "ABTL-042" in caption
@@ -140,7 +140,7 @@ def test_text_and_caption_use_saved_item_schedule_and_all_multi_items():
         return
     assert len(tiny.encode("utf-16-le")) // 2 <= 300
     assert ANDROID_MEMBER_APP_URL in tiny
-    assert "https://adaa-alabtal.replit.app/member-login?tenant=academy-a" in tiny
+    assert "https://adaa-alabtal.com/member-dashboard?tenant=academy-a" in tiny
 
 
 def test_caption_reserves_total_before_items_and_strictly_rejects_long_required_url():
