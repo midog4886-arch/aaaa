@@ -105,13 +105,19 @@ async def link_certificate_member(certificate_id: str, payload: LinkCertificate,
     certificate = await db.certificates.find_one({"id": certificate_id}, {"_id": 0})
     if not certificate:
         raise HTTPException(status_code=404, detail="الشهادة غير موجودة")
+    updates = {"member_id": member["id"], "member_code": member.get("member_code") or ""}
+    changes = {"$set": updates}
     if certificate.get("member_id") and certificate["member_id"] != member["id"]:
-        raise HTTPException(status_code=409, detail="الشهادة مرتبطة بعضو آخر")
+        changes["$push"] = {"member_link_history": {
+            "member_id": certificate["member_id"],
+            "member_code": certificate.get("member_code") or "",
+            "changed_at": datetime.now(timezone.utc).isoformat(),
+            "changed_by": user.get("user_id"),
+        }}
     await db.certificates.update_one(
-        {"id": certificate_id},
-        {"$set": {"member_id": member["id"], "member_code": member.get("member_code") or ""}},
+        {"id": certificate_id}, changes,
     )
-    return {**certificate, "member_id": member["id"], "member_code": member.get("member_code") or ""}
+    return {**certificate, **updates}
 
 
 @router.get("/member/mine")

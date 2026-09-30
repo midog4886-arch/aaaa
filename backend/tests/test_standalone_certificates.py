@@ -133,3 +133,25 @@ def test_member_sees_only_linked_manual_certificates(monkeypatch):
     monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=CertificateStore()))
     result = asyncio.run(certificates.member_certificates({"id": "member-1", "_linked_member_ids": ["member-1", "sibling-1"]}))
     assert result == [{"id": "cert-1", "member_id": "member-1"}]
+
+
+def test_relinking_certificate_keeps_previous_member_audit(monkeypatch):
+    class CertificateStore:
+        async def find_one(self, query, projection):
+            return {"id": "cert-1", "member_id": "old-member", "member_code": "OLD-1"}
+
+        async def update_one(self, query, update):
+            assert update["$set"]["member_id"] == "new-member"
+            assert update["$push"]["member_link_history"]["member_id"] == "old-member"
+
+    class Members:
+        async def find_one(self, query, projection):
+            return {"id": "new-member", "member_code": "NEW-1"}
+
+    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=CertificateStore(), members=Members()))
+    monkeypatch.setattr(certificates, "resolve_branch_filter", lambda *_: "branch-1")
+    result = asyncio.run(certificates.link_certificate_member(
+        "cert-1", certificates.LinkCertificate(member_id="new-member", branch_filter="branch-1"),
+        {"is_admin": True, "user_id": "staff-1"},
+    ))
+    assert result["member_id"] == "new-member"
