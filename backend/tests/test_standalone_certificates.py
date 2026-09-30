@@ -92,3 +92,44 @@ def test_member_search_is_limited_to_selected_branch(monkeypatch):
     monkeypatch.setattr(certificates, "db", SimpleNamespace(members=Members()))
     result = asyncio.run(certificates.search_certificate_members("أحمد", "branch-1", {"is_admin": True}))
     assert result[0]["id"] == "member-1"
+
+
+def test_existing_certificate_can_be_linked_to_member(monkeypatch):
+    class CertificateStore:
+        async def find_one(self, query, projection):
+            return {"id": "cert-1", "student_name_ar": "أحمد علي"}
+
+        async def update_one(self, query, update):
+            assert query == {"id": "cert-1"}
+            assert update["$set"]["member_id"] == "member-1"
+
+    class Members:
+        async def find_one(self, query, projection):
+            assert query == {"id": "member-1", "branch_id": "branch-1"}
+            return {"id": "member-1", "member_code": "AB-123"}
+
+    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=CertificateStore(), members=Members()))
+    monkeypatch.setattr(certificates, "resolve_branch_filter", lambda *_: "branch-1")
+    result = asyncio.run(certificates.link_certificate_member(
+        "cert-1", certificates.LinkCertificate(member_id="member-1", branch_filter="branch-1"),
+        {"is_admin": True},
+    ))
+    assert result["member_id"] == "member-1"
+    assert result["member_code"] == "AB-123"
+
+
+def test_member_sees_only_linked_manual_certificates(monkeypatch):
+    class CertificateStore:
+        def find(self, query, projection):
+            assert query == {"member_id": {"$in": ["member-1", "sibling-1"]}}
+            return self
+
+        def sort(self, *_):
+            return self
+
+        async def to_list(self, count):
+            return [{"id": "cert-1", "member_id": "member-1"}]
+
+    monkeypatch.setattr(certificates, "db", SimpleNamespace(certificates=CertificateStore()))
+    result = asyncio.run(certificates.member_certificates({"id": "member-1", "_linked_member_ids": ["member-1", "sibling-1"]}))
+    assert result == [{"id": "cert-1", "member_id": "member-1"}]

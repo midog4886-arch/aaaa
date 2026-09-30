@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from database import db
 from utils.auth import get_current_user, require_permission, resolve_branch_filter
+from routes.member_portal import get_current_member
 
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
 
@@ -82,3 +83,40 @@ async def issue_certificate(payload: IssueCertificate, user: dict = Depends(get_
     await db.certificates.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+
+class LinkCertificate(BaseModel):
+    member_id: str
+    branch_filter: str | None = None
+
+
+@router.patch("/{certificate_id}/member")
+async def link_certificate_member(certificate_id: str, payload: LinkCertificate, user: dict = Depends(get_current_user)):
+    await require_permission(user, "certificates")
+    branch_id = resolve_branch_filter(user, payload.branch_filter)
+    if not branch_id:
+        raise HTTPException(status_code=400, detail="اختر الفرع أولاً لربط الشهادة بعضو")
+    member = await db.members.find_one(
+        {"id": payload.member_id, "branch_id": branch_id},
+        {"_id": 0, "id": 1, "member_code": 1},
+    )
+    if not member:
+        raise HTTPException(status_code=404, detail="العضو المحدد غير موجود أو خارج نطاق الفرع")
+    certificate = await db.certificates.find_one({"id": certificate_id}, {"_id": 0})
+    if not certificate:
+        raise HTTPException(status_code=404, detail="الشهادة غير موجودة")
+    if certificate.get("member_id") and certificate["member_id"] != member["id"]:
+        raise HTTPException(status_code=409, detail="الشهادة مرتبطة بعضو آخر")
+    await db.certificates.update_one(
+        {"id": certificate_id},
+        {"$set": {"member_id": member["id"], "member_code": member.get("member_code") or ""}},
+    )
+    return {**certificate, "member_id": member["id"], "member_code": member.get("member_code") or ""}
+
+
+@router.get("/member/mine")
+async def member_certificates(member: dict = Depends(get_current_member)):
+    ids = member.get("_linked_member_ids") or [member["id"]]
+    return await db.certificates.find(
+        {"member_id": {"$in": ids}}, {"_id": 0}
+    ).sort("issued_at", -1).to_list(100)

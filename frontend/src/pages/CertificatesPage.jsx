@@ -28,6 +28,7 @@ export default function CertificatesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [linking, setLinking] = useState(false);
   const sheetRef = useRef(null);
 
   useEffect(() => {
@@ -76,6 +77,24 @@ export default function CertificatesPage() {
 
   const preview = selected || { student_name_ar: nameAr, student_name_en: nameEn };
 
+  const linkSelected = async () => {
+    if (!selected || !linkedMember || linking) return;
+    setLinking(true);
+    try {
+      const { data } = await axios.patch(`/api/certificates/${encodeURIComponent(selected.id)}/member`, {
+        member_id: linkedMember.id, branch_filter: branchFilter,
+      });
+      setIssued(current => current.map(item => item.id === data.id ? data : item));
+      setSelected(data);
+      setLinkedMember(null);
+      toast.success('تم ربط الشهادة بالعضو وستظهر في تطبيقه');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'تعذر ربط الشهادة بالعضو');
+    } finally {
+      setLinking(false);
+    }
+  };
+
   const savePdf = async () => {
     if (!selected || !sheetRef.current || downloading) return;
     setDownloading(true);
@@ -121,7 +140,7 @@ export default function CertificatesPage() {
             <Label htmlFor="certificate-member-search">ربط بعضو (اختياري)</Label>
             {linkedMember ? <div className="certificates-linked-member"><span>{linkedMember.name_ar || linkedMember.name} {linkedMember.member_code ? `— ${linkedMember.member_code}` : ''}</span><Button type="button" variant="outline" onClick={() => { setLinkedMember(null); setMemberSearch(''); setSelected(null); }}>إلغاء الربط</Button></div> : <>
               <Input id="certificate-member-search" value={memberSearch} onChange={e => setMemberSearch(e.target.value)} placeholder={needsBranch ? 'اختر الفرع أولاً' : 'ابحث بالاسم أو رقم العضوية'} disabled={needsBranch} autoComplete="off" />
-              {memberResults.length > 0 && <div className="certificates-member-results">{memberResults.map(member => <button type="button" key={member.id} onClick={() => { setLinkedMember(member); setMemberSearch(''); setMemberResults([]); setNameAr(member.name_ar || ''); setNameEn(/^[\x00-\x7F]+$/.test(member.name || '') ? member.name : ''); setSelected(null); }}>{member.name_ar || member.name} {member.member_code ? <small>{member.member_code}</small> : null}</button>)}</div>}
+              {memberResults.length > 0 && <div className="certificates-member-results">{memberResults.map(member => <button type="button" key={member.id} onClick={() => { setLinkedMember(member); setMemberSearch(''); setMemberResults([]); setNameAr(member.name_ar || ''); setNameEn(/^[\x00-\x7F]+$/.test(member.name || '') ? member.name : ''); }}>{member.name_ar || member.name} {member.member_code ? <small>{member.member_code}</small> : null}</button>)}</div>}
             </>}
             <Label htmlFor="certificate-name-ar">اسم الطالب بالعربية</Label>
             <Input id="certificate-name-ar" value={nameAr} onChange={e => { setNameAr(e.target.value); setSelected(null); }} placeholder="اسم الطالب بالعربية" required minLength={2} maxLength={120} autoComplete="off" />
@@ -129,7 +148,7 @@ export default function CertificatesPage() {
             <Input id="certificate-name-en" value={nameEn} onChange={e => { setNameEn(e.target.value); setSelected(null); }} placeholder="Student name in English" required minLength={2} maxLength={120} dir="ltr" autoComplete="off" />
             <Button type="submit" disabled={saving}>{saving && <Loader2 className="w-4 h-4 animate-spin" />} إصدار الشهادة</Button>
           </form>
-          {selected && <div className="certificates-issued"><span>الشهادة جاهزة: {selected.student_name_ar}</span><Button type="button" onClick={savePdf} disabled={downloading}>{downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} حفظ PDF</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer size={16} /> طباعة الشهادة</Button></div>}
+          {selected && <div className="certificates-issued"><span>الشهادة جاهزة: {selected.student_name_ar}</span>{selected.member_id ? <span>مرتبطة بعضو {selected.member_code || ''} وتظهر في تطبيقه</span> : <span>غير مرتبطة بعضو، ولن تظهر في تطبيق العضو</span>}{!selected.member_id && linkedMember && <Button type="button" variant="outline" onClick={linkSelected} disabled={linking}>{linking && <Loader2 size={16} className="animate-spin" />} ربط الشهادة الحالية بالعضو المحدد</Button>}<Button type="button" onClick={savePdf} disabled={downloading}>{downloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />} حفظ PDF</Button><Button type="button" variant="outline" onClick={() => window.print()}><Printer size={16} /> طباعة الشهادة</Button></div>}
         </section>
         <section className="certificates-panel certificates-preview">
           <div className="certificates-preview-header"><h2>معاينة الشهادة</h2><span>التصميم الأصلي مع الاسم فقط</span></div>
