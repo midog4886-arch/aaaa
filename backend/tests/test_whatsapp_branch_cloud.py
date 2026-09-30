@@ -1949,7 +1949,7 @@ def test_stale_processing_payment_notice_is_not_resent_after_restart(monkeypatch
     (False, None, "ReadTimeout"),
     (False, None, "http_502"),
 ])
-def test_whatsflow_payment_sends_image_not_text(monkeypatch, result):
+def test_whatsflow_payment_sends_image_or_safe_text_fallback(monkeypatch, result):
     import base64
     from services import invoice_receipt_image
 
@@ -1966,12 +1966,14 @@ def test_whatsflow_payment_sends_image_not_text(monkeypatch, result):
         return b"\x89PNG\r\n\x1a\nreceipt"
     monkeypatch.setattr(invoice_receipt_image, "render_invoice_receipt_image", render)
     calls = []
+    text_calls = []
     class Client:
         async def send_media(self, *args):
             calls.append(args)
             return result
-        async def send_text(self, *_args, **_kwargs):
-            raise AssertionError("No extra text send")
+        async def send_text(self, number, text, **_kwargs):
+            text_calls.append((number, text))
+            return True, {"key": {"id": "text-receipt"}}, None
     def client(actual):
         assert actual is config
         return Client()
@@ -1985,7 +1987,7 @@ def test_whatsflow_payment_sends_image_not_text(monkeypatch, result):
         with pytest.raises(whatsapp_mod.InvoiceReceiptDeliveryUnknown):
             run(whatsapp_mod.send_invoice_payment_whatsapp_notice(invoice))
     else:
-        assert run(whatsapp_mod.send_invoice_payment_whatsapp_notice(invoice)) is result[0]
+        assert run(whatsapp_mod.send_invoice_payment_whatsapp_notice(invoice)) is True
     assert len(calls) == 1
     number, kind, mime, caption, media, filename = calls[0]
     assert number == "966501234567"
@@ -1996,6 +1998,10 @@ def test_whatsflow_payment_sends_image_not_text(monkeypatch, result):
     assert "Total paid: SAR 11.5" in caption
     assert base64.b64decode(media).startswith(b"\x89PNG")
     assert rendered == [(invoice, {"id": "branch-a"})]
+    assert len(text_calls) == (1 if result[2] == "http_400" else 0)
+    if text_calls:
+        assert text_calls[0][0] == "966501234567"
+        assert "830112" in text_calls[0][1]
 
 
 def test_automatic_renewal_preserves_template_and_appends_structured_english_once(monkeypatch):
@@ -2197,7 +2203,7 @@ def test_manual_bulk_expired_renewal_appends_structured_english(monkeypatch):
     assert message.count(whatsapp_mod.BILINGUAL_ENGLISH_MARKER) == 1
 
 
-def test_receipt_render_failure_does_not_send_text_fallback(monkeypatch):
+def test_receipt_render_failure_sends_text_fallback(monkeypatch):
     from services import invoice_receipt_image
     monkeypatch.setattr(whatsapp_mod, "_db", _DB())
     async def config(_branch):
@@ -2206,15 +2212,23 @@ def test_receipt_render_failure_does_not_send_text_fallback(monkeypatch):
     def broken(*_args):
         raise RuntimeError("render failed")
     monkeypatch.setattr(invoice_receipt_image, "render_invoice_receipt_image", broken)
-    monkeypatch.setattr(whatsapp_mod, "_whatsflow_client",
-                        lambda *_args: pytest.fail("Must not send without image"))
+    sent = []
+    async def send_text(phone, message, _config):
+        sent.append((phone, message))
+        return True, "text-receipt", None
+    monkeypatch.setattr(whatsapp_mod, "_send_whatsflow_message_result", send_text)
+    monkeypatch.setattr(whatsapp_mod, "_send_whatsflow_media_result",
+                        lambda *_args: pytest.fail("Must not send broken image"))
     assert run(whatsapp_mod.send_invoice_payment_whatsapp_notice({
         "id": "invoice", "branch_id": "branch-a", "customer_phone": "0501234567",
-    })) is False
+    })) is True
+    assert len(sent) == 1
+    assert "invoice" in sent[0][1]
 
 
 @pytest.mark.parametrize("outcome, expected", [
     (True, "delivered"), (False, "failed"), ("timeout", "unknown"),
+    ("rejected", "failed"),
 ])
 def test_receipt_outbox_records_media_delivery_outcome(monkeypatch, outcome, expected):
     from types import SimpleNamespace
@@ -2228,6 +2242,8 @@ def test_receipt_outbox_records_media_delivery_outcome(monkeypatch, outcome, exp
     async def send(_invoice):
         if outcome == "timeout":
             raise whatsapp_mod.InvoiceReceiptDeliveryUnknown("ReadTimeout")
+        if outcome == "rejected":
+            raise whatsapp_mod.InvoiceReceiptDeliveryFailed("media_http_400; text_http_400")
         return outcome
     monkeypatch.setattr(whatsapp_mod, "send_invoice_payment_whatsapp_notice", send)
     result = run(whatsapp_mod._deliver_invoice_payment_outbox_item({
@@ -2236,4 +2252,7 @@ def test_receipt_outbox_records_media_delivery_outcome(monkeypatch, outcome, exp
     assert result is (outcome is True)
     update = collection.update_one.call_args.args[1]["$set"]
     assert update["status"] == expected
-    assert update["last_error"] == ("ReadTimeout" if outcome == "timeout" else None)
+    assert update["last_error"] == (
+        "ReadTimeout" if outcome == "timeout" else
+        "media_http_400; text_http_400" if outcome == "rejected" else None
+    )

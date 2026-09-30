@@ -1252,11 +1252,13 @@ async def send_attendance_whatsapp_notice(
             attendance_config["message_template_name"] = config["attendance_template_name"]
             success = await _send_meta_cloud_message(phone, message, attendance_config)
         try:
+            sent_at = datetime.now(timezone.utc).isoformat()
             await _db["whatsapp_send_log"].insert_one({
                 "phone": phone.split("@")[0],
                 "message": message,
                 "success": success,
-                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "sent_at": sent_at,
+                "timestamp": sent_at,
                 "type": "attendance_cloud",
                 "branch_id": target_branch,
                 "member_id": member.get("id"),
@@ -1745,6 +1747,10 @@ class InvoiceReceiptDeliveryUnknown(RuntimeError):
     """The provider may have accepted the receipt; never automatically resend."""
 
 
+class InvoiceReceiptDeliveryFailed(RuntimeError):
+    """The provider definitively rejected this receipt."""
+
+
 async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
     """Send one invoice notice using the branch's configured provider.
 
@@ -1900,36 +1906,49 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
         if provider == "whatsflow":
             from services.invoice_receipt_image import render_invoice_receipt_image
 
+            async def send_text_fallback(reason: str) -> bool:
+                # Media was not attempted, or was definitively rejected. Never
+                # send a second message when the media outcome is uncertain.
+                logger.warning(
+                    "Invoice payment text fallback invoice=%s reason=%s",
+                    invoice.get("id") or invoice.get("invoice_number"), reason,
+                )
+                try:
+                    text_ok, _, text_error = await _send_whatsflow_message_result(
+                        phone, message, config
+                    )
+                except Exception as exc:
+                    raise InvoiceReceiptDeliveryUnknown(type(exc).__name__) from exc
+                if not text_ok:
+                    if text_error and re.fullmatch(r"http_4\d\d", text_error) and text_error not in {"http_408", "http_409"}:
+                        raise InvoiceReceiptDeliveryFailed(f"{reason}; text_{text_error}")
+                    raise InvoiceReceiptDeliveryUnknown(text_error or "unconfirmed_text_delivery")
+                return True
+
             try:
                 caption = build_whatsflow_caption(render_invoice, branch, tenant)
+                image = await asyncio.to_thread(
+                    render_invoice_receipt_image, render_invoice, image_branch
+                )
             except CaptionLinkError:
-                logger.exception(
-                    "Invoice Whatsflow caption required content did not fit "
-                    "for invoice=%s tenant=%s",
-                    invoice.get("id") or invoice.get("invoice_number"),
-                    tenant_slug,
-                )
-                return False
-            image = await asyncio.to_thread(
-                render_invoice_receipt_image, render_invoice, image_branch
-            )
-            # One media message, not a text followed by a separate attachment.
-            # The formatter keeps all app/portal/branch URLs intact and trims
-            # only detail lines when the provider's 1,024-character caption
-            # limit requires it.  Full details remain in the image.
-            try:
-                success, _, error = await _send_whatsflow_media_result(
-                    phone, "image", "image/png", caption,
-                    base64.b64encode(image).decode("ascii"), "invoice.png",
-                    config,
-                )
+                success = await send_text_fallback("caption_too_long")
             except Exception as exc:
-                raise InvoiceReceiptDeliveryUnknown(type(exc).__name__) from exc
-            if not success and not (
-                error and re.fullmatch(r"http_4\d\d", error)
-                and error not in {"http_408", "http_409"}
-            ):
-                raise InvoiceReceiptDeliveryUnknown(error or "unconfirmed_delivery")
+                success = await send_text_fallback(f"receipt_render_{type(exc).__name__}")
+            else:
+                # A successful media request sends only the image and caption.
+                try:
+                    success, _, error = await _send_whatsflow_media_result(
+                        phone, "image", "image/png", caption,
+                        base64.b64encode(image).decode("ascii"), "invoice.png",
+                        config,
+                    )
+                except Exception as exc:
+                    raise InvoiceReceiptDeliveryUnknown(type(exc).__name__) from exc
+                if not success:
+                    if error and re.fullmatch(r"http_4\d\d", error) and error not in {"http_408", "http_409"}:
+                        success = await send_text_fallback(f"media_{error}")
+                    else:
+                        raise InvoiceReceiptDeliveryUnknown(error or "unconfirmed_delivery")
         elif provider == "waha":
             success, _, _ = await _send_session_provider_result(phone, message, config)
         else:
@@ -1955,6 +1974,8 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
             logger.warning("Could not save payment WhatsApp log: %s", type(exc).__name__)
         return success
     except InvoiceReceiptDeliveryUnknown:
+        raise
+    except InvoiceReceiptDeliveryFailed:
         raise
     except Exception as exc:
         logger.warning("Invoice payment WhatsApp notice failed: %s", type(exc).__name__)
@@ -1999,11 +2020,15 @@ async def _deliver_invoice_payment_outbox_item(item: dict) -> bool:
     if getattr(claim, "modified_count", 0) == 0:
         return False
     error = None
+    failure_error = None
     try:
         success = await send_invoice_payment_whatsapp_notice(item.get("invoice") or {})
     except InvoiceReceiptDeliveryUnknown as exc:
         success = False
         error = str(exc)
+    except InvoiceReceiptDeliveryFailed as exc:
+        success = False
+        failure_error = str(exc)
     await coll.update_one(
         {
             "invoice_id": item["invoice_id"],
@@ -2012,7 +2037,7 @@ async def _deliver_invoice_payment_outbox_item(item: dict) -> bool:
         },
         {"$set": {
             "status": "unknown" if error else ("delivered" if success else "failed"),
-            "last_error": error,
+            "last_error": error or failure_error,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
     )
