@@ -76,6 +76,10 @@ class MemberCreate(BaseModel):
     marketer_id: Optional[str] = ""
     is_vip: Optional[bool] = False
 
+
+class InvoiceMemberCreate(MemberCreate):
+    preferred_language: Literal["ar", "en"]
+
 class MemberUpdate(BaseModel):
     name: Optional[str] = None
     name_ar: Optional[str] = None
@@ -578,11 +582,11 @@ async def create_member(member: MemberCreate, current_user: dict = Depends(get_c
 
 
 @router.post("/quick-create", response_model=Member)
-async def quick_create_member(member: MemberCreate, current_user: dict = Depends(get_current_user)):
+async def quick_create_member(member: InvoiceMemberCreate, current_user: dict = Depends(get_current_user)):
     """Quick-add a member from the invoice flow — no members-create permission required.
 
     Still requires authentication and enforces branch isolation + plan limits.
-    The nationality field is mandatory for this (invoice) entry point.
+    Nationality and preferred language are mandatory for this (invoice) entry point.
     """
     if not (member.nationality or "").strip():
         raise HTTPException(status_code=422, detail="الجنسية مطلوبة")

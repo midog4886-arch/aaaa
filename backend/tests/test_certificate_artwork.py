@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from io import BytesIO
 import sys
 from pathlib import Path
@@ -6,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException, UploadFile
-from PIL import Image
+from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from utils.certificate_artwork import branch_artwork, store_artwork_image
+from utils.certificate_artwork import branch_artwork, clean_existing_stamp, store_artwork_image
 
 
 class Collection:
@@ -31,6 +32,8 @@ class Collection:
 
 def _upload(size, mode="RGB", image_format="PNG"):
     image = Image.new(mode, size, (255, 0, 0, 0) if mode == "RGBA" else "red")
+    if mode == "RGBA":
+        ImageDraw.Draw(image).ellipse((100, 100, 200, 200), fill=(30, 55, 155, 255))
     data = BytesIO()
     image.save(data, image_format)
     return UploadFile(file=BytesIO(data.getvalue()), filename="art.png", headers={"content-type": "image/png"})
@@ -62,3 +65,23 @@ def test_design_ratio_is_checked_and_stamp_keeps_transparency():
     asset_id = asyncio.run(store_artwork_image(db, _upload((400, 400), mode="RGBA"), "stamp"))
     assert len(asset_id) == 64
     assert db.certificate_artwork_assets.rows[0]["content_type"] == "image/png"
+    saved = Image.open(BytesIO(base64.b64decode(db.certificate_artwork_assets.rows[0]["data"])))
+    assert saved.width < 200 and saved.height < 200
+    assert saved.getpixel((0, 0))[3] == 0
+
+
+def test_stamp_photo_background_is_removed_and_existing_stamp_can_be_cleaned():
+    photo = Image.new("RGB", (400, 400), (175, 175, 175))
+    ImageDraw.Draw(photo).ellipse((150, 170, 250, 220), outline=(48, 75, 151), width=5)
+    source = BytesIO()
+    photo.save(source, "PNG")
+    db = SimpleNamespace(certificate_artwork_assets=Collection())
+    old_id = "old-stamp"
+    db.certificate_artwork_assets.rows.append({
+        "id": old_id, "kind": "stamp", "data": base64.b64encode(source.getvalue()).decode("ascii"),
+    })
+    asset_id = asyncio.run(clean_existing_stamp(db, old_id))
+    saved = Image.open(BytesIO(base64.b64decode(next(row for row in db.certificate_artwork_assets.rows if row["id"] == asset_id)["data"])))
+    assert saved.width < 130 and saved.height < 80
+    assert saved.getpixel((0, 0))[3] == 0
+    assert max(saved.getchannel("A").getextrema()) > 100

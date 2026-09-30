@@ -104,6 +104,18 @@ export default function CertificatesPage() {
     finally { setArtworkBusy(false); }
   };
 
+  const cleanStamp = async () => {
+    if (!branchFilter || !artwork?.stamp_id || artworkBusy) return;
+    setArtworkBusy(true);
+    try {
+      const { data } = await axios.post(`/api/certificates/branch-artwork/${encodeURIComponent(branchFilter)}/stamp/clean`);
+      setArtwork(data);
+      setSelected(null);
+      toast.success('أُزيلت خلفية الورق وقُصّ الختم');
+    } catch (error) { toast.error(error.response?.data?.detail || 'تعذر تنظيف صورة الختم'); }
+    finally { setArtworkBusy(false); }
+  };
+
   const saveLayout = async () => {
     if (!branchFilter || !artwork || artworkBusy) return;
     setArtworkBusy(true);
@@ -221,12 +233,12 @@ export default function CertificatesPage() {
       </div>
       {user?.is_admin && branchFilter && artwork && <section className="certificates-panel certificates-artwork-settings">
         <h2>تصميم وختم شهادة هذا الفرع</h2>
-        <p>ارفع تصميمًا أفقيًا بنسبة قريبة من 1402×1122 وختمًا بصيغة PNG بخلفية شفافة. سيُحفظ التصميم والختم مع كل شهادة جديدة، وتبقى الشهادات القديمة بصورتها السابقة.</p>
+        <p>ارفع تصميمًا أفقيًا بنسبة قريبة من 1402×1122، وختمًا بخلفية شفافة أو صورة واضحة لختم أزرق على ورق. سيُحفظ التصميم والختم مع كل شهادة جديدة، وتبقى الشهادات القديمة بصورتها السابقة.</p>
         <div className="certificates-artwork-files">
           <label>صورة تصميم الشهادة<input type="file" accept="image/png,image/jpeg,image/webp" disabled={artworkBusy} onChange={event => { uploadArtwork('design', event.target.files?.[0]); event.target.value = ''; }} /></label>
           {artwork.design_id && <Button type="button" variant="outline" disabled={artworkBusy} onClick={() => clearArtwork('design')}>إرجاع التصميم الافتراضي</Button>}
           <label>صورة ختم الفرع<input type="file" accept="image/png,image/jpeg,image/webp" disabled={artworkBusy} onChange={event => { uploadArtwork('stamp', event.target.files?.[0]); event.target.value = ''; }} /></label>
-          {artwork.stamp_url && <><img className="certificates-stamp-preview" src={artwork.stamp_url} alt="ختم الفرع الحالي" /><Button type="button" variant="outline" disabled={artworkBusy} onClick={() => clearArtwork('stamp')}>حذف الختم</Button></>}
+          {artwork.stamp_url && <><img className="certificates-stamp-preview" src={artwork.stamp_url} alt="ختم الفرع الحالي" /><Button type="button" variant="outline" disabled={artworkBusy} onClick={cleanStamp}>تنظيف خلفية الختم الحالي</Button><Button type="button" variant="outline" disabled={artworkBusy} onClick={() => clearArtwork('stamp')}>حذف الختم</Button></>}
         </div>
         <div className="certificates-artwork-layout">{layoutFields.map(([field, label, min, max]) => <label key={field}>{label} <span>{artwork[field]}%</span><input type="range" min={min} max={max} step="0.5" value={artwork[field]} disabled={artworkBusy} onChange={event => { setArtwork(current => ({ ...current, [field]: Number(event.target.value) })); setSelected(null); }} /></label>)}</div>
         <Button type="button" disabled={artworkBusy} onClick={saveLayout}>حفظ مواضع الاسم والتاريخ والختم</Button>

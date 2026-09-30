@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from database import db
 from utils.auth import get_current_user, require_permission, resolve_branch_filter
 from routes.member_portal import get_current_member
-from utils.certificate_artwork import POSITION_RANGES, branch_artwork, store_artwork_image
+from utils.certificate_artwork import POSITION_RANGES, branch_artwork, clean_existing_stamp, store_artwork_image
 
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
 
@@ -41,6 +41,23 @@ async def upload_branch_artwork(branch_id: str, kind: str, file: UploadFile = Fi
         {"branch_id": branch_id},
         {"$set": {f"{kind}_id": asset_id, "updated_at": datetime.now(timezone.utc).isoformat()}},
         upsert=True,
+    )
+    return await branch_artwork(db, branch_id)
+
+
+@router.post("/branch-artwork/{branch_id}/stamp/clean")
+async def clean_branch_stamp(branch_id: str, user: dict = Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(403, "تعديل تصميم الشهادة متاح للمدير فقط")
+    if not await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(404, "الفرع غير موجود")
+    settings = await db.certificate_artwork_settings.find_one({"branch_id": branch_id}, {"_id": 0, "stamp_id": 1})
+    if not settings or not settings.get("stamp_id"):
+        raise HTTPException(404, "لم يُرفع ختم لهذا الفرع")
+    asset_id = await clean_existing_stamp(db, settings["stamp_id"])
+    await db.certificate_artwork_settings.update_one(
+        {"branch_id": branch_id},
+        {"$set": {"stamp_id": asset_id, "updated_at": datetime.now(timezone.utc).isoformat()}},
     )
     return await branch_artwork(db, branch_id)
 

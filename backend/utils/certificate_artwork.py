@@ -42,6 +42,34 @@ def public_artwork(config=None):
     return artwork
 
 
+def prepare_stamp_image(image):
+    """Keep transparent artwork, or isolate blue ink from an opaque stamp photo."""
+    image.thumbnail((700, 700), Image.Resampling.LANCZOS)
+    image = image.convert("RGBA")
+    original_alpha = image.getchannel("A")
+    if original_alpha.getextrema()[0] < 245:
+        alpha = original_alpha
+    else:
+        # Blue ink has a stronger blue channel than either red or green;
+        # neutral white/grey paper has nearly equal channels.
+        alpha = Image.new("L", image.size)
+        alpha.putdata([
+            max(0, min(255, (blue - max(red, green) - 5) * 8))
+            for red, green, blue, _ in image.getdata()
+        ])
+        if not alpha.getbbox():
+            raise HTTPException(422, "لم أتعرف على حبر أزرق في الصورة. ارفع ختمًا أزرق واضحًا أو PNG بخلفية شفافة")
+        image.putalpha(alpha)
+    bounds = alpha.getbbox()
+    if not bounds:
+        raise HTTPException(422, "صورة الختم فارغة")
+    padding = max(4, round(max(bounds[2] - bounds[0], bounds[3] - bounds[1]) * 0.06))
+    return image.crop((
+        max(0, bounds[0] - padding), max(0, bounds[1] - padding),
+        min(image.width, bounds[2] + padding), min(image.height, bounds[3] + padding),
+    ))
+
+
 async def branch_artwork(db, branch_id):
     if not branch_id:
         return public_artwork()
@@ -68,9 +96,24 @@ async def store_artwork_image(db, upload: UploadFile, kind: str):
         image = ImageOps.fit(image.convert("RGB"), (1402, 1122), method=Image.Resampling.LANCZOS)
         media_type, extension = "image/jpeg", "jpg"
     else:
-        image.thumbnail((700, 700), Image.Resampling.LANCZOS)
-        image = image.convert("RGBA")
+        image = prepare_stamp_image(image)
         media_type, extension = "image/png", "png"
+    return await _persist_artwork_image(db, image, kind, media_type, extension)
+
+
+async def clean_existing_stamp(db, asset_id: str):
+    asset = await db.certificate_artwork_assets.find_one({"id": asset_id, "kind": "stamp"}, {"_id": 0})
+    if not asset:
+        raise HTTPException(404, "الختم غير موجود")
+    try:
+        image = Image.open(BytesIO(base64.b64decode(asset["data"])))
+        image.load()
+    except (UnidentifiedImageError, OSError, ValueError):
+        raise HTTPException(400, "صورة الختم غير صالحة")
+    return await _persist_artwork_image(db, prepare_stamp_image(image), "stamp", "image/png", "png")
+
+
+async def _persist_artwork_image(db, image, kind, media_type, extension):
     output = BytesIO()
     image.save(output, "JPEG" if kind == "design" else "PNG", optimize=True)
     content = output.getvalue()
