@@ -199,6 +199,23 @@ def test_route_history_is_opt_in(monkeypatch):
     assert all("source_period_key" in c for c in expanded)
 
 
+def test_transferred_sessions_change_profile_history_balances(monkeypatch):
+    inv = invoice(10)
+    sender_act = {**inv["items"][0], "source": "invoice", "source_id": inv["id"],
+                  "session_transfer_delta": -5}
+    records = [{"member_id": "M", "activity_id": "A", "date": "2026-10-02"}]
+    install(monkeypatch, [inv], [sender_act], records)
+    sender = history()[0]
+    assert (sender["total_allowed"], sender["used_sessions"], sender["remaining"]) == (3, 1, 2)
+
+    recipient_act = {"activity_id": "A", "activity_name": "Swim", "start_date": "2026-10-01",
+                     "end_date": "2026-10-09", "schedule": SCHEDULE, "status": "active",
+                     "source": "session_transfer", "session_transfer_delta": 5}
+    install(monkeypatch, [], [recipient_act])
+    recipient = history()[0]
+    assert (recipient["total_allowed"], recipient["used_sessions"], recipient["remaining"]) == (5, 0, 5)
+
+
 def test_profile_dates_and_schedule_override_stale_effective_row(monkeypatch):
     inv = invoice(10)
     key = source_key(inv, inv["items"][0], 0)

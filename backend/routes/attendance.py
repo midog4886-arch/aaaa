@@ -1001,6 +1001,7 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
                 aid for a in links for aid in (a.get("schedule_reconciliation") or {}).get("activity_ids", [])}),
             "schedule": (act or item).get("schedule", ""),
             "quota_schedule": item.get("schedule", ""),
+            "session_transfer_delta": int(act.get("session_transfer_delta") or 0) if act else 0,
             "read_only": not act or act.get("status", "active") not in ("active", "expired"),
         })
     for ai, act in enumerate(activities):
@@ -1019,6 +1020,8 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
             "end_date": str(act.get("end_date") or "")[:10],
             "schedule": act.get("schedule", ""), "invoice_number": "",
             "count_activity_ids": [act.get("activity_id")],
+            "session_transfer_delta": int(act.get("session_transfer_delta") or 0),
+            "transferred_subscription": act.get("source") == "session_transfer",
             "profile_subscription": True, "read_only": act.get("source") == "invoice",
         })
     results = []
@@ -1033,7 +1036,10 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
             purchased_end = datetime.strptime(card.get("original_end_date", end), "%Y-%m-%d")
         except ValueError:
             continue
-        total = max(1, math.ceil((purchased_end - purchased_start).days / 7)) * len(quota_days)
+        purchased_total = max(1, math.ceil((purchased_end - purchased_start).days / 7)) * len(quota_days)
+        if card.pop("transferred_subscription", False):
+            purchased_total = 0
+        total = max(0, purchased_total + card.pop("session_transfer_delta", 0))
         # Off-day attendance still consumes quota after an early shortened end,
         # but must never spill into the next purchased period.
         next_starts = [c["start_date"] for c in cards if c["start_date"] > start
