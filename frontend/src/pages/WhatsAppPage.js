@@ -40,6 +40,14 @@ const cloudPhoneClassName = (memberLink) => {
   return 'text-muted-foreground';
 };
 
+const cloudChatDisplayName = (conversation, t) => {
+  const name = String(conversation?.contact_name || '').trim();
+  if (name && !name.includes('@lid') && !name.startsWith('lid@')) return name;
+  const phone = String(conversation?.phone || '').trim();
+  if (/^\d+$/.test(phone)) return phone;
+  return t('جهة اتصال واتساب', 'WhatsApp contact');
+};
+
 const cloudMemberName = (member, isRTL) => (
   isRTL
     ? (member?.name_ar || member?.name || member?.member_code)
@@ -1053,8 +1061,10 @@ export default function WhatsAppPage() {
         : null;
       const recentReadAttempt = polling && phoneReadAttemptRef.current?.fingerprint === readFingerprint
         && Date.now() - phoneReadAttemptRef.current.at < 60000;
-      if (phoneConversation?.phone_mirrored && phoneConversation.phone_unread_known
-          && Number(phoneConversation.phone_unread_count || 0) > 0 && !recentReadAttempt) {
+      const pendingReadCount = phoneConversation?.phone_unread_known
+        ? Number(phoneConversation.phone_unread_count || 0)
+        : Number(phoneConversation?.unread_count || 0);
+      if (phoneConversation?.phone_mirrored && pendingReadCount > 0 && !recentReadAttempt) {
         phoneReadAttemptRef.current = { fingerprint: readFingerprint, at: Date.now() };
         try {
           const readResult = await whatsappAPI.markCloudPhoneRead(conversationId);
@@ -3792,9 +3802,9 @@ export default function WhatsAppPage() {
                       {t('مزامنة الرسائل والقراءة مع الجوال', 'Sync phone messages and unread state')}
                     </Button>
                     {phoneSync && <span className="text-xs text-muted-foreground">
-                      {t(`كل محادثات الجوال · ${phoneSync.chats} محادثة · ${phoneSync.unread_chats} غير مقروءة`, `All phone chats · ${phoneSync.chats} chats · ${phoneSync.unread_chats} unread`)}
+                      {t(`كل محادثات الجوال · ${phoneSync.chats} محادثة · ${phoneSync.visible_unread_chats ?? phoneSync.unread_chats} ظاهرة غير مقروءة`, `All phone chats · ${phoneSync.chats} chats · ${phoneSync.visible_unread_chats ?? phoneSync.unread_chats} shown unread`)}
                       {phoneSync.stale && <span className="block text-amber-700">{t('تعذر تحديث بيانات الجوال. المعروض آخر نسخة محفوظة، وقد تتغير حالة القراءة على الجوال.', 'Phone refresh unavailable. Showing the last saved snapshot; read state may have changed on the phone.')}</span>}
-                      {phoneSync.unknown_read_chats > 0 && <span className="block text-amber-700">{t(`حالة القراءة غير مؤكدة لـ ${phoneSync.unknown_read_chats} محادثة؛ عدد غير المقروء يشمل الحالات المؤكدة فقط.`, `Read state is unavailable for ${phoneSync.unknown_read_chats} chats; unread count includes confirmed states only.`)}</span>}
+                      {phoneSync.unknown_read_chats > 0 && <span className="block text-amber-700">{t(`حالة الجوال غير مؤكدة لـ ${phoneSync.unknown_read_chats} محادثة؛ قد تظهر رسائل غير مقروءة وصلت للنظام، ولا تعني تأكيدًا من الجوال.`, `Phone read state is unavailable for ${phoneSync.unknown_read_chats} chats; locally received unread messages may still appear without phone confirmation.`)}</span>}
                       {phoneSync.excluded > 0 && <span className="block text-amber-700">{t(`لم يعرض المزود بيانات مكتملة لـ ${phoneSync.excluded} سجلًا؛ المطابقة تشمل المحادثات المتاحة فقط.`, `${phoneSync.excluded} provider records are incomplete; synchronization covers available chats only.`)}</span>}
                     </span>}
                   </div>
@@ -3842,7 +3852,7 @@ export default function WhatsAppPage() {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-xl leading-7 font-semibold break-words min-w-0">{conversation.contact_name || conversation.phone}</p>
+                                  <p className="text-xl leading-7 font-semibold break-words min-w-0">{cloudChatDisplayName(conversation, t)}</p>
                                   <Badge variant="secondary" className="text-sm gap-1">
                                     <Building2 className="w-3 h-3" />{conversation.branch_name}
                                   </Badge>
@@ -3924,7 +3934,7 @@ export default function WhatsAppPage() {
                 <CardHeader className="border-b">
                    <CardTitle className="flex flex-wrap items-center gap-2">
                     <Phone className="w-5 h-5 text-green-600" />
-                    <span>{cloudThread?.contact_name || cloudThread?.phone}</span>
+                    <span>{cloudChatDisplayName(cloudThread, t)}</span>
                     {cloudThread?.phone && (
                       <span
                         dir="ltr"

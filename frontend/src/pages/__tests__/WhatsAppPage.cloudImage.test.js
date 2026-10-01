@@ -167,6 +167,20 @@ async function renderCloudInbox() {
   return user;
 }
 
+test('shows a phone number or a clear contact label instead of a LID identifier', async () => {
+  const lid = '262160575938788@lid';
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({ data: {
+    conversations: [{ ...conversation, id: `branch-a:${lid}`, contact_name: lid,
+      phone: '966501234567' }], unread_count: 0,
+  } });
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  render(<WhatsAppPage />);
+  await user.click(screen.getByRole('button', { name: /شات واتساب/ }));
+  expect((await screen.findAllByText('966501234567')).length).toBeGreaterThan(0);
+  expect(screen.queryByText(lid)).not.toBeInTheDocument();
+});
+
 test('refreshes the current branch inbox after opening a read-only thread and preserves it', async () => {
   await renderOpenCloudThread();
 

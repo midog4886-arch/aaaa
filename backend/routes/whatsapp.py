@@ -5396,7 +5396,17 @@ async def _refresh_phone_snapshot(branch_id, force=False):
             ok, rows, error = await client.find_chats()
             if not ok:
                 raise HTTPException(502, 'Phone chat list is unavailable from the provider')
-            await whatsapp_phone_mirror.store_snapshot(_db, branch_id, rows, _phone_message_builder(branch_id))
+            recovered_at = (previous or {}).get('unread_recovered_at')
+            try:
+                recovery_due = not recovered_at or (
+                    datetime.now(timezone.utc) - datetime.fromisoformat(recovered_at)
+                ).total_seconds() >= 900
+            except (TypeError, ValueError):
+                recovery_due = True
+            await whatsapp_phone_mirror.store_snapshot(
+                _db, branch_id, rows, _phone_message_builder(branch_id),
+                recover_unread=recovery_due,
+            )
         except (HTTPException, ValueError):
             if previous and not force:
                 return {**previous, 'stale': True}
@@ -5522,7 +5532,10 @@ async def list_cloud_inbox_conversations(
     needs_reply_count_request = conversations.count_documents({
         **scope_query, "needs_reply": True,
     })
-    unread_count_request = _scoped_cloud_unread_count(scope_query)
+    unread_count_request = (
+        conversations.count_documents({**scope_query, 'unread_count': {'$gt': 0}})
+        if phone_snapshot else _scoped_cloud_unread_count(scope_query)
+    )
     if phone_snapshot or unread_only or needs_reply_only or search_text:
         # Campaign sends are outbound projections and always have
         # ``unread_count == 0`` and never resolve a human response. Keep them
@@ -5587,8 +5600,8 @@ async def list_cloud_inbox_conversations(
         row["branch_name"] = branch_names.get(branch_id) or branch_id
     return {
         "conversations": rows,
-        "unread_count": phone_snapshot['unread_chats'] if phone_snapshot else unread_count,
-        **({'phone_sync': phone_snapshot} if phone_snapshot else {}),
+        "unread_count": unread_count,
+        **({'phone_sync': {**phone_snapshot, 'visible_unread_chats': unread_count}} if phone_snapshot else {}),
         "needs_reply_count": int(needs_reply_count or 0),
     }
 
@@ -5685,15 +5698,28 @@ async def _set_phone_chat_read_state(conversation_id: str, current_user: dict, r
         {'id': conversation_id, 'branch_id': branch_id, 'phone_snapshot': snapshot['snapshot']},
         {'_id': 0},
     )
-    if not conversation or not conversation.get('phone_unread_known'):
+    if not conversation:
         raise HTTPException(409, 'Phone read state is not available for this chat')
-    unread_count = int(conversation.get('phone_unread_count') or 0)
-    if (read and unread_count == 0) or (not read and unread_count > 0):
+    phone_known = conversation.get('phone_unread_known') is True
+    if not phone_known and not read:
+        raise HTTPException(409, 'Phone unread state is not available for this chat')
+    unread_count = int((conversation.get('phone_unread_count') if phone_known else conversation.get('unread_count')) or 0)
+    if phone_known and ((read and unread_count == 0) or (not read and unread_count > 0)):
         return {'accepted': True, 'confirmed': True, 'conversation': conversation}
+    if read and unread_count == 0:
+        raise HTTPException(409, 'No unread incoming messages are available to mark read')
 
     remote_jid = conversation.get('remote_jid') or ''
     if not whatsapp_phone_mirror.chat_identity(branch_id, {'remoteJid': remote_jid}):
         raise HTTPException(409, 'Phone chat identity is invalid')
+    # Evolution's read endpoint filters LID keys out. Use the provider's
+    # phone-number alias for the same message when a LID chat was resolved.
+    action_jid = remote_jid
+    if remote_jid.endswith('@lid'):
+        phone = conversation.get('phone') or ''
+        if not re.fullmatch(r'\d+', phone):
+            raise HTTPException(409, 'Phone-number alias is unavailable for this chat')
+        action_jid = f'{phone}@s.whatsapp.net'
     client = await _phone_client(branch_id)
     if read:
         ok, records, _ = await client.find_messages(remote_jid, False, limit=min(unread_count, 50))
@@ -5705,13 +5731,13 @@ async def _set_phone_chat_read_state(conversation_id: str, current_user: dict, r
         for record in records:
             key = whatsapp_phone_mirror.message_key(identity, record)
             if key and key['fromMe'] is False and key['id'] not in seen:
-                keys.append(key)
+                keys.append({**key, 'remoteJid': action_jid})
                 seen.add(key['id'])
         if not keys:
             last_key = conversation.get('phone_last_message_key')
             if (isinstance(last_key, dict) and last_key.get('remoteJid') == remote_jid
                     and last_key.get('fromMe') is False and last_key.get('id')):
-                keys = [last_key]
+                keys = [{**last_key, 'remoteJid': action_jid}]
         if not keys:
             raise HTTPException(409, 'No incoming message key is available to mark read')
         ok, _, _ = await client.mark_messages_read(keys)
@@ -5725,7 +5751,7 @@ async def _set_phone_chat_read_state(conversation_id: str, current_user: dict, r
                             if (candidate := whatsapp_phone_mirror.message_key(identity, record))), None)
         if not key:
             raise HTTPException(409, 'No phone message key is available to mark unread')
-        ok, _, _ = await client.mark_chat_unread(remote_jid, key)
+        ok, _, _ = await client.mark_chat_unread(action_jid, {**key, 'remoteJid': action_jid})
     if not ok:
         raise HTTPException(502, 'Phone read update was rejected by the provider')
 

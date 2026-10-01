@@ -15,19 +15,51 @@ def recent_timestamp(value):
 from pymongo import UpdateOne
 
 
-def chat_identity(branch_id, row):
+def chat_identity(branch_id, row, phone_jid=None):
     jid = row.get('remoteJid') if isinstance(row, dict) else None
     if not isinstance(jid, str) or not re.fullmatch(r'[0-9-]+@(?:s\.whatsapp\.net|c\.us|g\.us|lid)', jid):
         return None
-    phone = jid.split('@')[0] if jid.endswith(('@s.whatsapp.net', '@c.us')) else ''
+    if jid.endswith('@lid'):
+        key = (row.get('lastMessage') or {}).get('key') or {}
+        candidate = phone_jid or key.get('remoteJidAlt') or row.get('remoteJidAlt')
+        phone = candidate.split('@')[0] if isinstance(candidate, str) and re.fullmatch(r'\d+@(?:s\.whatsapp\.net|c\.us)', candidate) else ''
+    else:
+        phone = jid.split('@')[0] if jid.endswith(('@s.whatsapp.net', '@c.us')) else ''
     return {'id': f'{branch_id}:{phone or jid}', 'remote_jid': jid,
             'phone': phone, 'read_only_chat': not bool(phone)}
+
+
+async def phone_aliases_from_messages(db, branch_id, rows):
+    """Resolve LID chats from authenticated webhook messages when the snapshot omits remoteJidAlt."""
+    ids = []
+    for row in rows:
+        if not isinstance(row, dict) or not str(row.get('remoteJid') or '').endswith('@lid'):
+            continue
+        key = (row.get('lastMessage') or {}).get('key') or {}
+        if isinstance(key, dict) and isinstance(key.get('id'), str) and key['id']:
+            ids.append(key['id'])
+    aliases = {}
+    for offset in range(0, len(ids), 500):
+        cursor = db['whatsapp_cloud_messages'].find({
+            'branch_id': branch_id, 'provider': 'whatsflow',
+            'provider_message_id': {'$in': ids[offset:offset + 500]},
+        }, {'_id': 0, 'provider_message_id': 1, 'phone': 1, 'body': 1,
+            'direction': 1, 'created_at': 1, 'view_once': 1})
+        for message in await cursor.to_list(length=500):
+            phone = message.get('phone')
+            if isinstance(phone, str) and re.fullmatch(r'\d+', phone):
+                aliases[message['provider_message_id']] = message
+    return aliases
 
 
 def unread_value(row):
     value = row.get('unreadCount')
     # -1 is WhatsApp's explicit "mark unread" flag, not a negative count.
     if isinstance(value, bool) or not isinstance(value, int) or value < -1:
+        return None
+    # Evolution's LID chat may have no matching Chat row and still return a
+    # synthetic zero. Do not erase unread webhook evidence with that zero.
+    if value == 0 and str(row.get('remoteJid') or '').endswith('@lid'):
         return None
     return max(value, 1) if value == -1 else value
 
@@ -88,7 +120,7 @@ async def store_messages(db, documents):
     await db['whatsapp_cloud_messages'].bulk_write(operations, ordered=False)
 
 
-async def store_snapshot(db, branch_id, rows, build_message):
+async def store_snapshot(db, branch_id, rows, build_message, recover_unread=False):
     token = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     operations, documents = [], []
@@ -97,20 +129,28 @@ async def store_snapshot(db, branch_id, rows, build_message):
     unknown_read_chats = 0
     has_read_evidence = False
     seen = set()
+    unknown_ids = []
+    message_aliases = await phone_aliases_from_messages(db, branch_id, rows)
     for row in rows:
-        identity = chat_identity(branch_id, row)
+        key = ((row.get('lastMessage') or {}).get('key') or {}) if isinstance(row, dict) else {}
+        matched_message = message_aliases.get(key.get('id')) if isinstance(key, dict) else None
+        alias = f"{matched_message['phone']}@s.whatsapp.net" if matched_message else None
+        identity = chat_identity(branch_id, row, alias)
         unread = unread_value(row) if identity else None
         if identity is None:
             excluded += 1
             continue
-        has_read_evidence = has_read_evidence or unread is not None
+        has_read_evidence = has_read_evidence or unread is not None or (
+            type(row.get('unreadCount')) is int and row['unreadCount'] == 0
+            and str(row.get('remoteJid') or '').endswith('@lid')
+        )
         if identity['id'] in seen:
             excluded += 1
             continue
         seen.add(identity['id'])
         record = row.get('lastMessage') or {}
         preview = build_message(identity, record)
-        last_at = (preview or {}).get('created_at') or row.get('updatedAt')
+        last_at = (preview or {}).get('created_at') or (matched_message or {}).get('created_at') or row.get('updatedAt')
         # Read state belongs to the whole phone inbox, including quiet chats.
         # Keep the 30-day limit only for imported message bodies so an old
         # conversation cannot trigger a new reply workflow.
@@ -119,35 +159,77 @@ async def store_snapshot(db, branch_id, rows, build_message):
             documents.append(document)
         unread_chats += int(unread is not None and unread > 0)
         unknown_read_chats += int(unread is None)
+        if unread is None:
+            unknown_ids.append(identity['id'])
+        provider_name = row.get('pushName') or row.get('name')
+        if not provider_name and isinstance(record, dict):
+            record_key = record.get('key') or {}
+            if isinstance(record_key, dict) and record_key.get('fromMe') is False:
+                provider_name = record.get('pushName')
+        provider_name = provider_name.strip() if isinstance(provider_name, str) else ''
+        if '@lid' in provider_name or provider_name.startswith('lid@'):
+            provider_name = ''
+        body = (preview or {}).get('body') or (
+            (matched_message or {}).get('body') if not (matched_message or {}).get('view_once') else ''
+        )
         metadata = {
             **identity, 'branch_id': branch_id, 'provider': 'whatsflow',
-            'contact_name': row.get('pushName') or row.get('name') or identity['phone'] or identity['remote_jid'],
             # The local counter remains numeric for live webhook $inc writes;
             # phone_unread_known distinguishes unavailable state from read.
-            'unread_count': unread if unread is not None else 0, 'phone_unread_count': unread,
+            'phone_unread_count': unread,
             'phone_unread_known': unread is not None,
             'phone_last_message_key': message_key(identity, record),
             'phone_snapshot': token, 'phone_synced_at': now, 'phone_mirrored': True,
-            'last_message': (preview or {}).get('body') or ('[message]' if record else ''),
+            'last_message': body or ('رسالة' if record else ''),
             'last_message_at': last_at or now,
-            'last_direction': (preview or {}).get('direction'),
+            'last_direction': (preview or {}).get('direction') or (matched_message or {}).get('direction'),
         }
+        if provider_name:
+            metadata['contact_name'] = provider_name
         # A native last message includes outgoing phone replies. Historical
         # imports lack human_reply metadata and must not be backfilled as
         # thousands of unanswered messages merely for that reason.
         if document:
             metadata['needs_reply'] = document['direction'] == 'inbound' and not identity.get('read_only_chat')
+        if unread is not None:
+            metadata['unread_count'] = unread
         operations.append(UpdateOne({'id': identity['id'], 'branch_id': branch_id},
-                                   {'$set': metadata, '$setOnInsert': {'created_at': now}}, upsert=True))
+                                   {'$set': metadata, '$setOnInsert': {
+                                       'created_at': now,
+                                       **({} if provider_name else {'contact_name': identity['phone'] or identity['remote_jid']}),
+                                       **({'unread_count': 0} if unread is None else {}),
+                                   }}, upsert=True))
     # A malformed snapshot must not silently erase unread information.
     if rows and (not seen or not has_read_evidence):
         raise ValueError('Provider returned no valid chat identities/unread counts')
+    recovered_counts = {}
+    if recover_unread:
+        for offset in range(0, len(unknown_ids), 500):
+            chunk = unknown_ids[offset:offset + 500]
+            cursor = db['whatsapp_cloud_messages'].aggregate([
+                {'$match': {'branch_id': branch_id, 'provider': 'whatsflow',
+                            'conversation_id': {'$in': chunk},
+                            'direction': 'inbound', 'unread': True}},
+                {'$group': {'_id': '$conversation_id', 'count': {'$sum': 1}}},
+            ])
+            for item in await cursor.to_list(length=500):
+                if item.get('_id') in chunk and type(item.get('count')) is int and item['count'] > 0:
+                    recovered_counts[item['_id']] = item['count']
     await store_messages(db, documents)
     if operations:
         await db['whatsapp_cloud_conversations'].bulk_write(operations, ordered=False)
-    await db['whatsapp_phone_sync'].update_one({'branch_id': branch_id}, {'$set': {
+    if recovered_counts:
+        await db['whatsapp_cloud_conversations'].bulk_write([
+            UpdateOne({'id': conversation_id, 'branch_id': branch_id, 'phone_snapshot': token},
+                      {'$max': {'unread_count': count}})
+            for conversation_id, count in recovered_counts.items()
+        ], ordered=False)
+    state = {
         'enabled': True, 'snapshot': token, 'synced_at': now, 'chats': len(operations),
         'unread_chats': unread_chats, 'excluded': excluded,
         'unknown_read_chats': unknown_read_chats,
-    }}, upsert=True)
+    }
+    if recover_unread:
+        state['unread_recovered_at'] = now
+    await db['whatsapp_phone_sync'].update_one({'branch_id': branch_id}, {'$set': state}, upsert=True)
     return {'success': True, 'chats': len(operations), 'unread_chats': unread_chats, 'excluded': excluded, 'unknown_read_chats': unknown_read_chats}

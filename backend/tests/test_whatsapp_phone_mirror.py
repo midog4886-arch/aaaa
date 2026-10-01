@@ -39,6 +39,13 @@ def test_group_and_lid_identity_cannot_be_sent_as_phone():
         assert identity['read_only_chat'] is True
         assert identity['id'] == f'a:{jid}'
     assert mirror.chat_identity('a', {'remoteJid': 'status@broadcast'}) is None
+    aliased = mirror.chat_identity('a', {
+        'remoteJid': '123456@lid',
+        'lastMessage': {'key': {'remoteJidAlt': '966500000001@s.whatsapp.net'}},
+    })
+    assert aliased['id'] == 'a:966500000001'
+    assert aliased['remote_jid'] == '123456@lid'
+    assert aliased['read_only_chat'] is False
 
 
 @pytest.mark.parametrize('value,expected', [(0, 0), (42, 42), (-1, 1), (-2, None), (True, None), ('5', None), (None, None)])
@@ -46,8 +53,16 @@ def test_unread_is_provider_evidence(value, expected):
     assert mirror.unread_value({'unreadCount': value}) == expected
 
 
+def test_lid_zero_is_unknown_not_proof_of_phone_read():
+    assert mirror.unread_value({'remoteJid': '123@lid', 'unreadCount': 0}) is None
+    assert mirror.unread_value({'remoteJid': '123@lid', 'unreadCount': 2}) == 2
+
+
 def test_snapshot_preserves_existing_messages_and_scopes_bulk_writes():
-    messages = AsyncMock()
+    messages = MagicMock()
+    messages.create_index = AsyncMock()
+    messages.bulk_write = AsyncMock()
+    messages.find.return_value.to_list = AsyncMock(return_value=[])
     conversations = AsyncMock()
     state = AsyncMock()
     db = {'whatsapp_cloud_messages': messages, 'whatsapp_cloud_conversations': conversations,
@@ -62,7 +77,11 @@ def test_snapshot_preserves_existing_messages_and_scopes_bulk_writes():
         assert set(operation._doc) == {'$setOnInsert'}
     for operation in conversations.bulk_write.call_args.args[0]:
         assert operation._filter['branch_id'] == 'a'
-        assert operation._doc['$set']['unread_count'] in [12, 1, 0]
+        if operation._doc['$set']['phone_unread_known']:
+            assert operation._doc['$set']['unread_count'] in [12, 1]
+        else:
+            assert 'unread_count' not in operation._doc['$set']
+            assert operation._doc['$setOnInsert']['unread_count'] == 0
         assert operation._doc['$set']['phone_unread_known'] == (operation._doc['$set']['phone_unread_count'] is not None)
         assert operation._doc['$set']['needs_reply'] == (not operation._doc['$set'].get('read_only_chat'))
 
@@ -101,6 +120,40 @@ def test_snapshot_includes_old_read_state_without_importing_old_messages():
     assert saved['unread_count'] == 7
     assert saved['phone_last_message_key']['id'] == 'message-1'
     db['whatsapp_cloud_conversations'].delete_many.assert_not_called()
+
+
+def test_snapshot_resolves_lid_from_webhook_without_clearing_local_unread():
+    messages = MagicMock()
+    messages.create_index = AsyncMock()
+    messages.bulk_write = AsyncMock()
+    messages.find.return_value.to_list = AsyncMock(return_value=[
+        {'provider_message_id': 'message-1', 'phone': '966500000001',
+         'body': 'ما هي مواعيد الحصص؟', 'direction': 'inbound'},
+    ])
+    messages.aggregate.return_value.to_list = AsyncMock(return_value=[
+        {'_id': 'a:966500000001', 'count': 2},
+    ])
+    conversations = AsyncMock()
+    db = {'whatsapp_cloud_messages': messages, 'whatsapp_cloud_conversations': conversations,
+          'whatsapp_phone_sync': AsyncMock()}
+    lid_message = record(jid='123456@lid')
+    lid_message['message'] = {}
+    result = run(mirror.store_snapshot(db, 'a', [
+        {'remoteJid': '123456@lid', 'unreadCount': None, 'lastMessage': lid_message},
+        {'remoteJid': '966500000002@s.whatsapp.net', 'unreadCount': 0},
+    ], mod._phone_message_builder('a'), recover_unread=True))
+    assert result['unknown_read_chats'] == 1
+    saved = conversations.bulk_write.call_args_list[0].args[0][0]
+    assert saved._filter['id'] == 'a:966500000001'
+    assert saved._doc['$set']['remote_jid'] == '123456@lid'
+    assert saved._doc['$set']['phone_unread_known'] is False
+    assert saved._doc['$set']['last_message'] == 'ما هي مواعيد الحصص؟'
+    assert saved._doc['$setOnInsert']['contact_name'] == '966500000001'
+    assert 'unread_count' not in saved._doc['$set']
+    assert saved._doc['$setOnInsert']['unread_count'] == 0
+    recovery = conversations.bulk_write.call_args_list[1].args[0][0]
+    assert recovery._doc == {'$max': {'unread_count': 2}}
+    assert recovery._filter['id'] == 'a:966500000001'
 
 
 def test_older_phone_history_remains_available_by_page(monkeypatch):
@@ -147,6 +200,54 @@ def test_phone_read_action_uses_exact_inbound_provider_keys_and_confirms_state(m
         {'remoteJid': before['remote_jid'], 'id': 'message-1', 'fromMe': False}
     ])
     assert refresh.await_count == 2
+
+
+def test_phone_read_uses_number_alias_for_lid_provider_key(monkeypatch):
+    before = {'id': 'a:966500000001', 'branch_id': 'a', 'provider': 'whatsflow',
+              'phone_mirrored': True, 'phone_unread_known': True, 'phone_unread_count': 1,
+              'remote_jid': '123456@lid', 'phone': '966500000001'}
+    conversations = AsyncMock()
+    conversations.find_one.side_effect = [before, before, {**before, 'phone_unread_count': 0}]
+    monkeypatch.setattr(mod, '_db', {'whatsapp_cloud_conversations': conversations})
+    monkeypatch.setattr(mod, '_require_bulk_whatsapp_access', lambda _: None)
+    monkeypatch.setattr(mod, '_assert_branch_access', lambda *_: None)
+    monkeypatch.setattr(mod, '_refresh_phone_snapshot', AsyncMock(side_effect=[
+        {'snapshot': 'first'}, {'snapshot': 'second'}]))
+    client = AsyncMock()
+    client.find_messages.return_value = (True, [record(jid='123456@lid')], None)
+    client.mark_messages_read.return_value = (True, {'read': 'success'}, None)
+    monkeypatch.setattr(mod, '_phone_client', AsyncMock(return_value=client))
+
+    result = run(mod.mark_cloud_phone_chat_read(before['id'], {'is_admin': True}))
+
+    assert result['confirmed'] is True
+    client.mark_messages_read.assert_awaited_once_with([
+        {'remoteJid': '966500000001@s.whatsapp.net', 'id': 'message-1', 'fromMe': False},
+    ])
+
+
+def test_unknown_lid_read_uses_local_unread_but_does_not_claim_confirmation(monkeypatch):
+    before = {'id': 'a:966500000001', 'branch_id': 'a', 'provider': 'whatsflow',
+              'phone_mirrored': True, 'phone_unread_known': False,
+              'phone_unread_count': None, 'unread_count': 2,
+              'remote_jid': '123456@lid', 'phone': '966500000001'}
+    conversations = AsyncMock()
+    conversations.find_one.side_effect = [before, before, before]
+    monkeypatch.setattr(mod, '_db', {'whatsapp_cloud_conversations': conversations})
+    monkeypatch.setattr(mod, '_require_bulk_whatsapp_access', lambda _: None)
+    monkeypatch.setattr(mod, '_assert_branch_access', lambda *_: None)
+    monkeypatch.setattr(mod, '_refresh_phone_snapshot', AsyncMock(side_effect=[
+        {'snapshot': 'first'}, {'snapshot': 'second'}]))
+    client = AsyncMock()
+    client.find_messages.return_value = (True, [record(jid='123456@lid')], None)
+    client.mark_messages_read.return_value = (True, {'read': 'success'}, None)
+    monkeypatch.setattr(mod, '_phone_client', AsyncMock(return_value=client))
+
+    result = run(mod.mark_cloud_phone_chat_read(before['id'], {'is_admin': True}))
+
+    assert result['accepted'] is True
+    assert result['confirmed'] is False
+    client.mark_messages_read.assert_awaited_once()
 
 
 def test_phone_unread_action_never_claims_provider_acceptance_as_confirmation(monkeypatch):
@@ -231,7 +332,7 @@ def test_client_marks_chat_unread_with_provider_message_key(monkeypatch):
     key = record()['key']
     assert run(client.mark_chat_unread(key['remoteJid'], key))[0] is True
     assert request.call_args.kwargs['json'] == {
-        'chat': key['remoteJid'], 'lastMessage': [key]}
+        'chat': key['remoteJid'], 'lastMessage': {'key': key}}
     request.reset_mock()
     assert run(client.mark_chat_unread('999@s.whatsapp.net', key))[0] is False
     request.assert_not_called()

@@ -330,7 +330,7 @@ class WhatsflowClient:
             return False, None, "invalid_unread_key"
         return await self._request(
             "POST", f"/chat/markChatUnread/{self._instance_path()}",
-            json={"chat": remote_jid, "lastMessage": [last_message_key]},
+            json={"chat": remote_jid, "lastMessage": {"key": last_message_key}},
         )
 
     async def set_webhook(self, url: str, secret: str):
