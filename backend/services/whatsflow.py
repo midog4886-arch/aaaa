@@ -320,6 +320,19 @@ class WhatsflowClient:
             json={"readMessages": keys},
         )
 
+    async def mark_chat_unread(self, remote_jid: str, last_message_key: dict):
+        if (not re.fullmatch(r"[0-9-]+@(?:s\.whatsapp\.net|c\.us|g\.us|lid)", remote_jid or "")
+                or not isinstance(last_message_key, dict)
+                or last_message_key.get("remoteJid") != remote_jid
+                or not isinstance(last_message_key.get("id"), str)
+                or not last_message_key["id"]
+                or not isinstance(last_message_key.get("fromMe"), bool)):
+            return False, None, "invalid_unread_key"
+        return await self._request(
+            "POST", f"/chat/markChatUnread/{self._instance_path()}",
+            json={"chat": remote_jid, "lastMessage": [last_message_key]},
+        )
+
     async def set_webhook(self, url: str, secret: str):
         return await self._request(
             "POST",

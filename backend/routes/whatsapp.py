@@ -5418,16 +5418,8 @@ async def _import_phone_history(conversation, page=1):
     ok, result, error = await client.history_page(conversation['remote_jid'], page)
     if not ok:
         raise HTTPException(502, 'Phone message history is unavailable from the provider')
-    recent_records = [r for r in result['records']
-                      if whatsapp_phone_mirror.recent_timestamp(_whatsflow_history_timestamp(r))]
-    result = {**result, 'records': recent_records,
-              'has_more': result['has_more'] and len(recent_records) == len(result['records'])}
     build = _phone_message_builder(branch_id)
     documents = [d for d in (build(conversation, r) for r in result['records']) if d]
-    recent = [d for d in documents if whatsapp_phone_mirror.recent_timestamp(d.get('created_at'))]
-    if len(recent) < len(documents):
-        result = {**result, 'has_more': False}
-    documents = recent
     await whatsapp_phone_mirror.store_messages(_db, documents)
     ids = [d['provider_message_id'] for d in documents]
     stored = await _db['whatsapp_cloud_messages'].find({
@@ -5448,7 +5440,7 @@ async def get_phone_history(conversation_id: str, page: int = Query(1, ge=1, le=
     if not conversation.get('phone_mirrored'):
         raise HTTPException(409, 'Enable phone synchronization for this branch first')
     _, result, stored = await _import_phone_history(conversation, page)
-    return {'messages': stored, 'has_more': result['has_more'], 'page': page, 'total': result['total'], 'history_days': 30}
+    return {'messages': stored, 'has_more': result['has_more'], 'page': page, 'total': result['total']}
 
 
 @router.get("/cloud-inbox/conversations")
@@ -5622,7 +5614,6 @@ async def get_cloud_inbox_thread(
                 raise
             cloud_rows = await _db['whatsapp_cloud_messages'].find({
                 'conversation_id': conversation_id, 'branch_id': conversation['branch_id'],
-                'created_at': {'$gte': (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()},
             }, {'_id': 0}).sort('created_at', -1).limit(50).to_list(length=50)
             campaign_messages = []
             conversation['phone_history_stale'] = True
@@ -5645,9 +5636,8 @@ async def get_cloud_inbox_thread(
         cloud_messages, campaign_messages
     )
     if phone_history:
-        # Viewing a mirrored chat is read-only. The phone's unread state comes
-        # from the provider snapshot; opening this page must not acknowledge
-        # messages or clear an unread flag on a linked device.
+        # GET only refreshes the provider state. The UI sends a separate
+        # explicit read action after it has opened the conversation.
         await _refresh_phone_snapshot(conversation['branch_id'])
         refreshed_conversation = await _db["whatsapp_cloud_conversations"].find_one(
             {"id": conversation_id, "branch_id": conversation["branch_id"]},
@@ -5675,6 +5665,94 @@ async def get_cloud_inbox_thread(
     )[0]
     return {"conversation": conversation, "messages": messages,
             "phone_history": {'has_more': phone_history['has_more'], 'total': phone_history['total']} if phone_history else None}
+
+
+async def _set_phone_chat_read_state(conversation_id: str, current_user: dict, read: bool):
+    _require_bulk_whatsapp_access(current_user)
+    conversations = _db['whatsapp_cloud_conversations']
+    conversation = await conversations.find_one({'id': conversation_id}, {'_id': 0})
+    if not conversation:
+        raise HTTPException(404, 'Conversation not found')
+    branch_id = conversation['branch_id']
+    _assert_branch_access(current_user, branch_id)
+    if not conversation.get('phone_mirrored') or conversation.get('provider') != 'whatsflow':
+        raise HTTPException(409, 'Phone read synchronization is unavailable for this chat')
+
+    # Resolve the current device state before mutating it. A cached count may
+    # be older than a read or a new message on the linked phone.
+    snapshot = await _refresh_phone_snapshot(branch_id, force=True)
+    conversation = await conversations.find_one(
+        {'id': conversation_id, 'branch_id': branch_id, 'phone_snapshot': snapshot['snapshot']},
+        {'_id': 0},
+    )
+    if not conversation or not conversation.get('phone_unread_known'):
+        raise HTTPException(409, 'Phone read state is not available for this chat')
+    unread_count = int(conversation.get('phone_unread_count') or 0)
+    if (read and unread_count == 0) or (not read and unread_count > 0):
+        return {'accepted': True, 'confirmed': True, 'conversation': conversation}
+
+    remote_jid = conversation.get('remote_jid') or ''
+    if not whatsapp_phone_mirror.chat_identity(branch_id, {'remoteJid': remote_jid}):
+        raise HTTPException(409, 'Phone chat identity is invalid')
+    client = await _phone_client(branch_id)
+    if read:
+        ok, records, _ = await client.find_messages(remote_jid, False, limit=min(unread_count, 50))
+        if not ok:
+            raise HTTPException(502, 'Could not retrieve incoming phone messages')
+        identity = {'remote_jid': remote_jid}
+        keys = []
+        seen = set()
+        for record in records:
+            key = whatsapp_phone_mirror.message_key(identity, record)
+            if key and key['fromMe'] is False and key['id'] not in seen:
+                keys.append(key)
+                seen.add(key['id'])
+        if not keys:
+            last_key = conversation.get('phone_last_message_key')
+            if (isinstance(last_key, dict) and last_key.get('remoteJid') == remote_jid
+                    and last_key.get('fromMe') is False and last_key.get('id')):
+                keys = [last_key]
+        if not keys:
+            raise HTTPException(409, 'No incoming message key is available to mark read')
+        ok, _, _ = await client.mark_messages_read(keys)
+    else:
+        key = conversation.get('phone_last_message_key')
+        if not key:
+            ok, history, _ = await client.history_page(remote_jid, 1)
+            if ok:
+                identity = {'remote_jid': remote_jid}
+                key = next((candidate for record in history['records']
+                            if (candidate := whatsapp_phone_mirror.message_key(identity, record))), None)
+        if not key:
+            raise HTTPException(409, 'No phone message key is available to mark unread')
+        ok, _, _ = await client.mark_chat_unread(remote_jid, key)
+    if not ok:
+        raise HTTPException(502, 'Phone read update was rejected by the provider')
+
+    # Never claim success from an HTTP acceptance alone. The refreshed phone
+    # count is authoritative, and a delayed provider update remains pending.
+    try:
+        snapshot = await _refresh_phone_snapshot(branch_id, force=True)
+        current = await conversations.find_one(
+            {'id': conversation_id, 'branch_id': branch_id, 'phone_snapshot': snapshot['snapshot']},
+            {'_id': 0},
+        )
+    except HTTPException:
+        current = None
+    confirmed = bool(current and current.get('phone_unread_known') and
+                     (int(current.get('phone_unread_count') or 0) == 0 if read
+                      else int(current.get('phone_unread_count') or 0) > 0))
+    return {'accepted': True, 'confirmed': confirmed, 'conversation': current or conversation}
+
+
+@router.post('/cloud-inbox/conversations/{conversation_id}/mark-phone-read')
+async def mark_cloud_phone_chat_read(conversation_id: str, current_user: dict = Depends(get_current_user)):
+    return await _set_phone_chat_read_state(conversation_id, current_user, True)
+
+
+@router.post('/cloud-inbox/conversations/{conversation_id}/mark-phone-unread')
+async def mark_cloud_phone_chat_unread(conversation_id: str, current_user: dict = Depends(get_current_user)):
+    return await _set_phone_chat_read_state(conversation_id, current_user, False)
 
 
 def _whatsflow_history_timestamp(record: dict) -> Optional[str]:

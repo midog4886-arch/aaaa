@@ -949,6 +949,10 @@ export const whatsappAPI = {
   },
   getCloudInboxThread: (conversationId) =>
     axios.get(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}`),
+  markCloudPhoneRead: (conversationId) =>
+    axios.post(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/mark-phone-read`),
+  markCloudPhoneUnread: (conversationId) =>
+    axios.post(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/mark-phone-unread`),
   syncCloudInboxPhoneReplies: (conversationId) =>
     axios.post(`${API}/whatsapp/cloud-inbox/conversations/${encodeURIComponent(conversationId)}/sync-phone-replies`),
   syncCloudPhoneBranch: (branchId) =>

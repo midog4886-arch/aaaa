@@ -6,6 +6,7 @@ jest.mock('axios', () => ({
       delete: jest.fn(),
     interceptors: {
       request: { use: jest.fn() },
+      response: { use: jest.fn() },
     },
   },
 }));
@@ -81,5 +82,17 @@ test('uses the branch-scoped conversation phone-reply sync endpoint', () => {
 
   expect(axios.post).toHaveBeenCalledWith(
     '/api/whatsapp/cloud-inbox/conversations/branch-a%3A9665/sync-phone-replies',
+  );
+});
+
+test('sends explicit phone read and unread actions for the selected chat', () => {
+  whatsappAPI.markCloudPhoneRead('branch-a:9665');
+  whatsappAPI.markCloudPhoneUnread('branch-a:9665');
+
+  expect(axios.post).toHaveBeenNthCalledWith(
+    1, '/api/whatsapp/cloud-inbox/conversations/branch-a%3A9665/mark-phone-read',
+  );
+  expect(axios.post).toHaveBeenNthCalledWith(
+    2, '/api/whatsapp/cloud-inbox/conversations/branch-a%3A9665/mark-phone-unread',
   );
 });

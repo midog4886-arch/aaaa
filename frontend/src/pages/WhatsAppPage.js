@@ -541,6 +541,8 @@ export default function WhatsAppPage() {
   const [cloudMessages, setCloudMessages] = useState([]);
   const [phoneSync, setPhoneSync] = useState(null);
   const [syncingPhoneBranch, setSyncingPhoneBranch] = useState(false);
+  const [markingPhoneUnread, setMarkingPhoneUnread] = useState(false);
+  const phoneReadAttemptRef = useRef(null);
   const phoneBranchBusy = useRef(false);
   const [phoneHistory, setPhoneHistory] = useState(null);
   const phoneHistoryRef = useRef(null);
@@ -1044,7 +1046,31 @@ export default function WhatsAppPage() {
       setPhoneLookup(current => (
         current.open ? { open: false, phone: '', members: [] } : current
       ));
-      setCloudThread(response.data?.conversation || null);
+      const phoneConversation = response.data?.conversation || null;
+      let currentConversation = phoneConversation;
+      const readFingerprint = phoneConversation?.phone_mirrored
+        ? `${conversationId}:${phoneConversation.phone_last_message_key?.id || ''}:${phoneConversation.phone_unread_count}`
+        : null;
+      const recentReadAttempt = polling && phoneReadAttemptRef.current?.fingerprint === readFingerprint
+        && Date.now() - phoneReadAttemptRef.current.at < 60000;
+      if (phoneConversation?.phone_mirrored && phoneConversation.phone_unread_known
+          && Number(phoneConversation.phone_unread_count || 0) > 0 && !recentReadAttempt) {
+        phoneReadAttemptRef.current = { fingerprint: readFingerprint, at: Date.now() };
+        try {
+          const readResult = await whatsappAPI.markCloudPhoneRead(conversationId);
+          if (!isCurrentRequest()) return;
+          currentConversation = readResult.data?.conversation
+            ? { ...phoneConversation, ...readResult.data.conversation }
+            : phoneConversation;
+          if (!readResult.data?.confirmed && !polling) {
+            toast.warning(t('طلب القراءة قيد المزامنة مع الجوال؛ الحالة المعروضة من آخر تحقق.', 'Read update is pending on the phone; showing the last confirmed state.'));
+          }
+        } catch (error) {
+          if (!isCurrentRequest()) return;
+          if (!polling) toast.error(apiErrorMessage(error, t('تعذر تعليم المحادثة كمقروءة على الجوال', 'Could not mark the chat read on the phone')));
+        }
+      }
+      setCloudThread(currentConversation);
       const messages = response.data?.messages || [];
       if (response.data?.phone_history) {
         const previousHistory = phoneHistoryRef.current;
@@ -1067,14 +1093,8 @@ export default function WhatsAppPage() {
       mediaMessages.forEach(message => {
         loadCloudMedia(message, branchKey, authScope, viewKey, conversationId);
       });
-      // Opening a mirrored phone chat does not mark it read on the device.
-      // Refresh the list from the server so phone unread counts remain the
-      // source of truth; never clear an unread row optimistically.
-      //
-      // Polls refresh the open detail as well, but should not issue another
-      // inbox request every ten seconds after the thread is already read.
-      // A non-zero count in the pre-mark response means a new unread arrived
-      // since the previous poll, so refresh the count in that case.
+      // Keep the list aligned with the provider-confirmed device state. Polls
+      // also acknowledge new inbound messages while this chat stays open.
       const threadUnreadCount = Number(response.data?.conversation?.unread_count || 0);
       if (refreshInbox || !polling || threadUnreadCount > 0) {
         await loadCloudConversations(branchKey, unreadView, needsReplyView);
@@ -1275,6 +1295,33 @@ export default function WhatsAppPage() {
     } catch (error) {
       toast.error(apiErrorMessage(error, t('تعذرت مزامنة الجوال', 'Phone synchronization failed')));
     } finally { phoneBranchBusy.current = false; setSyncingPhoneBranch(false); }
+  };
+
+  const handleMarkPhoneUnread = async () => {
+    const conversationId = selectedCloudThreadRef.current;
+    if (!conversationId || markingPhoneUnread) return;
+    setMarkingPhoneUnread(true);
+    try {
+      const response = await whatsappAPI.markCloudPhoneUnread(conversationId);
+      if (selectedCloudThreadRef.current !== conversationId) return;
+      if (response.data?.confirmed) {
+        toast.success(t('أصبحت المحادثة غير مقروءة على الجوال', 'Chat marked unread on the phone'));
+      } else {
+        toast.warning(t('طلب عدم القراءة قيد المزامنة؛ تحقق من حالة الجوال بعد لحظات.', 'Unread update is pending; check the phone state shortly.'));
+      }
+      selectedCloudThreadRef.current = null;
+      cloudThreadRequestRef.current += 1;
+      phoneReadAttemptRef.current = null;
+      clearCloudMedia();
+      setSelectedCloudThread(null);
+      setCloudThread(null);
+      setCloudMessages([]);
+      await loadCloudConversations();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t('تعذر تعليم المحادثة كغير مقروءة على الجوال', 'Could not mark the chat unread on the phone')));
+    } finally {
+      setMarkingPhoneUnread(false);
+    }
   };
 
   const handleOlderPhoneMessages = async () => {
@@ -3745,7 +3792,7 @@ export default function WhatsAppPage() {
                       {t('مزامنة الرسائل والقراءة مع الجوال', 'Sync phone messages and unread state')}
                     </Button>
                     {phoneSync && <span className="text-xs text-muted-foreground">
-                      {t(`آخر 30 يومًا · ${phoneSync.chats} محادثة · ${phoneSync.unread_chats} غير مقروءة`, `Last 30 days · ${phoneSync.chats} chats · ${phoneSync.unread_chats} unread`)}
+                      {t(`كل محادثات الجوال · ${phoneSync.chats} محادثة · ${phoneSync.unread_chats} غير مقروءة`, `All phone chats · ${phoneSync.chats} chats · ${phoneSync.unread_chats} unread`)}
                       {phoneSync.stale && <span className="block text-amber-700">{t('تعذر تحديث بيانات الجوال. المعروض آخر نسخة محفوظة، وقد تتغير حالة القراءة على الجوال.', 'Phone refresh unavailable. Showing the last saved snapshot; read state may have changed on the phone.')}</span>}
                       {phoneSync.unknown_read_chats > 0 && <span className="block text-amber-700">{t(`حالة القراءة غير مؤكدة لـ ${phoneSync.unknown_read_chats} محادثة؛ عدد غير المقروء يشمل الحالات المؤكدة فقط.`, `Read state is unavailable for ${phoneSync.unknown_read_chats} chats; unread count includes confirmed states only.`)}</span>}
                       {phoneSync.excluded > 0 && <span className="block text-amber-700">{t(`لم يعرض المزود بيانات مكتملة لـ ${phoneSync.excluded} سجلًا؛ المطابقة تشمل المحادثات المتاحة فقط.`, `${phoneSync.excluded} provider records are incomplete; synchronization covers available chats only.`)}</span>}
@@ -3753,8 +3800,8 @@ export default function WhatsAppPage() {
                   </div>
                   <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
                     {t(
-                      'فتح محادثة الجوال هنا لا يجعلها مقروءة على الجوال؛ زر المزامنة يجلب حالة القراءة الحالية. «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
-                      'Opening a phone chat here does not mark it read on the phone; Sync fetches the current unread state. “Needs reply” tracks inbound messages without a reply.'
+                      'فتح المحادثة هنا يعلّمها كمقروءة على الجوال عند تأكيد المزود، ويمكنك إعادتها كغير مقروءة من داخلها. زر المزامنة يجلب حالة كل المحادثات من الجوال. «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
+                      'Opening a chat here marks it read on the phone once confirmed by the provider. You can mark it unread again inside the chat. Sync fetches every chat’s phone state. “Needs reply” tracks inbound messages without a reply.'
                     )}
                   </p>
                   {loadingCloudInbox && !cloudConversations.length ? (
@@ -3899,6 +3946,13 @@ export default function WhatsAppPage() {
                               : t('مقروءة حسب آخر مزامنة للجوال', 'Read in last phone sync')
                             : t('حالة القراءة على الجوال غير مؤكدة', 'Phone read state unknown')}
                         </Badge>
+                      )}
+                      {cloudThread?.phone_mirrored && cloudThread.phone_unread_known
+                        && Number(cloudThread.phone_unread_count || 0) === 0 && (
+                        <Button type="button" variant="outline" size="sm"
+                          onClick={handleMarkPhoneUnread} disabled={markingPhoneUnread}>
+                          {t('تعليم كغير مقروءة على الجوال', 'Mark unread on phone')}
+                        </Button>
                       )}
                       <CloudMemberAssociation
                         memberLink={cloudThread?.member_link}

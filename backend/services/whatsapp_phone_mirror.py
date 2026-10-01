@@ -32,6 +32,15 @@ def unread_value(row):
     return max(value, 1) if value == -1 else value
 
 
+def message_key(identity, record):
+    key = record.get('key') if isinstance(record, dict) else None
+    if (not isinstance(key, dict) or key.get('remoteJid') != identity['remote_jid']
+            or not isinstance(key.get('id'), str) or not key['id']
+            or not isinstance(key.get('fromMe'), bool)):
+        return None
+    return {'remoteJid': key['remoteJid'], 'id': key['id'], 'fromMe': key['fromMe']}
+
+
 def message_document(branch_id, identity, record, normalize, extract_body, timestamp, view_once, status, archive):
     if not isinstance(record, dict):
         return None
@@ -100,10 +109,12 @@ async def store_snapshot(db, branch_id, rows, build_message):
             continue
         seen.add(identity['id'])
         record = row.get('lastMessage') or {}
-        document = build_message(identity, record)
-        last_at = (document or {}).get('created_at') or row.get('updatedAt')
-        if not recent_timestamp(last_at):
-            continue
+        preview = build_message(identity, record)
+        last_at = (preview or {}).get('created_at') or row.get('updatedAt')
+        # Read state belongs to the whole phone inbox, including quiet chats.
+        # Keep the 30-day limit only for imported message bodies so an old
+        # conversation cannot trigger a new reply workflow.
+        document = preview if recent_timestamp(last_at) else None
         if document:
             documents.append(document)
         unread_chats += int(unread is not None and unread > 0)
@@ -115,10 +126,11 @@ async def store_snapshot(db, branch_id, rows, build_message):
             # phone_unread_known distinguishes unavailable state from read.
             'unread_count': unread if unread is not None else 0, 'phone_unread_count': unread,
             'phone_unread_known': unread is not None,
+            'phone_last_message_key': message_key(identity, record),
             'phone_snapshot': token, 'phone_synced_at': now, 'phone_mirrored': True,
-            'last_message': (document or {}).get('body') or ('[message]' if record else ''),
-            'last_message_at': (document or {}).get('created_at') or row.get('updatedAt') or now,
-            'last_direction': (document or {}).get('direction'),
+            'last_message': (preview or {}).get('body') or ('[message]' if record else ''),
+            'last_message_at': last_at or now,
+            'last_direction': (preview or {}).get('direction'),
         }
         # A native last message includes outgoing phone replies. Historical
         # imports lack human_reply metadata and must not be backfilled as
