@@ -102,8 +102,12 @@ def extract_whatsapp_group_url(value: Any) -> str:
 
 
 def public_base_url() -> str:
-    """Resolve the same public-origin family used by existing app helpers."""
-    fallback = ""
+    """Resolve a customer-facing HTTPS origin, never an internal HTTP URL.
+
+    After a server move, APP_BASE_URL can point at Coolify's HTTP service
+    address. That address cannot be included in a payment receipt, and must
+    not take precedence over the published member portal.
+    """
     for name in (
         "REACT_APP_PUBLIC_BASE_URL",
         "PUBLIC_BASE_URL",
@@ -111,10 +115,9 @@ def public_base_url() -> str:
         "REACT_APP_BACKEND_URL",
     ):
         value = (os.environ.get(name) or "").strip().rstrip("/")
-        if value and not fallback:
-            fallback = value
-        host = urlparse(value).hostname if value else None
-        if value and host and not _DEV_HOST_RE.search(host):
+        parsed = urlparse(value)
+        host = parsed.hostname
+        if parsed.scheme == "https" and host and not _DEV_HOST_RE.search(host):
             return value
     domains = (os.environ.get("REPLIT_DOMAINS") or "").split(",")
     if domains and domains[0].strip():
@@ -124,9 +127,7 @@ def public_base_url() -> str:
     # Preview hosts are not useful to customers.  Keep the same published
     # fallback as frontend/utils/publicUrl.js rather than sharing a random
     # development origin in an invoice.
-    return DEFAULT_PUBLIC_BASE_URL if not fallback or _DEV_HOST_RE.search(
-        urlparse(fallback).hostname or ""
-    ) else fallback
+    return DEFAULT_PUBLIC_BASE_URL
 
 
 def _tenant_slug(

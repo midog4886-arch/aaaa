@@ -18,6 +18,7 @@ from services.invoice_whatsapp import (  # noqa: E402
     build_invoice_text,
     build_whatsflow_caption,
     extract_whatsapp_group_url,
+    public_base_url,
 )
 
 
@@ -58,6 +59,21 @@ def test_group_extraction_accepts_https_invite_only_and_deduplicates():
         "https://evil.example/chat.whatsapp.com/no"
     )
     assert extract_whatsapp_group_url(saved) == "https://chat.whatsapp.com/BranchA"
+
+
+def test_internal_http_origin_after_migration_does_not_break_receipts(monkeypatch):
+    for key in ("REACT_APP_PUBLIC_BASE_URL", "PUBLIC_BASE_URL"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("APP_BASE_URL", "http://app.internal.sslip.io")
+    monkeypatch.setenv("REACT_APP_BACKEND_URL", "http://app.internal.sslip.io")
+    assert public_base_url() == "https://adaa-alabtal.com"
+    assert "https://adaa-alabtal.com/member-dashboard" in build_invoice_text(_invoice(), {}, {})
+
+
+def test_explicit_https_public_origin_takes_precedence(monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://members.example.com")
+    monkeypatch.setenv("APP_BASE_URL", "http://app.internal.sslip.io")
+    assert public_base_url() == "https://members.example.com"
 
 
 def test_caption_contains_public_links_once_and_keeps_urls_complete():

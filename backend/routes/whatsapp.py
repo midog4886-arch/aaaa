@@ -1902,7 +1902,12 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
             if render_invoice is invoice:
                 render_invoice = {**invoice}
             render_invoice.update(tenant_branding)
-        message = build_invoice_text(render_invoice, branch, tenant)
+        try:
+            message = build_invoice_text(render_invoice, branch, tenant)
+        except CaptionLinkError as exc:
+            # This fails before any provider request; retain the actionable
+            # cause in the outbox instead of silently exhausting five retries.
+            raise InvoiceReceiptDeliveryFailed(str(exc)) from exc
         if provider == "whatsflow":
             from services.invoice_receipt_image import render_invoice_receipt_image
 
