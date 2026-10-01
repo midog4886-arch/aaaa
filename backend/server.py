@@ -5064,6 +5064,61 @@ def start_daily_checks_scheduler():
         asyncio.ensure_future(daily_checks_scheduler_loop())
 
 
+# Level assignments should expire every day, even when notification checks
+# are configured for fewer days. The existing cleanup action remains available
+# to admins for an immediate manual run.
+_level_expired_cleanup_started = False
+
+
+async def _run_expired_level_cleanup() -> dict:
+    from routes.levels import cleanup_expired_subscriptions
+    from utils.tenant import for_each_active_tenant
+
+    async def _cleanup_tenant(_tenant: dict) -> dict:
+        result = await cleanup_expired_subscriptions(
+            dry_run=False, branch_filter=None, level_id=None,
+            current_user={"is_admin": True, "branch_id": None},
+        )
+        return {
+            "members_affected": result["members_affected"],
+            "links_removed": result["links_removed"],
+        }
+
+    summary = await for_each_active_tenant(_cleanup_tenant, label="expired_level_cleanup")
+    print(
+        f"Expired level cleanup: tenants={summary['processed']} "
+        f"failed={summary['failed']} "
+        f"links_removed={sum(r['links_removed'] for r in summary['results'].values())}"
+    )
+    return summary
+
+
+async def level_expired_cleanup_scheduler_loop():
+    global _level_expired_cleanup_started
+    _level_expired_cleanup_started = True
+    await asyncio.sleep(60)  # let database initialization finish after startup
+    while True:
+        retry = False
+        try:
+            summary = await _run_expired_level_cleanup()
+            retry = bool(summary["failed"])
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            print(f"Expired level cleanup failed: {exc}")
+            retry = True
+        now = datetime.now(_RIYADH_TZ)
+        next_run = (now + timedelta(days=1)).replace(hour=0, minute=15, second=0, microsecond=0)
+        await asyncio.sleep(3600 if retry else max((next_run - now).total_seconds(), 60))
+
+
+def start_level_expired_cleanup_scheduler():
+    global _level_expired_cleanup_started
+    if not _level_expired_cleanup_started:
+        _level_expired_cleanup_started = True
+        asyncio.ensure_future(level_expired_cleanup_scheduler_loop())
+
+
 # ── Tenant auto-purge scheduler ─────────────────────────────────────────────
 # Runs once per day. For every tenant in ``pending_delete`` whose
 # ``deletion_purge_at`` is in the past:
@@ -11765,6 +11820,10 @@ async def create_default_admin():
         start_daily_checks_scheduler()
     except Exception as e:
         print(f"Daily checks scheduler start failed: {e}")
+    try:
+        start_level_expired_cleanup_scheduler()
+    except Exception as e:
+        print(f"Expired level cleanup scheduler start failed: {e}")
     # Start tenant auto-purge scheduler (drops Mongo DB once 7-day grace ends)
     try:
         start_tenant_purge_scheduler()

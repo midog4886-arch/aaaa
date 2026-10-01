@@ -2777,6 +2777,10 @@ ${slotTables}
                     >
                       <Trash2 className="w-4 h-4 me-2" /> {t('تنظيف المنتهية اشتراكاتهم', 'Clean expired members')}
                     </DropdownMenuItem>
+                    <p className="px-2 py-1 text-xs text-muted-foreground">
+                      {t('يتم التنظيف تلقائيًا كل يوم 00:15 بتوقيت الرياض. هذا الزر للتنظيف الفوري.',
+                        'Cleanup runs automatically every day at 00:15 Riyadh time. Use this button to run it now.')}
+                    </p>
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}

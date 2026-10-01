@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 import re
 import uuid
 import copy
@@ -16,6 +17,17 @@ from utils.auth import get_allowed_branch_ids, get_current_user, require_branch_
 from utils.cache import cache_get, cache_set, cache_invalidate
 
 router = APIRouter(prefix="/levels", tags=["Levels"])
+
+
+def _is_expired_level_activity(activity: dict, today: str) -> bool:
+    """Only expired subscriptions lose their level assignment."""
+    end_date = activity.get("end_date") or ""
+    if end_date:
+        try:
+            return date.fromisoformat(str(end_date)[:10]) < date.fromisoformat(today)
+        except ValueError:
+            return False
+    return activity.get("status") == "expired"
 
 # ============ MODELS ============
 
@@ -2586,7 +2598,7 @@ async def cleanup_expired_subscriptions(
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="هذه العملية للمشرف العام فقط")
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(ZoneInfo("Asia/Riyadh")).strftime("%Y-%m-%d")
 
     level_query = {}
     if level_id:
@@ -2600,22 +2612,15 @@ async def cleanup_expired_subscriptions(
         ]
     levels = await db.levels.find(
         level_query, {"_id": 0, "id": 1, "activity_name": 1, "members": 1}
-    ).to_list(1000)
+    ).to_list(length=None)
     level_ids = {l["id"] for l in levels if l.get("id")}
     if not level_ids:
         return {"dry_run": dry_run, "members_affected": 0, "links_removed": 0, "items": []}
 
-    def _is_expired(act):
-        status = act.get("status")
-        if status and status != "active":
-            return True
-        end_d = act.get("end_date") or ""
-        return bool(end_d) and end_d < today
-
     members = await db.members.find(
         {"activities.level_id": {"$in": list(level_ids)}},
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "member_code": 1, "activities": 1},
-    ).to_list(20000)
+    ).to_list(length=None)
 
     items = []
     links_removed = 0
@@ -2626,7 +2631,7 @@ async def cleanup_expired_subscriptions(
         changed = False
         for act in acts:
             lid = act.get("level_id")
-            if lid in level_ids and _is_expired(act):
+            if lid in level_ids and _is_expired_level_activity(act, today):
                 items.append({
                     "member_id": m.get("id"),
                     "member_name": m.get("name_ar") or m.get("name") or "",
