@@ -111,6 +111,9 @@ def test_mobile_link_signs_once_and_invalidates_when_invoice_changes(monkeypatch
     assert asyncio.run(route.get_registration_consent_links('i1', user))['links'][0]['status'] == 'sent'
     state = asyncio.run(route.get_public_registration_consent(created['token']))
     assert state['status'] == 'pending'
+    with pytest.raises(HTTPException) as unsigned_pdf:
+        asyncio.run(route.download_public_registration_consent_pdf(created['token']))
+    assert unsigned_pdf.value.status_code == 404
     history = asyncio.run(route.get_registration_consent_links('i1', user))['links']
     assert history[0]['status'] == 'opened'
     assert history[0]['opened_at']
@@ -123,6 +126,10 @@ def test_mobile_link_signs_once_and_invalidates_when_invoice_changes(monkeypatch
     assert result['status'] == 'signed'
     assert asyncio.run(route.get_registration_consent_links('i1', user))['links'][0]['status'] == 'signed'
     assert asyncio.run(route.get_public_registration_consent(created['token']))['status'] == 'signed'
+    copy = asyncio.run(route.download_public_registration_consent_pdf(created['token']))
+    assert copy.media_type == 'application/pdf'
+    assert 'signed-consent-530405.pdf' in copy.headers['content-disposition']
+    assert copy.headers['cache-control'] == 'no-store'
     with pytest.raises(HTTPException) as repeated:
         asyncio.run(route.sign_public_registration_consent(created['token'], payload(invoice)))
     assert repeated.value.status_code == 409
@@ -132,6 +139,9 @@ def test_mobile_link_signs_once_and_invalidates_when_invoice_changes(monkeypatch
     with pytest.raises(HTTPException) as changed:
         asyncio.run(route.get_public_registration_consent(created['token']))
     assert changed.value.status_code == 410
+    with pytest.raises(HTTPException) as changed_pdf:
+        asyncio.run(route.download_public_registration_consent_pdf(created['token']))
+    assert changed_pdf.value.status_code == 410
 
 
 def test_mobile_form_prefills_guardian_name_without_changing_invoice_revision(monkeypatch):

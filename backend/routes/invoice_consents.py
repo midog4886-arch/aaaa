@@ -312,6 +312,18 @@ async def sign_public_registration_consent(token: str, payload: ConsentInput):
     return {"status": "signed", "signed_at": result["signed_at"], "version": result["version"]}
 
 
+@router.get("/public/registration-consent/{token}/pdf")
+async def download_public_registration_consent_pdf(token: str):
+    _link, invoice, _settings, signed = await public_link(token)
+    if not signed:
+        raise HTTPException(status_code=404, detail="لم تُوقَّع الاستمارة بعد")
+    number = re.sub(r"[^A-Za-z0-9_-]", "", str(invoice.get("invoice_number") or invoice["id"]))
+    return StreamingResponse(render_signed_consent_pdf(signed), media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="signed-consent-{number}.pdf"',
+        "Cache-Control": "no-store",
+    })
+
+
 @router.get("/{invoice_id}/registration-consent")
 async def get_registration_consent(invoice_id: str, user: dict = Depends(get_current_user)):
     invoice = await scoped_invoice(invoice_id, user)

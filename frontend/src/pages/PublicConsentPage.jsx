@@ -69,6 +69,27 @@ export default function PublicConsentPage() {
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   };
+  const downloadCopy = async () => {
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(`/api/invoices/public/registration-consent/${encodeURIComponent(token)}/pdf`, {
+        credentials: 'omit', cache: 'no-store', headers: { 'X-Tenant-Slug': tenant },
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.detail || 'تعذر تنزيل النسخة الموقّعة');
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `استمارة_موقعة_${data.invoice.invoice_number || 'نسختي'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
+  };
   return <main dir="rtl" className="min-h-screen bg-gradient-to-br from-violet-50 via-white to-sky-50 px-3 py-6 text-slate-900 sm:px-6">
     <div className="mx-auto max-w-2xl overflow-hidden rounded-3xl border border-violet-100 bg-white shadow-xl shadow-violet-100/60">
       <div className="border-b border-violet-100 bg-gradient-to-l from-violet-50 to-white px-5 py-7 text-center">
@@ -80,7 +101,7 @@ export default function PublicConsentPage() {
       <div className="space-y-5 p-5 sm:p-7">
         {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {!data && !error && <p>جارٍ تحميل الاستمارة…</p>}
-        {data?.status === 'signed' && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center"><div className="text-4xl text-emerald-600">✓</div><h2 className="mt-2 text-lg font-bold">تم اعتماد الاستمارة</h2><p className="text-sm text-slate-600">حُفظ توقيعك بنجاح، ويمكن للأكاديمية الاطلاع على النسخة المعتمدة.</p></div>}
+        {data?.status === 'signed' && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center"><div className="text-4xl text-emerald-600">✓</div><h2 className="mt-2 text-lg font-bold">تم اعتماد الاستمارة</h2><p className="text-sm text-slate-600">حُفظ توقيعك بنجاح، ويمكنك تنزيل نسختك الموقّعة الآن.</p><button type="button" disabled={busy} onClick={downloadCopy} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy ? 'جارٍ تجهيز النسخة…' : 'تنزيل نسختي PDF'}</button></div>}
         {data?.status === 'pending' && <>
           <div className="rounded-2xl bg-violet-50 p-4"><h2 className="font-bold text-violet-900">بيانات الفاتورة / Invoice details</h2><p>الطفل: {data.invoice.customer_name_ar || data.invoice.member_name}</p><p>فاتورة رقم: {data.invoice.invoice_number}</p><p>النشاط: {(data.invoice.items || []).map(item => item.activity_name).join('، ')}</p><p>المبلغ: {data.invoice.total} ر.س</p><p className="mt-2 text-xs text-slate-500">الرابط صالح حتى {new Date(data.expires_at).toLocaleString('ar-SA')}</p></div>
           <div className="grid gap-3 sm:grid-cols-2">{[['child_name', 'اسم الطفل الرباعي / Child name'], ['birth_date', 'تاريخ الميلاد / Birth date'], ['guardian_name', 'اسم ولي الأمر / Guardian name'], ['relationship', 'صلة القرابة / Relationship'], ['guardian_identity', 'رقم الهوية أو الإقامة / ID']].map(([key, label]) => <label key={key} className="block text-sm font-medium"><span>{label}</span><input type={key === 'birth_date' ? 'date' : 'text'} value={form[key]} onChange={e => change(key, e.target.value)} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white p-3 outline-none focus:border-violet-500" /></label>)}</div>
