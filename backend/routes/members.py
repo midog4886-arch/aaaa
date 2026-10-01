@@ -347,7 +347,7 @@ async def get_members(
     projection = {"_id": 0, "photo": 0} if exclude_photo else {"_id": 0}
     if picker_only:
         projection = {"_id": 0, "id": 1, "name": 1, "name_ar": 1,
-                      "phone": 1, "status": 1, "branch_id": 1}
+                      "member_code": 1, "phone": 1, "status": 1, "branch_id": 1}
     members = await db.members.find(query, projection).sort("created_at", -1).to_list(1000)
 
     if picker_only:

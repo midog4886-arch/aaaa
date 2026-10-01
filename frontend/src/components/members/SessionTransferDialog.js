@@ -3,13 +3,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { membersAPI } from '../../services/api';
+import { attendanceAPI, membersAPI } from '../../services/api';
 import { toast } from 'sonner';
 
 export default function SessionTransferDialog({ member, activity, language, onClose, onComplete }) {
   const ar = language === 'ar';
   const [search, setSearch] = useState('');
   const [options, setOptions] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [senderBalance, setSenderBalance] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(true);
   const [recipient, setRecipient] = useState('');
   const [sessions, setSessions] = useState('');
   const [reason, setReason] = useState('');
@@ -19,11 +22,32 @@ export default function SessionTransferDialog({ member, activity, language, onCl
   const requestVersion = useRef(0);
   useEffect(() => {
     let active = true;
+    setSenderBalance(null);
+    setBalanceLoading(true);
+    attendanceAPI.getSessionQuota(member.id, activity.activity_id)
+      .then(({ data }) => {
+        if (!active) return;
+        const quota = (Array.isArray(data) ? data : []).find(q =>
+          q.start_date === String(activity.start_date || '').slice(0, 10)
+          && q.end_date === String(activity.end_date || '').slice(0, 10)
+        );
+        setSenderBalance(quota && Number.isFinite(Number(quota.remaining))
+          ? Math.max(0, Number(quota.remaining)) : null);
+      })
+      .catch(() => { if (active) setSenderBalance(null); })
+      .finally(() => { if (active) setBalanceLoading(false); });
+    return () => { active = false; };
+  }, [member.id, activity.activity_id, activity.start_date, activity.end_date]);
+  useEffect(() => {
+    let active = true;
+    setOptions([]);
+    setSearching(Boolean(search.trim()));
     const timer = setTimeout(() => {
-      if (!search.trim()) { setOptions([]); return; }
+      if (!search.trim()) return;
       membersAPI.getAll({ search: search.trim(), branch_filter: member.branch_id, picker_only: true })
         .then(({ data }) => { if (active) setOptions(data.filter(m => m.id !== member.id && m.branch_id === member.branch_id)); })
-        .catch(() => { if (active) setError(ar ? 'تعذر البحث عن المستلم' : 'Recipient search failed'); });
+        .catch(() => { if (active) setError(ar ? 'تعذر البحث عن المستلم' : 'Recipient search failed'); })
+        .finally(() => { if (active) setSearching(false); });
     }, 300);
     return () => { active = false; clearTimeout(timer); };
   }, [search, member.id, member.branch_id, ar]);
@@ -48,6 +72,10 @@ export default function SessionTransferDialog({ member, activity, language, onCl
         <DialogDescription>{ar ? 'اختر المستلم ثم راجع الرصيد قبل التأكيد.' : 'Choose a recipient and review balances before confirming.'}</DialogDescription>
       </DialogHeader>
       <p className="text-sm">{member.name_ar || member.name} — {activity.activity_name}</p>
+      <p className="text-sm font-medium" data-testid="sender-session-balance">
+        {ar ? 'الحصص المتبقية لدى المُرسِل: ' : 'Sender remaining sessions: '}
+        {balanceLoading ? (ar ? 'جارٍ الحساب...' : 'Loading...') : senderBalance === null ? (ar ? 'غير متاح؛ راجع المعاينة' : 'Unavailable; check preview') : senderBalance}
+      </p>
       <p className="text-sm text-muted-foreground">{ar ? 'النقل داخل نفس الفرع. تبقى الفواتير والحضور السابق كما هما، ولا تتغير صلاحية الحصص.' : 'Same branch only. Past invoices and attendance remain unchanged; sessions keep their expiry.'}</p>
       <fieldset disabled={busy} className="space-y-3">
         <Label htmlFor="session-recipient-search">{ar ? 'ابحث عن المستلم بالاسم أو رقم العضوية أو الجوال' : 'Search recipient by name, member code or phone'}</Label>
@@ -55,10 +83,12 @@ export default function SessionTransferDialog({ member, activity, language, onCl
         <Label htmlFor="session-recipient">{ar ? 'المشترك المستلم' : 'Recipient'}</Label>
         <select id="session-recipient" className="w-full border rounded-md p-2 bg-white" value={recipient} onChange={e => change(setRecipient, e.target.value)}>
           <option value="">{ar ? 'اختر المستلم' : 'Select recipient'}</option>
-          {options.map(m => <option key={m.id} value={m.id}>{m.name_ar || m.name}</option>)}
+          {options.map(m => <option key={m.id} value={m.id}>{m.name_ar || m.name}{m.member_code ? ` — ${m.member_code}` : ''}</option>)}
+          {search.trim() && searching && <option disabled value="searching">{ar ? 'جارٍ البحث...' : 'Searching...'}</option>}
+          {search.trim() && !searching && options.length === 0 && <option disabled value="no-results">{ar ? 'لا توجد نتائج في هذا الفرع' : 'No results in this branch'}</option>}
         </select>
         <Label htmlFor="session-amount">{ar ? 'عدد الحصص' : 'Sessions'}</Label>
-        <Input id="session-amount" type="number" min="1" step="1" value={sessions} onChange={e => change(setSessions, e.target.value)} />
+        <Input id="session-amount" type="number" min="1" max={senderBalance ?? undefined} step="1" value={sessions} onChange={e => change(setSessions, e.target.value)} />
         <Label htmlFor="session-reason">{ar ? 'سبب النقل' : 'Reason'}</Label>
         <Input id="session-reason" maxLength={500} value={reason} onChange={e => change(setReason, e.target.value)} />
       </fieldset>
@@ -71,7 +101,7 @@ export default function SessionTransferDialog({ member, activity, language, onCl
       </div>}
       <DialogFooter className="gap-2">
         <Button variant="outline" disabled={busy} onClick={onClose}>{ar ? 'إلغاء' : 'Cancel'}</Button>
-        <Button disabled={busy || !recipient || !Number.isInteger(Number(sessions)) || Number(sessions) < 1 || !reason.trim()} onClick={() => submit(Boolean(review))}>
+        <Button disabled={busy || !recipient || !Number.isInteger(Number(sessions)) || Number(sessions) < 1 || (senderBalance !== null && Number(sessions) > senderBalance) || !reason.trim()} onClick={() => submit(Boolean(review))}>
           {busy ? (ar ? 'جارٍ المراجعة...' : 'Working...') : review ? (ar ? 'تأكيد نقل الحصص' : 'Confirm transfer') : (ar ? 'معاينة الرصيد قبل النقل' : 'Preview balances')}
         </Button>
       </DialogFooter>

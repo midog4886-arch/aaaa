@@ -103,7 +103,7 @@ def test_member_picker_is_projected_scoped_and_phone_masked(monkeypatch):
     assert db.members.calls[0][0] == {"branch_id": "a"}
     assert db.members.calls[0][1] == {
         "_id": 0, "id": 1, "name": 1, "name_ar": 1,
-        "phone": 1, "status": 1, "branch_id": 1,
+            "member_code": 1, "phone": 1, "status": 1, "branch_id": 1,
     }
     assert rows[0]["phone"] == "050•••••00"
     assert rows[0]["status"] == "active"
