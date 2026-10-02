@@ -29,6 +29,7 @@ COPY backend/models ./models
 COPY backend/middleware ./middleware
 COPY backend/services ./services
 COPY backend/utils ./utils
+COPY scripts/recover_four_post_migration.py ./scripts/recover_four_post_migration.py
 
 # Create static folder and copy frontend build
 RUN mkdir -p static uploads backups
