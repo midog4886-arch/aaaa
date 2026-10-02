@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -102,6 +102,26 @@ export const InvoicesPage = () => {
   };
 
   useEffect(() => { loadData(); }, [selectedBranchId]);
+
+  useEffect(() => {
+    const refreshWhenReturning = () => {
+      if (document.visibilityState === 'visible') loadData();
+    };
+    window.addEventListener('focus', refreshWhenReturning);
+    document.addEventListener('visibilitychange', refreshWhenReturning);
+    return () => {
+      window.removeEventListener('focus', refreshWhenReturning);
+      document.removeEventListener('visibilitychange', refreshWhenReturning);
+    };
+  }, [selectedBranchId]);
+
+  const handleConsentStatusChange = useCallback((invoiceId, consent) => {
+    setInvoices(current => current.map(inv => inv.id === invoiceId ? {
+      ...inv,
+      consent_signed: Boolean(consent.signed && !consent.needs_resign),
+      consent_needs_resign: Boolean(consent.signed && consent.needs_resign),
+    } : inv));
+  }, []);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -682,7 +702,7 @@ export const InvoicesPage = () => {
           saving={refundSaving} onRefund={handleRefund} language={language} t={t}
         />
         <InvoiceBalanceDialog invoice={balanceInvoice} open={Boolean(balanceInvoice)} onOpenChange={open => { if (!open) setBalanceInvoice(null); }} onChanged={loadData} />
-        <InvoiceConsentDialog invoice={consentInvoice} open={Boolean(consentInvoice)} isAdmin={isAdmin} onOpenChange={open => { if (!open) { setConsentInvoice(null); loadData(); } }} />
+        <InvoiceConsentDialog invoice={consentInvoice} open={Boolean(consentInvoice)} isAdmin={isAdmin} onStatusChange={handleConsentStatusChange} onOpenChange={open => { if (!open) { setConsentInvoice(null); loadData(); } }} />
 
         <ViewCreditNoteDialog
           isOpen={isViewCreditNoteDialogOpen} onOpenChange={setIsViewCreditNoteDialogOpen}

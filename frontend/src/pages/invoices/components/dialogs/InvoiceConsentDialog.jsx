@@ -8,7 +8,7 @@ import { getAcademyLogoUrl } from '../../../../services/branding';
 
 const empty = { child_name: '', birth_date: '', guardian_name: '', relationship: '', guardian_identity: '', has_medical_condition: false, medical_details: '', signer_name: '', accepted: false };
 
-export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
+export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChange, isAdmin }) {
   const canvas = useRef(null);
   const drawing = useRef(false);
   const ink = useRef(false);
@@ -23,10 +23,16 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
   const [shareLinkId, setShareLinkId] = useState('');
   const [linkHistory, setLinkHistory] = useState([]);
   const [versions, setVersions] = useState([]);
+  const statusChangeRef = useRef(onStatusChange);
+  statusChangeRef.current = onStatusChange;
   const refreshHistory = useCallback(() => {
     if (!invoice?.id) return;
     invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => {});
     invoicesAPI.getRegistrationConsentHistory(invoice.id).then(r => setVersions(r.data.versions || [])).catch(() => {});
+    invoicesAPI.getRegistrationConsent(invoice.id).then(r => {
+      setData(r.data);
+      statusChangeRef.current?.(invoice.id, r.data);
+    }).catch(() => {});
   }, [invoice?.id]);
   useEffect(() => {
     if (!invoice || !open) return;
@@ -61,6 +67,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
       invoicesAPI.getRegistrationConsent(invoice.id).then(response => {
         if (response.data.signed && !response.data.needs_resign) {
           setData(response.data);
+          statusChangeRef.current?.(invoice.id, response.data);
           setShareLink('');
           refreshHistory();
           toast.success('تم اعتماد الاستمارة من جوال ولي الأمر');
@@ -84,6 +91,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
     try {
       const signed = await invoicesAPI.signRegistrationConsent(invoice.id, { ...form, expected_invoice_hash: data.invoice_hash, expected_terms_version: data.terms_version, signature_png: canvas.current.toDataURL('image/png') });
       setData(previous => ({ ...previous, signed: signed.data, needs_resign: false }));
+      statusChangeRef.current?.(invoice.id, { signed: signed.data, needs_resign: false });
       refreshHistory();
       toast.success('حُفظت الاستمارة الموقّعة');
     } catch (error) { toast.error(error.response?.data?.detail || 'تعذر حفظ التوقيع'); }
@@ -98,6 +106,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, isAdmin }) {
       await invoicesAPI.updateRegistrationConsentTerms(termsDraft);
       const refreshed = await invoicesAPI.getRegistrationConsent(invoice.id);
       setData(refreshed.data);
+      statusChangeRef.current?.(invoice.id, refreshed.data);
       setEditingTerms(false);
       toast.success('حُفظ إصدار جديد من بنود الاستمارة');
     } catch (error) { toast.error(error.response?.data?.detail || 'تعذر حفظ البنود'); }
