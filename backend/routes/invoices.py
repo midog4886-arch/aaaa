@@ -100,6 +100,8 @@ class Invoice(BaseModel):
     member_name: Optional[str] = ""
     member_code: Optional[str] = ""
     member_card_printed_at: Optional[str] = None
+    consent_signed: bool = False
+    consent_needs_resign: bool = False
     items: List[InvoiceItem]
     subtotal: float
     discount: float
@@ -271,6 +273,31 @@ async def get_invoices(
     
     invoices = await db.invoices.find(query, {"_id": 0}).sort("created_at", -1).to_list(1000)
     
+    # Surface the current signed-form state in the invoice list without one
+    # request per row. Compare against the saved invoice before display-only
+    # member details are added below (those are not part of its signed snapshot).
+    if invoices:
+        from .invoice_consents import consent_form_type, current_terms, invoice_snapshot, snapshot_hash
+        invoice_ids = [inv["id"] for inv in invoices]
+        signatures = await db.invoice_consents.find(
+            {"invoice_id": {"$in": invoice_ids}},
+            {"_id": 0, "invoice_id": 1, "invoice_hash": 1, "terms_version": 1, "version": 1},
+        ).sort("version", -1).to_list(10000)
+        latest_signatures = {}
+        for signed in signatures:
+            latest_signatures.setdefault(signed["invoice_id"], signed)
+        terms_by_type = {}
+        for inv in invoices:
+            signed = latest_signatures.get(inv["id"])
+            if not signed:
+                continue
+            form_type = consent_form_type(inv)
+            if form_type not in terms_by_type:
+                terms_by_type[form_type] = await current_terms(form_type)
+            is_current = signed.get("invoice_hash") == snapshot_hash(invoice_snapshot(inv)) and signed.get("terms_version") == terms_by_type[form_type]["version"]
+            inv["consent_signed"] = is_current
+            inv["consent_needs_resign"] = not is_current
+
     member_ids = list({mid for inv in invoices if (mid := (inv.get("member_id") or next((item.get("member_id") for item in inv.get("items", []) if item.get("member_id")), None)))})
     if member_ids:
         members = await db.members.find({"id": {"$in": member_ids}}, {"id": 1, "member_code": 1, "guardian_name_ar": 1, "guardian_name": 1, "card_printed_at": 1, "_id": 0}).to_list(len(member_ids))

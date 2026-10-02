@@ -496,7 +496,7 @@ export const InvoicesPage = () => {
                           <td className="p-3">
                             <div className="flex items-center gap-2 whitespace-nowrap">
                               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleViewInvoice(inv)}><Eye className="w-4 h-4" />{language === 'ar' ? 'عرض' : 'View'}</Button>
-                              {(inv.items || []).some(item => !item.is_product) && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setConsentInvoice(inv)}><FileText className="w-4 h-4" />{language === 'ar' ? 'الاستمارة' : 'Form'}</Button>}
+                              {(inv.items || []).some(item => !item.is_product) && <Button variant="outline" size="sm" className={`gap-1.5 ${inv.consent_signed ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : ''}`} onClick={() => setConsentInvoice(inv)}><FileText className="w-4 h-4" />{inv.consent_signed ? (language === 'ar' ? 'استمارة موقّعة' : 'Signed form') : inv.consent_needs_resign ? (language === 'ar' ? 'إعادة توقيع الاستمارة' : 'Sign updated form') : (language === 'ar' ? 'الاستمارة' : 'Form')}</Button>}
                               {inv.status === 'paid' && getInvoiceMemberId(inv) && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => handleOpenCardPrint({ ...inv, member_id: getInvoiceMemberId(inv) })}><Printer className="w-4 h-4" />{language === 'ar' ? 'طباعة الكرت' : 'Print card'}</Button>}
                               {['pending', 'partial'].includes(inv.status) && <Button variant="outline" size="sm" onClick={() => setBalanceInvoice(inv)}>{language === 'ar' ? 'دفعة / متابعة' : 'Payment / Follow-up'}</Button>}
                               <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openEditDialog(inv)}><Edit className="w-4 h-4" />{language === 'ar' ? 'تعديل' : 'Edit'}</Button>
@@ -682,7 +682,7 @@ export const InvoicesPage = () => {
           saving={refundSaving} onRefund={handleRefund} language={language} t={t}
         />
         <InvoiceBalanceDialog invoice={balanceInvoice} open={Boolean(balanceInvoice)} onOpenChange={open => { if (!open) setBalanceInvoice(null); }} onChanged={loadData} />
-        <InvoiceConsentDialog invoice={consentInvoice} open={Boolean(consentInvoice)} isAdmin={isAdmin} onOpenChange={open => { if (!open) setConsentInvoice(null); }} />
+        <InvoiceConsentDialog invoice={consentInvoice} open={Boolean(consentInvoice)} isAdmin={isAdmin} onOpenChange={open => { if (!open) { setConsentInvoice(null); loadData(); } }} />
 
         <ViewCreditNoteDialog
           isOpen={isViewCreditNoteDialogOpen} onOpenChange={setIsViewCreditNoteDialogOpen}
