@@ -55,7 +55,7 @@ export const RegistrationRequestsPage = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [stageFilter, setStageFilter] = useState('');
-  const [sortOrder, setSortOrder] = useState('priority');
+  const [sortOrder, setSortOrder] = useState('newest');
   const [groupFamilies, setGroupFamilies] = useState(true);
   const loadSequence = useRef(0);
   const [paymentLinks, setPaymentLinks] = useState([]);
