@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Layout } from '../components/Layout';
@@ -111,6 +112,12 @@ export const MarketersPage = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
   const isAdmin = user?.is_admin;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedMarketerId = searchParams.get('marketer');
+  const openMarketer = (id) => {
+    setExpandedId(null);
+    setSearchParams(id ? { marketer: id } : {});
+  };
 
   const tenantSlug = (() => { try { return localStorage.getItem('tenant_slug') || 'default'; } catch { return 'default'; } })();
 
@@ -421,13 +428,17 @@ export const MarketersPage = () => {
         )}
 
         {activeTab === 'list' && (<>
-        <div className="flex flex-wrap items-end gap-3">
+        {selectedMarketerId && <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => openMarketer(null)}>العودة إلى جميع المسوّقين</Button>
+          <Button variant="outline" onClick={() => copyText(window.location.href, 'تم نسخ رابط صفحة المسوّق')}><Link2 className="w-3.5 h-3.5 ms-1" /> نسخ رابط الصفحة</Button>
+        </div>}
+        {!selectedMarketerId && <div className="flex flex-wrap items-end gap-3">
           <div><Label className="text-xs">المسوّق</Label><Select value={filterMarketer} onValueChange={setFilterMarketer}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل المسوّقين</SelectItem>{marketers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select></div>
           <div><Label className="text-xs">الفرع</Label><Select value={filterBranch} onValueChange={setFilterBranch}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل الفروع</SelectItem>{branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}</SelectContent></Select></div>
           <div><Label className="text-xs">فترة الإحالات</Label><Select value={filterPeriod} onValueChange={setFilterPeriod}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="month">الشهر الحالي</SelectItem><SelectItem value="all">كل الفترات</SelectItem></SelectContent></Select></div>
-        </div>
+        </div>}
         {/* Summary cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {!selectedMarketerId && <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card><CardContent className="p-4 flex items-center gap-3">
             <Users className="w-8 h-8 text-blue-500" />
             <div><p className="text-2xl font-bold">{funnelLoading ? '…' : funnel ? totals.requests : '—'}</p><p className="text-xs text-muted-foreground">طلبات إحالة في الفترة</p></div>
@@ -440,20 +451,20 @@ export const MarketersPage = () => {
             <BadgeDollarSign className="w-8 h-8 text-emerald-500" />
             <div><p className="text-2xl font-bold">{totals.paid.toFixed(2)}</p><p className="text-xs text-muted-foreground">عمولات مصروفة — كل الفترات (ر.س)</p></div>
           </CardContent></Card>
-        </div>
+        </div>}
 
         {/* List */}
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-primary" /></div>
-        ) : visibleMarketers.length === 0 ? (
+        ) : (selectedMarketerId ? !visibleMarketers.some(m => m.id === selectedMarketerId) : visibleMarketers.length === 0) ? (
           <Card><CardContent className="py-16 text-center text-muted-foreground">
             <Megaphone className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>{marketers.length ? 'لا يوجد مسوّقون يطابقون الفلاتر.' : 'لا يوجد مسوّقون بعد. أضف مسوّقاً للبدء.'}</p>
+            <p>{selectedMarketerId ? 'المسوّق غير موجود أو غير متاح لك.' : marketers.length ? 'لا يوجد مسوّقون يطابقون الفلاتر.' : 'لا يوجد مسوّقون بعد. أضف مسوّقاً للبدء.'}</p>
           </CardContent></Card>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">فتح الرابط يُحتسب من تاريخ تفعيل التتبع فقط. عند اختيار فرع محدد، يبقى عدد فتحات الرابط لجميع فروع المسوّق لأن الزائر قد يختار الفرع لاحقًا.</p>
-            {visibleMarketers.map((m) => (
+            {visibleMarketers.filter(m => !selectedMarketerId || m.id === selectedMarketerId).map((m) => (
               <Card key={m.id} data-testid={`card-marketer-${m.id}`}>
                 <CardContent className="p-4">
                   <div className="flex flex-col lg:flex-row lg:items-start gap-4 justify-between">
@@ -465,6 +476,7 @@ export const MarketersPage = () => {
                           {m.status === 'inactive' ? 'موقوف' : 'نشط'}
                         </Badge>
                         <Badge variant="outline" className="font-mono">{m.referral_code}</Badge>
+                        {!selectedMarketerId && <Button variant="outline" size="sm" onClick={() => openMarketer(m.id)}>فتح صفحة المسوّق <ExternalLink className="w-3.5 h-3.5 ms-1" /></Button>}
                       </div>
                       <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground flex-wrap">
                         {m.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {m.phone}</span>}
@@ -477,15 +489,15 @@ export const MarketersPage = () => {
                         <span className="text-amber-600">مستحق: {(m.due_amount || 0).toFixed(2)} ر.س</span>
                         <span className="text-emerald-600">مدفوع: {(m.paid_amount || 0).toFixed(2)} ر.س</span>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-sm">
+                      {selectedMarketerId && <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-sm">
                         <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">فتحوا رابط الإحالة</span><strong>{funnelValue(m, 'link_visits')}</strong></div>
                         <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">قدّموا طلب تسجيل</span><strong>{funnelValue(m, 'registration_requests')}</strong></div>
                         <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">فواتير أولى مرتبطة</span><strong>{funnelValue(m, 'linked_invoices')}</strong></div>
                         <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">عمولة مسجّلة للفترة</span><strong>{funnelValue(m, 'recorded_commission', true)} ر.س</strong></div>
-                      </div>
+                      </div>}
 
                       {/* Referral link */}
-                      <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      {selectedMarketerId && <div className="mt-3 flex items-center gap-2 flex-wrap">
                         {(() => {
                           const bids = marketerBranchIds(m);
                           if (bids.length === 1 || branches.length <= 1) return null;
@@ -510,11 +522,11 @@ export const MarketersPage = () => {
                         <Button variant="outline" size="sm" onClick={() => copyPortalLink(m)} data-testid={`button-portal-${m.id}`}>
                           <ExternalLink className="w-3.5 h-3.5 ms-1" /> رابط البوابة
                         </Button>
-                      </div>
+                      </div>}
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-2 flex-wrap">
+                    {selectedMarketerId && <div className="flex items-center gap-2 flex-wrap">
                       <Button variant="outline" size="sm" onClick={() => toggleExpand(m)} data-testid={`button-report-${m.id}`}>
                         <Receipt className="w-3.5 h-3.5 ms-1" /> العمولات
                         {expandedId === m.id ? <ChevronUp className="w-3.5 h-3.5 ms-1" /> : <ChevronDown className="w-3.5 h-3.5 ms-1" />}
@@ -527,7 +539,7 @@ export const MarketersPage = () => {
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(m)}><Pencil className="w-4 h-4" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(m)}><Trash2 className="w-4 h-4 text-red-500" /></Button>
-                    </div>
+                    </div>}
                   </div>
 
                   {/* Commission report */}
