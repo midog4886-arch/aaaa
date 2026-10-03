@@ -31,7 +31,7 @@ const stateStyle = {
 
 const RentedVenuesPage = () => {
   const { language } = useLanguage();
-  const { user } = useAuth();
+  const { user, selectedBranchId: sidebarBranchId } = useAuth();
   const ar = language === 'ar';
   const [branches, setBranches] = useState([]);
   const [levels, setLevels] = useState([]);
@@ -58,9 +58,6 @@ const RentedVenuesPage = () => {
       const nextBranches = Array.isArray(branchResponse.data) ? branchResponse.data : [];
       setBranches(nextBranches);
       setLevels(Array.isArray(levelResponse.data) ? levelResponse.data : []);
-      setSelectedBranchId(current => nextBranches.some(branch => branch.id === current)
-        ? current
-        : (nextBranches[0]?.id || ''));
     } catch (error) {
       toast.error(errorText(error, ar ? 'تعذر تحميل بيانات الملاعب' : 'Could not load venue data'));
     } finally {
@@ -69,6 +66,17 @@ const RentedVenuesPage = () => {
   };
 
   useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const availableBranchIds = branches.map(item => item.id).join('|');
+  useEffect(() => {
+    if (!branches.length) return;
+    setSelectedBranchId(current => {
+      if (sidebarBranchId && sidebarBranchId !== 'all' && branches.some(item => item.id === sidebarBranchId)) {
+        return sidebarBranchId;
+      }
+      return branches.some(item => item.id === current) ? current : branches[0].id;
+    });
+  }, [sidebarBranchId, availableBranchIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const branch = branches.find(item => item.id === selectedBranchId);
   useEffect(() => {
