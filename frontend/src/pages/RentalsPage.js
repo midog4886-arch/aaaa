@@ -41,14 +41,17 @@ const hourLabel = (h, ar = true) => {
   return `${h12}:00 ${suffix}`;
 };
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
-const monthStr = () => new Date().toISOString().slice(0, 7);
+const localDateStr = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const todayStr = () => localDateStr();
+const monthStr = () => todayStr().slice(0, 7);
+const monthEndStr = () => { const now = new Date(); return localDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0)); };
 
 export default function RentalsPage() {
   const { language } = useLanguage();
   const { isAdmin, selectedBranchId } = useAuth();
   const ar = language === 'ar';
   const t = (a, e) => (ar ? a : e);
+  const activeBranchId = selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '';
 
   const [tab, setTab] = useState('bookings');
   const [coaches, setCoaches] = useState([]);
@@ -61,7 +64,7 @@ export default function RentalsPage() {
 
   // Filters
   const [fromDate, setFromDate] = useState(() => monthStr() + '-01');
-  const [toDate, setToDate] = useState('');
+  const [toDate, setToDate] = useState(monthEndStr);
   const [filterCoach, setFilterCoach] = useState('all');
   const [filterPay, setFilterPay] = useState('all');
   const [reportMonth, setReportMonth] = useState(monthStr());
@@ -109,8 +112,9 @@ export default function RentalsPage() {
       if (toDate) params.end_date = toDate;
       if (filterCoach !== 'all') params.coach_id = filterCoach;
       if (filterPay !== 'all') params.payment_status = filterPay;
+      if (activeBranchId) params.branch_filter = activeBranchId;
       const [cRes, bRes, pRes] = await Promise.all([
-        rentalsAPI.getCoaches(),
+        rentalsAPI.getCoaches(activeBranchId ? { branch_filter: activeBranchId } : {}),
         rentalsAPI.getBookings(params),
         rentalsAPI.getPayments({}),
       ]);
@@ -122,7 +126,7 @@ export default function RentalsPage() {
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, filterCoach, filterPay]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fromDate, toDate, filterCoach, filterPay, activeBranchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
@@ -295,9 +299,9 @@ export default function RentalsPage() {
   };
 
   // ===== Payments =====
-  const openPaymentDialog = async (coachId = '') => {
+  const openPaymentDialog = async (coachId = '', bookingId = '') => {
     setPayCoach(coachId);
-    setSelectedIds(new Set());
+    setSelectedIds(new Set(bookingId ? [bookingId] : []));
     setPayMethod('cash');
     setPayDate(todayStr());
     setPayNotes('');
@@ -406,6 +410,8 @@ export default function RentalsPage() {
   const activeCoaches = coaches;
   const bookingTotal = useMemo(() => bookings.filter(b => b.status !== 'cancelled').reduce((s, b) => s + (b.total_amount || 0), 0), [bookings]);
   const bookingUnpaid = useMemo(() => bookings.filter(b => b.status !== 'cancelled' && b.payment_status === 'unpaid').reduce((s, b) => s + (b.total_amount || 0), 0), [bookings]);
+  const bookingPaid = bookingTotal - bookingUnpaid;
+  const openNewBooking = () => { setBk({ ...emptyBooking, branch_id: activeBranchId }); setConflicts(null); setShowBooking(true); };
 
   return (
     <Layout>
@@ -422,7 +428,7 @@ export default function RentalsPage() {
             <Button variant="outline" onClick={() => openCoachDialog()} data-testid="button-add-rental-coach">
               <Users className="w-4 h-4 ml-1" />{t('مدرب جديد', 'New coach')}
             </Button>
-            <Button onClick={() => { setBk({ ...emptyBooking, branch_id: selectedBranchId || '' }); setConflicts(null); setShowBooking(true); }} data-testid="button-add-booking">
+            <Button onClick={openNewBooking} data-testid="button-add-booking">
               <Plus className="w-4 h-4 ml-1" />{t('حجز جديد', 'New booking')}
             </Button>
           </div>
@@ -435,7 +441,8 @@ export default function RentalsPage() {
           </CardContent></Card>
           <Card><CardContent className="p-4">
             <div className="flex items-center justify-between"><Wallet className="w-6 h-6 text-green-600" /><div className="text-3xl font-bold text-green-600">{bookingTotal.toLocaleString()}</div></div>
-            <div className="text-sm text-muted-foreground mt-1">{t('إجمالي المبالغ', 'Total amount')}</div>
+            <div className="text-sm text-muted-foreground mt-1">{t('إجمالي الفترة المحددة', 'Total for selected period')}</div>
+            <div className="text-xs text-green-700 mt-1">{t(`المحصّل: ${bookingPaid.toLocaleString()}`, `Paid: ${bookingPaid.toLocaleString()}`)}</div>
           </CardContent></Card>
           <Card><CardContent className="p-4">
             <div className="flex items-center justify-between"><AlertTriangle className="w-6 h-6 text-amber-600" /><div className="text-3xl font-bold text-amber-600">{bookingUnpaid.toLocaleString()}</div></div>
@@ -457,6 +464,7 @@ export default function RentalsPage() {
 
           <TabsContent value="bookings">
             <Card className="mb-4"><CardContent className="p-4 flex flex-wrap gap-3 items-end">
+              <div className="w-full text-xs text-muted-foreground">{t('تُحسب الأرقام أعلاه من الحجوزات الظاهرة بعد اختيار الفترة والفلاتر، دون الحجوزات الملغاة.', 'Summary uses the visible filtered bookings, excluding cancelled bookings.')}</div>
               <div>
                 <Label className="text-xs">{t('من', 'From')}</Label>
                 <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-40" data-testid="input-rentals-from" />
@@ -486,6 +494,8 @@ export default function RentalsPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <Button variant="outline" onClick={() => { setFromDate(monthStr() + '-01'); setToDate(monthEndStr()); setFilterCoach('all'); setFilterPay('all'); }}>{t('الشهر الحالي', 'This month')}</Button>
+              <Button variant="ghost" onClick={() => { setFromDate(''); setToDate(''); setFilterCoach('all'); setFilterPay('all'); }}>{t('كل الفترات', 'All dates')}</Button>
             </CardContent></Card>
 
             <Card><CardContent className="p-0 overflow-x-auto">
@@ -503,7 +513,7 @@ export default function RentalsPage() {
                 </tr></thead>
                 <tbody>
                   {loading && <tr><td colSpan={9} className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></td></tr>}
-                  {!loading && bookings.length === 0 && <tr><td colSpan={9} className="p-8 text-center text-muted-foreground">{t('لا توجد حجوزات', 'No bookings')}</td></tr>}
+                  {!loading && bookings.length === 0 && <tr><td colSpan={9} className="p-8 text-center"><p className="text-muted-foreground mb-3">{t('لا توجد حجوزات في الفترة والفلاتر المختارة', 'No bookings match the selected dates and filters')}</p><div className="flex justify-center gap-2"><Button variant="outline" onClick={() => { setFromDate(''); setToDate(''); setFilterCoach('all'); setFilterPay('all'); }}>{t('عرض كل الفترات', 'Show all dates')}</Button><Button onClick={openNewBooking}>{t('حجز جديد', 'New booking')}</Button></div></td></tr>}
                   {!loading && bookings.map(b => (
                     <tr key={b.id} className={`border-t hover:bg-muted/30 ${b.status === 'cancelled' ? 'opacity-50 line-through' : ''}`}>
                       <td className="p-3 font-mono text-xs">{b.date}</td>
@@ -531,6 +541,9 @@ export default function RentalsPage() {
                         <div className="flex gap-1">
                           {b.status !== 'cancelled' && b.payment_status === 'unpaid' && (
                             <Button size="sm" variant="ghost" title={t('تعديل العدد', 'Edit persons')} onClick={() => openEditBooking(b)} data-testid={`button-edit-booking-${b.id}`}><Pencil className="w-4 h-4 text-blue-600" /></Button>
+                          )}
+                          {b.status !== 'cancelled' && b.payment_status === 'unpaid' && (
+                            <Button size="sm" variant="outline" onClick={() => openPaymentDialog(b.coach_id, b.id)}>{t('تسجيل الدفع', 'Record payment')}</Button>
                           )}
                           {b.status !== 'cancelled' && b.payment_status === 'unpaid' && (
                             <Button size="sm" variant="ghost" title={t('إلغاء', 'Cancel')} onClick={() => cancelBooking(b)}><Ban className="w-4 h-4 text-amber-600" /></Button>
