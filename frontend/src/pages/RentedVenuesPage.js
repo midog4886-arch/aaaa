@@ -31,7 +31,7 @@ const stateStyle = {
 
 const RentedVenuesPage = () => {
   const { language } = useLanguage();
-  const { user, selectedBranchId: sidebarBranchId } = useAuth();
+  const { selectedBranchId: sidebarBranchId } = useAuth();
   const ar = language === 'ar';
   const [branches, setBranches] = useState([]);
   const [levels, setLevels] = useState([]);
@@ -306,8 +306,6 @@ const RentedVenuesPage = () => {
       setSaving(false);
     }
   };
-
-  if (!user?.is_admin) return <Layout><div className="py-16 text-center text-muted-foreground">{ar ? 'ليس لديك صلاحية الوصول لهذه الصفحة' : 'You do not have access to this page'}</div></Layout>;
 
   return (
     <Layout>
