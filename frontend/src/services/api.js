@@ -458,6 +458,7 @@ export const marketersAPI = {
   commissions: (id) => axios.get(`${API}/marketers/${id}/commissions`),
   payout: (id, data) => axios.post(`${API}/marketers/${id}/payout`, data),
   analytics: (params = {}) => axios.get(`${API}/marketers/analytics`, { params }),
+  funnel: (params = {}) => axios.get(`${API}/marketers/funnel`, { params }),
   portalToken: (id, regenerate = false) => axios.post(`${API}/marketers/${id}/portal-token`, null, { params: { regenerate } }),
 };
 

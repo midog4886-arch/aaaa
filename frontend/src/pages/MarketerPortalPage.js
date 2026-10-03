@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../config/api';
+import { getPublicBaseUrl } from '../utils/publicUrl';
+import { marketerReferralUrl } from '../utils/marketerLinks';
 import {
   Loader2, Megaphone, Users, Wallet, BadgeDollarSign, Percent,
   Copy, Link2, Receipt, AlertCircle,
@@ -45,8 +47,7 @@ export const MarketerPortalPage = () => {
     const code = data.marketer.referral_code;
     const branch = data.marketer.branch_id;
     if (!code) return '';
-    const base = `${window.location.origin}/register/${tenantSlug}`;
-    return branch ? `${base}/${branch}?ref=${encodeURIComponent(code)}` : `${base}?ref=${encodeURIComponent(code)}`;
+    return marketerReferralUrl({ baseUrl: getPublicBaseUrl(), tenantSlug, referralCode: code, branchId: branch });
   }, [data, tenantSlug]);
 
   const copy = async (text, msg) => {

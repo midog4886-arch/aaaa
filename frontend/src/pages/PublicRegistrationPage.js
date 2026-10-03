@@ -217,6 +217,27 @@ export const PublicRegistrationPage = () => {
     return () => { active = false; };
   }, [api, referralCode]);
 
+  // Count an opening once per marketer and browser tab. Re-rendering the form
+  // or refreshing it in the same tab must not inflate the marketer's figures.
+  useEffect(() => {
+    if (!marketer?.id || loading || error) return;
+    const fixedBranchId = hasFixedBranch ? (branchId || branch?.id || '') : '';
+    if (hasFixedBranch && !branch) return;
+    if (fixedBranchId && marketer.branch_ids?.length && !marketer.branch_ids.includes(fixedBranchId)) return;
+    try {
+      const key = `marketer-visit:${tenantSlug}:${marketer.id}`;
+      let visitId = sessionStorage.getItem(key);
+      if (!visitId) {
+        visitId = window.crypto.randomUUID();
+        sessionStorage.setItem(key, visitId);
+      }
+      api.post(`/api/public/marketers/${encodeURIComponent(referralCode)}/visit`, {
+        visit_id: visitId,
+        branch_id: fixedBranchId || null,
+      }).catch(() => {}); // Tracking must never block public registration.
+    } catch { /* Storage or crypto may be unavailable in a private browser. */ }
+  }, [api, marketer, loading, error, hasFixedBranch, branchId, branch, referralCode, tenantSlug]);
+
   // A multi-branch link (/register/:tenant?branches=id1,id2) restricts the branch
   // picker to a hand-picked subset of branches without locking to a single one.
   const urlBranchIds = useMemo(() => {
@@ -233,7 +254,12 @@ export const PublicRegistrationPage = () => {
     return m.length ? m : urlBranchIds;
   }, [marketer, urlBranchIds]);
 
-  const visibleBranches = (!hasFixedBranch && allowedBranchIds.length)
+  const hasBranchRestriction = Boolean(marketer?.branch_ids?.length || urlBranchIds.length);
+  const marketerApplies = Boolean(marketer && (
+    !hasFixedBranch || !selectedBranchId || !marketer.branch_ids?.length || marketer.branch_ids.includes(selectedBranchId)
+  ));
+
+  const visibleBranches = (!hasFixedBranch && hasBranchRestriction)
     ? branches.filter(b => allowedBranchIds.includes(b.id))
     : branches;
 
@@ -242,13 +268,13 @@ export const PublicRegistrationPage = () => {
   // auto-select when exactly one branch is available.
   useEffect(() => {
     if (hasFixedBranch) return;
-    const vis = allowedBranchIds.length ? branches.filter(b => allowedBranchIds.includes(b.id)) : branches;
+    const vis = hasBranchRestriction ? branches.filter(b => allowedBranchIds.includes(b.id)) : branches;
     if (pickedBranchId && !vis.some(b => b.id === pickedBranchId)) {
       setPickedBranchId(vis.length === 1 ? vis[0].id : '');
     } else if (!pickedBranchId && vis.length === 1) {
       setPickedBranchId(vis[0].id);
     }
-  }, [hasFixedBranch, pickedBranchId, allowedBranchIds, branches]);
+  }, [hasFixedBranch, pickedBranchId, allowedBranchIds, hasBranchRestriction, branches]);
 
   // On all-branches links, load the real activities of whichever branch the
   // visitor picks (branch-locked links get them with the initial load above).
@@ -308,7 +334,7 @@ export const PublicRegistrationPage = () => {
     if (digits.length < 8) { setFormError('errPhone'); return; }
     if (!nationality.trim()) { setFormError('errNationality'); return; }
     if (!selectedBranchId) { setFormError('errBranch'); return; }
-    if (!hasFixedBranch && allowedBranchIds.length && !visibleBranches.some(b => b.id === selectedBranchId)) {
+    if (!hasFixedBranch && hasBranchRestriction && !visibleBranches.some(b => b.id === selectedBranchId)) {
       setFormError('errBranchScope'); return;
     }
     if (step === 1) { setStep(2); return; }
@@ -328,7 +354,7 @@ export const PublicRegistrationPage = () => {
         preferred_days: selectedDays,
         preferred_time: time.trim(),
         notes: notes.trim(),
-        referral_code: referralCode,
+        referral_code: marketerApplies ? referralCode : '',
         source,
       });
       setRequestNumber(response.data?.request_number || '');
@@ -410,7 +436,7 @@ export const PublicRegistrationPage = () => {
             <h2 className="registration-form-title">{lang === 'ar' ? (step === 1 ? 'لنبدأ بالتعارف' : 'اختر ما يناسب اللاعب') : (step === 1 ? 'Let’s get to know you' : 'Choose your preferences')}</h2>
             <p className="text-sm text-gray-600 mb-2">{t.intro}</p>
 
-            {marketer && (
+            {marketerApplies && (
               <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-center">
                 <p className="text-sm text-emerald-800 font-medium">{t.referralApplied(marketer.name)}</p>
                 {marketer.discount_percent > 0 && (

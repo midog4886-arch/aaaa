@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Layout } from '../components/Layout';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { marketersAPI, branchesAPI } from '../services/api';
 import { getPublicBaseUrl } from '../utils/publicUrl';
+import { marketerReferralUrl, marketerPortalUrl } from '../utils/marketerLinks';
 import { toast } from 'sonner';
 import {
   Loader2, Plus, Pencil, Trash2, Copy, Link2, Megaphone, Phone, Percent,
@@ -132,11 +133,20 @@ export const MarketersPage = () => {
   const [commissions, setCommissions] = useState([]);
   const [loadingCommissions, setLoadingCommissions] = useState(false);
   const [linkBranchByMarketer, setLinkBranchByMarketer] = useState({});
+  const [filterMarketer, setFilterMarketer] = useState('all');
+  const [filterBranch, setFilterBranch] = useState('all');
+  const [filterPeriod, setFilterPeriod] = useState('month');
+  const [funnel, setFunnel] = useState(null);
+  const [funnelLoading, setFunnelLoading] = useState(false);
 
   // Payout dialog
   const [payoutMarketer, setPayoutMarketer] = useState(null);
   const [payoutForm, setPayoutForm] = useState({ payment_method: 'cash', payment_date: '', reference: '', notes: '' });
   const [payingOut, setPayingOut] = useState(false);
+  const [payoutCommissions, setPayoutCommissions] = useState([]);
+  const [payoutLoading, setPayoutLoading] = useState(false);
+  const [payoutError, setPayoutError] = useState('');
+  const payoutSequence = useRef(0);
 
   const loadData = async () => {
     setLoading(true);
@@ -156,6 +166,25 @@ export const MarketersPage = () => {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'list') return;
+    let active = true;
+    const now = new Date();
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    const monthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()).padStart(2, '0')}`;
+    const params = {
+      ...(filterBranch !== 'all' ? { branch_filter: filterBranch } : {}),
+      ...(filterPeriod === 'month' ? { start_date: monthStart, end_date: monthEnd } : {}),
+    };
+    setFunnelLoading(true);
+    marketersAPI.funnel(params).then(res => {
+      if (active) setFunnel(res.data?.by_marketer || {});
+    }).catch(() => {
+      if (active) { setFunnel(null); toast.error('تعذّر تحميل مراحل الإحالة'); }
+    }).finally(() => { if (active) setFunnelLoading(false); });
+    return () => { active = false; };
+  }, [activeTab, filterBranch, filterPeriod]);
 
   useEffect(() => {
     if (activeTab !== 'analytics' || analytics) return;
@@ -254,8 +283,7 @@ export const MarketersPage = () => {
     else branchForLink = linkBranchByMarketer[m.id] || (branches.length === 1 ? branches[0].id : '');
     if (!branchForLink) return '';
     // "all" → the public all-branches link where the visitor picks their own branch.
-    if (branchForLink === 'all') return `${getPublicBaseUrl()}/register/${tenantSlug}?ref=${encodeURIComponent(m.referral_code)}`;
-    return `${getPublicBaseUrl()}/register/${tenantSlug}/${branchForLink}?ref=${encodeURIComponent(m.referral_code)}`;
+    return marketerReferralUrl({ baseUrl: getPublicBaseUrl(), tenantSlug, referralCode: m.referral_code, branchId: branchForLink });
   };
 
   const copyText = async (text, okMsg) => {
@@ -264,14 +292,14 @@ export const MarketersPage = () => {
     catch { toast.error('تعذّر النسخ'); }
   };
 
-  const portalLink = (m) => (m.portal_token ? `${getPublicBaseUrl()}/marketer/${tenantSlug}/${m.portal_token}` : '');
+  const portalLink = (m) => marketerPortalUrl({ baseUrl: getPublicBaseUrl(), tenantSlug, token: m.portal_token });
 
   const copyPortalLink = async (m) => {
     let link = portalLink(m);
     if (!link) {
       try {
         const res = await marketersAPI.portalToken(m.id);
-        link = `${getPublicBaseUrl()}/marketer/${tenantSlug}/${res.data.portal_token}`;
+        link = marketerPortalUrl({ baseUrl: getPublicBaseUrl(), tenantSlug, token: res.data.portal_token });
         setMarketers(prev => prev.map(x => x.id === m.id ? { ...x, portal_token: res.data.portal_token } : x));
       } catch { toast.error('تعذّر إنشاء رابط البوابة'); return; }
     }
@@ -293,17 +321,33 @@ export const MarketersPage = () => {
     }
   };
 
-  const openPayout = (m) => {
+  const openPayout = async (m) => {
     if ((m.due_amount || 0) <= 0) { toast.error('لا توجد عمولات مستحقة للصرف'); return; }
+    const sequence = ++payoutSequence.current;
     setPayoutMarketer(m);
+    setPayoutCommissions([]);
+    setPayoutError('');
+    setPayoutLoading(true);
     setPayoutForm({ payment_method: 'cash', payment_date: new Date().toISOString().split('T')[0], reference: '', notes: '' });
+    try {
+      const res = await marketersAPI.commissions(m.id);
+      if (sequence === payoutSequence.current) setPayoutCommissions((res.data || []).filter(c => c.status === 'due'));
+    } catch {
+      if (sequence === payoutSequence.current) setPayoutError('تعذّر تحميل كشف العمولات. حاول مرة أخرى قبل الصرف.');
+    } finally {
+      if (sequence === payoutSequence.current) setPayoutLoading(false);
+    }
   };
 
   const handlePayout = async () => {
-    if (!payoutMarketer) return;
+    if (!payoutMarketer || payoutLoading || payoutError || !payoutCommissions.length) return;
     setPayingOut(true);
     try {
-      const res = await marketersAPI.payout(payoutMarketer.id, payoutForm);
+      const res = await marketersAPI.payout(payoutMarketer.id, {
+        ...payoutForm,
+        commission_ids: payoutCommissions.map(c => c.id),
+        expected_total: Math.round(payoutCommissions.reduce((sum, c) => sum + Number(c.commission_amount || 0), 0) * 100) / 100,
+      });
       toast.success(`تم صرف ${res.data.paid_amount} ر.س — سند رقم ${res.data.voucher?.voucher_number || ''}`);
       setPayoutMarketer(null);
       await loadData();
@@ -318,12 +362,24 @@ export const MarketersPage = () => {
     }
   };
 
-  const totals = useMemo(() => marketers.reduce((acc, m) => {
+  const visibleMarketers = useMemo(() => marketers.filter(m => {
+    if (filterMarketer !== 'all' && m.id !== filterMarketer) return false;
+    if (filterBranch !== 'all' && marketerBranchIds(m).length && !marketerBranchIds(m).includes(filterBranch)) return false;
+    return true;
+  }), [marketers, filterMarketer, filterBranch]); // eslint-disable-line react-hooks/exhaustive-deps
+  const totals = useMemo(() => visibleMarketers.reduce((acc, m) => {
     acc.due += m.due_amount || 0;
     acc.paid += m.paid_amount || 0;
-    acc.referrals += m.referrals || 0;
+    acc.requests += funnel?.[m.id]?.registration_requests || 0;
     return acc;
-  }, { due: 0, paid: 0, referrals: 0 }), [marketers]);
+  }, { due: 0, paid: 0, requests: 0 }), [visibleMarketers, funnel]);
+  const funnelValue = (m, key, money = false) => {
+    if (funnelLoading) return '…';
+    if (!funnel) return '—';
+    const value = funnel[m.id]?.[key] || 0;
+    return money ? Number(value).toFixed(2) : value;
+  };
+  const payoutPreviewTotal = payoutCommissions.reduce((sum, c) => sum + Number(c.commission_amount || 0), 0);
 
   return (
     <Layout title={t('marketers')}>
@@ -365,33 +421,39 @@ export const MarketersPage = () => {
         )}
 
         {activeTab === 'list' && (<>
+        <div className="flex flex-wrap items-end gap-3">
+          <div><Label className="text-xs">المسوّق</Label><Select value={filterMarketer} onValueChange={setFilterMarketer}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل المسوّقين</SelectItem>{marketers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent></Select></div>
+          <div><Label className="text-xs">الفرع</Label><Select value={filterBranch} onValueChange={setFilterBranch}><SelectTrigger className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل الفروع</SelectItem>{branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name_ar || b.name}</SelectItem>)}</SelectContent></Select></div>
+          <div><Label className="text-xs">فترة الإحالات</Label><Select value={filterPeriod} onValueChange={setFilterPeriod}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="month">الشهر الحالي</SelectItem><SelectItem value="all">كل الفترات</SelectItem></SelectContent></Select></div>
+        </div>
         {/* Summary cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card><CardContent className="p-4 flex items-center gap-3">
             <Users className="w-8 h-8 text-blue-500" />
-            <div><p className="text-2xl font-bold">{totals.referrals}</p><p className="text-xs text-muted-foreground">إجمالي الإحالات</p></div>
+            <div><p className="text-2xl font-bold">{funnelLoading ? '…' : funnel ? totals.requests : '—'}</p><p className="text-xs text-muted-foreground">طلبات إحالة في الفترة</p></div>
           </CardContent></Card>
           <Card><CardContent className="p-4 flex items-center gap-3">
             <Wallet className="w-8 h-8 text-amber-500" />
-            <div><p className="text-2xl font-bold">{totals.due.toFixed(2)}</p><p className="text-xs text-muted-foreground">عمولات مستحقة (ر.س)</p></div>
+            <div><p className="text-2xl font-bold">{totals.due.toFixed(2)}</p><p className="text-xs text-muted-foreground">عمولات مستحقة — كل الفترات (ر.س)</p></div>
           </CardContent></Card>
           <Card><CardContent className="p-4 flex items-center gap-3">
             <BadgeDollarSign className="w-8 h-8 text-emerald-500" />
-            <div><p className="text-2xl font-bold">{totals.paid.toFixed(2)}</p><p className="text-xs text-muted-foreground">عمولات مدفوعة (ر.س)</p></div>
+            <div><p className="text-2xl font-bold">{totals.paid.toFixed(2)}</p><p className="text-xs text-muted-foreground">عمولات مصروفة — كل الفترات (ر.س)</p></div>
           </CardContent></Card>
         </div>
 
         {/* List */}
         {loading ? (
           <div className="flex items-center justify-center py-20"><Loader2 className="w-7 h-7 animate-spin text-primary" /></div>
-        ) : marketers.length === 0 ? (
+        ) : visibleMarketers.length === 0 ? (
           <Card><CardContent className="py-16 text-center text-muted-foreground">
             <Megaphone className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>لا يوجد مسوّقون بعد. أضف مسوّقاً للبدء.</p>
+            <p>{marketers.length ? 'لا يوجد مسوّقون يطابقون الفلاتر.' : 'لا يوجد مسوّقون بعد. أضف مسوّقاً للبدء.'}</p>
           </CardContent></Card>
         ) : (
           <div className="space-y-3">
-            {marketers.map((m) => (
+            <p className="text-xs text-muted-foreground">فتح الرابط يُحتسب من تاريخ تفعيل التتبع فقط. عند اختيار فرع محدد، يبقى عدد فتحات الرابط لجميع فروع المسوّق لأن الزائر قد يختار الفرع لاحقًا.</p>
+            {visibleMarketers.map((m) => (
               <Card key={m.id} data-testid={`card-marketer-${m.id}`}>
                 <CardContent className="p-4">
                   <div className="flex flex-col lg:flex-row lg:items-start gap-4 justify-between">
@@ -411,9 +473,15 @@ export const MarketersPage = () => {
                         <span>الفروع: {branchNames(m)}</span>
                       </div>
                       <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
-                        <span className="text-blue-600">إحالات: {m.referrals || 0}</span>
+                        <span className="text-blue-600">طلبات إحالة: {funnelValue(m, 'registration_requests')}</span>
                         <span className="text-amber-600">مستحق: {(m.due_amount || 0).toFixed(2)} ر.س</span>
                         <span className="text-emerald-600">مدفوع: {(m.paid_amount || 0).toFixed(2)} ر.س</span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-sm">
+                        <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">فتحوا رابط الإحالة</span><strong>{funnelValue(m, 'link_visits')}</strong></div>
+                        <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">قدّموا طلب تسجيل</span><strong>{funnelValue(m, 'registration_requests')}</strong></div>
+                        <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">فواتير أولى مرتبطة</span><strong>{funnelValue(m, 'linked_invoices')}</strong></div>
+                        <div className="rounded-lg bg-muted/50 p-2"><span className="block text-xs text-muted-foreground">عمولة مسجّلة للفترة</span><strong>{funnelValue(m, 'recorded_commission', true)} ر.س</strong></div>
                       </div>
 
                       {/* Referral link */}
@@ -599,7 +667,7 @@ export const MarketersPage = () => {
       </Dialog>
 
       {/* Payout dialog */}
-      <Dialog open={!!payoutMarketer} onOpenChange={(o) => { if (!o) setPayoutMarketer(null); }}>
+      <Dialog open={!!payoutMarketer} onOpenChange={(o) => { if (!o) { ++payoutSequence.current; setPayoutMarketer(null); } }}>
         <DialogContent dir="rtl">
           <DialogHeader>
             <DialogTitle>صرف عمولة — {payoutMarketer?.name}</DialogTitle>
@@ -607,8 +675,15 @@ export const MarketersPage = () => {
           <div className="space-y-4 py-2">
             <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-center">
               <p className="text-sm text-amber-800">المبلغ المستحق للصرف</p>
-              <p className="text-2xl font-bold text-amber-700">{(payoutMarketer?.due_amount || 0).toFixed(2)} ر.س</p>
+              <p className="text-2xl font-bold text-amber-700">{payoutLoading ? '…' : payoutPreviewTotal.toFixed(2)} ر.س</p>
             </div>
+            {payoutLoading ? <p className="text-sm text-muted-foreground">جارٍ تحميل كشف العمولات…</p> : payoutError ? <p className="text-sm text-red-600" role="alert">{payoutError}</p> : payoutCommissions.length ? (
+              <div className="overflow-x-auto max-h-52 overflow-y-auto">
+                <table className="w-full text-sm"><thead><tr className="border-b"><th className="text-start py-2">العضو</th><th className="text-start py-2">الفاتورة</th><th className="text-start py-2">الأساس</th><th className="text-start py-2">العمولة</th></tr></thead><tbody>
+                  {payoutCommissions.map(c => <tr key={c.id} className="border-b"><td className="py-2">{c.member_name || '—'}</td><td className="py-2">{c.invoice_number || '—'}</td><td className="py-2">{Number(c.base_amount || 0).toFixed(2)}</td><td className="py-2 font-medium">{Number(c.commission_amount || 0).toFixed(2)}</td></tr>)}
+                </tbody></table>
+              </div>
+            ) : <p className="text-sm text-muted-foreground">لا توجد عمولات مستحقة الآن.</p>}
             <div className="space-y-1.5">
               <Label>طريقة الدفع</Label>
               <Select value={payoutForm.payment_method} onValueChange={(v) => setPayoutForm({ ...payoutForm, payment_method: v })}>
@@ -630,11 +705,11 @@ export const MarketersPage = () => {
               <Label>ملاحظات</Label>
               <Input value={payoutForm.notes} onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })} placeholder="اختياري" />
             </div>
-            <p className="text-xs text-muted-foreground">سيتم إنشاء سند صرف وتعليم جميع العمولات المستحقة كمدفوعة.</p>
+            <p className="text-xs text-muted-foreground">سيتم إنشاء سند صرف للعمولات المعروضة أعلاه فقط. إذا تغيّر الكشف قبل التأكيد سيُطلب منك مراجعته مجددًا.</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPayoutMarketer(null)}>إلغاء</Button>
-            <Button onClick={handlePayout} disabled={payingOut} data-testid="button-confirm-payout">
+            <Button variant="outline" onClick={() => { ++payoutSequence.current; setPayoutMarketer(null); }}>إلغاء</Button>
+            <Button onClick={handlePayout} disabled={payingOut || payoutLoading || !!payoutError || !payoutCommissions.length} data-testid="button-confirm-payout">
               {payingOut && <Loader2 className="w-4 h-4 ms-1 animate-spin" />} تأكيد الصرف
             </Button>
           </DialogFooter>

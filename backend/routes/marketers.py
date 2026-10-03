@@ -78,6 +78,13 @@ class MarketerPayout(BaseModel):
     payment_date: Optional[str] = None
     reference: Optional[str] = ""
     notes: Optional[str] = ""
+    commission_ids: Optional[List[str]] = None
+    expected_total: Optional[float] = None
+
+
+class MarketerLinkVisit(BaseModel):
+    visit_id: str
+    branch_id: Optional[str] = None
 
 
 # ============ HELPERS ============
@@ -130,12 +137,12 @@ async def _generate_referral_code(name: str) -> str:
     return f"REF{uuid.uuid4().hex[:8].upper()}"
 
 
-async def _commission_stats(marketer_ids: list) -> dict:
+async def _commission_stats(marketer_ids: list, branch_id: Optional[str] = None) -> dict:
     """Aggregate commission stats grouped by marketer_id."""
     if not marketer_ids:
         return {}
     pipeline = [
-        {"$match": {"marketer_id": {"$in": marketer_ids}}},
+        {"$match": {"marketer_id": {"$in": marketer_ids}, **({"branch_id": branch_id} if branch_id else {})}},
         {"$group": {
             "_id": "$marketer_id",
             "referrals": {"$sum": 1},
@@ -199,6 +206,34 @@ async def public_get_marketer(code: str):
     }
 
 
+@router.post("/public/marketers/{code}/visit")
+async def record_marketer_link_visit(code: str, data: MarketerLinkVisit):
+    """Count one referral-link opening per browser session, without storing PII."""
+    try:
+        visit_id = str(uuid.UUID(data.visit_id))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="معرّف الزيارة غير صالح")
+    marketer = await db.marketers.find_one(
+        {"referral_code": code, "status": {"$ne": "inactive"}},
+        {"_id": 0, "id": 1, "branch_id": 1, "branch_ids": 1},
+    )
+    if not marketer:
+        raise HTTPException(status_code=404, detail="كود الإحالة غير صحيح")
+    allowed = marketer.get("branch_ids") or ([marketer["branch_id"]] if marketer.get("branch_id") else [])
+    if data.branch_id and allowed and data.branch_id not in allowed:
+        raise HTTPException(status_code=400, detail="رابط الفرع لا يخص هذا المسوّق")
+    await db.marketer_link_visits.update_one(
+        {"_id": f"{marketer['id']}:{visit_id}"},
+        {"$setOnInsert": {
+            "marketer_id": marketer["id"],
+            "branch_id": data.branch_id or "",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"tracked": True}
+
+
 @router.get("/public/marketer-portal/{token}")
 async def public_marketer_portal(token: str):
     """Read-only self-service portal data for a marketer, resolved by their
@@ -222,6 +257,7 @@ async def public_marketer_portal(token: str):
             "commission_percent": marketer.get("commission_percent", 0),
             "status": marketer.get("status", "active"),
             "branch_id": marketer.get("branch_id"),
+            "branch_ids": marketer.get("branch_ids") or ([marketer["branch_id"]] if marketer.get("branch_id") else []),
         },
         "stats": {
             "referrals": s.get("referrals", 0),
@@ -277,7 +313,7 @@ async def list_marketers(
         query["$or"] = _branch_visibility_or(effective_branch)
 
     marketers = await db.marketers.find(query, {"_id": 0}).sort("created_at", -1).to_list(2000)
-    stats = await _commission_stats([m["id"] for m in marketers])
+    stats = await _commission_stats([m["id"] for m in marketers], effective_branch)
     for m in marketers:
         s = stats.get(m["id"], {})
         m["referrals"] = s.get("referrals", 0)
@@ -305,7 +341,7 @@ async def marketers_analytics(
     marketers = await db.marketers.find(query, {"_id": 0}).to_list(2000)
     marketer_ids = [m["id"] for m in marketers]
     active = sum(1 for m in marketers if m.get("status") != "inactive")
-    stats = await _commission_stats(marketer_ids)
+    stats = await _commission_stats(marketer_ids, effective_branch)
 
     total_referrals = sum(s.get("referrals", 0) for s in stats.values())
     total_commission = round(sum(s.get("total_commission", 0) for s in stats.values()), 2)
@@ -330,8 +366,11 @@ async def marketers_analytics(
     # Monthly trend over the last 6 months, from commissions of in-scope marketers.
     monthly_map = {}
     if marketer_ids:
+        monthly_match = {"marketer_id": {"$in": marketer_ids}}
+        if effective_branch:
+            monthly_match["branch_id"] = effective_branch
         pipeline = [
-            {"$match": {"marketer_id": {"$in": marketer_ids}}},
+            {"$match": monthly_match},
             {"$group": {
                 "_id": {"$substr": ["$created_at", 0, 7]},
                 "referrals": {"$sum": 1},
@@ -377,6 +416,65 @@ async def marketers_analytics(
         "top_marketers": top_marketers,
         "monthly": monthly,
     }
+
+
+@router.get("/marketers/funnel")
+async def marketers_funnel(
+    branch_filter: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
+    """Referral-link openings, registration requests and first-invoice commissions.
+
+    Openings are counted from the day tracking was introduced. They are not
+    branch-filtered: all-branches links have no branch until the visitor picks
+    one, so attributing such openings to a specific branch would be misleading.
+    """
+    await require_permission(current_user, PERMISSION_KEY)
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=400, detail="فترة البحث غير صالحة")
+    effective_branch = resolve_branch_filter(current_user, branch_filter)
+    marketer_query = {"$or": _branch_visibility_or(effective_branch)} if effective_branch else {}
+    marketers = await db.marketers.find(marketer_query, {"_id": 0, "id": 1}).to_list(2000)
+    ids = [item["id"] for item in marketers]
+    if not ids:
+        return {"by_marketer": {}}
+
+    date_match = {}
+    if start_date or end_date:
+        date_match["created_at"] = {}
+        if start_date:
+            date_match["created_at"]["$gte"] = f"{start_date}T00:00:00"
+        if end_date:
+            date_match["created_at"]["$lte"] = f"{end_date}T23:59:59.999999"
+
+    async def grouped(collection, extra_match, fields):
+        match = {"marketer_id": {"$in": ids}, **date_match, **extra_match}
+        rows = await collection.aggregate([
+            {"$match": match},
+            {"$group": {"_id": "$marketer_id", **fields}},
+        ]).to_list(2000)
+        return {row["_id"]: row for row in rows}
+
+    branch_match = {"branch_id": effective_branch} if effective_branch else {}
+    visits = await grouped(db.marketer_link_visits, {}, {"count": {"$sum": 1}})
+    requests = await grouped(db.registration_requests, branch_match, {"count": {"$sum": 1}})
+    commissions = await grouped(db.marketer_commissions, branch_match, {
+        "count": {"$sum": 1},
+        "invoice_total": {"$sum": "$base_amount"},
+        "commission_total": {"$sum": "$commission_amount"},
+    })
+    return {"by_marketer": {
+        marketer_id: {
+            "link_visits": visits.get(marketer_id, {}).get("count", 0),
+            "registration_requests": requests.get(marketer_id, {}).get("count", 0),
+            "linked_invoices": commissions.get(marketer_id, {}).get("count", 0),
+            "invoice_base_amount": round(commissions.get(marketer_id, {}).get("invoice_total", 0) or 0, 2),
+            "recorded_commission": round(commissions.get(marketer_id, {}).get("commission_total", 0) or 0, 2),
+        }
+        for marketer_id in ids
+    }}
 
 
 @router.post("/marketers")
@@ -520,8 +618,11 @@ async def list_marketer_commissions(
     marketer = await db.marketers.find_one(_scoped_marketer_query(marketer_id, current_user), {"_id": 0, "id": 1})
     if not marketer:
         raise HTTPException(status_code=404, detail="المسوّق غير موجود")
+    commission_query = {"marketer_id": marketer_id}
+    if not current_user.get("is_admin", False):
+        commission_query["branch_id"] = require_branch_scope(current_user)
     commissions = await db.marketer_commissions.find(
-        {"marketer_id": marketer_id}, {"_id": 0}
+        commission_query, {"_id": 0}
     ).sort("created_at", -1).to_list(5000)
     return commissions
 
@@ -564,12 +665,19 @@ async def payout_marketer(
     if data.payment_method not in ALLOWED_PAYMENT_METHODS:
         raise HTTPException(status_code=400, detail="طريقة الدفع غير صالحة")
 
+    due_query = {"marketer_id": marketer_id, "status": "due"}
+    if not current_user.get("is_admin", False):
+        due_query["branch_id"] = require_branch_scope(current_user)
     due = await db.marketer_commissions.find(
-        {"marketer_id": marketer_id, "status": "due"}, {"_id": 0}
+        due_query, {"_id": 0}
     ).to_list(5000)
     total = round(sum(float(c.get("commission_amount") or 0) for c in due), 2)
     if total <= 0:
         raise HTTPException(status_code=400, detail="لا توجد عمولات مستحقة للصرف")
+    if data.commission_ids is not None and set(data.commission_ids) != {c["id"] for c in due}:
+        raise HTTPException(status_code=409, detail="تغيّر كشف العمولات؛ افتحه وراجعه مرة أخرى قبل الصرف")
+    if data.expected_total is not None and round(data.expected_total, 2) != total:
+        raise HTTPException(status_code=409, detail="تغيّر المبلغ المستحق؛ راجع كشف العمولات مرة أخرى")
 
     # Voucher branch: marketer's branch, else the user's branch (fail-closed for
     # non-admins so we never create a branch-less voucher visible to all).
@@ -609,7 +717,7 @@ async def payout_marketer(
     voucher.pop("_id", None)
 
     await db.marketer_commissions.update_many(
-        {"marketer_id": marketer_id, "status": "due"},
+        {**due_query, "id": {"$in": [c["id"] for c in due]}},
         {"$set": {
             "status": "paid",
             "voucher_id": voucher["id"],

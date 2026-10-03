@@ -3714,6 +3714,7 @@ _ALL_COLLECTIONS = [
     "registration_forms", "public_registration_links", "session_transfers", "supplier_payments", "suppliers", "users",
     "video_views", "whatsapp_settings", "whatsapp_send_log",
     "registration_requests", "registration_followup_stops", "marketers",
+    "marketer_commissions", "marketer_link_visits",
     "level_certificates", "certificates", "certificate_artwork_settings", "certificate_artwork_assets",
     "activity_logs", "audit_logs", "branch_counters", "campaign_inquiries",
     "coach_advances", "coach_salaries", "coach_notes", "coach_photos",
