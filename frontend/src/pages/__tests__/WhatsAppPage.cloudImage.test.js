@@ -687,6 +687,23 @@ const inboundAttachment = overrides => ({
   ...overrides,
 });
 
+test('opens an incoming image in a closable dialog instead of a raw browser tab', async () => {
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({
+    data: { conversation, messages: [inboundAttachment({ type: 'image' })] },
+  });
+  whatsappAPI.getCloudInboxMedia.mockResolvedValue({
+    data: new Blob(['image'], { type: 'image/png' }),
+  });
+  const user = await renderOpenCloudThread();
+
+  const openImage = await screen.findByTestId('open-cloud-image-incoming-media-1');
+  expect(openImage.closest('a')).toBeNull();
+  await user.click(openImage);
+  expect(screen.getByTestId('expanded-cloud-image')).toHaveAttribute('src', 'blob:cloud-media-1');
+  await user.click(screen.getByRole('button', { name: 'إغلاق الصورة' }));
+  expect(screen.queryByTestId('expanded-cloud-image')).not.toBeInTheDocument();
+});
+
 test('uses the response PDF filename on an incoming document download link', async () => {
   whatsappAPI.getCloudInboxThread.mockResolvedValue({
     data: { conversation, messages: [inboundAttachment()] },

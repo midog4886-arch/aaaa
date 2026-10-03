@@ -294,6 +294,12 @@ export const LevelsPage = () => {
   });
   const [coaches, setCoaches] = useState([]);
   const formBranchId = isAdmin ? formData.branch_id : selectedBranchId;
+  const branchCoaches = useMemo(
+    () => coaches.filter(coach => coach.branch_id === formBranchId),
+    [coaches, formBranchId]
+  );
+  const assignedCoach = coaches.find(coach => coach.id === formData.coach_id);
+  const assignedCoachOutsideBranch = assignedCoach && assignedCoach.branch_id !== formBranchId;
   const formBranch = branches.find(branch => branch.id === formBranchId);
   const getBranchVenues = (branch) => {
     if (Array.isArray(branch?.venues) && branch.venues.length > 0) return branch.venues;
@@ -3474,13 +3480,24 @@ ${slotTables}
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">{t('بدون مدرب', 'No coach')}</SelectItem>
-                    {coaches.map(c => (
+                    {assignedCoachOutsideBranch && (
+                      <SelectItem value={assignedCoach.id} disabled>
+                        {assignedCoach.name_ar || assignedCoach.name} — {t('من فرع آخر', 'Another branch')}
+                      </SelectItem>
+                    )}
+                    {branchCoaches.map(c => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name_ar || c.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {assignedCoachOutsideBranch && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    {t('المدرب الحالي يتبع فرعاً آخر؛ اختر مدرباً من هذا الفرع عند تغيير التعيين.',
+                       'The current coach belongs to another branch; choose a coach from this branch when changing the assignment.')}
+                  </p>
+                )}
                 <p className="text-xs text-gray-500 mt-1">
                   {t('سيظهر هذا المدرب لأعضاء هذا المستوى في صفحات الاشتراكات والجدول وتقييم المدربين.',
                      'This coach will appear for this level\'s members on subscriptions, schedule, and rate-coach pages.')}
@@ -3590,6 +3607,7 @@ ${slotTables}
                     onValueChange={(value) => setFormData({
                       ...formData,
                       branch_id: value,
+                      coach_id: value === formData.branch_id ? formData.coach_id : '__none__',
                       venue_id: '',
                       booking_slot_id: ''
                     })}

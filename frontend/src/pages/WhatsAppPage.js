@@ -594,6 +594,7 @@ export default function WhatsAppPage() {
   const cloudMediaErrorsRef = useRef({});
   cloudMediaErrorsRef.current = cloudMediaErrors;
   const [cloudMediaFilenames, setCloudMediaFilenames] = useState({});
+  const [cloudExpandedImage, setCloudExpandedImage] = useState(null);
   // A delete can race with an already-running media GET. Keep this separate
   // from object URL state so a late response can never resurrect a tombstone.
   const cloudDeletedMediaIdsRef = useRef(new Set());
@@ -897,6 +898,7 @@ export default function WhatsAppPage() {
   };
 
   const clearCloudMedia = (nextScope = null, updateState = true) => {
+    if (updateState) setCloudExpandedImage(null);
     Object.values(cloudMediaUrlsRef.current).forEach(url => URL.revokeObjectURL(url));
     cloudMediaUrlsRef.current = {};
     cloudDeletedMediaIdsRef.current = new Set();
@@ -918,6 +920,7 @@ export default function WhatsAppPage() {
   };
 
   const removeCloudMediaForMessage = (messageId) => {
+    setCloudExpandedImage(current => current?.messageId === messageId ? null : current);
     const url = cloudMediaUrlsRef.current[messageId];
     if (url) URL.revokeObjectURL(url);
 
@@ -4186,13 +4189,19 @@ export default function WhatsAppPage() {
                                   {t('جاري تحميل المرفق…', 'Loading attachment…')}
                                 </span>
                               ) : message.type === 'image' ? (
-                                <a href={cloudMediaUrls[message.id]} target="_blank" rel="noreferrer">
+                                <button
+                                  type="button"
+                                  className="block max-w-full"
+                                  aria-label={t('فتح الصورة', 'Open image')}
+                                  data-testid={`open-cloud-image-${message.id}`}
+                                  onClick={() => setCloudExpandedImage({ messageId: message.id, url: cloudMediaUrls[message.id] })}
+                                >
                                   <img
                                     src={cloudMediaUrls[message.id]}
                                     alt={t('صورة واردة', 'Inbound image')}
                                     className="max-w-full max-h-72 rounded-lg border object-contain"
                                   />
-                                </a>
+                                </button>
                               ) : message.type === 'audio' ? (
                                 <div className="space-y-1">
                                   <audio
@@ -4380,6 +4389,25 @@ export default function WhatsAppPage() {
             )}
           </div>
         )}
+
+        <Dialog open={Boolean(cloudExpandedImage)} onOpenChange={(open) => { if (!open) setCloudExpandedImage(null); }}>
+          <DialogContent aria-describedby={undefined} className="max-w-[95vw] sm:max-w-4xl max-h-[95vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle>{t('صورة المحادثة', 'Conversation image')}</DialogTitle>
+            </DialogHeader>
+            {cloudExpandedImage && (
+              <img
+                src={cloudExpandedImage.url}
+                alt={t('صورة المحادثة', 'Conversation image')}
+                className="max-w-full max-h-[75vh] object-contain self-center"
+                data-testid="expanded-cloud-image"
+              />
+            )}
+            <Button type="button" variant="outline" onClick={() => setCloudExpandedImage(null)}>
+              {t('إغلاق الصورة', 'Close image')}
+            </Button>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={phoneLookup.open}

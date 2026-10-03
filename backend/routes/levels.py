@@ -387,6 +387,14 @@ async def get_levels(
     return levels
 
 
+async def _validate_level_coach_branch(coach_id: Optional[str], branch_id: str) -> None:
+    if not coach_id:
+        return
+    coach = await db.coaches.find_one({"id": coach_id}, {"_id": 0, "branch_id": 1})
+    if not coach or coach.get("branch_id") != branch_id:
+        raise HTTPException(status_code=400, detail="المدرب المحدد لا يتبع فرع المستوى")
+
+
 @router.post("")
 async def create_level(level: LevelCreate, current_user: dict = Depends(get_current_user)):
     level_id = str(uuid.uuid4())
@@ -401,6 +409,7 @@ async def create_level(level: LevelCreate, current_user: dict = Depends(get_curr
     branch_exists = await db.branches.find_one({"id": final_branch_id}, {"_id": 1})
     if not branch_exists:
         raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
+    await _validate_level_coach_branch(level.coach_id, final_branch_id)
     await _validate_rented_level(final_branch_id, level)
     
     level_doc = {
@@ -451,6 +460,12 @@ async def update_level(level_id: str, level: LevelCreate, current_user: dict = D
     branch_exists = await db.branches.find_one({"id": final_branch_id}, {"_id": 1})
     if not branch_exists:
         raise HTTPException(status_code=400, detail="الفرع المحدد غير موجود")
+    # Keep older cross-branch assignments readable during unrelated edits,
+    # but require a matching coach whenever the assignment or branch changes.
+    if level.coach_id and (
+        level.coach_id != existing.get("coach_id") or final_branch_id != existing_branch_id
+    ):
+        await _validate_level_coach_branch(level.coach_id, final_branch_id)
     await _validate_rented_level(final_branch_id, level, exclude_level_id=level_id)
 
     update_data = {
@@ -1895,6 +1910,8 @@ async def update_level_details(
     if payload.custom_name is not None:
         update["custom_name"] = payload.custom_name
     if payload.coach_id is not None:
+        if payload.coach_id and payload.coach_id != lvl.get("coach_id"):
+            await _validate_level_coach_branch(payload.coach_id, lvl.get("branch_id"))
         update["coach_id"] = payload.coach_id or None
     if payload.capacity is not None:
         try:
