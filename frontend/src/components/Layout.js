@@ -222,6 +222,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         { to: '/admin/invoices', icon: Receipt, label: 'invoices', permission: 'invoices', feature: 'invoices' },
         { to: '/admin/daily-ledger', icon: BookOpen, label: 'daily_ledger', permission: 'daily-ledger', feature: 'daily_ledger' },
         { to: '/admin/rentals', icon: KeyRound, label: 'rentals', permission: 'rentals' },
+        { to: '/admin/rented-venues', icon: MapPin, label: 'rented_venues', permission: 'rented-venues' },
         { to: '/admin/day-extensions', icon: CalendarOff, label: 'day_extensions', permission: 'day-extensions', feature: 'renewals' },
         { to: '/admin/accounting', icon: Calculator, label: 'accounting', permission: 'accounting', altPermissions: ['internal-expenses-approve'], feature: 'expense_payments' },
         ...(canSubmitExpenses ? [{ to: '/admin/my-expenses', icon: Wallet, label: 'my_expenses', permission: 'internal-expenses-create' }] : []),
@@ -261,7 +262,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
       items: [
         { to: '/admin/settings', icon: Settings, label: 'settings', permission: 'settings' },
         ...(isAdmin ? [{ to: '/admin/branches', icon: Building2, label: 'branches', permission: 'branches' }] : []),
-        { to: '/admin/rented-venues', icon: MapPin, label: 'rented_venues', permission: 'rented-venues' },
         ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
         ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'backup', feature: 'backup' }] : []),
         ...(isAdmin ? [{ to: '/admin/audit', icon: ShieldCheck, label: 'audit_log', permission: 'settings' }] : []),
