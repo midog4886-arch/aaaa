@@ -71,6 +71,46 @@ def render_signed_consent_pdf(signed):
     small = ParagraphStyle("ConsentSmall", fontName=font, fontSize=8, leading=12, alignment=2)
 
     story = []
+    if signed.get("invoice_snapshots"):
+        family_logo = Path("/app/static/images/academy-logo.png")
+        if not family_logo.exists():
+            family_logo = Path(__file__).resolve().parents[2] / "frontend/public/images/academy-logo.png"
+        if family_logo.exists():
+            logo = Image(str(family_logo), width=15 * mm, height=15 * mm, kind="proportional")
+            logo.hAlign = "RIGHT"
+            story.append(logo)
+        story.append(Paragraph(_ar(signed.get("company_name")), title))
+        story.append(Paragraph(_en(signed.get("company_name_en")), english))
+        story.append(Paragraph(_ar(signed.get("title")), heading))
+        story.append(_arabic_paragraph(f"وقت التوقيع: {signed.get('signed_at', '—')} | إصدار البنود: {signed.get('terms_version', '—')}", small, width))
+        fields = signed.get("fields") or {}
+        story.append(Paragraph(_ar("بيانات ولي الأمر"), heading))
+        for label, value in (("الاسم", fields.get("guardian_name")), ("صلة القرابة", fields.get("relationship")),
+                             ("رقم الهوية أو الإقامة", fields.get("guardian_identity"))):
+            story.append(_arabic_paragraph(f"{label}: {value or '—'}", arabic, width))
+        children = {row.get("invoice_id"): row for row in fields.get("children", [])}
+        for index, snapshot in enumerate(signed["invoice_snapshots"], 1):
+            child = children.get(snapshot.get("id"), {})
+            section = [Paragraph(_ar(f"الطفل {index}: {child.get('child_name') or snapshot.get('customer_name_ar') or '—'}"), heading),
+                       _arabic_paragraph(f"تاريخ الميلاد: {child.get('birth_date') or '—'} | فاتورة رقم: {snapshot.get('invoice_number') or '—'}", arabic, width)]
+            for item in snapshot.get("items") or []:
+                if not item.get("is_product"):
+                    section.append(_arabic_paragraph(f"النشاط: {item.get('activity_name') or '—'} | {item.get('schedule') or '—'} | {item.get('start_date') or '—'} - {item.get('end_date') or '—'}", arabic, width))
+            section.append(_arabic_paragraph(f"الحالة الصحية: {child.get('medical_details') if child.get('has_medical_condition') else 'لا توجد حالة مُفصح عنها'}", arabic, width))
+            story.append(KeepTogether(section))
+        story.append(Paragraph(_ar("الشروط والإقرار"), heading))
+        for index, term in enumerate(signed.get("terms") or [], 1):
+            story.append(_arabic_paragraph(f"{index}. {term.get('section', '')}: {term.get('text', '')}", arabic, width))
+            story.append(Paragraph(_en(f"{term.get('section_en', '')}: {term.get('text_en', '')}"), english))
+        story.append(_arabic_paragraph(signed.get("declaration"), arabic, width))
+        story.append(Paragraph(_en(signed.get("declaration_en")), english))
+        signature_bytes = base64.b64decode((signed.get("signature_png") or "").partition(",")[2], validate=True)
+        story.append(KeepTogether([Paragraph(_ar("توقيع ولي الأمر"), heading),
+                                   _arabic_paragraph(f"الموقّع: {signed.get('signer_name') or '—'}", arabic, width),
+                                   Image(BytesIO(signature_bytes), width=60 * mm, height=20 * mm, kind="proportional")]))
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
     logo_path = Path("/app/static/images/academy-logo.png")
     if not logo_path.exists():
         logo_path = Path(__file__).resolve().parents[2] / "frontend/public/images/academy-logo.png"

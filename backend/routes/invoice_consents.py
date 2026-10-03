@@ -329,13 +329,20 @@ async def get_registration_consent(invoice_id: str, user: dict = Depends(get_cur
     invoice = await scoped_invoice(invoice_id, user)
     settings = await current_terms(consent_form_type(invoice))
     latest = await db.invoice_consents.find_one({"invoice_id": invoice_id}, {"_id": 0}, sort=[("version", -1)])
+    family = await db.family_consents.find_one({"invoice_ids": invoice_id}, {"_id": 0}, sort=[("signed_at", -1)])
+    if family and (not latest or family.get("signed_at", "") > latest.get("signed_at", "")):
+        latest = family
+    else:
+        family = None
     snapshot = invoice_snapshot(invoice)
+    family_current = bool(family and any(row.get("id") == invoice_id and snapshot_hash(row) == snapshot_hash(snapshot) for row in family.get("invoice_snapshots", [])) and family.get("terms_version") == (await current_terms(family.get("form_type", "swimming")))["version"])
     return {"invoice": snapshot, "invoice_hash": snapshot_hash(snapshot), "terms_version": settings["version"],
             "form_type": consent_form_type(invoice),
             "title": settings["title"], "title_en": settings["title_en"],
             "company_name": settings["company_name"], "company_name_en": settings["company_name_en"],
             "terms": settings["terms"], "declaration": settings["declaration"], "declaration_en": settings["declaration_en"], "signed": latest,
-            "needs_resign": bool(latest and (latest.get("invoice_hash") != snapshot_hash(snapshot) or latest.get("terms_version") != settings["version"]))}
+            "family_signed": bool(family),
+            "needs_resign": bool(latest and (not family_current if family else (latest.get("invoice_hash") != snapshot_hash(snapshot) or latest.get("terms_version") != settings["version"])))}
 
 
 @router.get("/{invoice_id}/registration-consent/pdf")
@@ -348,6 +355,10 @@ async def download_registration_consent_pdf(invoice_id: str, version: Optional[i
     if version is not None:
         query["version"] = version
     signed = await db.invoice_consents.find_one(query, {"_id": 0}, sort=[("version", -1)])
+    if version is None:
+        family = await db.family_consents.find_one({"invoice_ids": invoice_id}, {"_id": 0}, sort=[("signed_at", -1)])
+        if family and (not signed or family.get("signed_at", "") > signed.get("signed_at", "")):
+            signed = family
     if not signed:
         raise HTTPException(status_code=404, detail="لا توجد استمارة موقّعة لهذه الفاتورة")
     pdf = render_signed_consent_pdf(signed)

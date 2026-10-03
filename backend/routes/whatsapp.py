@@ -2046,6 +2046,8 @@ async def _deliver_invoice_payment_outbox_item(item: dict) -> bool:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }},
     )
+    if success and item.get("membership_cards_pending"):
+        asyncio.create_task(process_invoice_membership_card_outbox())
     return success
 
 
@@ -2075,6 +2077,120 @@ async def process_invoice_payment_whatsapp_outbox() -> int:
     return delivered
 
 
+def _invoice_membership_ids(invoice: dict) -> list[str]:
+    """Include each linked sibling once, without relying on a shared phone."""
+    candidates = [invoice.get("member_id")]
+    candidates.extend(item.get("member_id") for item in invoice.get("items") or []
+                      if isinstance(item, dict) and not item.get("is_product"))
+    candidates.extend(item.get("member_id") for item in invoice.get("additional_members") or []
+                      if isinstance(item, dict))
+    return list(dict.fromkeys(str(value) for value in candidates if value))
+
+
+async def process_invoice_membership_card_outbox() -> int:
+    """Send one card per member after its receipt is accepted by the provider.
+
+    A claimed card is never retried automatically after an uncertain provider
+    outcome. This avoids duplicates if a worker dies after WhatsApp accepts it.
+    """
+    if _db is None:
+        return 0
+    receipts = _db["whatsapp_invoice_payment_outbox"]
+    cards = _db["whatsapp_invoice_membership_card_outbox"]
+    await cards.create_index("key", unique=True)
+    ready = await receipts.find(
+        {"status": "delivered", "membership_cards_pending": True}, {"_id": 0}
+    ).sort("created_at", 1).to_list(20)
+    for receipt in ready:
+        invoice = receipt.get("invoice") or {}
+        branch_id = invoice.get("branch_id")
+        for member_id in _invoice_membership_ids(invoice):
+            if not branch_id:
+                continue
+            member = await _db["members"].find_one(
+                {"id": member_id, "branch_id": branch_id},
+                {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1, "phone": 1},
+            )
+            if not member or not str(member.get("member_code") or "").strip():
+                logger.warning("No membership code for invoice=%s member=%s", invoice.get("id"), member_id)
+                continue
+            try:
+                await cards.insert_one({
+                    "key": f"{invoice['id']}:{member_id}",
+                    "invoice_id": invoice["id"],
+                    "branch_id": branch_id,
+                    "phone": invoice.get("customer_phone") or member.get("phone") or "",
+                    "member": member,
+                    "status": "pending",
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
+            except DuplicateKeyError:
+                pass
+        await receipts.update_one(
+            {"invoice_id": receipt["invoice_id"], "status": "delivered"},
+            {"$set": {"membership_cards_pending": False}},
+        )
+    pending = await cards.find({"status": "pending"}, {"_id": 0}).sort("created_at", 1).to_list(20)
+    sent = 0
+    for card in pending:
+        claim_token = str(uuid.uuid4())
+        claim = await cards.update_one(
+            {"key": card["key"], "status": "pending"},
+            {"$set": {"status": "processing", "claim_token": claim_token}},
+        )
+        if not getattr(claim, "modified_count", 0):
+            continue
+        status = "unknown"
+        error = None
+        try:
+            config = await _get_branch_cloud_config(card["branch_id"])
+            provider = _branch_provider(config)
+            phone = _format_cloud_phone(card["phone"])
+            if not (config and config.get("enabled") and phone):
+                status, error = "failed", "provider_or_phone_unavailable"
+            else:
+                from services.membership_card_image import render_membership_card_image
+
+                branch = await _db["branches"].find_one(
+                    {"id": card["branch_id"]}, {"_id": 0, "company_name": 1}
+                ) or {}
+                content = await asyncio.to_thread(
+                    render_membership_card_image, card["member"], branch.get("company_name") or ""
+                )
+                name = card["member"].get("name_ar") or card["member"].get("name") or ""
+                caption = f"كرت عضوية {name} — رقم العضوية {card['member']['member_code']}"
+                filename = f"membership-{card['member']['member_code']}.png"
+                if provider == "whatsflow":
+                    ok, _, error = await _send_whatsflow_media_result(
+                        phone, "image", "image/png", caption,
+                        base64.b64encode(content).decode("ascii"), filename, config,
+                    )
+                elif provider in {"waha", "meta_cloud"}:
+                    ok, _, error, _, _ = await _send_cloud_chat_image_result(
+                        phone, content, "image/png", filename, caption, config,
+                        inside_service_window=False, branch_id=card["branch_id"],
+                    )
+                else:
+                    ok, error = False, "image_not_supported_for_branch_provider"
+                status = "delivered" if ok else (
+                    "failed" if error and re.fullmatch(r"http_4\d\d", error)
+                    else "unknown"
+                )
+                if error in {"approved_meta_image_template_required", "image_not_supported_for_branch_provider"}:
+                    status = "failed"
+        except Exception as exc:
+            error = type(exc).__name__
+            logger.warning("Membership card send uncertain invoice=%s: %s", card["invoice_id"], error)
+        await cards.update_one(
+            {"key": card["key"], "status": "processing", "claim_token": claim_token},
+            {"$set": {"status": status, "last_error": error,
+                      "updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        if status == "delivered":
+            sent += 1
+    return sent
+
+
 async def queue_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
     """Durably claim one receipt notice per invoice, then dispatch in background."""
     if _db is None or not invoice.get("id") or not invoice.get("branch_id"):
@@ -2099,6 +2215,7 @@ async def queue_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
             "invoice_id": invoice["id"],
             "invoice": dict(invoice),
             "status": "pending",
+            "membership_cards_pending": True,
             "attempts": 0,
             "created_at": now,
             "updated_at": now,
@@ -2961,6 +3078,7 @@ async def _invoice_payment_outbox_loop():
                 token = set_current_tenant(tenant)
                 try:
                     await process_invoice_payment_whatsapp_outbox()
+                    await process_invoice_membership_card_outbox()
                 except Exception as exc:
                     logger.error(
                         "Payment WhatsApp outbox tenant=%s error: %s",

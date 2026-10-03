@@ -286,9 +286,26 @@ async def get_invoices(
         latest_signatures = {}
         for signed in signatures:
             latest_signatures.setdefault(signed["invoice_id"], signed)
+        family_signatures = await db.family_consents.find(
+            {"invoice_ids": {"$in": invoice_ids}},
+            {"_id": 0, "invoice_ids": 1, "invoice_snapshots": 1, "terms_version": 1, "form_type": 1, "signed_at": 1},
+        ).sort("signed_at", -1).to_list(5000)
+        latest_family = {}
+        for signed in family_signatures:
+            for linked_id in signed.get("invoice_ids", []):
+                latest_family.setdefault(linked_id, signed)
         terms_by_type = {}
         for inv in invoices:
             signed = latest_signatures.get(inv["id"])
+            if inv["id"] in latest_family and (not signed or latest_family[inv["id"]].get("signed_at", "") > signed.get("signed_at", "")):
+                family = latest_family[inv["id"]]
+                saved_snapshot = next((row for row in family.get("invoice_snapshots", []) if row.get("id") == inv["id"]), None)
+                family_terms = await current_terms(family.get("form_type", "swimming"))
+                is_current = bool(saved_snapshot and snapshot_hash(saved_snapshot) == snapshot_hash(invoice_snapshot(inv)) and family.get("terms_version") == family_terms["version"])
+                inv["consent_signed"] = is_current
+                inv["consent_needs_resign"] = not is_current
+                inv["consent_family"] = True
+                continue
             if not signed:
                 continue
             form_type = consent_form_type(inv)

@@ -23,6 +23,10 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const [shareLinkId, setShareLinkId] = useState('');
   const [linkHistory, setLinkHistory] = useState([]);
   const [versions, setVersions] = useState([]);
+  const [familyCandidates, setFamilyCandidates] = useState([]);
+  const [familySelected, setFamilySelected] = useState([]);
+  const [familyLink, setFamilyLink] = useState('');
+  const [familyPhone, setFamilyPhone] = useState('');
   const statusChangeRef = useRef(onStatusChange);
   statusChangeRef.current = onStatusChange;
   const refreshHistory = useCallback(() => {
@@ -41,6 +45,10 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
     setEditingTerms(false);
     setShareLink('');
     setShareLinkId('');
+    setFamilyLink('');
+    setFamilySelected([invoice.id]);
+    setFamilyCandidates([]);
+    invoicesAPI.getFamilyConsentCandidates(invoice.id).then(r => setFamilyCandidates(r.data.invoices || [])).catch(() => {});
     setForm({ ...empty, child_name: invoice.customer_name_ar || invoice.member_name || '' });
     ink.current = false;
     invoicesAPI.getRegistrationConsent(invoice.id).then(r => { setData(r.data); setTermsDraft({ form_type: r.data.form_type, title: r.data.title, title_en: r.data.title_en, company_name: r.data.company_name, company_name_en: r.data.company_name_en, terms: r.data.terms.map(item => ({ ...item })), declaration: r.data.declaration, declaration_en: r.data.declaration_en }); }).catch(() => toast.error('تعذر تحميل الاستمارة')).finally(() => setLoading(false));
@@ -62,20 +70,21 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
     ctx.strokeStyle = '#183f79';
   }, [open, data]);
   useEffect(() => {
-    if (!open || !shareLink || !invoice?.id) return;
+    if (!open || (!shareLink && !familyLink) || !invoice?.id) return;
     const timer = window.setInterval(() => {
       invoicesAPI.getRegistrationConsent(invoice.id).then(response => {
         if (response.data.signed && !response.data.needs_resign) {
           setData(response.data);
           statusChangeRef.current?.(invoice.id, response.data);
           setShareLink('');
+          setFamilyLink('');
           refreshHistory();
           toast.success('تم اعتماد الاستمارة من جوال ولي الأمر');
         }
       }).catch(() => {});
     }, 10000);
     return () => window.clearInterval(timer);
-  }, [open, shareLink, invoice?.id, refreshHistory]);
+  }, [open, shareLink, familyLink, invoice?.id, refreshHistory]);
   if (!invoice) return null;
   const update = (key, value) => setForm(previous => ({ ...previous, [key]: value }));
   const point = event => { const r = canvas.current.getBoundingClientRect(); return { x: event.clientX - r.left, y: event.clientY - r.top }; };
@@ -125,6 +134,18 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
     } catch (error) { toast.error(error.response?.data?.detail || 'تعذر إنشاء الرابط'); }
     finally { setBusy(false); }
   };
+  const createFamilyLink = async () => {
+    if (familySelected.length < 2) { toast.error('اختر فاتورتين على الأقل لأخوة من الأسرة نفسها'); return; }
+    setBusy(true);
+    try {
+      const { data: link } = await invoicesAPI.createFamilyConsentLink(invoice.id, familySelected);
+      const tenant = localStorage.getItem('tenant_slug') || 'default';
+      setFamilyLink(`${window.location.origin}/family-consent/${encodeURIComponent(link.token)}?tenant=${encodeURIComponent(tenant)}`);
+      setFamilyPhone((link.customer_phone || '').replace(/\D/g, '').replace(/^0/, '966'));
+      toast.success('رابط الاستمارة العائلية جاهز لمدة 7 أيام');
+    } catch (error) { toast.error(error.response?.data?.detail || 'تعذر إنشاء الاستمارة العائلية'); }
+    finally { setBusy(false); }
+  };
   const markWhatsAppOpened = () => {
     if (!shareLinkId) return;
     invoicesAPI.markRegistrationConsentWhatsAppOpened(invoice.id, shareLinkId)
@@ -158,12 +179,19 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const signed = data?.signed;
   const canSign = !signed || data?.needs_resign;
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto" dir="rtl">
-    <DialogHeader><DialogTitle>{data?.title || 'استمارة تسجيل نشاط وإقرار ولي الأمر'} · فاتورة {invoice.invoice_number}</DialogTitle></DialogHeader>
+    <DialogHeader><DialogTitle>{data?.family_signed ? 'استمارة عائلية موقّعة' : data?.title || 'استمارة تسجيل نشاط وإقرار ولي الأمر'} · فاتورة {invoice.invoice_number}</DialogTitle></DialogHeader>
     {loading ? <p>جارٍ تحميل الاستمارة...</p> : data && <div className="space-y-4 text-sm">
       <div className="flex items-center gap-3 rounded-xl border border-violet-200 bg-gradient-to-l from-violet-50 to-white p-3"><img src={getAcademyLogoUrl()} alt="شعار الأكاديمية" className="h-16 w-16 rounded-lg bg-white object-contain p-1" /><p className="font-semibold text-violet-900">{data.company_name} <span dir="ltr" className="block text-xs font-normal">{data.company_name_en}</span></p></div>
       {data.invoice.commercial_reg && <p className="text-xs text-slate-600">السجل التجاري / Commercial Registration: {data.invoice.commercial_reg}</p>}
       <p className="rounded-lg bg-slate-50 p-3 text-slate-700">التوقيع اختياري حاليًا. يمكنك إنشاء الفاتورة ومتابعة الدفع دون توقيع الاستمارة، ثم توقيعها لاحقًا عند الحاجة.</p>
       {canSign && <div className="space-y-2 rounded-xl border border-violet-200 bg-violet-50 p-3"><p className="font-semibold text-violet-900">التوقيع من جوال ولي الأمر</p><Button variant="outline" disabled={busy} onClick={createShareLink}>إنشاء رابط توقيع لمدة 7 أيام</Button>{shareLink && <><Input dir="ltr" readOnly value={shareLink} aria-label="رابط توقيع الاستمارة" /><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => navigator.clipboard.writeText(shareLink).then(() => toast.success('نُسخ الرابط')).catch(() => toast.error('تعذر نسخ الرابط'))}>نسخ الرابط</Button><a onClick={markWhatsAppOpened} className="rounded-md bg-emerald-600 px-4 py-2 text-white" href={`https://wa.me/${sharePhone}?text=${encodeURIComponent(`يرجى مراجعة استمارة تسجيل النشاط والتوقيع عليها من الرابط التالي:\n${shareLink}`)}`} target="_blank" rel="noopener noreferrer">فتح واتساب للإرسال</a></div><p className="text-xs text-slate-600">بعد إرسال الرسالة، اضغط «تأكيد إرسال الرابط» في السجل. فتح واتساب وحده لا يؤكد الإرسال.</p></>}</div>}
+      {canSign && familyCandidates.length > 1 && <div className="space-y-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
+        <strong className="text-sky-950">استمارة عائلية للأخوة — توقيع واحد</strong>
+        <p className="text-xs text-slate-600">اختر فواتير الأطفال من نفس الفرع ورقم جوال ولي الأمر. سيظهر اسم كل طفل ونشاطه وحالته الصحية في الاستمارة.</p>
+        <div className="space-y-2">{familyCandidates.map(item => <label key={item.id} className="flex items-center gap-2 rounded-lg bg-white p-2"><input type="checkbox" checked={familySelected.includes(item.id)} disabled={item.id === invoice.id} onChange={e => setFamilySelected(previous => e.target.checked ? [...previous, item.id] : previous.filter(id => id !== item.id))} /><span>{item.child_name} · فاتورة {item.invoice_number} · {item.activity}</span></label>)}</div>
+        <Button disabled={busy || familySelected.length < 2} onClick={createFamilyLink}>إنشاء رابط توقيع عائلي</Button>
+        {familyLink && <><Input dir="ltr" readOnly value={familyLink} aria-label="رابط الاستمارة العائلية" /><div className="flex gap-2 flex-wrap"><Button variant="outline" onClick={() => navigator.clipboard.writeText(familyLink).then(() => toast.success('نُسخ الرابط')).catch(() => toast.error('تعذر النسخ'))}>نسخ الرابط</Button><a className="rounded-md bg-emerald-600 px-4 py-2 text-white" href={`https://wa.me/${familyPhone}?text=${encodeURIComponent(`يرجى مراجعة استمارة تسجيل الأبناء والتوقيع عليها مرة واحدة من الرابط التالي:\n${familyLink}`)}`} target="_blank" rel="noopener noreferrer">فتح واتساب للإرسال</a></div></>}
+      </div>}
       <div className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="mb-2 flex items-center justify-between"><strong>سجل روابط التوقيع</strong><Button variant="outline" size="sm" onClick={refreshHistory}>تحديث الحالة</Button></div>
         {linkHistory.length ? <div className="space-y-2">{linkHistory.map(link => <div key={link.id} className="rounded-lg bg-slate-50 p-2 text-xs">

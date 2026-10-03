@@ -128,6 +128,7 @@ from routes.member_portal import router as member_portal_router
 from routes.members import router as members_router
 from routes.invoices import router as invoices_router, set_loyalty_award_function as set_invoices_loyalty
 from routes.invoice_consents import router as invoice_consents_router
+from routes.family_consents import router as family_consents_router
 from routes.attendance import router as attendance_router, set_loyalty_award_function
 from routes.notifications import router as notifications_router
 from routes.bank_reports import router as bank_reports_router
@@ -209,6 +210,7 @@ api_router.include_router(marketers_router)
 api_router.include_router(coaches_router)
 api_router.include_router(members_router)
 api_router.include_router(invoice_consents_router)
+api_router.include_router(family_consents_router)
 api_router.include_router(invoices_router)
 api_router.include_router(attendance_router)
 api_router.include_router(notifications_router)
@@ -3706,6 +3708,7 @@ _ALL_COLLECTIONS = [
     "coaches", "coach_ratings", "counters", "credit_notes", "daily_videos",
     "dashboard_settings", "discounts", "expenses", "extension_logs",
     "internal_expense_payments", "internal_expenses", "invoices",
+    "invoice_consents", "invoice_consent_links", "family_consents", "family_consent_links",
     "journal_entries", "levels", "level_subscriptions", "loyalty_rewards",
     "loyalty_settings", "member_freezes", "member_notifications", "member_points", "support_requests", "payment_links",
     "members", "messages", "notifications", "payment_transactions",
@@ -3731,6 +3734,7 @@ _ALL_COLLECTIONS = [
     "whatsapp_cloud_media", "whatsapp_cloud_conversations",
     "whatsapp_cloud_messages", "whatsapp_cloud_outbound_failures",
     "whatsapp_contact_days", "whatsapp_invoice_payment_outbox",
+    "whatsapp_invoice_membership_card_outbox",
     "whatsapp_phone_sync", "whatsapp_waha_campaign_quota",
 ]
 

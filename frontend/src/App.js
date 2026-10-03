@@ -7,6 +7,7 @@ import { Toaster } from './components/ui/sonner';
 import { loadBranding } from './services/branding';
 const PublicPaymentPage = lazy(() => import('./pages/PublicPaymentPage'));
 const PublicConsentPage = lazy(() => import('./pages/PublicConsentPage'));
+const PublicFamilyConsentPage = lazy(() => import('./pages/PublicFamilyConsentPage'));
 
 const ManifestSwitcher = () => {
   const location = useLocation();
@@ -307,6 +308,7 @@ function AppRoutes() {
       <Route path="/marketer/:tenantSlug/:token" element={<MarketerPortalPage />} />
       <Route path="/pay/:token" element={<PublicPaymentPage />} />
       <Route path="/consent/:token" element={<PublicConsentPage />} />
+      <Route path="/family-consent/:token" element={<PublicFamilyConsentPage />} />
 
       {/* Super-Admin (control plane) — outside main auth/permissions */}
       <Route path="/super" element={<Navigate to="/super/tenants" replace />} />

@@ -52,7 +52,7 @@ class Collection:
 def fixture_db(monkeypatch):
     invoice = {'id': 'i1', 'invoice_number': '530405', 'branch_id': 'b1', 'status': 'pending',
                'customer_name_ar': 'طفل', 'total': 500, 'items': [{'activity_name': 'سباحة يومين', 'is_product': False}]}
-    database = SimpleNamespace(invoices=Collection([invoice]), members=Collection(), invoice_consents=Collection(), invoice_consent_links=Collection(), registration_consent_settings=Collection())
+    database = SimpleNamespace(invoices=Collection([invoice]), members=Collection(), invoice_consents=Collection(), invoice_consent_links=Collection(), family_consents=Collection(), registration_consent_settings=Collection())
     monkeypatch.setattr(route, 'db', database)
     user = {'is_admin': False, 'branch_id': 'b1', 'username': 'staff'}
     return invoice, database, user
