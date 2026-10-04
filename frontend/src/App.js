@@ -255,7 +255,7 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
-const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr', '/register', '/r', '/join', '/marketer', '/pay', '/consent', '/certificate/verify'];
+const ACADEMY_BYPASS_PREFIXES = ['/academy-picker', '/super', '/admin', '/login', '/privacy', '/terms', '/refund-policy', '/signup', '/coach-qr', '/register', '/r', '/join', '/marketer', '/pay', '/consent', '/family-consent', '/certificate/verify'];
 
 const AcademyGuard = ({ children }) => {
   const location = useLocation();

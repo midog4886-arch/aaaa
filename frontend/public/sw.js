@@ -37,7 +37,7 @@
 // invisible in the created_at-based new-members list.
 // v34: membership cards no longer repeat a duplicated activity (dedupe by
 // name, keeping the latest-ending copy — e.g. after a renewal).
-const CACHE_NAME = 'gcsp-academy-v111';
+const CACHE_NAME = 'gcsp-academy-v112';
 const OFFLINE_URL = '/offline.html';
 
 // Assets to cache immediately on install
@@ -172,6 +172,12 @@ self.addEventListener('fetch', (event) => {
       );
       return;
     }
+    return;
+  }
+
+  // Signature links contain a private token and must always load the current
+  // form. Never serve or store a stale app shell for these public routes.
+  if (url.pathname.startsWith('/consent/') || url.pathname.startsWith('/family-consent/')) {
     return;
   }
 
