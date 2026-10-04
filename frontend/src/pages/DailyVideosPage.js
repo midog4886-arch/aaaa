@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -26,6 +27,7 @@ import { extractYouTubeVideoId, generateYouTubeEmbedUrl, getYouTubeThumbnail, is
 
 const DailyVideosPage = () => {
   const navigate = useNavigate();
+  const { isAdmin, user } = useAuth();
   const [videos, setVideos] = useState([]);
   const [branches, setBranches] = useState([]);
   const [activities, setActivities] = useState([]);
@@ -75,7 +77,7 @@ const DailyVideosPage = () => {
     activity_id: '',
     activity_name: '',
     branch_id: '',
-    is_active: true,
+    is_active: isAdmin,
     tags: []
   });
 
@@ -157,7 +159,7 @@ const DailyVideosPage = () => {
       activity_id: '',
       activity_name: '',
       branch_id: '',
-      is_active: true,
+      is_active: isAdmin,
       tags: []
     });
     setEditingVideo(null);
@@ -247,11 +249,11 @@ const DailyVideosPage = () => {
 
     try {
       if (editingVideo) {
-        await dailyVideosAPI.update(editingVideo.id, formData);
+        await dailyVideosAPI.update(editingVideo.id, isAdmin ? formData : { ...formData, is_active: false });
         toast.success('تم تحديث الفيديو بنجاح');
       } else {
-        await dailyVideosAPI.create(formData);
-        toast.success('تم إضافة الفيديو بنجاح');
+        await dailyVideosAPI.create(isAdmin ? formData : { ...formData, is_active: false });
+        toast.success(isAdmin ? 'تم إضافة الفيديو بنجاح' : 'تم إرسال الرابط لمراجعة المدير');
       }
       setDialogOpen(false);
       fetchData();
@@ -269,6 +271,18 @@ const DailyVideosPage = () => {
       fetchData();
     } catch (error) {
       toast.error('فشل في حذف الفيديو');
+    }
+  };
+
+  const canEditVideo = (video) => isAdmin || (video.coach_id === user?.id && !video.is_active);
+
+  const handleApprove = async (video) => {
+    try {
+      await dailyVideosAPI.update(video.id, { ...video, is_active: true });
+      toast.success('تم اعتماد الفيديو وظهر للأعضاء');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'تعذر اعتماد الفيديو');
     }
   };
 
@@ -536,7 +550,7 @@ const DailyVideosPage = () => {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {filteredVideos.map((video) => (
                     <Card key={video.id} className={`overflow-hidden ${!video.is_active && 'opacity-60'}`}>
-                      <div className="relative aspect-video group cursor-pointer" onClick={() => handleOpenDialog(video)}>
+                      <div className="relative aspect-video group cursor-pointer" onClick={() => canEditVideo(video) && handleOpenDialog(video)}>
                         <img 
                           src={getVideoThumbnail(video)}
                           alt={video.title_ar}
@@ -554,6 +568,7 @@ const DailyVideosPage = () => {
                       </div>
                       <CardContent className="p-3">
                         <h3 className="font-bold text-gray-900 truncate">{video.title_ar}</h3>
+                        {!video.is_active && <Badge variant="secondary">{video.review_status === 'pending' ? 'بانتظار مراجعة المدير' : 'غير نشط'}</Badge>}
                         <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
                           {video.activity_name && (
                             <Badge variant="outline" className="gap-1">
@@ -572,12 +587,13 @@ const DailyVideosPage = () => {
                           </Badge>
                         </div>
                         <div className="flex items-center justify-end gap-1 mt-3">
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(video)}>
+                          {isAdmin && !video.is_active && video.review_status === 'pending' && <Button size="sm" onClick={() => handleApprove(video)}>اعتماد</Button>}
+                          {canEditVideo(video) && <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(video)}>
                             <Pencil className="w-4 h-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(video)} className="text-red-600">
+                          </Button>}
+                          {canEditVideo(video) && <Button variant="ghost" size="icon" onClick={() => handleDelete(video)} className="text-red-600">
                             <Trash2 className="w-4 h-4" />
-                          </Button>
+                          </Button>}
                         </div>
                       </CardContent>
                     </Card>
@@ -607,7 +623,7 @@ const DailyVideosPage = () => {
                   className="relative aspect-video group cursor-pointer"
                   onClick={() => {
                     setDayVideosDialogOpen(false);
-                    handleOpenDialog(video);
+                    if (canEditVideo(video)) handleOpenDialog(video);
                   }}
                 >
                   <img
@@ -632,13 +648,14 @@ const DailyVideosPage = () => {
                       </Badge>
                     )}
                     <Badge variant={video.is_active === false ? 'secondary' : 'default'}>
-                      {video.is_active === false ? 'غير نشط' : 'نشط'}
+                      {video.is_active === false ? (video.review_status === 'pending' ? 'بانتظار المراجعة' : 'غير نشط') : 'نشط'}
                     </Badge>
                     <Badge variant="outline" className="gap-1">
                       <Eye className="w-3 h-3" /> {video.views_count || 0}
                     </Badge>
                   </div>
-                  <Button
+                  {isAdmin && !video.is_active && video.review_status === 'pending' && <Button className="w-full mt-3" onClick={() => handleApprove(video)}>اعتماد الفيديو</Button>}
+                  {canEditVideo(video) && <Button
                     variant="outline"
                     size="sm"
                     className="w-full mt-3 gap-2"
@@ -648,7 +665,7 @@ const DailyVideosPage = () => {
                     }}
                   >
                     <Pencil className="w-4 h-4" /> عرض وتعديل الفيديو
-                  </Button>
+                  </Button>}
                 </CardContent>
               </Card>
             ))}
@@ -888,7 +905,7 @@ const DailyVideosPage = () => {
             </div>
 
             {/* Active Toggle */}
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+            {isAdmin ? <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
               <div>
                 <Label className="text-base">تفعيل الفيديو</Label>
                 <p className="text-sm text-gray-500">عند التفعيل سيظهر الفيديو للأعضاء في التاريخ المحدد</p>
@@ -897,7 +914,7 @@ const DailyVideosPage = () => {
                 checked={formData.is_active}
                 onCheckedChange={(v) => setFormData(prev => ({ ...prev, is_active: v }))}
               />
-            </div>
+            </div> : <p className="p-4 bg-amber-50 text-amber-800 rounded-lg">سيُرسل رابط الفيديو إلى المدير للمراجعة قبل ظهوره للأعضاء.</p>}
           </div>
 
           <DialogFooter className="gap-2 mt-4">
@@ -905,7 +922,7 @@ const DailyVideosPage = () => {
               إلغاء
             </Button>
             <Button onClick={handleSubmit}>
-              {editingVideo ? 'حفظ التغييرات' : 'إضافة الفيديو'}
+              {editingVideo ? 'حفظ التغييرات' : isAdmin ? 'إضافة الفيديو' : 'إرسال للمراجعة'}
             </Button>
           </DialogFooter>
         </DialogContent>

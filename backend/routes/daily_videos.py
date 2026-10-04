@@ -28,7 +28,7 @@ def set_push_notify_function(func):
 
 # Use centralized database connection
 from database import db
-from utils.auth import resolve_branch_filter
+from utils.auth import resolve_branch_filter, require_permission
 
 # Auth
 import jwt
@@ -89,6 +89,7 @@ class DailyVideoUpdate(DailyVideoBase):
 
 class DailyVideo(DailyVideoBase):
     id: str
+    review_status: Optional[str] = None
     views_count: int = 0
     created_at: str
     updated_at: str
@@ -317,7 +318,7 @@ async def get_daily_video(video_id: str):
     """Get a single daily video (public endpoint for member portal — video IDs
     are non-guessable UUIDs, and the same content is already exposed via the
     public /today and /week endpoints)."""
-    video = await db.daily_videos.find_one({"id": video_id}, {"_id": 0})
+    video = await db.daily_videos.find_one({"id": video_id, "is_active": True}, {"_id": 0})
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     return video
@@ -329,6 +330,8 @@ async def create_daily_video(
     current_user: dict = Depends(get_current_user)
 ):
     """Create a new daily video and send notifications to members"""
+    await require_permission(current_user, "daily-videos")
+    is_admin = current_user.get("is_admin", False)
     video_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     
@@ -346,8 +349,8 @@ async def create_daily_video(
         youtube_id = extracted_id
 
     # Get coach info if not provided
-    coach_id = video.coach_id or current_user.get("user_id")
-    coach_name = video.coach_name
+    coach_id = (video.coach_id if is_admin else None) or current_user.get("user_id")
+    coach_name = video.coach_name if is_admin else ""
     if not coach_name:
         user = await db.users.find_one({"id": coach_id}, {"_id": 0, "name": 1})
         coach_name = user.get("name", "") if user else ""
@@ -363,10 +366,11 @@ async def create_daily_video(
         "scheduled_date": video.scheduled_date,
         "activity_id": video.activity_id,
         "activity_name": video.activity_name,
-        "branch_id": video.branch_id if video.branch_id != "all" else None,
+        "branch_id": (video.branch_id if video.branch_id != "all" else None) if is_admin else resolve_branch_filter(current_user, video.branch_id),
         "coach_id": coach_id,
         "coach_name": coach_name,
-        "is_active": video.is_active,
+        "is_active": video.is_active if is_admin else False,
+        "review_status": ("approved" if video.is_active else "inactive") if is_admin else "pending",
         "tags": video.tags,
         "views_count": 0,
         "created_at": now,
@@ -377,7 +381,7 @@ async def create_daily_video(
     video_doc.pop("_id", None)
     
     # Create notification for ALL members if video is active and scheduled for today or future
-    if video.is_active:
+    if video_doc["is_active"]:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if video.scheduled_date >= today:
             # Target only members that the video actually concerns:
@@ -437,9 +441,15 @@ async def update_daily_video(
     current_user: dict = Depends(get_current_user)
 ):
     """Update a daily video"""
+    await require_permission(current_user, "daily-videos")
     existing = await db.daily_videos.find_one({"id": video_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Video not found")
+    is_admin = current_user.get("is_admin", False)
+    if not is_admin:
+        if existing.get("coach_id") != current_user.get("user_id") or existing.get("is_active"):
+            raise HTTPException(status_code=403, detail="يمكنك تعديل الفيديوهات التي أرسلتها ولم تُعتمد فقط")
+        resolve_branch_filter(current_user, existing.get("branch_id"))
     
     # Use sent platform if available, else detect from URL
     platform = video.video_platform or detect_video_platform(video.youtube_video_id)
@@ -462,10 +472,11 @@ async def update_daily_video(
         "scheduled_date": video.scheduled_date,
         "activity_id": video.activity_id,
         "activity_name": video.activity_name,
-        "branch_id": video.branch_id if video.branch_id != "all" else None,
-        "coach_id": video.coach_id,
-        "coach_name": video.coach_name,
-        "is_active": video.is_active,
+        "branch_id": (video.branch_id if video.branch_id != "all" else None) if is_admin else resolve_branch_filter(current_user, video.branch_id),
+        "coach_id": video.coach_id if is_admin else existing.get("coach_id"),
+        "coach_name": video.coach_name if is_admin else existing.get("coach_name"),
+        "is_active": video.is_active if is_admin else False,
+        "review_status": ("approved" if video.is_active else "inactive") if is_admin else "pending",
         "tags": video.tags,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -479,6 +490,14 @@ async def update_daily_video(
 @router.delete("/{video_id}")
 async def delete_daily_video(video_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a daily video"""
+    await require_permission(current_user, "daily-videos")
+    existing = await db.daily_videos.find_one({"id": video_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Video not found")
+    if not current_user.get("is_admin", False):
+        if existing.get("coach_id") != current_user.get("user_id") or existing.get("is_active"):
+            raise HTTPException(status_code=403, detail="يمكنك حذف الفيديوهات التي أرسلتها ولم تُعتمد فقط")
+        resolve_branch_filter(current_user, existing.get("branch_id"))
     result = await db.daily_videos.delete_one({"id": video_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Video not found")
