@@ -779,6 +779,7 @@ const DailyNewCardsPage = () => {
                       <th className="text-right p-2 font-semibold">الجوال</th>
                       <th className="text-right p-2 font-semibold">الأنشطة</th>
                       <th className="text-right p-2 font-semibold">وقت التسجيل</th>
+                      <th className="text-right p-2 font-semibold">تاريخ طلب الطباعة</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -819,6 +820,7 @@ const DailyNewCardsPage = () => {
                           <td className="p-2" dir="ltr">{m.phone || '-'}</td>
                           <td className="p-2 text-gray-700">{acts || '-'}</td>
                           <td className="p-2 text-gray-500" dir="ltr">{time}</td>
+                          <td className="p-2 text-gray-500 whitespace-nowrap" dir="ltr">{hasPrintRequest ? formatPrintedDate(m.card_printed_at) : '-'}</td>
                         </tr>
                       );
                     })}
@@ -915,6 +917,7 @@ const DailyNewCardsPage = () => {
                             <th className="text-right p-2 font-semibold">النشاط المجدد</th>
                             <th className="text-right p-2 font-semibold">الاشتراك الجديد</th>
                             <th className="text-right p-2 font-semibold">وقت التجديد</th>
+                            <th className="text-right p-2 font-semibold">تاريخ طلب الطباعة</th>
                             <th className="text-right p-2 font-semibold">الفاتورة</th>
                           </tr>
                         </thead>
@@ -964,6 +967,7 @@ const DailyNewCardsPage = () => {
                                   ))}
                                 </td>
                                 <td className="p-2 text-gray-500" dir="ltr">{time}</td>
+                                <td className="p-2 text-gray-500 whitespace-nowrap" dir="ltr">{hasPrintRequest ? formatPrintedDate(m.card_printed_at) : '-'}</td>
                                 <td className="p-2 text-gray-500 text-xs" dir="ltr">{(m.renewal_invoices || []).join('، ') || '-'}</td>
                               </tr>
                             );
