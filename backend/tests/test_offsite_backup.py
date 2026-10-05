@@ -111,6 +111,46 @@ def test_network_exception_returns_failed(telegram_env, tmp_path):
     assert "boom" in res["error"]
 
 
+def test_split_backup_file_can_be_reassembled(tmp_path):
+    source = tmp_path / "backup.json.gz"
+    payload = b"abcdefghijklmnop"
+    source.write_bytes(payload)
+    parts = server._split_backup_file(source, 5)
+    assert [p.stat().st_size for p in parts] == [5, 5, 5, 1]
+    assert b"".join(p.read_bytes() for p in parts) == payload
+
+
+def test_oversized_backup_sends_all_parts(telegram_env, monkeypatch, tmp_path):
+    source = tmp_path / "backup.json"
+    with source.open("wb") as f:
+        f.truncate(50 * 1024 * 1024)
+
+    def fake_gzip(_src, dst):
+        with dst.open("wb") as f:
+            f.truncate(50 * 1024 * 1024)
+
+    def fake_split(src, _size):
+        parts = [src.with_name(src.name + f".part{i:03d}") for i in (1, 2)]
+        for part in parts:
+            part.write_bytes(b"part")
+        return parts
+
+    async def fake_post(self, url, data=None, files=None):
+        _FakeAsyncClient.calls.append({"url": url, "data": data,
+                                       "filename": files["document"][0]})
+        return _FakeResp(200, {"ok": True, "result": {"message_id": len(_FakeAsyncClient.calls)}})
+
+    monkeypatch.setattr(server, "_gzip_file", fake_gzip)
+    monkeypatch.setattr(server, "_split_backup_file", fake_split)
+    monkeypatch.setattr(_FakeAsyncClient, "post", fake_post)
+    res = run(server._send_backup_to_telegram(source, source.name))
+    assert res["status"] == "sent"
+    assert res["message_ids"] == [1, 2]
+    assert [c["filename"] for c in _FakeAsyncClient.calls] == [
+        "backup.json.gz.part001of002", "backup.json.gz.part002of002"]
+    assert not list(tmp_path.glob("*.gz*"))
+
+
 # ── offsite registry + retention pruning ────────────────────────────────────
 
 class _FakeCursor:
@@ -161,6 +201,19 @@ def test_prune_keeps_last_seven_and_deletes_offsite(monkeypatch, telegram_env):
     assert [r for r in col.rows if r["tenant_slug"] == "bar"]
     delete_calls = [c for c in _FakeAsyncClient.calls if c["url"].endswith("/deleteMessage")]
     assert {c["data"]["message_id"] for c in delete_calls} == {100, 101}
+
+
+def test_prune_deletes_every_part_of_old_backup(monkeypatch, telegram_env):
+    col = _FakeCollection()
+    import control_db as control_db_mod
+    monkeypatch.setattr(control_db_mod, "control_db", types.SimpleNamespace(offsite_backups=col))
+    _FakeAsyncClient.resp = _FakeResp(200, {"ok": True, "result": True})
+    run(server._record_and_prune_offsite_backup("foo", "first.json", [10, 11, 12]))
+    for i in range(7):
+        run(server._record_and_prune_offsite_backup("foo", f"later{i}.json", 20 + i))
+    assert not any(r["filename"] == "first.json" for r in col.rows)
+    delete_calls = [c for c in _FakeAsyncClient.calls if c["url"].endswith("/deleteMessage")]
+    assert [c["data"]["message_id"] for c in delete_calls] == [10, 11, 12]
 
 
 def test_delete_refused_keeps_row_and_marks_retained(monkeypatch, telegram_env):

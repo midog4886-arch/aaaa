@@ -4083,6 +4083,8 @@ async def _send_backup_to_telegram(filepath, filename):
     if not token or not chat_id:
         return {"status": "unconfigured", "message_id": None, "error": ""}
     gz_path = None
+    part_paths = []
+    message_ids = []
     try:
         send_path = filepath
         send_name = filename
@@ -4092,42 +4094,57 @@ async def _send_backup_to_telegram(filepath, filename):
             # Telegram bot uploads are capped at 50MB — gzip the backup
             # (JSON compresses to a fraction of its size) instead of skipping.
             import gzip as _gzip
-            import shutil as _shutil
             gz_path = filepath.with_suffix(filepath.suffix + ".gz")
             await asyncio.to_thread(_gzip_file, filepath, gz_path)
             gz_mb = gz_path.stat().st_size / (1024 * 1024)
-            if gz_mb > 49:
-                print(f"Telegram backup skipped: {filename} is {size_mb:.1f}MB ({gz_mb:.1f}MB gzipped, limit 50MB)")
-                return {"status": "skipped", "message_id": None,
-                        "error": f"file too large for Telegram ({gz_mb:.1f}MB gzipped, limit 50MB)"}
             send_path = gz_path
             send_name = filename + ".gz"
             mime = "application/gzip"
             print(f"Telegram backup: {filename} {size_mb:.1f}MB > 49MB, sending gzipped ({gz_mb:.1f}MB)")
+        if send_path.stat().st_size > 49 * 1024 * 1024:
+            part_paths = await asyncio.to_thread(_split_backup_file, send_path, 45 * 1024 * 1024)
+            paths = part_paths
+        else:
+            paths = [send_path]
         import httpx
         url = f"https://api.telegram.org/bot{token}/sendDocument"
-        caption = f"Champions Academy backup\n{send_name}\n{datetime.now(_RIYADH_TZ).strftime('%Y-%m-%d %H:%M %Z')}"
-        with open(send_path, "rb") as f:
-            files = {"document": (send_name, f, mime)}
-            data = {"chat_id": chat_id, "caption": caption}
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                resp = await client.post(url, data=data, files=files)
-        body = {}
-        try:
-            body = resp.json()
-        except Exception:
-            pass
-        if resp.status_code == 200 and body.get("ok"):
-            print(f"Telegram backup sent: {send_name}")
-            msg_id = (body.get("result") or {}).get("message_id")
-            return {"status": "sent", "message_id": msg_id, "error": ""}
-        print(f"Telegram backup failed: {resp.status_code} {resp.text[:200]}")
-        return {"status": "failed", "message_id": None,
-                "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            for index, path in enumerate(paths, 1):
+                part_name = (f"{send_name}.part{index:03d}of{len(paths):03d}"
+                             if part_paths else send_name)
+                caption = (f"Champions Academy backup\n{part_name}\n"
+                           f"{datetime.now(_RIYADH_TZ).strftime('%Y-%m-%d %H:%M %Z')}")
+                if part_paths:
+                    caption += "\nDownload all numbered parts and concatenate in order to restore the .json.gz file."
+                with open(path, "rb") as f:
+                    resp = await client.post(
+                        url, data={"chat_id": chat_id, "caption": caption},
+                        files={"document": (part_name, f, "application/octet-stream" if part_paths else mime)},
+                    )
+                try:
+                    body = resp.json()
+                except Exception:
+                    body = {}
+                if resp.status_code != 200 or not body.get("ok"):
+                    print(f"Telegram backup failed at part {index}/{len(paths)}: {resp.status_code} {resp.text[:200]}")
+                    return {"status": "failed", "message_id": None, "message_ids": message_ids,
+                            "error": f"part {index}/{len(paths)}: HTTP {resp.status_code}: {resp.text[:200]}"}
+                message_ids.append((body.get("result") or {}).get("message_id"))
+        print(f"Telegram backup sent: {send_name} ({len(paths)} part(s))")
+        result = {"status": "sent", "message_id": message_ids[0], "error": ""}
+        if part_paths:
+            result["message_ids"] = message_ids
+        return result
     except Exception as e:
         print(f"Telegram backup error: {e}")
-        return {"status": "failed", "message_id": None, "error": str(e)[:300]}
+        return {"status": "failed", "message_id": None, "message_ids": message_ids,
+                "error": str(e)[:300]}
     finally:
+        for part_path in part_paths:
+            try:
+                part_path.unlink(missing_ok=True)
+            except Exception:
+                pass
         if gz_path is not None:
             try:
                 gz_path.unlink(missing_ok=True)
@@ -4142,6 +4159,24 @@ def _gzip_file(src, dst):
         _shutil.copyfileobj(fin, fout)
 
 
+def _split_backup_file(src, part_size):
+    paths = []
+    try:
+        with open(src, "rb") as source:
+            index = 1
+            while chunk := source.read(part_size):
+                part = src.with_name(f"{src.name}.part{index:03d}")
+                paths.append(part)
+                with open(part, "wb") as target:
+                    target.write(chunk)
+                index += 1
+        return paths
+    except Exception:
+        for part in paths:
+            part.unlink(missing_ok=True)
+        raise
+
+
 # Offsite retention: mirror the local policy (7 auto backups per tenant)
 # WHERE THE API ALLOWS IT. Telegram's Bot API hard-refuses deleteMessage for
 # messages older than 48 hours, so copies that age past that window are
@@ -4154,20 +4189,24 @@ _TELEGRAM_DELETE_WINDOW_HOURS = 47  # stay under Telegram's 48h delete limit
 _OFFSITE_DELETE_MAX_ATTEMPTS = 3
 
 
-async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id) -> None:
+async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id,
+                                           incomplete: bool = False) -> None:
     try:
         from control_db import control_db
         now_iso = datetime.now(timezone.utc).isoformat()
+        message_ids = message_id if isinstance(message_id, list) else [message_id]
         await control_db.offsite_backups.insert_one({
             "id": str(uuid.uuid4()),
             "tenant_slug": slug,
             "filename": filename,
-            "message_id": message_id,
+            "message_id": message_ids[0] if message_ids else None,
+            "message_ids": message_ids,
+            "incomplete": incomplete,
             "sent_at": now_iso,
         })
         rows = await control_db.offsite_backups.find(
             {"tenant_slug": slug},
-            {"_id": 0, "id": 1, "message_id": 1, "sent_at": 1, "filename": 1,
+            {"_id": 0, "id": 1, "message_id": 1, "message_ids": 1, "sent_at": 1, "filename": 1,
              "delete_attempts": 1, "retained": 1},
         ).to_list(100000)
         rows.sort(key=lambda r: r.get("sent_at") or "")
@@ -4189,8 +4228,8 @@ async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id)
                   "Telegram copy remains; local 7-copy retention still enforced")
 
         for row in excess:
-            msg_id = row.get("message_id")
-            if not (msg_id and token and chat_id):
+            ids = row.get("message_ids") or ([row.get("message_id")] if row.get("message_id") else [])
+            if not (ids and token and chat_id):
                 # Nothing exists/reachable remotely — safe to drop the row.
                 await control_db.offsite_backups.delete_one({"id": row["id"]})
                 continue
@@ -4206,23 +4245,23 @@ async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id)
             if age_h > _TELEGRAM_DELETE_WINDOW_HOURS:
                 await _mark_retained(row, "older than Telegram 48h delete window")
                 continue
-            deleted = False
-            try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    resp = await client.post(
-                        f"https://api.telegram.org/bot{token}/deleteMessage",
-                        data={"chat_id": chat_id, "message_id": msg_id},
-                    )
-                try:
-                    deleted = resp.status_code == 200 and resp.json().get("ok") is True
-                except Exception:
-                    deleted = False
-                if not deleted:
-                    print(f"Offsite backup prune: deleteMessage refused for {row.get('filename')}: "
-                          f"{resp.status_code} {resp.text[:150]}")
-            except Exception as e:
-                print(f"Offsite backup prune: deleteMessage failed for {row.get('filename')}: {e}")
-            if deleted:
+            remaining_ids = []
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for msg_id in ids:
+                    try:
+                        resp = await client.post(
+                            f"https://api.telegram.org/bot{token}/deleteMessage",
+                            data={"chat_id": chat_id, "message_id": msg_id},
+                        )
+                        deleted = resp.status_code == 200 and resp.json().get("ok") is True
+                        if not deleted:
+                            print(f"Offsite backup prune: deleteMessage refused for {row.get('filename')}: "
+                                  f"{resp.status_code} {resp.text[:150]}")
+                            remaining_ids.append(msg_id)
+                    except Exception as e:
+                        print(f"Offsite backup prune: deleteMessage failed for {row.get('filename')}: {e}")
+                        remaining_ids.append(msg_id)
+            if not remaining_ids:
                 await control_db.offsite_backups.delete_one({"id": row["id"]})
                 print(f"Offsite backup pruned (retention limit): {row.get('filename')}")
                 continue
@@ -4230,7 +4269,9 @@ async def _record_and_prune_offsite_backup(slug: str, filename: str, message_id)
             # record it as permanently retained (registry mirrors reality).
             attempts = int(row.get("delete_attempts") or 0) + 1
             await control_db.offsite_backups.update_one(
-                {"id": row["id"]}, {"$set": {"delete_attempts": attempts}}
+                {"id": row["id"]}, {"$set": {"delete_attempts": attempts,
+                                             "message_ids": remaining_ids,
+                                             "message_id": remaining_ids[0]}}
             )
             if attempts >= _OFFSITE_DELETE_MAX_ATTEMPTS:
                 row["retained"] = False
@@ -4277,7 +4318,13 @@ async def _backup_one_tenant(tenant: dict) -> dict:
 
     offsite = await _send_backup_to_telegram(filepath, filename)
     if offsite.get("status") == "sent":
-        await _record_and_prune_offsite_backup(slug, filename, offsite.get("message_id"))
+        await _record_and_prune_offsite_backup(
+            slug, filename, offsite.get("message_ids") or offsite.get("message_id"))
+    elif offsite.get("message_ids"):
+        # A later part failed. Track the orphaned parts so retention can
+        # account for them; this row is explicitly not a restorable backup.
+        await _record_and_prune_offsite_backup(
+            slug, filename, offsite["message_ids"], incomplete=True)
 
     return {
         "file": filename, "collections": cols, "size_mb": round(size_mb, 2),
