@@ -423,6 +423,42 @@ def test_create_invoice_saves_supervisor_name(inv):
     assert stored["supervisor_name"] == "مدير النظام"
 
 
+def test_create_invoice_requires_level_for_every_training_item(inv):
+    inv_mod, fdb = inv
+    run(fdb.members.insert_one({"id": "m1", "branch_id": "B1", "name": "Member"}))
+    activity = inv_mod.InvoiceItem(activity_name="Swimming", fee=100, period="", level_id="")
+    product = inv_mod.InvoiceItem(activity_name="Cap", fee=20, period="", is_product=True)
+
+    for model in (
+        inv_mod.InvoiceCreate(member_id="m1", items=[activity]),
+        inv_mod.InvoiceCreate(member_id="m1", items=[product], additional_members=[
+            inv_mod.AdditionalMember(member_id="m1", items=[activity]),
+        ]),
+    ):
+        with pytest.raises(inv_mod.HTTPException) as exc:
+            run(inv_mod.create_invoice(model, current_user=ADMIN))
+        assert exc.value.status_code == 422
+        assert "مستوى" in exc.value.detail
+    assert run(fdb.invoices.find_one({})) is None
+
+
+def test_create_invoice_rejects_missing_or_other_branch_level(inv):
+    inv_mod, fdb = inv
+    run(fdb.members.insert_one({"id": "m1", "branch_id": "B1", "name": "Member"}))
+    model = inv_mod.InvoiceCreate(
+        member_id="m1",
+        items=[inv_mod.InvoiceItem(activity_name="Swimming", fee=100, period="", level_id="level-1")],
+    )
+
+    for branch in (None, "B2"):
+        if branch:
+            run(fdb.levels.insert_one({"id": "level-1", "branch_id": branch}))
+        with pytest.raises(inv_mod.HTTPException) as exc:
+            run(inv_mod.create_invoice(model, current_user=ADMIN))
+        assert exc.value.status_code == 422
+    assert run(fdb.invoices.find_one({})) is None
+
+
 def test_create_invoice_falls_back_to_username_without_user_doc(inv):
     inv_mod, fdb = inv
     model = inv_mod.InvoiceCreate(

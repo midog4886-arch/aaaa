@@ -342,7 +342,7 @@ export const CreateEditInvoiceDialog = ({
                           />
                         </div>
                         <div className="space-y-1 col-span-3">
-                          <Label className="text-xs">{language === 'ar' ? 'المستوى' : 'Level'}</Label>
+                          <Label className="text-xs">{language === 'ar' ? 'المستوى *' : 'Level *'}</Label>
                           {!levelSelectorState[idx] ? (
                             <div>
                               {item.level_id ? (
@@ -354,9 +354,12 @@ export const CreateEditInvoiceDialog = ({
                                   </div>
                                 </div>
                               ) : (
-                                <Button type="button" variant="outline" className="w-full h-8 text-sm justify-start gap-2" onClick={() => initLevelSelector(idx)}>
-                                  <span>🎯</span>{language === 'ar' ? 'اختر المستوى' : 'Select Level'}
-                                </Button>
+                                <div>
+                                  <Button type="button" variant="outline" className="w-full h-8 text-sm justify-start gap-2 border-orange-400" onClick={() => initLevelSelector(idx)}>
+                                    <span>🎯</span>{language === 'ar' ? 'اختر المستوى' : 'Select Level'}
+                                  </Button>
+                                  <p className="text-xs text-orange-700 mt-1">{language === 'ar' ? 'اختيار المستوى إلزامي قبل إنشاء الفاتورة' : 'Select a level before creating the invoice'}</p>
+                                </div>
                               )}
                             </div>
                           ) : (() => {

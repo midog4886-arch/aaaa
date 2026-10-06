@@ -483,6 +483,21 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
             detail="فاتورة الاشتراك يجب أن تكون مربوطة بعضو — اختر عضواً موجوداً أو أضِف عضواً جديداً أولاً",
         )
 
+    # Every training subscription must be placed in a level at invoice
+    # creation, including items for additional family members. Products do
+    # not require a level. Validate before generating an invoice number or
+    # writing anything so API callers cannot bypass the form's check.
+    activity_items = [
+        item for item in [*invoice.items, *(item for member in (invoice.additional_members or []) for item in member.items)]
+        if not item.is_product
+    ]
+    missing_level = next((item for item in activity_items if not (item.level_id or '').strip()), None)
+    if missing_level:
+        raise HTTPException(
+            status_code=422,
+            detail=f"يجب اختيار مستوى للنشاط: {missing_level.activity_name}",
+        )
+
     # Reject inverted subscription windows (end before start) — they corrupt
     # the member card and attendance windows downstream.
     from utils.subscription_dates import validate_invoice_payload_windows
@@ -537,6 +552,23 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
             status_code=403,
             detail="Invoice branch does not match the registration request",
         )
+
+    if activity_items:
+        level_ids = list({item.level_id.strip() for item in activity_items})
+        level_rows = await db.levels.find(
+            {"id": {"$in": level_ids}},
+            {"_id": 0, "id": 1, "branch_id": 1, "is_active": 1},
+        ).to_list(len(level_ids))
+        valid_ids = {
+            row["id"] for row in level_rows
+            if row.get("is_active") is not False
+            and row.get("branch_id") == branch_id
+        }
+        if len(valid_ids) != len(level_ids):
+            raise HTTPException(
+                status_code=422,
+                detail="اختر مستوى موجوداً ونشطاً في فرع الفاتورة لكل نشاط",
+            )
 
     # Generate invoice number – unique per branch (each branch owns a block)
     seq_start = await get_branch_seq_start(branch_id, "invoice")
