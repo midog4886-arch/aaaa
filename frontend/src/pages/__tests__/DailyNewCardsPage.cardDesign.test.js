@@ -49,9 +49,9 @@ afterEach(() => {
 });
 
 test.each([
-  ['A4', /طباعة A4 وجه وظهر/, 'size: A4'],
-  ['CR-80', /CD820 وجه وظهر/, 'size: 54mm 85.6mm'],
-])('daily %s printing retains the modified permanent front/back design', async (_name, buttonName, pageSize) => {
+  ['A4', /طباعة A4 وجه فقط/, 'size: A4'],
+  ['CR-80', /CD820 وجه فقط/, 'size: 54mm 85.6mm'],
+])('daily %s printing uses one complete front per member', async (_name, buttonName, pageSize) => {
   const popup = {
     closed: false,
     document: { write: jest.fn(), close: jest.fn(), images: [] },
@@ -67,11 +67,10 @@ test.each([
   const html = popup.document.write.mock.calls[0][0];
   const doc = new DOMParser().parseFromString(html, 'text/html');
   expect(doc.querySelectorAll('.card.front')).toHaveLength(1);
-  expect(doc.querySelectorAll('.card.back')).toHaveLength(1);
+  expect(doc.querySelectorAll('.card.back')).toHaveLength(0);
   expect(doc.querySelector('.front').textContent).toContain('Swimming');
   expect(doc.querySelector('.front').textContent).toContain('GUARDIAN-CONTACT');
-  expect(doc.querySelector('.back').textContent).toContain('BRANCH-CONTACT');
-  expect(doc.querySelector('.back').textContent).not.toContain('Daily Branch');
+  expect(doc.querySelector('.front .branch-phone').textContent).toContain('BRANCH-CONTACT');
   expect(html).toContain('M-TEST-001');
   expect(html).toContain(pageSize);
   expect(html).not.toContain('/member-photo.jpg');

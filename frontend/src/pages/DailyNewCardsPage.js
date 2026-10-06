@@ -195,8 +195,8 @@ const DailyNewCardsPage = () => {
     </div>
   `;
 
-  // Keep bulk printing in one user-initiated window. Each card body and its
-  // identity-only markup comes from the shared permanent-card template.
+  // Keep bulk printing in one user-initiated window. This page prints one
+  // complete front per member; other card print entry points are unchanged.
   const openBatchPermanentCards = (memberEntries, lang, title, cardPages = false) => {
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) return null;
@@ -209,19 +209,18 @@ const DailyNewCardsPage = () => {
         academyName: getAcademyName() || 'شركة اداء الابطال العالمية للرياضة',
         // The daily endpoint already groups a member with its own branch.
         // Use that exact group; do not ever use the member's personal phone
-        // or another group's branch contact on the card back.
+        // or another group's branch contact on the card.
         branchName: branch?.branch_name || '',
         branchPhone: branch?.branch_phone || '',
         language: lang === 'en' ? 'en' : 'ar',
       }));
       const baseStyle = documents[0]?.match(/<style>([\s\S]*?)<\/style>/i)?.[1] || '';
-      // The shared template emits two portrait faces per member. Preserve the
-      // document order (front, then its back) for both A4 and CR-80 jobs.
+      // Both A4 and CR-80 use the same single-sided permanent card.
       const cards = documents.flatMap((document) => {
         const template = new DOMParser().parseFromString(document, 'text/html');
-        return Array.from(template.querySelectorAll('.card.front, .card.back'), (face) => face.outerHTML);
+        return Array.from(template.querySelectorAll('.card.front'), (face) => face.outerHTML);
       }).join('');
-      if (!cards) throw new Error('Permanent card faces are unavailable');
+      if (!cards) throw new Error('Permanent card fronts are unavailable');
       const pageStyle = cardPages
         ? '@page { size: 54mm 85.6mm; margin: 0; } .card { page-break-after: always; } .card:last-child { page-break-after: auto; }'
         : '@page { size: A4; margin: 6mm; } body { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5mm; padding: 0; } .card { break-after: auto; page-break-after: auto; }';
@@ -617,36 +616,16 @@ const DailyNewCardsPage = () => {
                   className="bg-orange-500 hover:bg-orange-600 text-white gap-2"
                 >
                   <Printer className="w-4 h-4" />
-                  طباعة A4 وجه وظهر ({totalMembers})
-                </Button>
-                <Button
-                  onClick={() => printCD820('duplex')}
-                  disabled={loading || totalMembers === 0}
-                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-                  title="طباعة وجهي بطاقة العضوية الدائمة على CR-80"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  CD820 وجه وظهر
+                  طباعة A4 وجه فقط ({totalMembers})
                 </Button>
                 <Button
                   onClick={() => printCD820('single')}
                   disabled={loading || totalMembers === 0}
-                  variant="outline"
-                  className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-2"
-                  title="طباعة وجهي بطاقة العضوية الدائمة على CR-80"
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                  title="طباعة وجه بطاقة العضوية الدائمة على CR-80"
                 >
                   <CreditCard className="w-4 h-4" />
-                  CD820 وجه وظهر
-                </Button>
-                <Button
-                  onClick={() => printCD820('back')}
-                  disabled={loading || totalMembers === 0}
-                  variant="outline"
-                  className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-2"
-                  title="طباعة وجهي بطاقة العضوية الدائمة على CR-80"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  CD820 وجه وظهر
+                  CD820 وجه فقط
                 </Button>
               </div>
             </div>
@@ -852,16 +831,7 @@ const DailyNewCardsPage = () => {
                   className="bg-blue-600 hover:bg-blue-700 text-white gap-1"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  طباعة A4 وجه وظهر
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => printCD820('duplex', printLang, getFilteredRenewalBranches())}
-                  variant="outline"
-                  className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-1"
-                >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  CD820 وجه وظهر
+                  طباعة A4 وجه فقط
                 </Button>
                 <Button
                   size="sm"
@@ -870,7 +840,7 @@ const DailyNewCardsPage = () => {
                   className="border-blue-600 text-blue-700 hover:bg-blue-50 gap-1"
                 >
                   <CreditCard className="w-3.5 h-3.5" />
-                  CD820 وجه وظهر
+                  CD820 وجه فقط
                 </Button>
               </div>
             </div>

@@ -23,7 +23,7 @@ describe('permanent membership card template', () => {
 
     expect(html).toContain('@page { size: 54mm 85.6mm; margin: 0; }');
     expect(html).toContain('class="card front"');
-    expect(html).toContain('class="card back"');
+    expect(html).not.toContain('class="card back"');
     expect(html).toContain('data-qr-value="  M-001  "');
     expect(html).toContain('<svg');
     expect(html).not.toContain('api.qrserver.com');
@@ -55,20 +55,17 @@ describe('permanent membership card template', () => {
     open.mockRestore();
   });
 
-  test('back uses the member branch contact, never the personal phone', () => {
+  test('single front keeps guardian and selected branch contacts distinct', () => {
     const html = buildPermanentMemberCardHtml({
       member: { ...member, branch_name: 'Branch A', branch_phone: 'BRANCH-PHONE', phone: 'PERSONAL-PHONE' },
       qrValue: member.member_code,
     });
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    expect(doc.querySelectorAll('.card')).toHaveLength(2);
-    expect(doc.querySelector('.back').textContent).not.toContain('Branch A');
-    expect(doc.querySelector('.branch-name')).toBeNull();
-    expect(html).toContain('width: 49mm; height: 60mm; object-fit: contain');
-    expect(doc.querySelector('.back').textContent).toContain('BRANCH-PHONE');
-    expect(doc.querySelector('.back').textContent).not.toContain('PERSONAL-PHONE');
+    expect(doc.querySelectorAll('.card')).toHaveLength(1);
+    expect(doc.querySelector('.front .branch-phone').textContent).toBe('BRANCH-PHONE');
+    expect(doc.querySelector('.front .guardian-phone').textContent).toBe('PERSONAL-PHONE');
     expect(doc.querySelector('.front').textContent).toContain('PERSONAL-PHONE');
-    expect(doc.querySelector('.back-logo')).not.toBeNull();
+    expect(doc.querySelector('.front .logo')).not.toBeNull();
   });
 
   test('missing branch contact is explicit; scoped override uses the selected member branch', () => {
