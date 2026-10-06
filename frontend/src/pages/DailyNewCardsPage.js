@@ -222,7 +222,7 @@ const DailyNewCardsPage = () => {
       }).join('');
       if (!cards) throw new Error('Permanent card fronts are unavailable');
       const pageStyle = cardPages
-        ? '@page { size: 54mm 85.6mm; margin: 0; } .card { page-break-after: always; } .card:last-child { page-break-after: auto; }'
+        ? '@page { size: 54mm 85.6mm; margin: 0; } .card { page-break-after: always; } .card:last-child { page-break-after: auto; } @media print { html, body, .card { width: 100%; } .card { height: 85.6mm; } }'
         : '@page { size: A4; margin: 6mm; } body { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5mm; padding: 0; } .card { break-after: auto; page-break-after: auto; }';
 
       win.document.write(`<!doctype html><html><head><meta charset="UTF-8"><title>${title}</title>

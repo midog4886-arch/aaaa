@@ -73,6 +73,7 @@ test.each([
   expect(doc.querySelector('.front .branch-phone').textContent).toContain('BRANCH-CONTACT');
   expect(html).toContain('M-TEST-001');
   expect(html).toContain(pageSize);
+  if (_name === 'CR-80') expect(html).toContain('html, body, .card { width: 100%; }');
   expect(html).not.toContain('/member-photo.jpg');
   expect(html).not.toContain('2020-01-01');
   expect(html).not.toContain('2020-02-01');
