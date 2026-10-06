@@ -71,3 +71,11 @@ test('a subscription starting today is current, including timestamp dates', () =
   expect(screen.getByText('1 active')).toBeInTheDocument();
   expect(screen.getByText('Current schedule')).toBeInTheDocument();
 });
+
+test('shows the saved card print request in Riyadh time and an explicit empty state', () => {
+  const { rerender } = render(<ProfileOverview member={{ ...member, card_printed_at: '2026-10-06T16:18:05+00:00' }} canViewFinancial={false} canViewAttendance={false} language="en" onTab={jest.fn()} />);
+  expect(screen.getByText('Last card print request')).toBeInTheDocument();
+  expect(screen.getByText(/06\/10\/2026.*19:18/)).toBeInTheDocument();
+  rerender(<ProfileOverview member={member} canViewFinancial={false} canViewAttendance={false} language="en" onTab={jest.fn()} />);
+  expect(screen.getByText('No print request')).toBeInTheDocument();
+});

@@ -120,6 +120,7 @@ class Member(BaseModel):
     status: str = "active"
     branch_id: Optional[str] = None
     created_at: str = ""
+    card_printed_at: Optional[str] = None
     preferred_language: Optional[str] = "ar"
     is_vip: bool = False
 

@@ -4,6 +4,15 @@ import { membersAPI } from '../../services/api';
 
 const copy = (ar, en, language) => language === 'ar' ? ar : en;
 const date = (value, language) => value ? new Date(`${value}`.includes('T') ? value : `${value}T00:00:00`).toLocaleDateString(language === 'ar' ? 'ar-SA' : 'en-GB') : '—';
+const cardPrintDate = (value, language) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Intl.DateTimeFormat(language === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-GB', {
+    timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  }).format(parsed);
+};
 
 export default function ProfileOverview({ member, attendance, canViewFinancial, canViewAttendance, language, onTab, scopeKey }) {
   const [summary, setSummary] = useState(null);
@@ -42,9 +51,10 @@ export default function ProfileOverview({ member, attendance, canViewFinancial, 
   return <div className="space-y-5" data-testid="member-profile-overview">
     <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{copy('لقطة العضو', 'Member snapshot', language)}</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <div><p className="text-sm text-muted-foreground">{nextEnd || !upcoming.length ? copy('أقرب انتهاء', 'Next expiry', language) : copy('بداية الاشتراك القادم', 'Next subscription starts', language)}</p><p className="font-semibold">{nextEnd ? date(nextEnd.end_date, language) : upcoming.length ? date(upcoming[0].start_date, language) : copy('لا يوجد', 'None', language)}</p></div>
         <div><p className="text-sm text-muted-foreground">{active.length || !upcoming.length ? copy('الجدول الحالي', 'Current schedule', language) : copy('الجدول القادم', 'Upcoming schedule', language)}</p><p className="font-semibold">{(active.length ? active : upcoming).map(a => a.schedule || a.activity_name).filter(Boolean).join(' · ') || '—'}</p></div>
+        <div><p className="text-sm text-muted-foreground">{copy('آخر طلب طباعة للكارت', 'Last card print request', language)}</p><p className="font-semibold" dir="auto">{cardPrintDate(member.card_printed_at, language) || copy('لم يُطلب طباعته', 'No print request', language)}</p></div>
       </div>
       {upcoming.length > 0 && <div className="mt-4 space-y-2 border-t border-primary/20 pt-3">
         <p className="text-sm font-semibold">{copy('الاشتراكات القادمة — لم تبدأ بعد', 'Upcoming subscriptions — not started yet', language)}</p>
