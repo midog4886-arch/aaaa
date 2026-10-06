@@ -11,7 +11,7 @@ const COPY = {
   expiring: { ar: ['تجديدات قريبة', 'اشتراكات تنتهي خلال ٧ أيام ولم تُجدّد بعد'], en: ['Renewals due', 'Subscriptions ending in the next 7 days that have not been renewed'] },
   absence: { ar: ['غياب يحتاج متابعة', '٣ حالات غياب مسجلة أو أكثر خلال آخر ٣٠ يوماً'], en: ['Attendance follow-up', '3 or more recorded absences in the last 30 days'] },
   registrations: { ar: ['طلبات تسجيل معلّقة', 'طلبات بانتظار المراجعة'], en: ['Pending registrations', 'Requests waiting for review'] },
-  conversations: { ar: ['آخر المحادثات الواردة', 'آخر رسائل واردة — ليست عدّاد رسائل غير مقروءة'], en: ['Latest inbound', 'Latest inbound messages — not an unread counter'] },
+  conversations: { ar: ['محادثات غير مقروءة', 'لم تُفتح في النظام أو ما زالت غير مقروءة حسب آخر مزامنة للجوال'], en: ['Unread chats', 'Not opened in the system or still unread in the latest phone sync'] },
   failures: { ar: ['عمليات فاشلة مؤكدة', 'مدفوعات أو عمليات إرسال فشلت خلال آخر ٧ أيام'], en: ['Confirmed failures', 'Failed payments or sends from the last 7 days'] },
 };
 

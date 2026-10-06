@@ -118,7 +118,7 @@ test('all five cards open their current API-supplied lists, including an empty l
     ['Renewals due', 'Lina S.'],
     ['Attendance follow-up', 'Absent member'],
     ['Pending registrations', 'Registration'],
-    ['Latest inbound', 'There are no items to show.'],
+    ['Unread chats', 'There are no items to show.'],
     ['Confirmed failures', 'Failed payment'],
   ];
   for (const [card, item] of expectations) {

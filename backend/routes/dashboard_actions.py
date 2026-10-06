@@ -269,21 +269,31 @@ def _safe_conversation_title(row: dict) -> str:
 
 async def _conversations_group(branch_id: Optional[str]) -> dict:
     scope = {"branch_id": branch_id} if branch_id else {}
-    query = {**scope, "last_direction": "inbound"}
+    # The inbox counter is the read state. Last-direction merely means the
+    # last message came from a customer and stays true after the chat is read.
+    # Phone-mirrored chats update unread_count from their latest phone sync;
+    # cloud chats clear it when opened in the system.
+    query = {**scope, "unread_count": {"$gt": 0}}
     total_task = db["whatsapp_cloud_conversations"].count_documents(query)
     # This is intentionally a complete count query plus a 21-row display
     # query, not the cloud inbox route's 200-conversation UI pagination.
     rows_task = (
         db["whatsapp_cloud_conversations"]
-        .find(query, {"_id": 0, "id": 1, "contact_name": 1, "last_message_at": 1, "branch_id": 1})
+        .find(query, {"_id": 0, "id": 1, "contact_name": 1, "last_message_at": 1,
+                      "branch_id": 1, "unread_count": 1, "phone_mirrored": 1,
+                      "phone_unread_known": 1, "phone_synced_at": 1})
         .sort("last_message_at", -1).limit(ITEM_LIMIT + 1).to_list(length=ITEM_LIMIT + 1)
     )
     total, rows = await asyncio.gather(total_task, rows_task)
     items = [{
         "id": str(row.get("id") or ""),
         "title": _safe_conversation_title(row),
-        "detail": "آخر رسالة واردة{}".format(
-            " — " + _date_text(row.get("last_message_at")) if row.get("last_message_at") else ""),
+        "detail": "{} رسالة غير مقروءة{}{}".format(
+            int(row.get("unread_count") or 0),
+            " — آخر رسالة " + _date_text(row.get("last_message_at")) if row.get("last_message_at") else "",
+            " — حسب مزامنة الجوال " + _date_text(row.get("phone_synced_at"))
+            if row.get("phone_mirrored") and row.get("phone_unread_known") and row.get("phone_synced_at")
+            else " — حالة الجوال غير مؤكدة" if row.get("phone_mirrored") else ""),
         "kind": "whatsapp",
         "entity_id": _optional_string(row.get("id")),
         "branch_id": _optional_string(row.get("branch_id")),

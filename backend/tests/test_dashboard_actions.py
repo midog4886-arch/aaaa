@@ -69,6 +69,8 @@ class _Collection:
                     return False
                 if "$gte" in expected and (value is None or value < expected["$gte"]):
                     return False
+                if "$gt" in expected and (value is None or value <= expected["$gt"]):
+                    return False
                 if "$lte" in expected and (value is None or value > expected["$lte"]):
                     return False
                 if "$elemMatch" in expected and not any(
@@ -172,9 +174,9 @@ def fake_db(monkeypatch):
             {"id": "r-b", "branch_id": "b", "status": "pending", "customer_name": "طلب ب", "created_at": now.isoformat()},
         ],
         "whatsapp_cloud_conversations": [
-            {"id": "c-a", "branch_id": "a", "contact_name": "0500000000", "last_direction": "inbound", "last_message_at": now.isoformat()},
-            {"id": "c-out", "branch_id": "a", "contact_name": "عميل", "last_direction": "outbound", "last_message_at": now.isoformat()},
-            {"id": "c-b", "branch_id": "b", "contact_name": "آخر", "last_direction": "inbound", "last_message_at": now.isoformat()},
+            {"id": "c-a", "branch_id": "a", "contact_name": "0500000000", "last_direction": "inbound", "unread_count": 2, "last_message_at": now.isoformat()},
+            {"id": "c-out", "branch_id": "a", "contact_name": "عميل", "last_direction": "outbound", "unread_count": 0, "last_message_at": now.isoformat()},
+            {"id": "c-b", "branch_id": "b", "contact_name": "آخر", "last_direction": "inbound", "unread_count": 1, "last_message_at": now.isoformat()},
         ],
         "whatsapp_campaign_job_items": [
             {"id": "f-ok", "job_id": "j", "recipient_index": 0, "branch_id": "a", "status": "failed", "created_at": now.isoformat()},
@@ -211,6 +213,20 @@ def test_dashboard_actions_scope_thresholds_and_authoritative_renewal(fake_db):
     assert groups["conversations"]["items"][0]["title"] == "محادثة واردة"
     assert groups["failures"]["count"] == 1
     assert groups["failures"]["items"][0]["kind"] == "failed_send"
+
+
+def test_conversations_use_read_state_instead_of_last_message_direction(fake_db):
+    rows = fake_db.whatsapp_cloud_conversations.docs
+    rows[0]["unread_count"] = 0  # opened on phone or in the system
+    rows[1]["unread_count"] = 3  # still unread even though last send was outbound
+    rows[1].update({"phone_mirrored": True, "phone_unread_known": True,
+                    "phone_synced_at": "2026-10-06T15:00:00+00:00"})
+
+    group = run(actions._conversations_group("a"))
+    assert group["count"] == 1
+    assert [item["entity_id"] for item in group["items"]] == ["c-out"]
+    assert "3 رسالة غير مقروءة" in group["items"][0]["detail"]
+    assert "مزامنة الجوال" in group["items"][0]["detail"]
 
 
 def test_failed_sends_dedupe_cloud_echo_and_keep_full_count_over_item_cap(fake_db):
