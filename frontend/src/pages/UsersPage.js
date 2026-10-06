@@ -381,8 +381,10 @@ const UsersPage = () => {
                 }
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto space-y-4 pe-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleSubmit} className="min-h-0 flex-1 flex flex-col gap-3">
+              <div className="min-h-0 flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto pe-1">
+                <div className="min-w-0 space-y-4">
+              <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-1">
                   <Label className="text-sm">{language === 'ar' ? 'اسم المستخدم' : 'Username'} *</Label>
                   <Input
@@ -439,7 +441,7 @@ const UsersPage = () => {
                   <Label className="text-sm">
                     {language === 'ar' ? 'الفروع (يمكن اختيار أكثر من فرع)' : 'Branches (you can select multiple)'}
                   </Label>
-                  <div className="border rounded-md p-2 max-h-32 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1" data-testid="user-branches-select">
+                  <div className="border rounded-md p-2 max-h-32 overflow-y-auto grid grid-cols-1 xl:grid-cols-2 gap-1" data-testid="user-branches-select">
                     {branches.length === 0 ? (
                       <p className="text-xs text-muted-foreground">{language === 'ar' ? 'لا توجد فروع' : 'No branches'}</p>
                     ) : (
@@ -488,10 +490,11 @@ const UsersPage = () => {
                   data-testid="user-admin-switch"
                 />
               </div>
+                </div>
 
               {/* Permissions Section - only show for non-admin users */}
               {!formData.is_admin && (
-                <div className="space-y-3 p-3 border rounded-lg bg-gray-50">
+                <div className="min-w-0 min-h-0 max-h-[60vh] overflow-y-auto space-y-3 p-3 border rounded-lg bg-gray-50">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm font-medium">{language === 'ar' ? 'الصلاحيات' : 'Permissions'}</Label>
                     <div className="flex gap-1">
@@ -503,7 +506,7 @@ const UsersPage = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
                     {ALL_PERMISSIONS.map(perm => (
                       <div 
                         key={perm.key}
@@ -531,8 +534,9 @@ const UsersPage = () => {
                   </div>
                 </div>
               )}
+              </div>
 
-              <DialogFooter className="sticky bottom-0 z-10 bg-white border-t pt-3">
+              <DialogFooter className="shrink-0 bg-white border-t pt-3">
                 <Button type="button" variant="outline" onClick={handleCloseDialog}>
                   {language === 'ar' ? 'إلغاء' : 'Cancel'}
                 </Button>
