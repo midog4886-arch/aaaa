@@ -64,6 +64,8 @@ describe('permanent membership card template', () => {
     expect(doc.querySelectorAll('.card')).toHaveLength(1);
     expect(doc.querySelector('.front .branch-phone').textContent).toBe('BRANCH-PHONE');
     expect(doc.querySelector('.front .guardian-phone').textContent).toBe('PERSONAL-PHONE');
+    expect(doc.querySelectorAll('.front .phone-detail')).toHaveLength(2);
+    expect(html).toContain('.detail-row.phone-detail { flex-direction: column; align-items: center;');
     expect(doc.querySelector('.front').textContent).toContain('PERSONAL-PHONE');
     expect(doc.querySelector('.front .logo')).not.toBeNull();
   });

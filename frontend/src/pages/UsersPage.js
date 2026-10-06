@@ -372,7 +372,7 @@ const UsersPage = () => {
 
         {/* Add/Edit Dialog */}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogContent className="w-[95vw] max-w-[95vw] sm:max-w-4xl max-h-[90vh] flex flex-col gap-3 overflow-hidden p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle className="text-lg">
                 {editingUser 
@@ -381,8 +381,8 @@ const UsersPage = () => {
                 }
               </DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto space-y-4 pe-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-sm">{language === 'ar' ? 'اسم المستخدم' : 'Username'} *</Label>
                   <Input
@@ -407,7 +407,7 @@ const UsersPage = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div className="space-y-1">
                   <Label className="text-sm">
                     {editingUser 
@@ -439,7 +439,7 @@ const UsersPage = () => {
                   <Label className="text-sm">
                     {language === 'ar' ? 'الفروع (يمكن اختيار أكثر من فرع)' : 'Branches (you can select multiple)'}
                   </Label>
-                  <div className="border rounded-md p-2 max-h-40 overflow-y-auto space-y-1" data-testid="user-branches-select">
+                  <div className="border rounded-md p-2 max-h-32 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1" data-testid="user-branches-select">
                     {branches.length === 0 ? (
                       <p className="text-xs text-muted-foreground">{language === 'ar' ? 'لا توجد فروع' : 'No branches'}</p>
                     ) : (
@@ -491,7 +491,7 @@ const UsersPage = () => {
 
               {/* Permissions Section - only show for non-admin users */}
               {!formData.is_admin && (
-                <div className="space-y-2 p-2 border rounded-lg bg-gray-50">
+                <div className="space-y-3 p-3 border rounded-lg bg-gray-50">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm font-medium">{language === 'ar' ? 'الصلاحيات' : 'Permissions'}</Label>
                     <div className="flex gap-1">
@@ -503,18 +503,18 @@ const UsersPage = () => {
                       </Button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {ALL_PERMISSIONS.map(perm => (
                       <div 
                         key={perm.key}
                         onClick={() => togglePermission(perm.key)}
-                        className={`flex items-center gap-1 p-1.5 rounded border cursor-pointer transition-colors text-xs ${
+                        className={`flex items-start gap-2 min-h-10 p-2 rounded border cursor-pointer transition-colors text-sm leading-snug ${
                           formData.permissions.includes(perm.key) 
                             ? 'bg-primary/10 border-primary text-primary' 
                             : 'bg-white hover:bg-gray-100 border-gray-200'
                         }`}
                       >
-                        <div className={`w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0 ${
+                        <div className={`w-4 h-4 mt-0.5 rounded-sm border flex items-center justify-center flex-shrink-0 ${
                           formData.permissions.includes(perm.key) 
                             ? 'bg-primary border-primary' 
                             : 'border-gray-300'
@@ -523,7 +523,7 @@ const UsersPage = () => {
                             <Check className="w-2 h-2 text-white" />
                           )}
                         </div>
-                        <span className="truncate">
+                        <span className="whitespace-normal break-words">
                           {language === 'ar' ? perm.label_ar : perm.label_en}
                         </span>
                       </div>
@@ -532,7 +532,7 @@ const UsersPage = () => {
                 </div>
               )}
 
-              <DialogFooter>
+              <DialogFooter className="sticky bottom-0 z-10 bg-white border-t pt-3">
                 <Button type="button" variant="outline" onClick={handleCloseDialog}>
                   {language === 'ar' ? 'إلغاء' : 'Cancel'}
                 </Button>

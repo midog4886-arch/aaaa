@@ -98,6 +98,8 @@ export const buildPermanentMemberCardHtml = ({
     .code { color: #10244d; font-size: 11pt; letter-spacing: .15mm; font-weight: 700; overflow-wrap: anywhere; direction: ltr; }
     .member-details { width: 100%; margin-top: auto; margin-bottom: 1mm; padding-top: 1.2mm; border-top: .25mm solid #e4e9f3; display: flex; flex-direction: column; gap: 1mm; font-size: 6pt; line-height: 1.2; overflow-wrap: anywhere; }
     .detail-row { display: flex; align-items: baseline; justify-content: space-between; gap: 1.5mm; text-align: start; }
+    .detail-row.phone-detail { flex-direction: column; align-items: center; gap: .2mm; text-align: center; }
+    .detail-row.phone-detail .detail-value { text-align: center; }
     .detail-label { color: #56627b; flex: 0 0 auto; }
     .detail-value { color: #10244d; font-weight: 700; text-align: end; min-width: 0; }
     .guardian-phone, .branch-phone { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
@@ -125,8 +127,8 @@ export const buildPermanentMemberCardHtml = ({
       <div class="qr-wrap">${qrMarkup}</div>
       <div class="member-details">
         <div class="detail-row"><span class="detail-label">${labels.activities}</span><strong class="detail-value activity-names">${escapeHtml(activityText)}</strong></div>
-        <div class="detail-row"><span class="detail-label">${labels.guardianPhone}</span><strong class="detail-value guardian-phone">${escapeHtml(guardianPhone || '—')}</strong></div>
-        <div class="detail-row"><span class="detail-label">${labels.branchPhone}</span><strong class="detail-value branch-phone">${escapeHtml(contactText)}</strong></div>
+        <div class="detail-row phone-detail"><span class="detail-label">${labels.guardianPhone}</span><strong class="detail-value guardian-phone">${escapeHtml(guardianPhone || '—')}</strong></div>
+        <div class="detail-row phone-detail"><span class="detail-label">${labels.branchPhone}</span><strong class="detail-value branch-phone">${escapeHtml(contactText)}</strong></div>
       </div>
     </section>
     <footer class="footer">${escapeHtml(labels.note)}</footer>

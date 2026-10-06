@@ -80,3 +80,27 @@ test.each([
   expect(html).not.toContain('Sunday 17:00');
   await waitFor(() => expect(popup.print).toHaveBeenCalledTimes(1));
 });
+
+test('daily CD820 black-and-white button preserves the member QR and contacts', async () => {
+  const popup = {
+    closed: false,
+    document: { write: jest.fn(), close: jest.fn(), images: [] },
+    focus: jest.fn(),
+    print: jest.fn(),
+  };
+  jest.spyOn(window, 'open').mockReturnValue(popup);
+  render(<DailyNewCardsPage />);
+  await screen.findByText('Daily Member');
+  fireEvent.click(screen.getAllByRole('button', { name: /CD820 أسود وأبيض/ })[0]);
+
+  await waitFor(() => expect(popup.document.write).toHaveBeenCalledTimes(1));
+  const html = popup.document.write.mock.calls[0][0];
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  expect(doc.querySelectorAll('.card.front')).toHaveLength(1);
+  expect(doc.querySelector('.qr')).toBeTruthy();
+  expect(doc.querySelector('.guardian-phone').textContent).toBe('GUARDIAN-CONTACT');
+  expect(doc.querySelector('.branch-phone').textContent).toBe('BRANCH-CONTACT');
+  expect(html).toContain('filter: grayscale(1) contrast(2)');
+  expect(html).toContain('.card .header { border-bottom: .35mm solid #000 !important; }');
+  await waitFor(() => expect(popup.print).toHaveBeenCalledTimes(1));
+});

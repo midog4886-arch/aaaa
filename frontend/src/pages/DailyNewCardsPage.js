@@ -197,7 +197,7 @@ const DailyNewCardsPage = () => {
 
   // Keep bulk printing in one user-initiated window. This page prints one
   // complete front per member; other card print entry points are unchanged.
-  const openBatchPermanentCards = (memberEntries, lang, title, cardPages = false) => {
+  const openBatchPermanentCards = (memberEntries, lang, title, cardPages = false, monochrome = false) => {
     const win = window.open('', '_blank', 'width=900,height=700');
     if (!win) return null;
 
@@ -224,11 +224,19 @@ const DailyNewCardsPage = () => {
       const pageStyle = cardPages
         ? '@page { size: 54mm 85.6mm; margin: 0; } .card { page-break-after: always; } .card:last-child { page-break-after: auto; } @media print { html, body, .card { width: 100%; } .card { height: 85.6mm; } }'
         : '@page { size: A4; margin: 6mm; } body { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 5mm; padding: 0; } .card { break-after: auto; page-break-after: auto; }';
+      const monochromeStyle = monochrome ? `
+        .card, .card * { color: #000 !important; border-color: #000 !important; box-shadow: none !important; text-shadow: none !important; }
+        .card .header, .card .footer, .card .logo-wrap, .card .qr-wrap { background: #fff !important; }
+        .card .header { border-bottom: .35mm solid #000 !important; }
+        .card .footer { border-top: .25mm solid #000 !important; }
+        .card .logo { filter: grayscale(1) contrast(2); }
+      ` : '';
 
       win.document.write(`<!doctype html><html><head><meta charset="UTF-8"><title>${title}</title>
         <style>${baseStyle}
           html, body { width: auto; height: auto; }
           ${pageStyle}
+          ${monochromeStyle}
           .toolbar { width: 100%; padding: 12px; text-align: center; background: white; }
           .toolbar button { padding: 9px 18px; border: 0; border-radius: 8px; background: #ea580c; color: white; font-weight: 700; cursor: pointer; }
           @media print { .toolbar { display: none; } }
@@ -380,7 +388,7 @@ const DailyNewCardsPage = () => {
     markIdsPrinted(pairs.map((p) => p.member.id));
   };
 
-  const printCD820 = (mode = 'duplex', lang = printLang, branchesOverride = null) => {
+  const printCD820 = (mode = 'duplex', lang = printLang, branchesOverride = null, monochrome = false) => {
     if (!data) return;
     const branchesList = branchesOverride || getFilteredBranches();
     if (branchesList.length === 0) return;
@@ -390,7 +398,7 @@ const DailyNewCardsPage = () => {
       branch.members.forEach((m) => allMembers.push({ branch, member: m }));
     });
 
-    const popup = openBatchPermanentCards(allMembers, lang, `CD820 - ${data.date}`, true);
+    const popup = openBatchPermanentCards(allMembers, lang, `CD820 - ${data.date}`, true, monochrome);
     if (!popup) {
       setError('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
       return;
@@ -627,6 +635,15 @@ const DailyNewCardsPage = () => {
                   <CreditCard className="w-4 h-4" />
                   CD820 وجه فقط
                 </Button>
+                <Button
+                  onClick={() => printCD820('single', printLang, null, true)}
+                  disabled={loading || totalMembers === 0}
+                  className="bg-gray-900 hover:bg-black text-white gap-2"
+                  title="طباعة وجه بطاقة العضوية الدائمة بحبر أسود فقط على CD820"
+                >
+                  <Printer className="w-4 h-4" />
+                  CD820 أسود وأبيض
+                </Button>
               </div>
             </div>
             <div className="flex flex-wrap gap-3 mt-4">
@@ -841,6 +858,14 @@ const DailyNewCardsPage = () => {
                 >
                   <CreditCard className="w-3.5 h-3.5" />
                   CD820 وجه فقط
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => printCD820('single', printLang, getFilteredRenewalBranches(), true)}
+                  className="bg-gray-900 hover:bg-black text-white gap-1"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  CD820 أسود وأبيض
                 </Button>
               </div>
             </div>
