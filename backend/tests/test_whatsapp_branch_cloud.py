@@ -286,7 +286,7 @@ def test_bulk_cloud_send_uses_selected_branch_and_messages(monkeypatch):
     }
 
 
-def test_bulk_cloud_accepts_messages_permission_and_preserves_international_numbers(monkeypatch):
+def test_approved_bulk_cloud_preserves_international_numbers(monkeypatch):
     db = _DB()
     db["whatsapp_branch_configs"].rows.append({
         "branch_id": "branch-a",
@@ -315,6 +315,7 @@ def test_bulk_cloud_accepts_messages_permission_and_preserves_international_numb
             "is_admin": False,
             "permissions": ["messages"],
             "branch_id": "branch-a",
+            "_approved_campaign": True,
         },
     ))
 
