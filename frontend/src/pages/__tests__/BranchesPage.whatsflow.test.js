@@ -203,14 +203,14 @@ test('renders a verified connected Whatsflow session without WAHA lifecycle cont
 
 test('the production build runs both Whatsflow screen suites before compiling', () => {
   const { scripts } = require('../../../package.json');
-  expect(scripts.build).toMatch(/^yarn test:whatsflow && /);
+  expect(scripts.build).toMatch(/^npm run test:whatsflow && /);
   expect(scripts['test:whatsflow']).toContain('BranchesPage.whatsflow.test.js');
   expect(scripts['test:whatsflow']).toContain('WhatsAppBulkPage.whatsflow.test.js');
   expect(scripts['test:whatsflow']).toContain('--watchAll=false');
   const fs = require('fs');
   const path = require('path');
   const postMerge = fs.readFileSync(path.resolve(__dirname, '../../../../scripts/post-merge.sh'), 'utf8');
-  expect(postMerge).toContain('yarn build)');
+  expect(postMerge).toContain('npm run build)');
   expect(postMerge).not.toMatch(/npx craco build/);
 });
 

@@ -29,7 +29,7 @@ if echo "$CHANGED" | grep -qE "^frontend/(src|public|package\.json|craco\.config
   fi
   # Use the same pre-publication Whatsflow screen gate as deployment builds;
   # invoking craco directly bypasses those regressions.
-  (cd frontend && GENERATE_SOURCEMAP=false NODE_OPTIONS="--max-old-space-size=6144" CI=false yarn build)
+  (cd frontend && GENERATE_SOURCEMAP=false NODE_OPTIONS="--max-old-space-size=6144" CI=false npm run build)
   rm -rf backend/static
   cp -r frontend/build backend/static
   echo "Frontend rebuilt and copied."

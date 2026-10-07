@@ -11,7 +11,7 @@ COPY frontend/plugins ./plugins
 COPY frontend/craco.config.js frontend/jsconfig.json frontend/postcss.config.js frontend/tailwind.config.js ./
 COPY scripts/post-merge.sh /app/scripts/post-merge.sh
 ENV REACT_APP_BACKEND_URL=""
-RUN npm run build
+RUN CI=false npm run build
 
 # Stage 2: Setup Backend
 FROM python:3.12-slim AS backend-base
