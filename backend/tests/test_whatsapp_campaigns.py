@@ -158,6 +158,22 @@ def test_campaign_crud_and_branch_isolation(campaign_env):
     assert run(whatsapp.list_campaigns("branch-a", ADMIN)) == []
 
 
+def test_campaign_library_reports_only_its_own_actual_send_counts(campaign_env):
+    db, _tenant = campaign_env
+    first = create(name="Offer A")
+    second = create(name="Offer B")
+    db["whatsapp_campaign_jobs"].rows.extend([
+        {"branch_id": "branch-a", "campaign_id": first["id"], "recipient_count": 2,
+         "sent": 1, "failed": 1, "unknown": 0, "pending": 0},
+        {"branch_id": "branch-b", "campaign_id": first["id"], "recipient_count": 9,
+         "sent": 9, "failed": 0, "unknown": 0, "pending": 0},
+    ])
+    rows = {row["id"]: row for row in run(whatsapp.list_campaigns("branch-a", ADMIN))}
+    assert rows[first["id"]]["results"]["sent"] == 1
+    assert rows[first["id"]]["results"]["failed"] == 1
+    assert rows[second["id"]]["results"]["job_count"] == 0
+
+
 def test_campaign_tenant_isolation(campaign_env):
     _db, tenant = campaign_env
     tenant_a = create(name="Tenant A")

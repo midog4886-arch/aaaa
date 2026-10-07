@@ -85,7 +85,22 @@ async def prepare(data):
         if not message.strip() or len(message)>4096: raise HTTPException(400, 'الرسالة فارغة أو أطول من الحد المسموح')
         result.append({'phone':phone,'name':name,'member_id':member_id,'message':message})
     if len(result)>200: raise HTTPException(400, 'قسّم الجمهور إلى حملات لا تتجاوز 200 مستلم')
-    return {'recipients':result,'count':len(result),'removed':counts}
+    # Warn about the same personalized text recently accepted for the same phone.
+    # This is advisory: an uncertain provider result is included so the operator
+    # can decide whether to exclude it rather than accidentally sending twice.
+    recent_similar = []
+    if result:
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        phones = [row['phone'] for row in result]
+        prior = await db.whatsapp_campaign_job_items.find({
+            'branch_id': data.branch_id, 'phone': {'$in': phones},
+            'status': {'$in': ['sent', 'unknown']}, 'created_at': {'$gte': since},
+        }, {'_id': 0, 'phone': 1, 'message': 1}).to_list(length=5000)
+        current_text = {row['phone']: re.sub(r'\s+', ' ', row['message']).strip().casefold() for row in result}
+        recent_similar = sorted({row['phone'] for row in prior
+            if re.sub(r'\s+', ' ', row.get('message') or '').strip().casefold() == current_text.get(row['phone'])})
+    return {'recipients':result,'count':len(result),'removed':counts,
+            'recent_similar_phones':recent_similar}
 
 @router.post('/preview')
 async def preview(data:PreviewRequest, user:dict=Depends(get_current_user)):

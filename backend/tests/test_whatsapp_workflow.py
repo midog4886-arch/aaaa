@@ -19,6 +19,7 @@ def env(monkeypatch):
         ['members','levels','registration_followup_stops','whatsapp_reviews','whatsapp_campaigns','whatsapp_campaign_job_items']})
     monkeypatch.setattr(workflow,'db',database)
     monkeypatch.setattr(workflow,'access',AsyncMock())
+    database.whatsapp_campaign_job_items.find = lambda *args, **kwargs: SimpleNamespace(to_list=AsyncMock(return_value=[]))
     return database
 
 def test_schedule_requires_future_and_timezone():
@@ -34,6 +35,14 @@ def test_preview_deduplicates_normalizes_and_respects_optout(env):
     result=run(workflow.prepare(data))
     assert result['count']==1 and result['recipients'][0]['message']=='Hello Ali'
     assert result['removed']=={'duplicates':1,'invalid':1,'opted_out':1,'excluded':0}
+
+def test_preview_warns_about_recent_identical_delivery_without_excluding_it(env):
+    env.whatsapp_campaign_job_items.find = lambda *args, **kwargs: SimpleNamespace(to_list=AsyncMock(
+        return_value=[{'phone':'966500000001','message':'Hello Ali'}]))
+    result=run(workflow.prepare(workflow.PreviewRequest(branch_id='a',message='Hello {name}',
+        recipients=[{'phone':'0500000001','name':'Ali'}])))
+    assert result['count']==1
+    assert result['recent_similar_phones']==['966500000001']
 
 def test_group_scope_and_authoritative_expiry(env):
     env.levels.find_one.return_value={'id':'g','branch_id':'a'}

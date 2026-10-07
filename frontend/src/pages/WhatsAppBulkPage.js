@@ -9,11 +9,12 @@ import { Textarea } from '../components/ui/textarea';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
-import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud, Paperclip, Image as ImageIcon, FileText, Save, History, CalendarClock, RefreshCw } from 'lucide-react';
+import { MessageCircle, Trash2, Send, ClipboardPaste, X, Plus, FileDown, Eraser, User, Loader2, Building2, Cloud, Paperclip, Image as ImageIcon, FileText, Save, History, CalendarClock, RefreshCw, Copy, Search } from 'lucide-react';
 import { branchesAPI, whatsappAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
 import WhatsAppCampaignReport from '../components/WhatsAppCampaignReport';
 import WhatsAppCampaignWorkflow from '../components/WhatsAppCampaignWorkflow';
+import CampaignPhoneFormatter from '../components/CampaignPhoneFormatter';
 
 const ARABIC_DIGITS = { '٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9' };
 const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[d] || d);
@@ -132,6 +133,7 @@ export default function WhatsAppBulkPage() {
   const t = (a, e) => ar ? a : e;
 
   const [pasteText, setPasteText] = useState('');
+  const [activeView, setActiveView] = useState('campaign');
   const [items, setItems] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editingValue, setEditingValue] = useState('');
@@ -153,6 +155,8 @@ export default function WhatsAppBulkPage() {
   const [campaignId, setCampaignId] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [campaignFilter, setCampaignFilter] = useState('all');
   const [draftSaving, setDraftSaving] = useState(false);
   const [audience, setAudience] = useState('pasted');
   const [audienceLoading, setAudienceLoading] = useState(false);
@@ -349,7 +353,7 @@ export default function WhatsAppBulkPage() {
     setRemoveStoredAttachment(false);
   };
 
-  const loadCampaign = async (id) => {
+  const loadCampaign = async (id, asCopy = false) => {
     const generation = ++campaignLoadGeneration.current;
     const requestedBranch = branchId;
     setCampaignLoading(true);
@@ -357,11 +361,25 @@ export default function WhatsAppBulkPage() {
       const response = await whatsappAPI.getCampaign(id, branchId);
       if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
       const draft = response.data || {};
-      setCampaignId(draft.id);
-      setCampaignName(draft.name || '');
+      let copiedAttachments = [];
+      if (asCopy && draft.has_attachment) {
+        const metadata = draft.attachments?.length ? draft.attachments : [{
+          attachment_name: draft.attachment_name, attachment_type: draft.attachment_type
+        }];
+        const mediaResponses = await Promise.all(
+          metadata.map((_, index) => whatsappAPI.getCampaignAttachment(id, branchId, index))
+        );
+        if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
+        copiedAttachments = mediaResponses.map((media, index) => new File(
+          [media.data], metadata[index].attachment_name || `attachment-${index + 1}`,
+          { type: metadata[index].attachment_type || media.data.type }
+        ));
+      }
+      setCampaignId(asCopy ? null : draft.id);
+      setCampaignName(asCopy ? `${draft.name || ''} (${t('نسخة', 'Copy')})`.slice(0, 160) : draft.name || '');
       setMessage(draft.message || '');
       setDefaultName(draft.default_name || '');
-      setProposedSendAt(draft.proposed_send_at || '');
+      setProposedSendAt(asCopy ? '' : draft.proposed_send_at || '');
       setAudience(draft.audience || 'pasted');
       if (draft.audience === 'pasted') {
         setDynamicAudienceBranch('');
@@ -376,10 +394,10 @@ export default function WhatsAppBulkPage() {
         await refreshAudience(draft.audience);
         if (generation !== campaignLoadGeneration.current || requestedBranch !== branchId) return;
       }
-      setAttachments([]);
-      setStoredAttachment(Boolean(draft.has_attachment));
+      setAttachments(copiedAttachments);
+      setStoredAttachment(asCopy ? false : Boolean(draft.has_attachment));
       setRemoveStoredAttachment(false);
-      if (draft.has_attachment) {
+      if (draft.has_attachment && !asCopy) {
         try {
           const metadata = draft.attachments?.length ? draft.attachments : [{
             attachment_name: draft.attachment_name,
@@ -398,6 +416,7 @@ export default function WhatsAppBulkPage() {
           toast.error(t('تعذر تحميل مرفق المسودة؛ لن يتم إسقاطه عند الحفظ', 'Could not load the draft attachment; it will not be dropped when saving'));
         }
       }
+      if (asCopy) toast.success(t('النسخة جاهزة؛ راجعها ثم احفظها كحملة جديدة', 'Copy is ready; review and save it as a new campaign'));
     } catch (error) {
       if (generation !== campaignLoadGeneration.current) return;
       toast.error(apiErrorMessage(error, t('تعذر تحميل الحملة', 'Could not load campaign')));
@@ -705,9 +724,25 @@ export default function WhatsAppBulkPage() {
     }
   };
 
+  const visibleCampaigns = campaigns.filter(draft => {
+    const results = draft.results || {};
+    const status = results.job_count > 0 ? 'sent' : results.review_status ? 'review' : 'draft';
+    return (campaignFilter === 'all' || campaignFilter === status)
+      && (draft.name || '').toLocaleLowerCase().includes(campaignSearch.trim().toLocaleLowerCase());
+  });
+
   return (
     <Layout title={t('واتساب جماعي', 'Bulk WhatsApp')}>
       <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label={t('أقسام الحملات', 'Campaign sections')}>
+          <Button type="button" role="tab" aria-selected={activeView === 'campaign'} variant={activeView === 'campaign' ? 'default' : 'outline'} onClick={() => setActiveView('campaign')}>{t('إنشاء وإدارة الحملات', 'Campaigns')}</Button>
+          <Button type="button" role="tab" aria-selected={activeView === 'formatter'} variant={activeView === 'formatter' ? 'default' : 'outline'} onClick={() => setActiveView('formatter')}>{t('تحويل الأرقام', 'Format numbers')}</Button>
+        </div>
+        {activeView === 'formatter' ? <CampaignPhoneFormatter t={t} onUse={numbers => {
+          setAudience('pasted');
+          mergeNewItems(numbers.map(phone => ({ name: '', phoneRaw: phone })));
+          setActiveView('campaign');
+        }} /> : <>
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
           <Card>
             <CardHeader>
@@ -780,18 +815,32 @@ export default function WhatsAppBulkPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between text-base">
-                <span className="flex items-center gap-2"><History className="w-5 h-5" />{t('الحملات المحفوظة', 'Saved campaigns')}</span>
+                <span className="flex items-center gap-2"><History className="w-5 h-5" />{t('مكتبة الحملات', 'Campaign library')}</span>
                 <Badge variant="outline">{campaigns.length}</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="space-y-2 mb-3">
+                <div className="relative">
+                  <Search className="absolute end-2 top-2.5 w-4 h-4 text-muted-foreground" />
+                  <Input className="pe-8" value={campaignSearch} onChange={event => setCampaignSearch(event.target.value)} placeholder={t('ابحث باسم الحملة', 'Search campaign name')} />
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {[
+                    ['all', t('الكل', 'All')], ['draft', t('مسودة', 'Draft')],
+                    ['review', t('مراجعة أو جدولة', 'Review or scheduled')], ['sent', t('بدأ إرسالها', 'Dispatch started')]
+                  ].map(([value, label]) => (
+                    <Button key={value} type="button" size="sm" variant={campaignFilter === value ? 'default' : 'outline'} className="h-7 px-2 text-xs" onClick={() => setCampaignFilter(value)}>{label}</Button>
+                  ))}
+                </div>
+              </div>
               {campaignsLoading ? (
                 <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin" /></div>
-              ) : campaigns.length === 0 ? (
-                <p className="text-sm text-center text-muted-foreground py-8">{t('لا توجد حملات محفوظة', 'No saved campaigns')}</p>
+              ) : visibleCampaigns.length === 0 ? (
+                <p className="text-sm text-center text-muted-foreground py-8">{t('لا توجد حملات مطابقة', 'No matching campaigns')}</p>
               ) : (
                 <div className="space-y-2 max-h-[420px] overflow-y-auto">
-                  {campaigns.map(draft => (
+                  {visibleCampaigns.map(draft => (
                     <div key={draft.id} className={`rounded-lg border p-3 ${campaignId === draft.id ? 'border-emerald-500 bg-emerald-50/40' : ''}`}>
                       <button type="button" className="w-full text-start" onClick={() => loadCampaign(draft.id)}>
                         <p className="font-medium truncate">{draft.name}</p>
@@ -804,7 +853,17 @@ export default function WhatsAppBulkPage() {
                           {draft.has_attachment ? ` · ${t('مرفق', 'attachment')}` : ''}
                         </p>
                       </button>
-                      <div className="flex justify-end mt-2">
+                      {draft.results?.job_count > 0 ? (
+                        <div className="mt-2 rounded bg-slate-50 px-2 py-1 text-xs text-muted-foreground">
+                          {t(`نتائج الإرسال: ${draft.results.sent} مُرسلة · ${draft.results.failed} فاشلة · ${draft.results.pending} قيد التنفيذ`, `Sending results: ${draft.results.sent} sent · ${draft.results.failed} failed · ${draft.results.pending} pending`)}
+                        </div>
+                      ) : draft.results?.review_status ? (
+                        <p className="mt-2 text-xs text-amber-700">{draft.results.review_status === 'cancelled' ? t('طلب إرسال ملغى', 'Dispatch request cancelled') : t('قيد المراجعة أو الجدولة', 'In review or scheduled')}</p>
+                      ) : null}
+                      <div className="flex justify-end gap-1 mt-2">
+                        <Button type="button" variant="outline" size="sm" className="h-7" disabled={campaignLoading} onClick={() => loadCampaign(draft.id, true)}>
+                          <Copy className="w-3 h-3 me-1" />{t('نسخ', 'Copy')}
+                        </Button>
                         <Button type="button" variant="ghost" size="sm" className="text-red-600 h-7" onClick={() => deleteCampaign(draft)}>
                           <Trash2 className="w-3 h-3 me-1" />{t('حذف', 'Delete')}
                         </Button>
@@ -1260,6 +1319,7 @@ export default function WhatsAppBulkPage() {
             </div>
           </div>
         )}
+        </>}
       </div>
     </Layout>
   );

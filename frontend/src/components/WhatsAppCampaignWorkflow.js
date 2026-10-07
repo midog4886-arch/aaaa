@@ -53,6 +53,8 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
   });
   const submit=()=>act(async()=>{
     if(!preview || !preview.count)throw new Error('جهّز المعاينة أولاً');
+    const repeated=(preview.recent_similar_phones||[]).filter(phone=>!excluded.includes(phone));
+    if(repeated.length && !window.confirm(`هناك ${repeated.length} مستلم تلقّى النص نفسه خلال آخر 30 يوماً أو كانت نتيجة إرساله غير مؤكدة. هل تريد إبقاءهم ضمن الحملة؟`))return;
     if(!window.confirm('إرسال هذه المعاينة إلى المدير لاعتماد الإرسال؟'))return;
     const currentGeneration=generation.current;
     const id=await onSave();
@@ -89,6 +91,10 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     <Button disabled={busy||!branchId||!message.trim()} onClick={showPreview}>معاينة المستلمين والرسائل</Button>
     {preview && <div className="space-y-3">
       <p className="text-emerald-800">المحدد: {chosen.length} · مكرر: {preview.removed.duplicates} · غير صالح: {preview.removed.invalid} · طلب إيقاف الرسائل: {preview.removed.opted_out}</p>
+      {!!preview.recent_similar_phones?.length && <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <p>تنبيه: {preview.recent_similar_phones.length} مستلم تلقّى النص نفسه خلال 30 يوماً أو كانت نتيجة إرساله غير مؤكدة. راجعهم قبل الاعتماد.</p>
+        <Button type="button" variant="outline" size="sm" className="mt-2" onClick={()=>setExcluded(old=>[...new Set([...old,...preview.recent_similar_phones])])}>استبعاد هؤلاء المستلمين</Button>
+      </div>}
       <div className="max-h-96 overflow-auto border rounded"><table className="w-full text-sm"><thead><tr><th>تحديد</th><th>المستلم</th><th>الرسالة الفعلية</th></tr></thead><tbody>
         {preview.recipients.map(r=><tr key={r.phone} className="border-t"><td className="p-2"><input aria-label={`تحديد ${r.phone}`} type="checkbox" checked={!excluded.includes(r.phone)} onChange={e=>setExcluded(old=>e.target.checked?old.filter(p=>p!==r.phone):[...old,r.phone])}/></td><td className="p-2">{r.name}<div dir="ltr">+{r.phone}</div></td><td className="p-2 whitespace-pre-wrap">{r.message}</td></tr>)}
       </tbody></table></div>

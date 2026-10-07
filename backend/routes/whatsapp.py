@@ -7566,7 +7566,39 @@ async def list_campaigns(
     cursor = _db["whatsapp_campaigns"].find(
         _campaign_scope(branch_id)
     ).sort("updated_at", -1).limit(200)
-    return [_campaign_public(row, include_recipients=False) async for row in cursor]
+    campaigns = [_campaign_public(row, include_recipients=False) async for row in cursor]
+    if not campaigns:
+        return campaigns
+    ids = [campaign["id"] for campaign in campaigns]
+    reviews = await _db["whatsapp_reviews"].find(
+        {"branch_id": branch_id, "campaign_id": {"$in": ids}},
+        {"_id": 0, "campaign_id": 1, "status": 1, "created_at": 1},
+    ).to_list(length=None)
+    jobs = await _db["whatsapp_campaign_jobs"].find(
+        {"branch_id": branch_id, "campaign_id": {"$in": ids}},
+        {"_id": 0, "campaign_id": 1, "status": 1, "created_at": 1,
+         "recipient_count": 1, "sent": 1, "failed": 1, "unknown": 1, "pending": 1},
+    ).to_list(length=None)
+    by_id = {campaign_id: {"reviews": [], "jobs": []} for campaign_id in ids}
+    for review in reviews:
+        if review.get("campaign_id") in by_id:
+            by_id[review["campaign_id"]]["reviews"].append(review)
+    for job in jobs:
+        if job.get("campaign_id") in by_id:
+            by_id[job["campaign_id"]]["jobs"].append(job)
+    for campaign in campaigns:
+        activity = by_id[campaign["id"]]
+        latest_review = max(activity["reviews"], key=lambda row: str(row.get("created_at") or ""), default=None)
+        campaign["results"] = {
+            "review_status": (latest_review or {}).get("status"),
+            "job_count": len(activity["jobs"]),
+            "recipient_count": sum(int(job.get("recipient_count") or 0) for job in activity["jobs"]),
+            "sent": sum(int(job.get("sent") or 0) for job in activity["jobs"]),
+            "failed": sum(int(job.get("failed") or 0) for job in activity["jobs"]),
+            "unknown": sum(int(job.get("unknown") or 0) for job in activity["jobs"]),
+            "pending": sum(int(job.get("pending") or 0) for job in activity["jobs"]),
+        }
+    return campaigns
 
 
 @router.get("/campaigns/audience-preview")
