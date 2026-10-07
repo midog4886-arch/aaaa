@@ -428,8 +428,12 @@ export const useInvoiceForm = ({
           ['cash', 'card', 'transfer'].forEach(k => { const v = parseFloat(paymentSplit[k]); if (v > 0) split[k] = v; });
           if (Object.keys(split).length > 0) createPayload.payment_split = split;
         }
-        await invoicesAPI.create(createPayload);
+        const created = await invoicesAPI.create(createPayload);
         toast.success(t('success'));
+        const delivery = created.data?.consent_delivery_status;
+        if (delivery === 'sent') toast.success(language === 'ar' ? 'أُرسل رابط استمارة التوقيع إلى العميل' : 'Signing form link sent to the customer');
+        else if (delivery === 'missing_phone') toast.warning(language === 'ar' ? 'أُنشئت الفاتورة، لكن لا يوجد رقم جوال صالح لإرسال الاستمارة' : 'Invoice created, but no valid phone number is available for the signing form');
+        else if (delivery === 'failed') toast.warning(language === 'ar' ? 'أُنشئت الفاتورة، لكن تعذر تأكيد إرسال الاستمارة؛ راجع سجل الروابط وأعد الإرسال يدويًا' : 'Invoice created, but sending the signing form could not be confirmed; review the link history');
         if (selectedMember) {
           const subscriptionItems = (invoiceItems || []).map(item => ({ activity_name: item.activity_name, start_date: item.start_date, end_date: item.end_date, schedule: item.schedule }));
           setQrCardMember({ id: selectedMember.id, name_ar: customerNameAr || selectedMember.name_ar || selectedMember.name, member_code: selectedMember.member_code, phone: customerPhone || selectedMember.phone });

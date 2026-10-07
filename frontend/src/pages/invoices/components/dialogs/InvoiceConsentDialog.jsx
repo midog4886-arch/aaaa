@@ -153,7 +153,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
       .catch(() => {});
   };
   const markSent = linkId => invoicesAPI.markRegistrationConsentSent(invoice.id, linkId).then(refreshHistory).catch(() => toast.error('تعذر تحديث حالة الإرسال'));
-  const linkStatus = { created: 'لم يُرسل', sent: 'الرابط مُرسل', opened: 'فُتح الرابط', signed: 'موقّع', expired: 'منتهي الصلاحية', invalid: 'الرابط غير صالح؛ أُنشئ إصدار جديد' };
+  const linkStatus = { created: 'لم يُرسل', send_failed: 'تعذر تأكيد الإرسال', sent: 'الرابط مُرسل', opened: 'فُتح الرابط', signed: 'موقّع', expired: 'منتهي الصلاحية', invalid: 'الرابط غير صالح؛ أُنشئ إصدار جديد' };
   const dateTime = value => value ? new Date(value).toLocaleString('ar-SA') : '—';
   const printSigned = async (version) => {
     setBusy(true);

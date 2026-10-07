@@ -235,3 +235,46 @@ def test_saved_versions_and_historical_pdf_survive_later_changes(monkeypatch):
     with pytest.raises(HTTPException) as missing:
         asyncio.run(route.download_registration_consent_pdf('i1', 3, user))
     assert missing.value.status_code == 404
+
+
+def test_new_activity_invoice_sends_one_signing_link_and_records_result(monkeypatch):
+    invoice, database, _user = fixture_db(monkeypatch)
+    invoice['customer_phone'] = '0551234567'
+    calls = []
+
+    async def send(phone, message, branch):
+        calls.append((phone, message, branch))
+        return True
+
+    monkeypatch.setattr(route, '_send_consent_whatsapp', send)
+    monkeypatch.setattr(route, 'public_base_url', lambda: 'https://adaa-alabtal.com')
+    monkeypatch.setattr(route, 'get_current_tenant_slug', lambda: 'default')
+    assert asyncio.run(route.send_new_invoice_consent(invoice, 'staff')) == 'sent'
+    assert len(calls) == 1
+    assert calls[0][0] == '966551234567'
+    assert '/consent/' in calls[0][1] and '?tenant=default' in calls[0][1]
+    assert calls[0][2] == 'b1'
+    assert len(database.invoice_consent_links.rows) == 1
+    assert 'token' not in database.invoice_consent_links.rows[0]
+    assert database.invoice_consent_links.rows[0]['sent_at']
+    assert asyncio.run(route.link_history(invoice, asyncio.run(route.current_terms('swimming'))))[0]['status'] == 'sent'
+
+
+def test_new_invoice_does_not_claim_delivery_when_provider_fails(monkeypatch):
+    invoice, database, _user = fixture_db(monkeypatch)
+    invoice['customer_phone'] = '0551234567'
+
+    async def fail(*_args):
+        return False
+
+    monkeypatch.setattr(route, '_send_consent_whatsapp', fail)
+    assert asyncio.run(route.send_new_invoice_consent(invoice, 'staff')) == 'failed'
+    assert not database.invoice_consent_links.rows[0].get('sent_at')
+    assert database.invoice_consent_links.rows[0]['send_failed_at']
+    invoice['customer_phone'] = ''
+    assert asyncio.run(route.send_new_invoice_consent(invoice, 'staff')) == 'missing_phone'
+    assert len(database.invoice_consent_links.rows) == 1
+    invoice['items'] = [{'activity_name': 'زي سباحة', 'is_product': True}]
+    invoice['customer_phone'] = '0551234567'
+    assert asyncio.run(route.send_new_invoice_consent(invoice, 'staff')) == 'not_applicable'
+    assert len(database.invoice_consent_links.rows) == 1

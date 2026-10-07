@@ -7,8 +7,10 @@ import json
 import secrets
 import re
 import uuid
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -20,8 +22,12 @@ from .common import db, get_current_user
 from services.consent_pdf import render_signed_consent_pdf
 from utils.auth import require_branch_scope, require_permission
 from utils.tenant import get_current_tenant
+from utils.tenant import get_current_tenant_slug
+from utils.phone import normalize_phone
+from services.invoice_whatsapp import public_base_url
 
 router = APIRouter(prefix="/invoices", tags=["invoice-consents"])
+logger = logging.getLogger(__name__)
 
 TERMS_VERSION = "activity-2026-09-29"
 FORM_TITLE = "استمارة تسجيل نشاط وإقرار ولي الأمر"
@@ -190,6 +196,8 @@ async def link_history(invoice, settings):
             status = "opened"
         elif link.get("sent_at"):
             status = "sent"
+        elif link.get("send_failed_at"):
+            status = "send_failed"
         else:
             status = "created"
         history.append({"id": link["id"], "status": status, "created_at": link["created_at"],
@@ -242,6 +250,49 @@ async def create_registration_consent_link(invoice_id: str, user: dict = Depends
         "created_at": created.isoformat(), "expires_at": (created + timedelta(days=7)).isoformat(),
         "created_by": user.get("username", "")})
     return {"id": link_id, "token": token, "expires_at": (created + timedelta(days=7)).isoformat(), "customer_phone": invoice.get("customer_phone", ""), "invoice_number": invoice.get("invoice_number", "")}
+
+
+async def _send_consent_whatsapp(phone, message, branch_id):
+    from .whatsapp import _send_wa_message_for_branch
+    return await _send_wa_message_for_branch(phone, message, branch_id, automated=True)
+
+
+async def send_new_invoice_consent(invoice: dict, actor: str) -> str:
+    """Send one signing link after an activity invoice is fully created.
+
+    A recorded attempt is never retried automatically: transport failures can
+    be ambiguous, and a second attempt could send the same form twice.
+    """
+    if not has_activity(invoice):
+        return "not_applicable"
+    phone = normalize_phone(invoice.get("customer_phone"))
+    if not phone:
+        return "missing_phone"
+    settings = await current_terms(consent_form_type(invoice))
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    link_id = str(uuid.uuid4())
+    await db.invoice_consent_links.insert_one({
+        "id": link_id, "invoice_id": invoice["id"], "branch_id": invoice.get("branch_id"),
+        "token_hash": link_hash(token), "invoice_hash": snapshot_hash(invoice_snapshot(invoice)),
+        "terms_version": settings["version"], "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(days=7)).isoformat(), "created_by": actor,
+        "send_attempted_at": now.isoformat(),
+    })
+    tenant = quote(get_current_tenant_slug() or "default", safe="")
+    url = f"{public_base_url()}/consent/{quote(token, safe='')}?tenant={tenant}"
+    message = f"يرجى مراجعة استمارة تسجيل النشاط والتوقيع عليها خلال 7 أيام من الرابط التالي:\n{url}"
+    try:
+        sent = await _send_consent_whatsapp(phone, message, invoice.get("branch_id"))
+    except Exception:
+        logger.exception("Automatic consent delivery failed for invoice %s", invoice["id"])
+        sent = False
+    field = "sent_at" if sent else "send_failed_at"
+    await db.invoice_consent_links.update_one(
+        {"id": link_id}, {"$set": {field: datetime.now(timezone.utc).isoformat(),
+                                   "sent_by": "automatic" if sent else None}}
+    )
+    return "sent" if sent else "failed"
 
 
 @router.get("/{invoice_id}/registration-consent-links")

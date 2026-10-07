@@ -102,6 +102,7 @@ class Invoice(BaseModel):
     member_card_printed_at: Optional[str] = None
     consent_signed: bool = False
     consent_needs_resign: bool = False
+    consent_delivery_status: Optional[str] = None
     items: List[InvoiceItem]
     subtotal: float
     discount: float
@@ -802,7 +803,18 @@ async def create_invoice(invoice: InvoiceCreate, current_user: dict = Depends(ge
         for am in invoice.additional_members:
             await process_member_levels(am.member_id, am.items)
     
-    return Invoice(**{k: v for k, v in invoice_doc.items() if k != "_id" and k != "additional_members"})
+    consent_delivery_status = "not_applicable"
+    try:
+        from .invoice_consents import send_new_invoice_consent
+        consent_delivery_status = await send_new_invoice_consent(
+            invoice_doc, current_user.get("username", "")
+        )
+    except Exception:
+        logger.exception("Could not prepare consent link for invoice %s", invoice_id)
+        consent_delivery_status = "failed"
+
+    return Invoice(**{**{k: v for k, v in invoice_doc.items() if k != "_id" and k != "additional_members"},
+                      "consent_delivery_status": consent_delivery_status})
 
 class InvoicePaymentInput(BaseModel):
     amount: float
