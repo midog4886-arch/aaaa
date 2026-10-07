@@ -14,7 +14,7 @@ ENV REACT_APP_BACKEND_URL=""
 RUN npm run build
 
 # Stage 2: Setup Backend
-FROM python:3.12-slim
+FROM python:3.12-slim AS backend-base
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 ENV=production
 
@@ -30,6 +30,22 @@ COPY backend/middleware ./middleware
 COPY backend/services ./services
 COPY backend/utils ./utils
 COPY scripts/recover_four_post_migration.py ./scripts/recover_four_post_migration.py
+
+# A failing registration-to-card workflow stops the image build before deploy.
+# The test layer is separate, so pytest and test fixtures stay out of production.
+FROM backend-base AS backend-tests
+RUN pip install --no-cache-dir pytest==8.4.2
+COPY backend/tests ./tests
+COPY --from=frontend-builder /app/frontend/build ./static
+RUN MONGO_URL=mongodb://127.0.0.1:27017 MONGO_TLS=false SESSION_SECRET=predeploy-test \
+    python -m pytest \
+    tests/test_registration_forms_unit.py \
+    tests/test_registration_journey.py \
+    tests/test_invoice_pay_notify_unit.py -q \
+    && touch /tmp/predeploy-tests-passed
+
+FROM backend-base
+COPY --from=backend-tests /tmp/predeploy-tests-passed /tmp/predeploy-tests-passed
 
 # Create static folder and copy frontend build
 RUN mkdir -p static uploads backups

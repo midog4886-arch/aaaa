@@ -135,10 +135,24 @@ class _FakeCollection:
                 arr = target.setdefault(field, [])
                 if val not in arr:
                     arr.append(val)
+        if "$inc" in update:
+            for field, val in update["$inc"].items():
+                target[field] = target.get(field, 0) + val
 
         class R:
             modified_count = 1
+            matched_count = 1
         return R()
+
+    async def update_many(self, query, update):
+        count = 0
+        for doc in self.docs.values():
+            if _matches(doc, query):
+                doc.update(update.get("$set", {}))
+                for field, val in update.get("$inc", {}).items():
+                    doc[field] = doc.get(field, 0) + val
+                count += 1
+        return type("Result", (), {"modified_count": count})()
 
     async def delete_one(self, query):
         for key, d in list(self.docs.items()):
@@ -440,6 +454,62 @@ def test_create_invoice_requires_level_for_every_training_item(inv):
         assert exc.value.status_code == 422
         assert "مستوى" in exc.value.detail
     assert run(fdb.invoices.find_one({})) is None
+
+
+def test_registration_invoice_payment_card_journey(inv, monkeypatch):
+    """A real subscription invoice advances one request through payment and printing."""
+    from routes import registration_journey as journey
+    from routes import members as members_mod
+    from routes import push_notifications, whatsapp
+
+    inv_mod, fdb = inv
+    monkeypatch.setattr(journey, "db", fdb)
+    monkeypatch.setattr(members_mod, "db", fdb)
+    async def _seq_start(*_args):
+        return 30001
+    monkeypatch.setattr(inv_mod, "get_branch_seq_start", _seq_start)
+    async def _no_external_send(*_args, **_kwargs):
+        return {"success": True}
+    monkeypatch.setattr(push_notifications, "send_push_to_admins", _no_external_send)
+    monkeypatch.setattr(whatsapp, "queue_invoice_payment_whatsapp_notice", _no_external_send)
+    run(fdb.registration_requests.insert_one({
+        "id": "journey-request", "branch_id": "B1", "status": "pending",
+        "customer_name": "Child", "customer_phone": "0501234567",
+        "followup_staff_contacted_at": "2026-10-07T09:00:00Z",
+    }))
+    run(fdb.members.insert_one({
+        "id": "journey-member", "branch_id": "B1", "name": "Child",
+        "member_code": "AB-123", "activities": [],
+    }))
+    run(fdb.levels.insert_one({"id": "journey-level", "branch_id": "B1", "is_active": True}))
+    model = inv_mod.InvoiceCreate(
+        member_id="journey-member", branch_id="B1",
+        registration_request_id="journey-request",
+        items=[inv_mod.InvoiceItem(
+            activity_name="Swimming", fee=100, period="monthly",
+            level_id="journey-level", is_product=False,
+        )],
+    )
+    created = run(inv_mod.create_invoice(model, current_user=ADMIN))
+    request = run(fdb.registration_requests.find_one({"id": "journey-request"}))
+    stored = run(fdb.invoices.find_one({"id": created.id}))
+    member = run(fdb.members.find_one({"id": "journey-member"}))
+    steps = journey.summarize_journey(request, stored, [member])["steps"]
+    assert steps["invoice_created"] and steps["level_selected"] and steps["member_linked"]
+    assert not steps["paid"] and not steps["card_printed"]
+
+    # Use the payment handler, then the card-print endpoint on the same records.
+    run(inv_mod.pay_invoice(created.id, current_user=ADMIN))
+    paid = run(fdb.invoices.find_one({"id": created.id}))
+    assert paid["status"] == "paid"
+    assert journey.summarize_journey(request, paid, [member])["steps"]["paid"]
+    result = run(members_mod.mark_members_printed(
+        {"member_ids": ["journey-member"]}, current_user=ADMIN,
+    ))
+    assert result["updated"] == 1
+    member = run(fdb.members.find_one({"id": "journey-member"}))
+    steps = journey.summarize_journey(request, paid, [member])["steps"]
+    assert steps["card_printed"] and all(steps.values())
 
 
 def test_create_invoice_rejects_missing_or_other_branch_level(inv):
