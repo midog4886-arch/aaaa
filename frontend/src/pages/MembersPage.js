@@ -18,6 +18,7 @@ import MemberEditHistoryDialog from '../components/members/MemberEditHistoryDial
 import SessionTransferDialog from '../components/members/SessionTransferDialog';
 import ScheduleChangeReviewDialog from '../components/members/ScheduleChangeReviewDialog';
 import { activityWeekdaysChanged, scheduleChangeError } from '../utils/memberScheduleChange';
+import { closureCompensatedMember } from '../utils/memberClosureStatus';
  
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -1208,6 +1209,9 @@ export const MembersPage = () => {
     if (Array.isArray(closures)) {
       for (const cl of closures) {
         if (!cl.applied) continue;
+        // Applying a branch closure does not mean every member was compensated.
+        // Skipped subscriptions must remain visible as unresolved dates.
+        if (!closureCompensatedMember(cl, member?.id)) continue;
         if (!closureMatchesActivity(cl, q.activity_id)) continue;
         if (!closureMatchesBranch(cl, member?.branch_id)) continue;
         if (!cl.start_date || !cl.end_date) continue;

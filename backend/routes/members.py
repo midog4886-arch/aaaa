@@ -927,12 +927,21 @@ async def add_member_activity(member_id: str, activity: MemberActivity, current_
             raise HTTPException(status_code=403, detail="تتطلب هذه العملية صلاحية 'إضافة نشاط لعضو' أو 'التجديدات'")
     from utils.subscription_dates import validate_subscription_windows
     validate_subscription_windows([activity])
+    duplicate_period = {
+        "activity_id": activity.activity_id,
+        "start_date": activity.start_date,
+        "end_date": activity.end_date,
+    }
     result = await db.members.update_one(
-        _scoped_member_query(member_id, current_user),
+        {**_scoped_member_query(member_id, current_user),
+         "activities": {"$not": {"$elemMatch": duplicate_period}}},
         {"$push": {"activities": activity.model_dump()}}
     )
     if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Member not found")
+        member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 1})
+        if not member:
+            raise HTTPException(status_code=404, detail="Member not found")
+        raise HTTPException(status_code=409, detail="هذا النشاط موجود بالفعل لنفس فترة الاشتراك")
     invalidate_dashboard_caches()
     from utils.audit import log_audit
     await log_audit(

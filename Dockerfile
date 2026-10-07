@@ -30,6 +30,7 @@ COPY backend/middleware ./middleware
 COPY backend/services ./services
 COPY backend/utils ./utils
 COPY scripts/recover_four_post_migration.py ./scripts/recover_four_post_migration.py
+COPY backend/scripts/repair_duplicate_closure_2026.py ./scripts/repair_duplicate_closure_2026.py
 
 # A failing registration-to-card workflow stops the image build before deploy.
 # The test layer is separate, so pytest and test fixtures stay out of production.
