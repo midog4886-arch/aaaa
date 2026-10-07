@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
-import { displayPhone, extractPhoneNumbers, normalizeDigits } from '../utils/phoneNumberFormatter';
+import { displayPhone, extractPhoneNumbers, filterPhoneNumbers } from '../utils/phoneNumberFormatter';
 
 export default function CampaignPhoneFormatter({ t, onUse }) {
   const [source, setSource] = useState('');
@@ -15,10 +15,7 @@ export default function CampaignPhoneFormatter({ t, onUse }) {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [separator, setSeparator] = useState('comma');
-  const filtered = useMemo(() => {
-    const needle = normalizeDigits(search).replace(/\D/g, '');
-    return needle ? numbers.filter(phone => phone.includes(needle)) : numbers;
-  }, [numbers, search]);
+  const filtered = useMemo(() => filterPhoneNumbers(numbers, search), [numbers, search]);
   const output = numbers.map(displayPhone).join(separator === 'line' ? '\n' : ', ');
 
   const convert = () => {
@@ -87,11 +84,12 @@ export default function CampaignPhoneFormatter({ t, onUse }) {
         <Textarea dir="ltr" readOnly value={output} rows={4} aria-label={t('النص الجاهز للنسخ', 'Copy-ready text')} />
         {!!numbers.length && <>
           <div className="flex flex-wrap gap-2 items-center">
-            <div className="relative flex-1 min-w-48"><Search className="absolute start-2 top-2.5 w-4 h-4 text-muted-foreground" /><Input className="ps-8" value={search} onChange={event => setSearch(event.target.value)} placeholder={t('ابحث عن رقم', 'Search numbers')} /></div>
+            <div className="relative flex-1 min-w-48"><Search className="absolute start-2 top-2.5 w-4 h-4 text-muted-foreground" /><Input className="ps-8" value={search} onChange={event => setSearch(event.target.value)} placeholder={t('ابحث بـ 05 أو +966 أو آخر الرقم، أو الصق عدة أرقام', 'Search by 05, +966, ending digits, or paste several numbers')} /></div>
             <Button variant="outline" onClick={() => setSelected(old => new Set([...old, ...filtered]))} disabled={!filtered.length}>{t('تحديد الظاهر', 'Select visible')}</Button>
             <Button variant="outline" onClick={() => setSelected(new Set())} disabled={!selected.size}>{t('إلغاء التحديد', 'Clear selection')}</Button>
             <Button variant="destructive" onClick={() => { setNumbers(old => old.filter(phone => !selected.has(phone))); setSelected(new Set()); }} disabled={!selected.size}><Trash2 className="w-4 h-4 me-1" />{t(`حذف المحدد (${selected.size})`, `Delete selected (${selected.size})`)}</Button>
           </div>
+          {search && <p className="text-sm text-muted-foreground">{t(`${filtered.length} نتيجة من ${numbers.length} رقم`, `${filtered.length} of ${numbers.length} numbers found`)}</p>}
           <div className="max-h-72 overflow-auto rounded border divide-y">
             {filtered.length ? filtered.map(phone => <div key={phone} className="flex items-center gap-3 px-3 py-2">
               <input type="checkbox" aria-label={t(`تحديد ${displayPhone(phone)}`, `Select ${displayPhone(phone)}`)} checked={selected.has(phone)} onChange={event => setSelected(old => { const next = new Set(old); if (event.target.checked) next.add(phone); else next.delete(phone); return next; })} />

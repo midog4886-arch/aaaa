@@ -1,7 +1,21 @@
 // Extract mobile numbers from free text without retaining names or other text.
 // Keep the same Saudi/Egypt normalization used by the campaign recipient list.
 const arabicDigits = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
-export const normalizeDigits = value => String(value || '').replace(/[٠-٩]/g, digit => arabicDigits[digit]);
+export const normalizeDigits = value => String(value || '').replace(/[٠-٩۰-۹]/g, digit => arabicDigits[digit] ?? String(digit.charCodeAt(0) - 1776));
+
+export const filterPhoneNumbers = (numbers, query) => {
+  if (!query.trim()) return numbers;
+  const terms = normalizeDigits(query).split(/[,،;؛\n\r\t]+/).map(part => part.replace(/\D/g, '')).filter(Boolean);
+  if (!terms.length) return [];
+  return numbers.filter(phone => {
+    const local = phone.startsWith('9665') ? `0${phone.slice(3)}` : phone.startsWith('201') ? `0${phone.slice(2)}` : phone;
+    return terms.some(term => {
+      const international = term.startsWith('00') ? term.slice(2) : term;
+      return phone.includes(international) || local.includes(international) ||
+        (international.startsWith('0') && phone.includes(international.slice(1)));
+    });
+  });
+};
 const candidatePattern = /(?:\+|00)?966(?:[\s().-]*\d){9}|(?:\+|00)?20(?:[\s().-]*\d){10}|05(?:[\s().-]*\d){8}|01(?:[\s().-]*\d){9}|\+\d{9,15}/g;
 
 export const extractPhoneNumbers = input => {
