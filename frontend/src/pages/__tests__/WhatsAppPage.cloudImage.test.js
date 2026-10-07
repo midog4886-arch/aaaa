@@ -181,6 +181,22 @@ test('shows a phone number or a clear contact label instead of a LID identifier'
   expect(screen.queryByText(lid)).not.toBeInTheDocument();
 });
 
+test('shows unknown phone read state separately from needs reply', async () => {
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({ data: {
+    conversations: [
+      { ...conversation, provider: 'whatsflow', phone_mirrored: true,
+        phone_unread_known: false, phone_unread_count: null, needs_reply: true },
+      { ...conversation, id: 'branch-a:966500000002', phone: '966500000002',
+        contact_name: 'سارة', provider: 'whatsflow', phone_mirrored: true,
+        phone_unread_known: true, phone_unread_count: 0, needs_reply: false },
+    ], unread_count: 0, needs_reply_count: 1,
+  } });
+  await renderCloudInbox();
+  expect(screen.getByText('قراءة الجوال غير مؤكدة')).toBeInTheDocument();
+  expect(screen.getByText('مقروءة على الجوال')).toBeInTheDocument();
+  expect(screen.getAllByText('تحتاج ردًا').length).toBeGreaterThan(0);
+});
+
 test('refreshes the current branch inbox after opening a read-only thread and preserves it', async () => {
   await renderOpenCloudThread();
 

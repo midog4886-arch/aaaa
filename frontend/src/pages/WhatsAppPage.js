@@ -3866,10 +3866,23 @@ export default function WhatsAppPage() {
                                   </Badge>
                                   <Badge variant="outline" className="text-xs">{conversation.provider === 'waha' ? 'WAHA' : conversation.provider === 'whatsflow' ? 'Whatsflow' : 'Meta Cloud'}</Badge>
                                    {conversation.needs_reply && (
-                                     <Badge variant="secondary" className="text-sm">
+                                     <Badge variant="secondary" className="text-sm" title={t('هذه حالة المتابعة ولا تحدد إن كانت الرسالة مقروءة على الجوال', 'This is a follow-up status, not the phone read state')}>
                                        {t('تحتاج ردًا', 'Needs reply')}
                                      </Badge>
                                    )}
+                                  {conversation.phone_mirrored && (
+                                    <Badge
+                                      variant={conversation.phone_unread_known ? 'outline' : 'secondary'}
+                                      className="text-xs"
+                                      title={conversation.phone_synced_at || ''}
+                                    >
+                                      {conversation.phone_unread_known
+                                        ? Number(conversation.phone_unread_count || 0) > 0
+                                          ? t('غير مقروءة على الجوال', 'Unread on phone')
+                                          : t('مقروءة على الجوال', 'Read on phone')
+                                        : t('قراءة الجوال غير مؤكدة', 'Phone read state unknown')}
+                                    </Badge>
+                                  )}
                                 </div>
                                  <span
                                    dir="ltr"
@@ -3923,7 +3936,7 @@ export default function WhatsAppPage() {
                                    {formatCloudTimestamp(conversation.last_message_at, isRTL)}
                                  </span>
                                )}
-                              {conversation.unread_count > 0 && <Badge className="bg-green-600 text-sm">{conversation.unread_count}</Badge>}
+                              {conversation.unread_count > 0 && <Badge className="bg-green-600 text-sm" title={conversation.phone_mirrored && !conversation.phone_unread_known ? t('رسائل غير مقروءة وصلت للنظام؛ حالة الجوال غير مؤكدة', 'Unread messages received by the system; phone read state unknown') : undefined}>{conversation.unread_count}</Badge>}
                             </div>
                           </div>
                           </button>
