@@ -12,10 +12,11 @@ const COPY = {
   absence: { ar: ['غياب يحتاج متابعة', '٣ حالات غياب مسجلة أو أكثر خلال آخر ٣٠ يوماً'], en: ['Attendance follow-up', '3 or more recorded absences in the last 30 days'] },
   registrations: { ar: ['طلبات تسجيل معلّقة', 'طلبات بانتظار المراجعة'], en: ['Pending registrations', 'Requests waiting for review'] },
   conversations: { ar: ['محادثات غير مقروءة', 'لم تُفتح في النظام أو ما زالت غير مقروءة حسب آخر مزامنة للجوال'], en: ['Unread chats', 'Not opened in the system or still unread in the latest phone sync'] },
+  needs_reply: { ar: ['محادثات تحتاج ردًا', 'وصلت رسالة من العميل ولم يُرسل لها رد، حتى لو كانت مقروءة'], en: ['Chats needing a reply', 'An inbound message has not been answered, even if it was read'] },
   failures: { ar: ['عمليات فاشلة مؤكدة', 'مدفوعات أو عمليات إرسال فشلت خلال آخر ٧ أيام'], en: ['Confirmed failures', 'Failed payments or sends from the last 7 days'] },
 };
 
-const iconFor = key => ({ expiring: CalendarClock, absence: UserRoundX, registrations: ClipboardCheck, conversations: MessageSquareText, failures: ShieldAlert })[key] || AlertCircle;
+const iconFor = key => ({ expiring: CalendarClock, absence: UserRoundX, registrations: ClipboardCheck, conversations: MessageSquareText, needs_reply: MessageSquareText, failures: ShieldAlert })[key] || AlertCircle;
 // Requests are retained only while active. This prevents StrictMode and a
 // quick unmount/remount from duplicating a scoped read without persisting any
 // user or branch data beyond the request itself.
@@ -39,14 +40,14 @@ const getActionsRequest = (identity, params) => {
 };
 
 export const pageFor = (key, item) => {
-  if (key === 'conversations' && item?.entity_id) {
+  if ((key === 'conversations' || key === 'needs_reply') && item?.entity_id) {
     const query = new URLSearchParams({ conversation: item.entity_id });
     if (item.branch_id) query.set('branch', item.branch_id);
     return `/admin/whatsapp?${query.toString()}`;
   }
   if (key === 'expiring') return '/admin/renewals';
   if (item?.kind === 'payment' || item?.kind === 'failed_payment' || item?.kind === 'billing_payment') return '/admin/settings#billing';
-  if (item?.kind === 'whatsapp' || item?.kind === 'failed_send' || key === 'conversations') return '/admin/whatsapp';
+  if (item?.kind === 'whatsapp' || item?.kind === 'failed_send' || key === 'conversations' || key === 'needs_reply') return '/admin/whatsapp';
   if (item?.kind === 'registration_request' || key === 'registrations') return '/admin/registration-requests';
   if (item?.kind === 'attendance' || key === 'absence') return '/admin/attendance';
   if (item?.kind === 'invoice' || key === 'failures') return '/admin/invoices';
@@ -130,10 +131,10 @@ export default function DailyActions() {
         </div>
         <div className="flex items-center gap-2">{state.error && groups.length > 0 && <span role="status" className="text-xs text-destructive">{language === 'ar' ? 'تعذر التحديث؛ البيانات السابقة ما زالت معروضة.' : 'Refresh failed; previous data is still shown.'}</span>}<Button variant="outline" size="sm" onClick={load} disabled={state.loading} aria-label={hasGroupError || state.error ? refreshLabel : (language === 'ar' ? 'تحديث الإجراءات اليومية' : 'Refresh daily actions')}><RefreshCcw className={`w-4 h-4 mr-2 ${state.loading ? 'animate-spin' : ''}`} />{refreshLabel}</Button>{state.generatedAt && <span className="text-xs text-muted-foreground">{language === 'ar' ? 'تم التحديث' : 'Updated'} {new Date(state.generatedAt).toLocaleTimeString(language === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}</span>}</div>
       </div>
-      {state.loading && groups.length === 0 ? <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3" aria-label={language === 'ar' ? 'جارٍ تحميل الإجراءات' : 'Loading actions'}>{[1,2,3,4,5].map(n => <div key={n} className="h-28 rounded-xl bg-muted animate-pulse" />)}</div> : state.error && groups.length === 0 ? (
+      {state.loading && groups.length === 0 ? <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3" aria-label={language === 'ar' ? 'جارٍ تحميل الإجراءات' : 'Loading actions'}>{[1,2,3,4,5,6].map(n => <div key={n} className="h-28 rounded-xl bg-muted animate-pulse" />)}</div> : state.error && groups.length === 0 ? (
         <Card className="border-destructive/30"><CardContent className="py-5 flex flex-wrap gap-3 items-center justify-between"><span>{language === 'ar' ? 'تعذر تحميل الإجراءات اليومية.' : 'Daily actions could not be loaded.'}</span><Button variant="outline" size="sm" onClick={load}><RefreshCcw className="w-4 h-4 mr-2" />{language === 'ar' ? 'إعادة المحاولة' : 'Retry'}</Button></CardContent></Card>
       ) : groups.length === 0 ? <Card className="border-dashed"><CardContent className="py-6 text-sm text-muted-foreground">{language === 'ar' ? 'لا توجد إجراءات متاحة ضمن صلاحياتك أو نطاق الفرع الحالي.' : 'No daily actions are available for your permissions or current branch.'}</CardContent></Card> : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {groups.map(group => {
             const Icon = iconFor(group.key); const text = label(group.key);
             const unavailable = group.status === 'error' || group.count === null;

@@ -3806,6 +3806,11 @@ export default function WhatsAppPage() {
                     </Button>
                     {phoneSync && <span className="text-xs text-muted-foreground">
                       {t(`كل محادثات الجوال · ${phoneSync.chats} محادثة · ${phoneSync.visible_unread_chats ?? phoneSync.unread_chats} ظاهرة غير مقروءة`, `All phone chats · ${phoneSync.chats} chats · ${phoneSync.visible_unread_chats ?? phoneSync.unread_chats} shown unread`)}
+                      <span className="block font-medium" title={phoneSync.synced_at || ''}>
+                        {phoneSync.synced_at
+                          ? t(`آخر مزامنة للجوال: ${new Date(phoneSync.synced_at).toLocaleString('ar-SA', { timeZone: 'Asia/Riyadh' })}`, `Last phone sync: ${new Date(phoneSync.synced_at).toLocaleString('en-US', { timeZone: 'Asia/Riyadh' })}`)
+                          : t('وقت آخر مزامنة للجوال غير متاح', 'Last phone sync time unavailable')}
+                      </span>
                       {phoneSync.stale && <span className="block text-amber-700">{t('تعذر تحديث بيانات الجوال. المعروض آخر نسخة محفوظة، وقد تتغير حالة القراءة على الجوال.', 'Phone refresh unavailable. Showing the last saved snapshot; read state may have changed on the phone.')}</span>}
                       {phoneSync.unknown_read_chats > 0 && <span className="block text-amber-700">{t(`حالة الجوال غير مؤكدة لـ ${phoneSync.unknown_read_chats} محادثة؛ قد تظهر رسائل غير مقروءة وصلت للنظام، ولا تعني تأكيدًا من الجوال.`, `Phone read state is unavailable for ${phoneSync.unknown_read_chats} chats; locally received unread messages may still appear without phone confirmation.`)}</span>}
                       {phoneSync.excluded > 0 && <span className="block text-amber-700">{t(`لم يعرض المزود بيانات مكتملة لـ ${phoneSync.excluded} سجلًا؛ المطابقة تشمل المحادثات المتاحة فقط.`, `${phoneSync.excluded} provider records are incomplete; synchronization covers available chats only.`)}</span>}

@@ -229,6 +229,24 @@ def test_conversations_use_read_state_instead_of_last_message_direction(fake_db)
     assert "مزامنة الجوال" in group["items"][0]["detail"]
 
 
+def test_needs_reply_is_independent_of_read_state_and_branch_scoped(fake_db):
+    rows = fake_db.whatsapp_cloud_conversations.docs
+    rows[0]["needs_reply"] = False  # Unread, but already answered.
+    rows[1]["needs_reply"] = True  # Read, but still awaiting an answer.
+    rows[2]["needs_reply"] = True  # Another branch.
+    group = run(actions._needs_reply_group("a"))
+    assert group["count"] == 1
+    assert [item["entity_id"] for item in group["items"]] == ["c-out"]
+    assert "مقروءة" in group["items"][0]["detail"]
+    response = run(actions.get_dashboard_actions(
+        branch_filter="a",
+        current_user={"user_id": "staff", "branch_id": "a", "is_admin": False},
+    ))
+    groups = {item["key"]: item for item in response["groups"]}
+    assert groups["conversations"]["count"] == 1
+    assert groups["needs_reply"]["count"] == 1
+
+
 def test_failed_sends_dedupe_cloud_echo_and_keep_full_count_over_item_cap(fake_db):
     """A delivered cloud receipt suppresses its campaign failure across sources."""
     now = datetime.now(ZoneInfo("Asia/Riyadh"))

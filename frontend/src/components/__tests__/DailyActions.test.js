@@ -19,6 +19,7 @@ const allGroups = [
   { key: 'absence', count: 1, status: 'ready', items: [{ id: 'a1', title: 'Absent member', detail: '3 absences', kind: 'attendance', entity_id: 'm2', branch_id: 'north' }], has_more: false },
   { key: 'registrations', count: 1, status: 'ready', items: [{ id: 'r1', title: 'Registration', detail: 'Pending review', kind: 'registration_request', entity_id: 'r1', branch_id: 'north' }], has_more: false },
   { key: 'conversations', count: 1, status: 'ready', items: [{ id: 'c1', title: 'Inbound contact', detail: 'Last inbound message', kind: 'whatsapp', entity_id: 'c1', branch_id: 'north' }], has_more: false },
+  { key: 'needs_reply', count: 1, status: 'ready', items: [{ id: 'c2', title: 'Read contact awaiting reply', detail: 'Read, needs reply', kind: 'whatsapp', entity_id: 'c2', branch_id: 'north' }], has_more: false },
   { key: 'failures', count: 1, status: 'ready', items: [{ id: 'f1', title: 'Failed payment', detail: 'Declined', kind: 'failed_payment', entity_id: 'f1' }], has_more: false },
 ];
 
@@ -35,6 +36,7 @@ test('inbound Open targets the exact conversation and branch without a phone loo
   expect(url.pathname).toBe('/admin/whatsapp');
   expect(url.searchParams.get('conversation')).toBe('branch-a:966500000000');
   expect(url.searchParams.get('branch')).toBe('branch-a');
+  expect(pageFor('needs_reply', { entity_id: 'c2', branch_id: 'north' })).toBe('/admin/whatsapp?conversation=c2&branch=north');
   expect(pageFor('registrations', { entity_id: 'r1' })).toBe('/admin/registration-requests');
 });
 
@@ -108,7 +110,7 @@ test('sends renewals-only actions to the supported renewals page', async () => {
   expect(pageFor('expiring', { kind: 'member', entity_id: 'm1' })).toBe('/admin/renewals');
 });
 
-test('all five cards open their current API-supplied lists, including an empty list', async () => {
+test('all six cards open their current API-supplied lists, including an empty list', async () => {
   dashboardAPI.getActions.mockResolvedValueOnce(response(allGroups.map(group => (
     group.key === 'conversations' ? { ...group, count: 0, items: [] } : group
   ))));
@@ -119,6 +121,7 @@ test('all five cards open their current API-supplied lists, including an empty l
     ['Attendance follow-up', 'Absent member'],
     ['Pending registrations', 'Registration'],
     ['Unread chats', 'There are no items to show.'],
+    ['Chats needing a reply', 'Read contact awaiting reply'],
     ['Confirmed failures', 'Failed payment'],
   ];
   for (const [card, item] of expectations) {
@@ -133,6 +136,7 @@ test('routes every backend action kind only to an existing matching list page', 
   expect(pageFor('absence', { kind: 'attendance' })).toBe('/admin/attendance');
   expect(pageFor('registrations', { kind: 'registration_request' })).toBe('/admin/registration-requests');
   expect(pageFor('conversations', { kind: 'whatsapp' })).toBe('/admin/whatsapp');
+  expect(pageFor('needs_reply', { kind: 'whatsapp' })).toBe('/admin/whatsapp');
   expect(pageFor('failures', { kind: 'failed_send' })).toBe('/admin/whatsapp');
   expect(pageFor('failures', { kind: 'failed_payment' })).toBe('/admin/settings#billing');
   expect(pageFor('failures', { kind: 'payment' })).toBe('/admin/settings#billing');

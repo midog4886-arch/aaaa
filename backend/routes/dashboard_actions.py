@@ -304,6 +304,38 @@ async def _conversations_group(branch_id: Optional[str]) -> dict:
     }
 
 
+async def _needs_reply_group(branch_id: Optional[str]) -> dict:
+    scope = {"branch_id": branch_id} if branch_id else {}
+    query = {**scope, "needs_reply": True}
+    conversations = db["whatsapp_cloud_conversations"]
+    total_task = conversations.count_documents(query)
+    rows_task = (
+        conversations.find(query, {"_id": 0, "id": 1, "contact_name": 1,
+                                   "last_message_at": 1, "branch_id": 1,
+                                   "unread_count": 1, "phone_mirrored": 1,
+                                   "phone_synced_at": 1})
+        .sort("last_message_at", -1).limit(ITEM_LIMIT + 1)
+        .to_list(length=ITEM_LIMIT + 1)
+    )
+    total, rows = await asyncio.gather(total_task, rows_task)
+    items = [{
+        "id": str(row.get("id") or ""),
+        "title": _safe_conversation_title(row),
+        "detail": "تحتاج ردًا{}{}{}".format(
+            " — غير مقروءة" if int(row.get("unread_count") or 0) > 0 else " — مقروءة",
+            " — آخر رسالة " + _date_text(row.get("last_message_at"))
+            if row.get("last_message_at") else "",
+            " — آخر مزامنة للجوال " + _date_text(row.get("phone_synced_at"))
+            if row.get("phone_mirrored") and row.get("phone_synced_at")
+            else " — حالة الجوال غير مؤكدة" if row.get("phone_mirrored") else "",
+        ),
+        "kind": "whatsapp", "entity_id": _optional_string(row.get("id")),
+        "branch_id": _optional_string(row.get("branch_id")),
+    } for row in rows[:ITEM_LIMIT]]
+    return {"key": "needs_reply", "count": int(total), "status": "ready",
+            "items": items, "has_more": int(total) > len(items)}
+
+
 def _send_time(row: dict):
     for field in (
         "status_updated_at", "completed_at", "updated_at", "delivered_at",
@@ -610,6 +642,7 @@ async def get_dashboard_actions(
         jobs.append(("registrations", lambda: _registrations_group(branch_id)))
     if allowed("messages"):
         jobs.append(("conversations", lambda: _conversations_group(branch_id)))
+        jobs.append(("needs_reply", lambda: _needs_reply_group(branch_id)))
     if allowed("messages") or permissions is None:
         # Admins always bypass UI permissions and additionally get the
         # academy-wide billing payment failures.
