@@ -138,6 +138,9 @@ def _search_registration_requests(query: dict, search: Optional[str]):
         {"marketer_name": {"$regex": re.escape(normalized), "$options": "i"}},
         {"activity_name": {"$regex": re.escape(normalized), "$options": "i"}},
     ]
+    reference = normalized.lstrip("#")
+    if len(reference) >= 4:
+        terms.append({"id": {"$regex": f"^{re.escape(reference)}", "$options": "i"}})
     digits = "".join(c for c in normalized if c.isdigit())
     if len(digits) >= 3:
         # Customer numbers are commonly stored with spaces/dashes.  Match the
@@ -498,6 +501,10 @@ class PublicRegistrationCreate(BaseModel):
     referral_code: Optional[str] = ""
     source: Optional[str] = ""
 
+
+class StaffRegistrationCreate(PublicRegistrationCreate):
+    branch_id: str
+
 class RegistrationRequestUpdate(BaseModel):
     status: str
     reason: str = Field(default='', max_length=500)
@@ -661,9 +668,8 @@ async def public_get_registration_branch(branch_id: str):
     }
 
 
-@router.post("/public/registration/{branch_id}")
-async def public_create_registration(branch_id: str, payload: PublicRegistrationCreate):
-    """Public submission -> pending review request. No member is created."""
+async def _create_registration_request(branch_id: str, payload: PublicRegistrationCreate, *, staff_user_id: str = ""):
+    """Both entry points create the same pending request; no member is created."""
     branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1})
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
@@ -685,17 +691,19 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="تاريخ البداية المتوقع مطلوب وغير صحيح")
 
-    # Light anti-spam: cap repeated submissions from the same phone+branch.
-    one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    recent = await db.registration_requests.count_documents({
-        "branch_id": branch_id,
-        "customer_phone": phone,
-        "age": payload.age,
-        "expected_start_date": payload.expected_start_date,
-        "created_at": {"$gte": one_hour_ago},
-    })
-    if recent >= 3:
-        raise HTTPException(status_code=429, detail="تم استلام طلبك بالفعل. برجاء الانتظار قبل إرسال طلب جديد.")
+    # The public form needs a spam cap. Staff may enter several siblings with
+    # the same guardian, age and start date in one sitting.
+    if not staff_user_id:
+        one_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        recent = await db.registration_requests.count_documents({
+            "branch_id": branch_id,
+            "customer_phone": phone,
+            "age": payload.age,
+            "expected_start_date": payload.expected_start_date,
+            "created_at": {"$gte": one_hour_ago},
+        })
+        if recent >= 3:
+            raise HTTPException(status_code=429, detail="تم استلام طلبك بالفعل. برجاء الانتظار قبل إرسال طلب جديد.")
 
     from services import registration_followups
     followup_fields = await registration_followups.enrollment_fields_for_new(
@@ -718,10 +726,16 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
         # Track where the request came from. "social_ad" = the all-branches
         # link shared in social-media ads; anything else falls back to the
         # normal public link so we never store arbitrary client-supplied values.
-        "source": "social_ad" if (payload.source or "").strip().lower() in ("social", "social_ad") else "public_link",
+        "source": "staff" if staff_user_id else "social_ad" if (payload.source or "").strip().lower() in ("social", "social_ad") else "public_link",
         "created_at": created_at,
         **followup_fields,
     }
+    if staff_user_id:
+        doc["created_by_user_id"] = staff_user_id
+        doc["followup_status"] = "stopped"
+        doc["followup_stop_reason"] = "staff_contacted"
+        doc["followup_staff_contacted_at"] = created_at
+        doc["followup_stopped_at"] = created_at
 
     # Marketer (affiliate) referral: attach the marketer if the link carried a
     # valid, active referral code so the supervisor sees it and the discount +
@@ -749,24 +763,44 @@ async def public_create_registration(branch_id: str, payload: PublicRegistration
 
     await db.registration_requests.insert_one(doc)
 
-    # Notify admins (branch-scoped) that a new self-registration request arrived.
-    # Best-effort: a push failure must never break the public submission.
-    try:
-        from routes.push_notifications import send_push_to_admins, NotificationPayload
-        activity_txt = doc["activity_name"] or "بدون نشاط محدد"
-        payload = NotificationPayload(
-            title="طلب تسجيل جديد",
-            body=f"{name} — {activity_txt}",
-            url="/admin/registration-requests",
-            tag="registration-request",
-            title_en="New registration request",
-            body_en=f"{name} — {doc['activity_name'] or 'no activity'}",
-        )
-        await send_push_to_admins(payload, branch_id=branch_id)
-    except Exception:
-        pass
+    # Only public submissions need a new-request alert; the staff member who
+    # entered a request is already on its journey page.
+    if not staff_user_id:
+        try:
+            from routes.push_notifications import send_push_to_admins, NotificationPayload
+            activity_txt = doc["activity_name"] or "بدون نشاط محدد"
+            push_payload = NotificationPayload(
+                title="طلب تسجيل جديد",
+                body=f"{name} — {activity_txt}",
+                url="/admin/registration-requests",
+                tag="registration-request",
+                title_en="New registration request",
+                body_en=f"{name} — {doc['activity_name'] or 'no activity'}",
+            )
+            await send_push_to_admins(push_payload, branch_id=branch_id)
+        except Exception:
+            pass
 
-    return {"success": True, "message": "تم استلام طلب التسجيل بنجاح", "request_number": doc["id"][:8].upper()}
+    return {"success": True, "message": "تم استلام طلب التسجيل بنجاح", "request_number": doc["id"][:8].upper(), "request_id": doc["id"]}
+
+
+@router.post("/public/registration/{branch_id}")
+async def public_create_registration(branch_id: str, payload: PublicRegistrationCreate):
+    result = await _create_registration_request(branch_id, payload)
+    result.pop("request_id", None)
+    return result
+
+
+@router.post("/registration-requests")
+async def staff_create_registration(payload: StaffRegistrationCreate, current_user: dict = Depends(get_current_user)):
+    if not current_user.get("is_admin"):
+        user = await db.users.find_one({"id": current_user.get("user_id")}, {"_id": 0, "permissions": 1})
+        if "invoices" not in (user or {}).get("permissions", []):
+            raise HTTPException(status_code=403, detail="Invoice access required")
+    branch_id = resolve_branch_filter(current_user, payload.branch_id)
+    if not current_user.get("is_admin") and branch_id != payload.branch_id:
+        raise HTTPException(status_code=403, detail="Branch access denied")
+    return await _create_registration_request(payload.branch_id, payload, staff_user_id=current_user.get("user_id") or "staff")
 
 
 # ============ ADMIN ROUTES (auth + branch scope) ============

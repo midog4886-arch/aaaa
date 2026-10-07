@@ -722,6 +722,21 @@ def test_public_request_stays_pending_when_branch_member_matches(database):
     assert "member_id" not in row
 
 
+def test_staff_registration_uses_same_queue_without_automatic_followup(database):
+    database.branches.rows.append({"id": "b1"})
+    payload = routes.StaffRegistrationCreate(
+        branch_id="b1", customer_name="طفل جديد", customer_phone="0501234567",
+        age=8, nationality="سعودي", expected_start_date="2026-10-07",
+    )
+    result = run(routes.staff_create_registration(payload, {"is_admin": True, "user_id": "staff"}))
+    row = database.registration_requests.rows[0]
+    assert result["request_id"] == row["id"]
+    assert row["source"] == "staff"
+    assert row["status"] == "pending"
+    assert row["followup_status"] == "stopped"
+    assert row["followup_stop_reason"] == "staff_contacted"
+
+
 def test_non_admin_list_reconciles_only_authorized_branch(database):
     database.members.rows.extend([
         {"id": "m1", "branch_id": "b1", "phone": "0501234567"},

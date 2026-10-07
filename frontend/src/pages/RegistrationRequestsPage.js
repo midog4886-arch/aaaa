@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import RegistrationPaymentLink from '../components/RegistrationPaymentLink';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
@@ -35,6 +35,7 @@ const STAGES = { new: 'جديد', contacted: 'تم التواصل', awaiting_pay
 export const RegistrationRequestsPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isAdmin = user?.is_admin;
 
   const [branches, setBranches] = useState([]);
@@ -46,8 +47,8 @@ export const RegistrationRequestsPage = () => {
   const [shortLink, setShortLink] = useState(null);
   const [linkError, setLinkError] = useState(false);
   const [multiBranchIds, setMultiBranchIds] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('pending');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || 'pending');
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [overview, setOverview] = useState({});
   const [assignees, setAssignees] = useState([]);
   const [activityFilter, setActivityFilter] = useState('');
@@ -324,9 +325,10 @@ export const RegistrationRequestsPage = () => {
               <span className="bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full px-2 py-0.5">{requests.length}</span>
             )}
           </div>
-          <Button variant="outline" onClick={() => setShowLink(v => !v)} className="gap-1.5">
-            <Link2 className="w-4 h-4" /> رابط التسجيل العام
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => navigate('/admin/registration-new')} className="gap-1.5 bg-blue-700 hover:bg-blue-800"><UserPlus className="w-4 h-4" /> تسجيل بواسطة الموظف</Button>
+            <Button variant="outline" onClick={() => setShowLink(v => !v)} className="gap-1.5"><Link2 className="w-4 h-4" /> رابط التسجيل العام</Button>
+          </div>
         </div>
 
         <div className="mb-5 rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-xs leading-6 text-gray-700">
@@ -625,6 +627,7 @@ export const RegistrationRequestsPage = () => {
                       <p className="mt-2 text-[11px] text-gray-400">{new Date(req.created_at).toLocaleString('ar-EG')}</p>
                     </div>
                     <div className="flex flex-col gap-2 shrink-0">
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/admin/registration-journey/${encodeURIComponent(req.id)}`)} data-testid={`open-registration-journey-${req.id}`}>مسار التسجيل</Button>
                       {req.status === 'archived' ? (
                         <Button size="sm" variant="outline" onClick={() => handleUnarchive(req)} className="gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50" data-testid={`button-unarchive-${req.id}`}>
                           <ArchiveRestore className="w-3.5 h-3.5" /> استعادة من الأرشيف

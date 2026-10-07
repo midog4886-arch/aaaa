@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../../../../components/ui/dialog';
 import { Button } from '../../../../components/ui/button';
 import { CheckCircle, Edit, Loader2, MessageSquare, Printer, Receipt, RefreshCcw, RotateCcw, Trash2 } from 'lucide-react';
@@ -199,6 +200,7 @@ export const ViewInvoiceDialog = ({
         )}
         <DialogFooter className="flex flex-col gap-3 sm:flex-col">
           <div className="flex flex-wrap gap-2 justify-center border-b pb-3">
+            {selectedInvoice?.registration_request_id && <Button asChild variant="outline" size="sm"><Link to={`/admin/registration-journey/${encodeURIComponent(selectedInvoice.registration_request_id)}`}>{isAr ? 'مسار التسجيل' : 'Registration journey'}</Link></Button>}
             <Button variant="outline" onClick={onPrint} size="sm"><Printer className="w-4 h-4 me-1" />{t('print')}</Button>
             <Button variant="outline" onClick={onSaveAsPdf} disabled={savingPdf} size="sm" className="bg-emerald-50 border-emerald-400 text-emerald-700 hover:bg-emerald-100">
               {savingPdf ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <MessageSquare className="w-4 h-4 me-1" />}

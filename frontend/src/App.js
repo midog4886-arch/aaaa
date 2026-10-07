@@ -57,6 +57,8 @@ const MembersPage = lazy(() => import('./pages/MembersPage'));
 const ActivitiesPage = lazy(() => import('./pages/ActivitiesPage'));
 const PublicRegistrationPage = lazy(() => import('./pages/PublicRegistrationPage'));
 const RegistrationRequestsPage = lazy(() => import('./pages/RegistrationRequestsPage'));
+const RegistrationJourneyPage = lazy(() => import('./pages/RegistrationJourneyPage'));
+const StaffRegistrationPage = lazy(() => import('./pages/StaffRegistrationPage'));
 const CampaignInquiriesPage = lazy(() => import('./pages/CampaignInquiriesPage'));
 const LevelsPage = lazy(() => import('./pages/LevelsPage'));
 const CertificatesPage = lazy(() => import('./pages/CertificatesPage'));
@@ -392,6 +394,8 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route path="/admin/registration-journey/:requestId" element={<ProtectedRoute permission="invoices"><RegistrationJourneyPage /></ProtectedRoute>} />
+      <Route path="/admin/registration-new" element={<ProtectedRoute permission="invoices"><StaffRegistrationPage /></ProtectedRoute>} />
       <Route
         path="/admin/campaign-inquiries"
         element={
