@@ -477,7 +477,7 @@ async def update_member_preferences(
 @router.get("/subscriptions")
 async def get_member_subscriptions(member: dict = Depends(get_current_member)):
     """Get all subscriptions from member's activities data"""
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    today = datetime.now(RIYADH_TZ).strftime('%Y-%m-%d')
     
     # Get member's activities directly from member data
     activities = member.get("activities", [])
@@ -556,7 +556,21 @@ async def get_member_subscriptions(member: dict = Depends(get_current_member)):
     except Exception:
         quota_map = {}
 
+    seen_periods = set()
     for activity in activities:
+        # A renewal/import may leave the same current period twice on one
+        # member. Quota is per owner + activity, so a second identical row
+        # would only repeat the same balance on the family's dashboard.
+        period_key = (
+            activity.get("_owner_id") or member["id"],
+            activity.get("activity_id") or activity.get("activity_name"),
+            activity.get("level_id"),
+            str(activity.get("start_date") or "")[:10],
+            str(activity.get("end_date") or "")[:10],
+        )
+        if period_key in seen_periods:
+            continue
+        seen_periods.add(period_key)
         end_date = activity.get("end_date", "")
         start_date = activity.get("start_date", "")
 
@@ -983,7 +997,7 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
 @router.get("/notifications")
 async def get_member_notifications(member: dict = Depends(get_current_member)):
     """Get notifications for the member"""
-    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    today = datetime.now(RIYADH_TZ).strftime('%Y-%m-%d')
     notifications = []
     
     linked_ids_list = member.get("_linked_member_ids", [member["id"]])
@@ -992,15 +1006,36 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
     # CURRENT activity records (member.activities), which already aggregate all
     # linked siblings and reflect day-extensions / freezes. The original invoice
     # dates go stale after an extension, so they must NOT be used here.
-    seven_days_later = (datetime.now(timezone.utc) + timedelta(days=7)).strftime('%Y-%m-%d')
+    seven_days_later = (datetime.now(RIYADH_TZ) + timedelta(days=7)).strftime('%Y-%m-%d')
 
     own_name = member.get("name_ar") or member.get("name") or ""
+    latest_end_by_activity = {}
+    for activity in member.get("activities", []):
+        if activity.get("status") in ("cancelled", "inactive", "refunded"):
+            continue
+        owner_id = activity.get("_owner_id") or member["id"]
+        end_date = str(activity.get("end_date") or "")[:10]
+        if not end_date:
+            continue
+        activity_key = (owner_id, activity.get("activity_id"))
+        latest_end_by_activity[activity_key] = max(
+            latest_end_by_activity.get(activity_key, ""), end_date
+        )
+    latest_ends_by_owner = {}
+    for (owner_id, _activity_id), end_date in latest_end_by_activity.items():
+        latest_ends_by_owner.setdefault(owner_id, set()).add(end_date)
+
     seen_expiry = set()
     for act in member.get("activities", []):
+        if act.get("status") in ("cancelled", "inactive", "refunded"):
+            continue
         if not act.get("activity_id"):
             continue
         end_date = str(act.get("end_date") or "")[:10]
         if not end_date:
+            continue
+        owner_id = act.get("_owner_id") or member["id"]
+        if latest_end_by_activity.get((owner_id, act.get("activity_id"))) != end_date:
             continue
         owner_name = act.get("_owner_name") or own_name
         key = (act.get("_owner_id", ""), act.get("activity_id"), end_date)
@@ -1062,13 +1097,39 @@ async def get_member_notifications(member: dict = Depends(get_current_member)):
         {"_id": 0}
     ).sort("created_at", -1).to_list(50)
 
+    # Durable reminders are a record of what was sent, but a later extension
+    # must not leave an obsolete expiry warning in the live portal inbox.
+    current_member_notifs = []
+    seen_saved_expiry = set()
+    for notif in member_notifs:
+        notif_type = notif.get("type")
+        owner_id = notif.get("member_id")
+        end_date = str(notif.get("end_date") or "")[:10]
+        if notif_type == "subscription_expiry" and end_date:
+            if latest_end_by_activity.get((owner_id, notif.get("activity_id"))) != end_date:
+                continue
+            expiry_key = (owner_id, notif.get("activity_id"), end_date)
+            if expiry_key in seen_saved_expiry:
+                continue
+            seen_saved_expiry.add(expiry_key)
+        elif notif_type == "expiry_reminder":
+            # Automatic WhatsApp reminders encode the period in their key.
+            # Keep manual reminders, whose wording is an historical message.
+            dedup_key = str(notif.get("dedup_key") or "")
+            if dedup_key.startswith("expiry-"):
+                date_match = re.search(r"(\d{4}-\d{2}-\d{2})-\d+$", dedup_key)
+                reminder_date = date_match.group(1) if date_match else ""
+                if reminder_date not in latest_ends_by_owner.get(owner_id, set()):
+                    continue
+        current_member_notifs.append(notif)
+
     saved_expiry = {(row.get('member_id'), row.get('activity_id'), row.get('end_date'))
-                    for row in member_notifs if row.get('type') == 'subscription_expiry'}
+                    for row in current_member_notifs if row.get('type') == 'subscription_expiry'}
     notifications = [row for row in notifications
                      if row.get('type') != 'expiring_soon' or
                      (row.get('member_id'), row.get('activity_id'), row.get('end_date')) not in saved_expiry]
     
-    for notif in member_notifs:
+    for notif in current_member_notifs:
         notifications.append({
             "id": notif.get("id", str(notif.get("_id", ""))),
             "type": notif.get("type", "info"),

@@ -352,7 +352,9 @@ const MemberDashboard = () => {
 
   const darkMode = getDarkMode();
   const language = getLanguage();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
   const primary = useBrandColor();
   const supportContact = useSupportContact();
 
@@ -505,31 +507,42 @@ const MemberDashboard = () => {
           {/* ── Remaining sessions + renew (prominent) ── */}
           {(() => {
             const quotaSubs = (subscriptions.active || []).filter(s => s.sessions_total != null);
-            const hasExpired = (subscriptions.expired || []).length > 0;
-            const noActive = (subscriptions.active || []).length === 0;
-            if (!quotaSubs.length && !(hasExpired && noActive)) return null;
+            const expiredSubs = (subscriptions.expired || []).filter(s =>
+              !(subscriptions.active || []).some(active =>
+                active._owner_id === s._owner_id &&
+                active.activity_id === s.activity_id &&
+                active.end_date > s.end_date
+              )
+            );
+            const hasExpired = expiredSubs.length > 0;
+            if (!quotaSubs.length && !hasExpired) return null;
             const low = quotaSubs.some(s => (s.sessions_remaining ?? 99) <= 2);
             // Target the branch of the subscription that actually needs renewing
             // (linked family members can belong to different branches).
             const urgentSub = quotaSubs.find(s => (s.sessions_remaining ?? 99) <= 2)
-              || ((hasExpired && noActive) ? (subscriptions.expired || [])[0] : null);
+              || (hasExpired ? expiredSubs[0] : null);
             const RENEW_WA = whatsappChatUrl(
               supportContactFor(supportContact, urgentSub?._owner_id).whatsapp,
               `السلام عليكم، أرغب بتجديد الاشتراك.\nالاسم: ${(urgentSub?._owner_name) || member?.name_ar || member?.name || ''}\nرقم العضوية: #${member?.member_code || ''}`
             );
-            const urgent = (hasExpired && noActive) || low;
+            const urgent = hasExpired || low;
             return (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }}>
                 <Card data-testid="sessions-remaining-card" className={`${urgent
                   ? (darkMode ? 'bg-red-900/20 border-red-700' : 'bg-red-50 border-red-200')
                   : (darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white')}`}>
                   <CardContent className="p-4">
-                    {quotaSubs.length > 0 ? (
+                    {quotaSubs.length > 0 && (
                       <div className="space-y-2">
                         {quotaSubs.map((s, i) => (
                           <div key={i} className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{s.activity_name}{s._owner_name ? ` — ${s._owner_name}` : ''}</p>
+                              {s.end_date && <p className={`text-xs ${s.end_date === today ? 'text-amber-500 font-bold' : (darkMode ? 'text-gray-400' : 'text-gray-500')}`}>
+                                {language === 'ar'
+                                  ? (s.end_date === today ? 'ينتهي اليوم' : `صالح حتى ${s.end_date}`)
+                                  : (s.end_date === today ? 'Ends today' : `Valid until ${s.end_date}`)}
+                              </p>}
                               <p className={`text-xl font-black ${((s.sessions_remaining ?? 99) <= 2) ? 'text-red-500' : (darkMode ? 'text-white' : 'text-gray-900')}`}>
                                 {language === 'ar'
                                   ? `متبقي ${s.sessions_remaining} من ${s.sessions_total} حصة`
@@ -545,12 +558,18 @@ const MemberDashboard = () => {
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <p className={`font-bold ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
-                        {language === 'ar' ? '⚠️ اشتراكك منتهي — جدّد الآن لمواصلة التدريب' : '⚠️ Your subscription has expired — renew to keep training'}
-                      </p>
                     )}
-                    {(urgent || hasExpired) && (
+                    {hasExpired && (
+                      <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-800 space-y-1">
+                        {expiredSubs.map((s, i) => (
+                          <p key={`${s._owner_id || 'member'}-${s.activity_id || 'activity'}-${s.end_date}-${i}`} className="text-xs text-red-600 dark:text-red-300">
+                            {language === 'ar' ? 'منتهي' : 'Expired'}: {s.activity_name}{s._owner_name ? ` — ${s._owner_name}` : ''}
+                            {s.end_date ? ` (${s.end_date})` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {urgent && (
                       <a
                         href={RENEW_WA}
                         target="_blank"
