@@ -218,16 +218,19 @@ export const InvoicesPage = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const viewId = params.get('view');
-    if (!viewId || loading || !invoices.length) return;
+    if (!viewId || loading) return;
     if (handledViewIdRef.current === viewId) return;
     const inv = invoices.find(i => i.id === viewId || String(i.invoice_number) === String(viewId));
-    if (!inv) return;
     handledViewIdRef.current = viewId;
-    handleViewInvoice(inv);
-    // Clean the param so refreshing the page doesn't re-open the dialog.
-    params.delete('view');
-    const next = params.toString();
-    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true });
+    // Direct links may target an old invoice outside the loaded page or a
+    // different branch. Fetch by ID in that case; the API enforces access.
+    const open = inv ? Promise.resolve(inv) : invoicesAPI.getById(viewId).then(response => response.data);
+    open.then(record => {
+      handleViewInvoice(record);
+      params.delete('view');
+      const next = params.toString();
+      navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: true });
+    }).catch(() => { handledViewIdRef.current = null; });
   }, [location.search, loading, invoices, handleViewInvoice, navigate, location.pathname]);
 
   const { isRegistrationFormDialogOpen, setIsRegistrationFormDialogOpen, isViewRegFormDialogOpen, setIsViewRegFormDialogOpen,

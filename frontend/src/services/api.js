@@ -352,6 +352,10 @@ export const dashboardAPI = {
   saveSettings: (data) => axios.put(`${API}/dashboard/settings`, data),
 };
 
+export const dataIntegrityAPI = {
+  get: (params = {}) => axios.get(`${API}/data-integrity`, { params }),
+};
+
 // Global Search API
 export const globalSearchAPI = {
   search: (q, branchFilter) => {

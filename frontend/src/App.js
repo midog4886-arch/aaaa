@@ -63,6 +63,7 @@ const CertificatesPage = lazy(() => import('./pages/CertificatesPage'));
 const MemberCertificates = lazy(() => import('./pages/member-portal/MemberCertificates'));
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const DataIntegrityPage = lazy(() => import('./pages/DataIntegrityPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const OperationPasswordsPage = lazy(() => import('./pages/OperationPasswordsPage'));
@@ -432,6 +433,7 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route path="/admin/data-integrity" element={<ProtectedRoute permission="settings"><DataIntegrityPage /></ProtectedRoute>} />
       <Route 
         path="/admin/daily-ledger" 
         element={

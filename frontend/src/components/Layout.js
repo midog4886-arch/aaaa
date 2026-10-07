@@ -265,6 +265,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         ...(isAdmin ? [{ to: '/admin/users', icon: Users, label: 'users', permission: 'users' }] : []),
         ...(isAdmin ? [{ to: '/admin/backup', icon: HardDrive, label: 'backup', permission: 'backup', feature: 'backup' }] : []),
         ...(isAdmin ? [{ to: '/admin/audit', icon: ShieldCheck, label: 'audit_log', permission: 'settings' }] : []),
+        ...(isAdmin ? [{ to: '/admin/data-integrity', icon: AlertTriangle, label_ar: 'سلامة البيانات', label_en: 'Data integrity', permission: 'settings' }] : []),
         ...(isAdmin ? [{ to: '/admin/operation-passwords', icon: Lock, label: 'operation_passwords', permission: 'settings' }] : []),
         ...(isAdmin ? [{ to: '/admin/ops-alerts', icon: AlertTriangle, label: 'ops_alerts', permission: 'settings' }] : []),
         ...(isAdmin ? [{ to: '/admin/support', icon: MessageSquare, label: 'support', permission: 'settings' }] : []),

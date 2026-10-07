@@ -264,6 +264,8 @@ api_router.include_router(global_search_router)
 
 from routes.dashboard_actions import router as dashboard_actions_router
 api_router.include_router(dashboard_actions_router)
+from routes.data_integrity import router as data_integrity_router
+api_router.include_router(data_integrity_router)
 from routes.operations_followup import router as operations_followup_router
 api_router.include_router(operations_followup_router)
 from routes.whatsapp_workflow import router as whatsapp_workflow_router
