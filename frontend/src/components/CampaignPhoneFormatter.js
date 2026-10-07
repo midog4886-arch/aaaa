@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { displayPhone, extractPhoneNumbers, filterPhoneNumbers } from '../utils/phoneNumberFormatter';
+import { createCampaignPhoneWorkbook } from '../utils/campaignPhoneWorkbook';
 
 export default function CampaignPhoneFormatter({ t, onUse }) {
   const [source, setSource] = useState('');
@@ -40,18 +41,23 @@ export default function CampaignPhoneFormatter({ t, onUse }) {
       toast.error(t('تعذر النسخ التلقائي؛ حدّد النص من المربع وانسخه يدويًا', 'Automatic copy failed; select and copy the output manually'));
     }
   };
-  const download = () => {
-    if (!output) return;
-    const blob = new Blob(['\uFEFF', output], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `campaign-numbers-${new Date().toISOString().slice(0, 10)}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast.success(t('تم تجهيز ملف الأرقام للتنزيل', 'Number file is ready to download'));
+  const download = async () => {
+    if (!numbers.length) return;
+    try {
+      const data = await createCampaignPhoneWorkbook(numbers, t('رقم الجوال', 'Phone number'));
+      const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `campaign-numbers-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(t('تم تجهيز ملف Excel للتنزيل', 'Excel file is ready to download'));
+    } catch (_) {
+      toast.error(t('تعذر إنشاء ملف Excel', 'Could not create the Excel file'));
+    }
   };
 
   return <div className="space-y-4">
@@ -78,7 +84,7 @@ export default function CampaignPhoneFormatter({ t, onUse }) {
             <option value="line">{t('رقم في كل سطر', 'One per line')}</option>
           </select>
           <Button variant="outline" onClick={copy} disabled={!numbers.length}><Copy className="w-4 h-4 me-1" />{t('نسخ الأرقام', 'Copy numbers')}</Button>
-          <Button variant="outline" onClick={download} disabled={!numbers.length}><Download className="w-4 h-4 me-1" />{t('تنزيل ملف TXT', 'Download TXT file')}</Button>
+          <Button variant="outline" onClick={download} disabled={!numbers.length}><Download className="w-4 h-4 me-1" />{t('تنزيل ملف Excel', 'Download Excel file')}</Button>
           <Button variant="outline" onClick={() => onUse(numbers)} disabled={!numbers.length}>{t('إضافتها للحملة', 'Add to campaign')}</Button>
         </div>
         <Textarea dir="ltr" readOnly value={output} rows={4} aria-label={t('النص الجاهز للنسخ', 'Copy-ready text')} />
