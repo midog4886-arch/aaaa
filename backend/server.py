@@ -170,7 +170,7 @@ from database import db
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret')
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24 * 365 * 100  # 100 years - permanent session
+JWT_EXPIRATION_HOURS = 24
 
 # Stripe Config
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', '')
@@ -196,6 +196,7 @@ if SENTRY_DSN:
 app = FastAPI(title="Champions Academy API")
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 # Include routers
 api_router.include_router(users_router)
@@ -305,8 +306,19 @@ app.include_router(member_support_router)
 from routes.payment_links import router as payment_links_router
 app.include_router(payment_links_router)
 
-# Mount uploads directory for serving images (disk-only, no /api prefix)
-app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+# Only media intended for public delivery may be served without authentication.
+# Expense receipts (including legacy files at the uploads root) stay private.
+for _public_upload_dir in ("ads", "social", "whatsapp_campaigns"):
+    (UPLOADS_DIR / _public_upload_dir).mkdir(parents=True, exist_ok=True)
+    app.mount(
+        f"/uploads/{_public_upload_dir}",
+        StaticFiles(directory=str(UPLOADS_DIR / _public_upload_dir)),
+        name=f"uploads_{_public_upload_dir}",
+    )
+
+@app.get("/uploads/{private_path:path}")
+async def deny_private_uploads(private_path: str):
+    raise HTTPException(status_code=404, detail="File not found")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -1215,7 +1227,7 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
-def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None, branch_ids: Optional[list] = None) -> str:
+def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None, branch_ids: Optional[list] = None, auth_version: int = 0) -> str:
     from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
     payload = {
         "user_id": user_id,
@@ -1223,7 +1235,9 @@ def create_token(user_id: str, username: str, branch_id: str = None, is_admin: b
         "branch_id": branch_id,
         "branch_ids": branch_ids or [],
         "is_admin": is_admin,
+        "auth_version": auth_version,
         "tenant_slug": tenant_slug or get_current_tenant_slug() or DEFAULT_TENANT_SLUG,
+        "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -1243,7 +1257,7 @@ def _enforce_tenant_match_local(payload: dict):
         raise HTTPException(status_code=403, detail="Tenant mismatch")
 
 
-def _require_export_admin_token(token: Optional[str]):
+async def _require_export_admin_token(token: Optional[str]):
     """Validate a query-string JWT for export endpoints and require admin.
 
     Supervisors (is_admin=False) are blocked from data exports — only the
@@ -1251,11 +1265,8 @@ def _require_export_admin_token(token: Optional[str]):
     """
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    _enforce_tenant_match_local(payload)
+    from utils.auth import authenticate_user_token
+    payload = await authenticate_user_token(token)
     if not payload.get("is_admin"):
         raise HTTPException(
             status_code=403,
@@ -1274,36 +1285,18 @@ def _require_admin_export_user(current_user: dict):
 
 
 async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    _enforce_tenant_match_local(payload)
-    payload["_active_branch"] = request.headers.get("X-Branch-Id") or None
-    from utils.auth import apply_active_branch
-    apply_active_branch(payload)
-    return payload
+    from utils.auth import authenticate_user_token
+    return await authenticate_user_token(credentials.credentials, request)
 
-async def get_current_user_from_token(request: Request, token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
+async def get_current_user_from_token(request: Request, token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional)):
     """Support both Bearer token and query parameter token for exports"""
     actual_token = token
     if not actual_token and credentials:
         actual_token = credentials.credentials
     if not actual_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(actual_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    _enforce_tenant_match_local(payload)
-    payload["_active_branch"] = request.headers.get("X-Branch-Id") or None
-    from utils.auth import apply_active_branch
-    apply_active_branch(payload)
-    return payload
+    from utils.auth import authenticate_user_token
+    return await authenticate_user_token(actual_token, request)
 
 # ============ AUTH ROUTES ============
 
@@ -1357,6 +1350,10 @@ async def login(credentials: UserLogin):
             await log_login(username=credentials.username, success=False)
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
+        if user.get("is_active") is False or user.get("disabled") is True or user.get("status") in {"disabled", "suspended", "deleted"}:
+            await log_login(username=credentials.username, success=False)
+            raise HTTPException(status_code=401, detail="Account is no longer active")
+
         branch_id = user.get("branch_id")
         is_admin = user.get("is_admin", False)
         branch_ids = user.get("branch_ids")
@@ -1364,7 +1361,7 @@ async def login(credentials: UserLogin):
             branch_ids = [branch_id] if branch_id else []
 
         await log_login(username=credentials.username, success=True, user=user)
-        token = create_token(user["id"], user["username"], branch_id, is_admin, branch_ids=branch_ids)
+        token = create_token(user["id"], user["username"], branch_id, is_admin, branch_ids=branch_ids, auth_version=user.get("auth_version", 0))
         return TokenResponse(
             access_token=token,
             user={"id": user["id"], "username": user["username"], "name": user.get("name", user["username"]), "branch_id": branch_id, "branch_ids": branch_ids, "is_admin": is_admin, "permissions": user.get("permissions", [])}
@@ -3209,7 +3206,7 @@ async def export_members(
     token: Optional[str] = None
 ):
     """Export members to Excel/CSV"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     
     query = {}
     if activity_id:
@@ -3351,7 +3348,7 @@ async def export_invoices(
     token: Optional[str] = None
 ):
     """Export invoices to Excel/CSV"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     
     query = {}
     if status:
@@ -3462,7 +3459,7 @@ async def export_members_pdf(
     status: Optional[str] = None,
     token: Optional[str] = None
 ):
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
 
     query = {}
     if activity_id:
@@ -3565,7 +3562,7 @@ async def export_invoices_pdf(
     end_date: Optional[str] = None,
     token: Optional[str] = None
 ):
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
 
     query = {}
     if status:
@@ -4447,7 +4444,9 @@ async def backup_scheduler_loop():
 def start_backup_scheduler():
     global _backup_scheduler_started
     if not _backup_scheduler_started:
-        asyncio.ensure_future(backup_scheduler_loop())
+        from utils.tenant import default_tenant_context
+        with default_tenant_context():
+            asyncio.ensure_future(backup_scheduler_loop())
 
 
 # ── Backup freshness watchdog ────────────────────────────────────────────────
@@ -5117,7 +5116,9 @@ async def daily_checks_scheduler_loop():
 def start_daily_checks_scheduler():
     global _daily_checks_scheduler_started
     if not _daily_checks_scheduler_started:
-        asyncio.ensure_future(daily_checks_scheduler_loop())
+        from utils.tenant import default_tenant_context
+        with default_tenant_context():
+            asyncio.ensure_future(daily_checks_scheduler_loop())
 
 
 # Level assignments should expire every day, even when notification checks
@@ -5467,7 +5468,9 @@ async def tenant_purge_scheduler_loop():
 def start_tenant_purge_scheduler():
     global _tenant_purge_scheduler_started
     if not _tenant_purge_scheduler_started:
-        asyncio.ensure_future(tenant_purge_scheduler_loop())
+        from utils.tenant import default_tenant_context
+        with default_tenant_context():
+            asyncio.ensure_future(tenant_purge_scheduler_loop())
 
 
 # ── Tenant auto-purge daily digest ──────────────────────────────────────────
@@ -5716,7 +5719,9 @@ async def tenant_purge_digest_loop():
 def start_tenant_purge_digest_scheduler():
     global _tenant_purge_digest_started
     if not _tenant_purge_digest_started:
-        asyncio.ensure_future(tenant_purge_digest_loop())
+        from utils.tenant import default_tenant_context
+        with default_tenant_context():
+            asyncio.ensure_future(tenant_purge_digest_loop())
 
 
 # ── Backup file safety & tenant ownership helpers ────────────────────────────
@@ -5788,7 +5793,7 @@ def _require_owned_backup(filename: str):
 
 @api_router.post("/backup/create")
 async def create_backup(token: Optional[str] = None):
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     filename = f"backup_{_current_backup_slug()}--{timestamp}.json"
@@ -5829,7 +5834,7 @@ async def create_backup(token: Optional[str] = None):
 
 @api_router.get("/backup/list")
 async def list_backups(token: Optional[str] = None):
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
 
     backups = []
     if BACKUPS_DIR.exists():
@@ -5850,7 +5855,7 @@ async def list_backups(token: Optional[str] = None):
 
 @api_router.get("/backup/download/{filename}")
 async def download_backup(filename: str, token: Optional[str] = None):
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
 
     filepath = _require_owned_backup(filename)
 
@@ -5865,7 +5870,7 @@ async def download_backup(filename: str, token: Optional[str] = None):
 @api_router.post("/backup/restore/{filename}")
 async def restore_backup(filename: str, token: Optional[str] = None):
     # Restore wipes and replaces the tenant's data — admin only, own files only.
-    actor_payload = _require_export_admin_token(token)
+    actor_payload = await _require_export_admin_token(token)
 
     filepath = _require_owned_backup(filename)
 
@@ -5948,7 +5953,7 @@ async def restore_backup(filename: str, token: Optional[str] = None):
 
 @api_router.post("/backup/upload")
 async def upload_backup(file: UploadFile = File(...), token: Optional[str] = Query(None)):
-    actor_payload = _require_export_admin_token(token)
+    actor_payload = await _require_export_admin_token(token)
 
     if not file.filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="يجب أن يكون الملف بصيغة JSON")
@@ -6008,7 +6013,7 @@ async def recover_september_members(
     This deliberately accepts only their ten verified source records. A dry run
     checks the live database before a separate apply request.
     """
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     expected = {
         "154ccccb-c7ca-47d0-9032-f288143a9098": ("DEFA-B11-2395", "630767"),
         "d6406ec7-891c-4787-97b1-d906db85e9ed": ("DEFA-B11-2396", "630768"),
@@ -6094,7 +6099,7 @@ async def recover_september_members(
 
 @api_router.delete("/backup/{filename}")
 async def delete_backup(filename: str, token: Optional[str] = None):
-    actor_payload = _require_export_admin_token(token)
+    actor_payload = await _require_export_admin_token(token)
 
     filepath = _require_owned_backup(filename)
 
@@ -6127,7 +6132,7 @@ async def export_financial_report(
     token: Optional[str] = None
 ):
     """Export financial report to Excel/CSV"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     
     query = {"status": "paid"}
     if branch_filter and branch_filter != "all":
@@ -6275,7 +6280,7 @@ async def export_financial_report(
 @api_router.get("/export/all-data")
 async def export_all_data(token: Optional[str] = None):
     """Export all data (members, invoices, activities, coaches) to Excel"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     
     # Fetch all data
     members = await db.members.find({}, {"_id": 0}).to_list(10000)
@@ -9081,7 +9086,7 @@ async def export_attendance_excel(
     token: str = None
 ):
     """Export attendance summary to Excel or PDF (one row per member with session count)"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
 
     # Build date query
     date_query = {}
@@ -9447,6 +9452,83 @@ async def _can_create_internal_expenses(user: dict) -> bool:
     return "internal-expenses-create" in perms
 
 
+_RECEIPT_MAX_BYTES = 10 * 1024 * 1024
+_RECEIPT_TYPES = {"JPEG": ("jpg", "image/jpeg"), "PNG": ("png", "image/png"), "WEBP": ("webp", "image/webp")}
+
+
+def _expense_receipt_path(receipt_url: str) -> Optional[Path]:
+    """Resolve only generated receipt names, including pre-migration root files."""
+    import re
+    from utils.tenant import get_current_tenant_slug
+
+    if not isinstance(receipt_url, str) or not receipt_url.startswith("/uploads/"):
+        return None
+    relative = receipt_url[len("/uploads/"):]
+    tenant_slug = get_current_tenant_slug()
+    if re.fullmatch(r"[0-9a-f-]{36}\.[A-Za-z0-9]{1,8}", relative):
+        path = UPLOADS_DIR / relative  # legacy receipt
+    elif relative.startswith(f"expenses/{tenant_slug}/") and re.fullmatch(
+        r"[0-9a-f-]{36}\.(?:jpg|png|webp|pdf)", relative.rsplit("/", 1)[-1]
+    ):
+        path = UPLOADS_DIR / relative
+    else:
+        return None
+    resolved = path.resolve()
+    return resolved if resolved.is_relative_to(UPLOADS_DIR.resolve()) else None
+
+
+async def _save_expense_receipt(upload: UploadFile) -> str:
+    from PIL import Image, UnidentifiedImageError
+    from utils.tenant import get_current_tenant_slug
+
+    content = await upload.read(_RECEIPT_MAX_BYTES + 1)
+    if not content or len(content) > _RECEIPT_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="الإيصال فارغ أو يتجاوز 10 ميغابايت")
+    if content.startswith(b"%PDF-"):
+        extension = "pdf"
+    else:
+        try:
+            with Image.open(BytesIO(content)) as image:
+                image.verify()
+                extension = _RECEIPT_TYPES[image.format][0]
+        except (UnidentifiedImageError, KeyError, ValueError, OSError):
+            raise HTTPException(status_code=400, detail="يُسمح بصور JPG وPNG وWEBP أو PDF فقط")
+    tenant_dir = UPLOADS_DIR / "expenses" / get_current_tenant_slug()
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4()}.{extension}"
+    (tenant_dir / filename).write_bytes(content)
+    return f"/uploads/expenses/{get_current_tenant_slug()}/{filename}"
+
+
+async def _require_expense_receipt_access(expense: dict, user: dict) -> None:
+    if not await _can_create_internal_expenses(user):
+        raise HTTPException(status_code=403, detail="الصلاحية مطلوبة")
+    if not user.get("is_admin", False):
+        branch = user.get("branch_id")
+        if not branch or expense.get("branch_id") != branch:
+            raise HTTPException(status_code=403, detail="هذا المصروف يخص فرعاً آخر")
+    if not await _can_approve_internal_expenses(user) and expense.get("created_by") != user.get("username"):
+        raise HTTPException(status_code=403, detail="لا يمكنك عرض إيصال مصروف ليس من إنشائك")
+
+
+@api_router.get("/internal-expenses/{expense_id}/receipt")
+async def get_internal_expense_receipt(expense_id: str, current_user: dict = Depends(get_current_user)):
+    expense = await db.internal_expenses.find_one({"id": expense_id}, {"_id": 0})
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    await _require_expense_receipt_access(expense, current_user)
+    path = _expense_receipt_path(expense.get("receipt_url"))
+    if not path or not path.is_file():
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    media_type = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".pdf": "application/pdf"}.get(path.suffix.lower())
+    if not media_type:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    return FileResponse(path, media_type=media_type, headers={
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'inline; filename="receipt{path.suffix.lower()}"',
+    })
+
+
 @api_router.get("/internal-expenses")
 async def get_internal_expenses(
     status_filter: Optional[str] = None,
@@ -9595,16 +9677,7 @@ async def create_internal_expense(
     # Handle image upload
     receipt_url = None
     if receipt_image and receipt_image.filename:
-        # Create unique filename
-        file_ext = receipt_image.filename.split(".")[-1] if "." in receipt_image.filename else "jpg"
-        unique_filename = f"{uuid.uuid4()}.{file_ext}"
-        file_path = UPLOADS_DIR / unique_filename
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(receipt_image.file, buffer)
-        
-        receipt_url = f"/uploads/{unique_filename}"
+        receipt_url = await _save_expense_receipt(receipt_image)
     
     # Determine branch_id
     final_branch_id = branch_id if current_user.get("is_admin") else current_user.get("branch_id")
@@ -9701,22 +9774,13 @@ async def update_internal_expense(
     
     # Handle image upload
     receipt_url = existing.get("receipt_url")
+    old_file = None
+    new_file = None
     if receipt_image and receipt_image.filename:
-        # Delete old image if exists
-        if receipt_url:
-            old_file = UPLOADS_DIR / receipt_url.replace("/uploads/", "")
-            if old_file.exists():
-                old_file.unlink()
-        
-        # Save new image
-        file_ext = receipt_image.filename.split(".")[-1] if "." in receipt_image.filename else "jpg"
-        unique_filename = f"{uuid.uuid4()}.{file_ext}"
-        file_path = UPLOADS_DIR / unique_filename
-        
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(receipt_image.file, buffer)
-        
-        receipt_url = f"/uploads/{unique_filename}"
+        new_receipt_url = await _save_expense_receipt(receipt_image)
+        old_file = _expense_receipt_path(receipt_url)
+        new_file = _expense_receipt_path(new_receipt_url)
+        receipt_url = new_receipt_url
     
     update_data = {
         "expense_date": expense_date,
@@ -9731,7 +9795,14 @@ async def update_internal_expense(
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    await db.internal_expenses.update_one({"id": expense_id}, {"$set": update_data})
+    try:
+        await db.internal_expenses.update_one({"id": expense_id}, {"$set": update_data})
+    except Exception:
+        if new_file and new_file.is_file():
+            new_file.unlink()
+        raise
+    if old_file and old_file.is_file():
+        old_file.unlink()
     
     updated = await db.internal_expenses.find_one({"id": expense_id}, {"_id": 0})
     return updated
@@ -9900,8 +9971,8 @@ async def delete_internal_expense(expense_id: str, current_user: dict = Depends(
     
     # Delete receipt image if exists
     if existing.get("receipt_url"):
-        file_path = UPLOADS_DIR / existing["receipt_url"].replace("/uploads/", "")
-        if file_path.exists():
+        file_path = _expense_receipt_path(existing["receipt_url"])
+        if file_path and file_path.is_file():
             file_path.unlink()
     
     await db.internal_expenses.delete_one({"id": expense_id})
@@ -11118,7 +11189,7 @@ async def export_sales_report(
     token: Optional[str] = None
 ):
     """Export sales report to Excel"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -11220,7 +11291,7 @@ async def export_purchases_report(
     token: Optional[str] = None
 ):
     """Export purchases report to Excel"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -11326,7 +11397,7 @@ async def export_vat_report(
     token: Optional[str] = None
 ):
     """Export VAT declaration report to Excel"""
-    _require_export_admin_token(token)
+    await _require_export_admin_token(token)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -11698,7 +11769,8 @@ async def create_default_admin():
         asyncio.create_task(_expiry_scanner())
         try:
             from db_indexes import ensure_indexes
-            await ensure_indexes()
+            from utils.tenant import for_each_active_tenant
+            await for_each_active_tenant(lambda _tenant: ensure_indexes(), label="startup-indexes")
         except Exception as e:
             print(f"Index creation error: {str(e)}")
         try:
@@ -11839,7 +11911,12 @@ async def create_default_admin():
             await ensure_voucher_indexes()
         except Exception as e:
             print(f"Payment vouchers index setup error: {str(e)}")
-    asyncio.create_task(_init())
+    async def _init_default_tenant():
+        from utils.tenant import default_tenant_context
+        with default_tenant_context():
+            await _init()
+
+    asyncio.create_task(_init_default_tenant())
     # Start WhatsApp scheduler
     start_whatsapp_scheduler()
     from routes.whatsapp_workflow import start_scheduler as start_whatsapp_review_scheduler

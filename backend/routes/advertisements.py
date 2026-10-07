@@ -84,34 +84,8 @@ def extract_youtube_video_id(url: str) -> Optional[str]:
     return None
 
 
-# ============ AUTH HELPER ============
-# Import from server module
-import jwt
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret')
-JWT_ALGORITHM = "HS256"
-security = HTTPBearer()
-
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
-    if payload.get("scope") == "super":
-        raise HTTPException(status_code=403, detail="Invalid token scope")
-    if not payload.get("user_id") or not payload.get("username"):
-        raise HTTPException(status_code=401, detail="Invalid token")
-    token_tenant = payload.get("tenant_slug")
-    if not token_tenant:
-        raise HTTPException(status_code=401, detail="Token missing tenant — please log in again")
-    if token_tenant != (get_current_tenant_slug() or DEFAULT_TENANT_SLUG):
-        raise HTTPException(status_code=403, detail="Tenant mismatch")
-    return payload
+# Use the shared live-account check for every authenticated advertisement route.
+from utils.auth import get_current_user
 
 
 # ============ ROUTES ============

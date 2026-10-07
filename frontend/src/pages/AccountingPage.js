@@ -421,6 +421,20 @@ export default function AccountingPage() {
     }
   }, [selectedBranchId, dateFilter]);
 
+  const openExpenseReceipt = async (expenseId) => {
+    const preview = window.open('', '_blank');
+    try {
+      const response = await internalExpensesAPI.getReceipt(expenseId);
+      const url = URL.createObjectURL(response.data);
+      if (preview) preview.location.href = url;
+      else window.open(url, '_blank');
+      window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+    } catch (error) {
+      if (preview) preview.close();
+      toast.error(error?.response?.status === 403 ? 'ليس لديك صلاحية لعرض الإيصال' : 'تعذر فتح الإيصال');
+    }
+  };
+
   // Fetch expense types
   const fetchExpenseTypes = useCallback(async () => {
     try {
@@ -3211,7 +3225,9 @@ export default function AccountingPage() {
                         </span>
                       </td>
                       <td className="p-3 text-center">
-                        {expense.attachment_url ? (
+                        {expense.receipt_url ? (
+                          <button type="button" onClick={() => openExpenseReceipt(expense.id)} className="text-blue-600 hover:underline">📎 عرض</button>
+                        ) : expense.attachment_url ? (
                           <a href={expense.attachment_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">📎 عرض</a>
                         ) : (
                           <span className="text-gray-400">-</span>
@@ -4124,11 +4140,11 @@ export default function AccountingPage() {
                   تم اختيار: {expenseForm.receipt_image.name}
                 </p>
               )}
-              {editingExpense?.attachment_url && !expenseForm.receipt_image && (
+              {editingExpense?.receipt_url && !expenseForm.receipt_image && (
                 <p className="text-sm text-blue-600 mt-1">
-                  <a href={editingExpense.attachment_url} target="_blank" rel="noopener noreferrer">
+                  <button type="button" onClick={() => openExpenseReceipt(editingExpense.id)} className="hover:underline">
                     📎 عرض المرفق الحالي
-                  </a>
+                  </button>
                 </p>
               )}
             </div>

@@ -5,7 +5,7 @@ from typing import Optional
 import jwt
 import bcrypt
 
-from database import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
+from database import db, JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
 
 security = HTTPBearer()
 # Optional bearer used by export endpoints which also accept ?token= in the query
@@ -18,7 +18,7 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
-def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None, branch_ids: Optional[list] = None) -> str:
+def create_token(user_id: str, username: str, branch_id: str = None, is_admin: bool = False, tenant_slug: Optional[str] = None, branch_ids: Optional[list] = None, auth_version: int = 0) -> str:
     from utils.tenant import get_current_tenant_slug, DEFAULT_TENANT_SLUG
     payload = {
         "user_id": user_id,
@@ -26,7 +26,9 @@ def create_token(user_id: str, username: str, branch_id: str = None, is_admin: b
         "branch_id": branch_id,
         "branch_ids": branch_ids or [],
         "is_admin": is_admin,
+        "auth_version": auth_version,
         "tenant_slug": tenant_slug or get_current_tenant_slug() or DEFAULT_TENANT_SLUG,
+        "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -57,17 +59,42 @@ def _active_branch_from_request(request: Optional[Request]) -> Optional[str]:
     return request.headers.get("X-Branch-Id") or None
 
 
-async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def authenticate_user_token(token: str, request: Optional[Request] = None) -> dict:
+    """Use the token for identity, but take every privilege from the live user row."""
     try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
     _enforce_tenant_match(payload)
-    payload["_active_branch"] = _active_branch_from_request(request)
-    apply_active_branch(payload)
-    return payload
+    now = datetime.now(timezone.utc).timestamp()
+    exp = payload.get("exp")
+    if not isinstance(exp, (int, float)) or exp > now + JWT_EXPIRATION_HOURS * 3600 + 60:
+        raise HTTPException(status_code=401, detail="Session expired — please log in again")
+    user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0, "password": 0})
+    if not user or user.get("is_active") is False or user.get("disabled") is True or user.get("status") in {"disabled", "suspended", "deleted"}:
+        raise HTTPException(status_code=401, detail="Account is no longer active")
+    if int(payload.get("auth_version") or 0) != int(user.get("auth_version") or 0):
+        raise HTTPException(status_code=401, detail="Session revoked — please log in again")
+    branch_ids = user.get("branch_ids")
+    if not isinstance(branch_ids, list) or not branch_ids:
+        branch_ids = [user["branch_id"]] if user.get("branch_id") else []
+    current = {
+        **payload,
+        "username": user.get("username") or payload["username"],
+        "is_admin": bool(user.get("is_admin", False)),
+        "branch_id": user.get("branch_id"),
+        "branch_ids": branch_ids,
+        "permissions": user.get("permissions") or [],
+        "_active_branch": _active_branch_from_request(request),
+    }
+    apply_active_branch(current)
+    return current
+
+
+async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
+    return await authenticate_user_token(credentials.credentials, request)
 
 async def get_current_user_from_token(request: Request, token: Optional[str] = None, credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional)):
     """Support both Bearer token and query parameter token for exports"""
@@ -76,16 +103,7 @@ async def get_current_user_from_token(request: Request, token: Optional[str] = N
         actual_token = credentials.credentials
     if not actual_token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(actual_token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    _enforce_tenant_match(payload)
-    payload["_active_branch"] = _active_branch_from_request(request)
-    apply_active_branch(payload)
-    return payload
+    return await authenticate_user_token(actual_token, request)
 
 def require_admin(current_user: dict):
     """Check if current user is admin"""

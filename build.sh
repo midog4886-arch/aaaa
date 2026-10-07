@@ -10,7 +10,7 @@ echo "🔨 Building Champions Academy..."
 # Build Frontend
 echo "📦 Building Frontend..."
 cd frontend
-npm install
+npm ci
 npm run build
 cd ..
 

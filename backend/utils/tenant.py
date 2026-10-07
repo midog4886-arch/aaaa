@@ -13,12 +13,7 @@ silently leaking into the default DB.
 
 Resolution order for the strict flag:
   1. Explicit env var ``STRICT_TENANT_CONTEXT`` (``1``/``0``) — always wins.
-  2. Auto: strict **OFF** in production, **ON** elsewhere.
-
-Production is detected from the first of these that is set:
-  - ``SENTRY_ENVIRONMENT=production``
-  - ``ENV=production`` / ``ENVIRONMENT=production`` / ``APP_ENV=production``
-  - ``REPLIT_DEPLOYMENT=1`` (set automatically inside a Replit deployment)
+  2. Auto: strict **ON** in every environment, including production.
 
 Control-plane and health-check routes can opt-out per request via the
 ``bypass_strict`` ContextVar, which the tenant middleware sets for
@@ -26,6 +21,7 @@ Control-plane and health-check routes can opt-out per request via the
 DB even when strict mode is on.
 """
 from contextvars import ContextVar
+from contextlib import contextmanager
 from typing import Optional, Dict, Any, Callable, Awaitable, List
 import logging
 import os
@@ -41,20 +37,11 @@ _current_tenant: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
 _bypass_strict: ContextVar[bool] = ContextVar("bypass_strict", default=False)
 
 
-def _is_production() -> bool:
-    if os.environ.get("REPLIT_DEPLOYMENT", "").strip() in ("1", "true", "yes"):
-        return True
-    for key in ("SENTRY_ENVIRONMENT", "ENV", "ENVIRONMENT", "APP_ENV"):
-        if (os.environ.get(key) or "").lower() == "production":
-            return True
-    return False
-
-
 def _strict_default() -> bool:
     explicit = os.environ.get("STRICT_TENANT_CONTEXT")
     if explicit is not None and explicit != "":
         return explicit.lower() in ("1", "true", "yes")
-    return not _is_production()
+    return True
 
 
 def is_strict_mode() -> bool:
@@ -67,6 +54,20 @@ def set_current_tenant(tenant: Optional[Dict[str, Any]]):
 
 def reset_current_tenant(token) -> None:
     _current_tenant.reset(token)
+
+
+@contextmanager
+def default_tenant_context():
+    """Explicitly scope legacy default-academy work; never rely on fallback."""
+    token = set_current_tenant({
+        "slug": DEFAULT_TENANT_SLUG,
+        "db_name": slug_to_db_name(DEFAULT_TENANT_SLUG),
+        "status": "active",
+    })
+    try:
+        yield
+    finally:
+        reset_current_tenant(token)
 
 
 def get_current_tenant() -> Optional[Dict[str, Any]]:

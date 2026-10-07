@@ -601,6 +601,7 @@ export const notificationsAPI = {
 // Internal Expenses (Petty Cash) API
 export const internalExpensesAPI = {
   getAll: (params = {}) => axios.get(`${API}/internal-expenses`, { params }),
+  getReceipt: (id) => axios.get(`${API}/internal-expenses/${encodeURIComponent(id)}/receipt`, { responseType: 'blob' }),
   getSummary: (params = {}) => axios.get(`${API}/internal-expenses/summary`, { params }),
   getTypes: () => axios.get(`${API}/internal-expenses/types`),
   getPendingCount: (params = {}) => axios.get(`${API}/internal-expenses/pending-count`, { params }),

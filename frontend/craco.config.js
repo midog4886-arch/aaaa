@@ -122,6 +122,8 @@ webpackConfig.jest = {
     // CRA defaults resetMocks to true, which strips mock implementations
     // between tests (breaking lazily-created default API mocks).
     jestConfig.resetMocks = false;
+    // DayPicker 9 loads date-fns 4 ESM locale files in Jest's CJS runtime.
+    jestConfig.transformIgnorePatterns = ["/node_modules/(?!(date-fns|@date-fns)/)"];
     jestConfig.moduleNameMapper = {
       "^@/(.*)$": "<rootDir>/src/$1",
       "^@radix-ui/primitive/is-development$":

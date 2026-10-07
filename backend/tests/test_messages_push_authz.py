@@ -15,6 +15,7 @@ in-memory fake — no live Atlas, order-independent under the full suite.
 """
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
@@ -117,6 +118,7 @@ def _token(user_id, username="staff", tenant="global-champions", is_admin=False)
             "tenant_slug": tenant,
             "is_admin": is_admin,
             "branch_id": "branch-A",
+            "exp": datetime.now(timezone.utc) + timedelta(hours=1),
         },
         common_mod.JWT_SECRET,
         algorithm=common_mod.JWT_ALGORITHM,
@@ -127,8 +129,8 @@ def _token(user_id, username="staff", tenant="global-champions", is_admin=False)
 def client(monkeypatch):
     db = _FakeDB()
     db.users = _Collection([
-        {"id": "u-with", "permissions": ["messages"]},
-        {"id": "u-without", "permissions": ["dashboard"]},
+        {"id": "u-with", "username": "staff", "branch_id": "branch-A", "permissions": ["messages"]},
+        {"id": "u-without", "username": "staff", "branch_id": "branch-A", "permissions": ["dashboard"]},
     ])
     db.members = _Collection([
         {"id": "m-1", "branch_id": "branch-A", "name_ar": "عضو", "status": "active"},
@@ -141,6 +143,8 @@ def client(monkeypatch):
     monkeypatch.setattr(push_mod, "db", db, raising=True)
     import database as database_mod
     monkeypatch.setattr(database_mod, "db", db, raising=False)
+    import utils.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "db", db, raising=True)
 
     # Pin the tenant so the token's tenant_slug matches.
     from utils import tenant as tenant_mod

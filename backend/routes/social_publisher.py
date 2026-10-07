@@ -1964,7 +1964,10 @@ def start_insights_scheduler() -> None:
     if _insights_scheduler_started:
         return
     _insights_scheduler_started = True
-    asyncio.ensure_future(_insights_scheduler_loop())
+    # These legacy settings and posts are scoped to the default academy.
+    from utils.tenant import default_tenant_context
+    with default_tenant_context():
+        asyncio.ensure_future(_insights_scheduler_loop())
 
 
 # ────────────────── Uploads cleanup scheduler ──────────────────
@@ -2165,7 +2168,21 @@ async def _cleanup_social_uploads_once(
         )
         return 0
     cutoff_ts = started_at.timestamp() - max_age_days * 86400
-    recent_referenced = await _collect_recent_post_filenames(max_age_days)
+    # Uploads share one directory. Protect references in every tenant before
+    # deleting a file, including the legacy default tenant. If enumeration or
+    # a tenant read fails, abort cleanup rather than risking another tenant's
+    # media.
+    from utils.tenant import list_active_tenants, set_current_tenant, reset_current_tenant, default_tenant_context
+    with default_tenant_context():
+        recent_referenced = await _collect_recent_post_filenames(max_age_days)
+    for tenant in await list_active_tenants():
+        if tenant.get("slug") == "default":
+            continue
+        tenant_token = set_current_tenant(tenant)
+        try:
+            recent_referenced.update(await _collect_recent_post_filenames(max_age_days))
+        finally:
+            reset_current_tenant(tenant_token)
     deleted = 0
     deleted_old_linked = 0
     kept_recent_post_linked = 0
@@ -2442,7 +2459,9 @@ def start_uploads_cleanup_scheduler() -> None:
     if _uploads_cleanup_started:
         return
     _uploads_cleanup_started = True
-    asyncio.ensure_future(_uploads_cleanup_loop())
+    from utils.tenant import default_tenant_context
+    with default_tenant_context():
+        asyncio.ensure_future(_uploads_cleanup_loop())
 
 
 @router.get("/posts")

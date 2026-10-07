@@ -185,10 +185,11 @@ async def update_user(user_id: str, user_data: UserUpdateAdmin, current_user: di
         raise HTTPException(status_code=400, detail="No data to update")
     
     before = await db.users.find_one({"id": user_id}, {"_id": 0})
+    changes = {"$set": update_data}
+    if user_data.password:
+        changes["$inc"] = {"auth_version": 1}
     result = await db.users.find_one_and_update(
-        {"id": user_id},
-        {"$set": update_data},
-        return_document=True
+        {"id": user_id}, changes, return_document=True
     )
     if not result:
         raise HTTPException(status_code=404, detail="User not found")

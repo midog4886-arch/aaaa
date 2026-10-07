@@ -90,12 +90,13 @@ def test_strict_is_default_outside_production(monkeypatch, fresh_tenant_module):
         tenant_mod.get_current_tenant_db_name()
 
 
-def test_strict_is_off_by_default_in_production(monkeypatch, fresh_tenant_module):
+def test_strict_is_on_by_default_in_production(monkeypatch, fresh_tenant_module):
     monkeypatch.delenv("STRICT_TENANT_CONTEXT", raising=False)
     monkeypatch.setenv("REPLIT_DEPLOYMENT", "1")
     tenant_mod = importlib.import_module("utils.tenant")
-    assert tenant_mod.is_strict_mode() is False
-    assert tenant_mod.get_current_tenant_db_name() == tenant_mod.slug_to_db_name(tenant_mod.DEFAULT_TENANT_SLUG)
+    assert tenant_mod.is_strict_mode() is True
+    with pytest.raises(RuntimeError, match="No tenant context set"):
+        tenant_mod.get_current_tenant_db_name()
 
 
 def test_bypass_strict_allows_fallback(monkeypatch, fresh_tenant_module):
@@ -313,6 +314,8 @@ def test_end_to_end_tenant_isolation_via_middleware_and_jwt(monkeypatch, fresh_t
     class FakeColl:
         def __init__(self): self.docs = []
         async def insert_one(self, d): self.docs.append(d)
+        async def find_one(self, query, _projection=None):
+            return next((dict(d) for d in self.docs if all(d.get(k) == v for k, v in query.items())), None)
         def find(self, *_a, **_k):
             docs = list(self.docs)
             class _C:
@@ -349,6 +352,8 @@ def test_end_to_end_tenant_isolation_via_middleware_and_jwt(monkeypatch, fresh_t
     })
     monkeypatch.setitem(sys.modules, "control_db", fake_control)
 
+    import utils.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "db", test_db)
     from utils.auth import create_token, get_current_user
 
     app = FastAPI()
@@ -366,11 +371,13 @@ def test_end_to_end_tenant_isolation_via_middleware_and_jwt(monkeypatch, fresh_t
         token_a = tenant_mod.set_current_tenant(tenants["alpha"])
         try:
             await test_db.members.insert_one({"name": "alice"})
+            await test_db.users.insert_one({"id": "u-a", "username": "alice", "is_admin": True})
         finally:
             tenant_mod.reset_current_tenant(token_a)
         token_b = tenant_mod.set_current_tenant(tenants["beta"])
         try:
             await test_db.members.insert_one({"name": "bob"})
+            await test_db.users.insert_one({"id": "u-b", "username": "bob", "is_admin": True})
         finally:
             tenant_mod.reset_current_tenant(token_b)
 
