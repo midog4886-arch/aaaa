@@ -978,7 +978,18 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
     for inv, item, index in sources:
         key = source_key(inv, item, index)
         links = [activities[ai] for ai, k in matched.items() if k == key]
-        act = links[0] if len(links) == 1 else None
+        # A legacy invoice can leave two profile rows for the same purchased
+        # period (for example, discounted and list-price copies). Their fee is
+        # irrelevant to attendance, but conflicting operational dates are not.
+        # Read a single operational window only when every linked row agrees.
+        operational_fields = (
+            "activity_id", "start_date", "end_date", "schedule", "status",
+            "source", "source_id", "session_transfer_delta",
+        )
+        act = links[0] if links and all(
+            all(link.get(field) == links[0].get(field) for field in operational_fields)
+            for link in links[1:]
+        ) else None
         start, end = operational_window(inv, item, index, periods)
         # The linked profile is authoritative: later freezes/off-day shifts may
         # have changed it since an effective-period row was last written.

@@ -233,6 +233,29 @@ def test_profile_dates_and_schedule_override_stale_effective_row(monkeypatch):
     assert cards[0]["schedule_days"] == [att.ENGLISH_TO_ARABIC_DAY["sunday"]]
 
 
+def test_duplicate_profile_rows_with_same_operational_window_use_extended_end(monkeypatch):
+    inv = invoice(10)
+    profile = {**inv["items"][0], "source": "invoice", "source_id": inv["id"],
+               "end_date": "2026-11-02", "fee": 218}
+    duplicate = {**profile, "fee": 300}
+    install(monkeypatch, [inv], [profile, duplicate])
+    cards = history()
+    assert len(cards) == 1
+    assert cards[0]["end_date"] == "2026-11-02"
+    assert cards[0]["profile_subscription"] is True
+
+
+def test_conflicting_duplicate_profile_windows_do_not_guess(monkeypatch):
+    inv = invoice(10)
+    profile = {**inv["items"][0], "source": "invoice", "source_id": inv["id"],
+               "end_date": "2026-11-02"}
+    duplicate = {**profile, "end_date": "2026-11-04"}
+    install(monkeypatch, [inv], [profile, duplicate])
+    cards = history()
+    assert cards[0]["profile_subscription"] is False
+    assert cards[0]["end_date"] == "2026-10-24"
+
+
 @pytest.mark.parametrize("member,user,error", [
     (None, {"is_admin": True}, 404),
     ({"branch_id": "B"}, {"branch_id": "A"}, 403),
