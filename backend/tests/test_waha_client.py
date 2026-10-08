@@ -42,6 +42,31 @@ def test_waha_client_sends_api_key_and_text_payload(monkeypatch):
     assert captured["json"] == {"session": "academy-a", "chatId": "966501234567@c.us", "text": "hello"}
 
 
+def test_waha_client_fetches_qr_with_get(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+        content = b"png-image"
+
+        def json(self):
+            raise ValueError("image response")
+
+    class Client:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def request(self, method, url, headers, **kwargs):
+            captured.update(method=method, url=url, headers=headers, **kwargs)
+            return Response()
+
+    monkeypatch.setattr("services.waha.httpx.AsyncClient", lambda **_: Client())
+    result = run(WAHAClient("https://waha.example", "secret").qr("academy-a"))
+    assert result == (True, b"png-image", None)
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://waha.example/api/academy-a/auth/qr"
+    assert captured["headers"] == {"X-Api-Key": "secret", "Accept": "image/png"}
+
+
 def test_waha_client_uses_dedicated_voice_contract(monkeypatch):
     captured = {}
 

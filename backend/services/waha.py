@@ -58,7 +58,7 @@ class WAHAClient:
 
     async def qr(self, name: str):
         return await self._request(
-            "POST", f"/api/{name}/auth/qr", headers={"Accept": "image/png"}
+            "GET", f"/api/{name}/auth/qr", headers={"Accept": "image/png"}
         )
 
     async def send_text(self, session: str, chat_id: str, text: str):
