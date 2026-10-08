@@ -3,15 +3,25 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// Release signing values are supplied by the build environment, never by Git.
+def releaseKeystorePath = System.getenv('ANDROID_KEYSTORE_PATH')?.trim()
+def releaseStorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def releaseKeyAlias = System.getenv('ANDROID_KEY_ALIAS')?.trim()
+def releaseKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+def releaseSigningConfigured = releaseKeystorePath && releaseStorePassword &&
+        releaseKeyAlias && releaseKeyPassword && file(releaseKeystorePath).isFile()
+
 android {
     namespace "com.champions.academy.member"
     compileSdk rootProject.ext.compileSdkVersion
     signingConfigs {
         release {
-            storeFile file("../newkey.jks")
-            storePassword "123456"
-            keyAlias "upload"
-            keyPassword "123456"
+            if (releaseSigningConfigured) {
+                storeFile file(releaseKeystorePath)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
     defaultConfig {
@@ -27,7 +37,9 @@ android {
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -38,6 +50,16 @@ android {
     }
     kotlinOptions {
         jvmTarget = '17'
+    }
+}
+
+// Fail closed instead of silently creating an unsigned release artifact.
+gradle.taskGraph.whenReady { graph ->
+    if ((graph.hasTask(':app:assembleRelease') || graph.hasTask(':app:bundleRelease')) &&
+            !releaseSigningConfigured) {
+        throw new GradleException('Release signing requires ANDROID_KEYSTORE_PATH, ' +
+                'ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD ' +
+                'with a readable keystore file.')
     }
 }
 
