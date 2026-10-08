@@ -14,12 +14,34 @@ services:
       REACT_APP_BACKEND_URL: ${APP_BASE_URL:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      WAHA_BASE_URL: ${WAHA_BASE_URL:-}
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WAHA_WEBHOOK_SECRET: ${WAHA_WEBHOOK_SECRET:-}
     volumes:
       - app_uploads:/app/uploads
       - app_backups:/app/backups
     depends_on:
       mongodb:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Optional branch WhatsApp provider. Activate only after supplying the
+  # secrets and WAHA_BASE_URL=http://waha:3000 in the deployment environment.
+  waha:
+    profiles: [waha]
+    image: devlikeapro/waha
+    expose:
+      - "3000"
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      WAHA_PRINT_QR: "false"
+      WAHA_MEDIA_STORAGE: LOCAL
+      WHATSAPP_FILES_FOLDER: /app/.media
+    volumes:
+      - waha_sessions:/app/.sessions
+      - waha_media:/app/.media
     restart: unless-stopped
 
   mongodb:
@@ -58,3 +80,5 @@ volumes:
   app_uploads:
   app_backups:
   mongodb_data:
+  waha_sessions:
+  waha_media:
