@@ -241,7 +241,7 @@ def test_start_provisions_official_webhook_payload_once(monkeypatch):
     assert create_payload["config"]["metadata"] == {"branch_id": "branch-a"}
     assert webhook["url"] == "https://academy.example/api/whatsapp/waha-webhook/tenant-a"
     assert webhook["hmac"] == {"key": "webhook-secret"}
-    assert webhook["events"] == ["message", "message.ack", "session.status"]
+    assert webhook["events"] == ["message", "message.any", "message.ack", "session.status"]
     assert webhook["retries"]["attempts"] == 15
     assert [call[0] for call in calls] == ["session", "create", "lifecycle"]
 
@@ -363,6 +363,8 @@ def test_waha_automation_echo_race_is_bounded_and_never_resolves_as_human(monkey
     }
     assert db["whatsapp_cloud_conversations"].rows[0]["needs_reply"] is False
     assert db["whatsapp_cloud_messages"].rows[0]["human_reply"] is True
+    assert db["whatsapp_cloud_messages"].rows[0]["body"] == "reminder"
+    assert db["whatsapp_cloud_conversations"].rows[0]["last_message"] == "reminder"
 
 
 def test_physical_session_is_tenant_and_branch_isolated():

@@ -3436,7 +3436,7 @@ async def branch_provider_lifecycle(branch_id: str, action: str, request: Reques
             payload = {"name": physical_session, "config": {
                 "metadata": {"branch_id": branch_id},
                 "webhooks": [{"url": str(request.base_url).rstrip("/") + f"/api/whatsapp/waha-webhook/{get_current_tenant_slug()}",
-                    "events": ["message", "message.ack", "session.status"],
+                    "events": ["message", "message.any", "message.ack", "session.status"],
                     "hmac": {"key": webhook_secret},
                     "retries": {"policy": "constant", "delaySeconds": 2, "attempts": 15}}]}}
             ok, _, error = await client.create_session(payload)
@@ -4096,6 +4096,9 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         message_id = _canonical_waha_message_id(message)
         if not phone or not message_id:
             return {"received": True}
+        text = message.get("text")
+        body = message.get("body") or (text.get("body") if isinstance(text, dict) else text if isinstance(text, str) else "") or ""
+        kind = message.get("type") or "text"
         if message.get("fromMe") or message.get("from_me"):
             await registration_followups.note_outbound(
                 config["branch_id"], phone, message_id, "waha"
@@ -4177,7 +4180,7 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                             "provider_message_id": message_id,
                             "waha_message_id": message_id,
                             "direction": "outbound", "phone": phone,
-                            "type": "text", "body": "",
+                            "type": kind, "body": body,
                             "status": failed_status or "sent",
                             "created_at": now, "received_at": now,
                             "source": "linked_phone", "human_reply": True,
@@ -4187,6 +4190,13 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                 if not await _remembered_outbound_failure(
                     config["branch_id"], "waha", message_id
                 ):
+                    await _db["whatsapp_cloud_conversations"].update_one(
+                        {"id": conversation_id}, {"$set": {
+                            "last_message": body or f"[{kind}]",
+                            "last_message_at": now,
+                            "last_direction": "outbound",
+                        }}
+                    )
                     await _note_cloud_human_reply(
                         conversation_id,
                         config["branch_id"],
@@ -4199,9 +4209,6 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
             unique=True,
             partialFilterExpression={"provider": "waha", "waha_message_id": {"$exists": True}},
         )
-        text = message.get("text")
-        body = message.get("body") or (text.get("body") if isinstance(text, dict) else text if isinstance(text, str) else "") or ""
-        kind = message.get("type") or "text"
         conversation_id = f"{config['branch_id']}:{phone}"
         try:
             await _db["whatsapp_cloud_messages"].insert_one(_archive_pending_fields({"id": str(uuid.uuid4()), "conversation_id": conversation_id,
@@ -5445,7 +5452,15 @@ async def list_cloud_inbox_conversations(
     effective_branch = resolve_branch_filter(current_user, branch_filter)
     scope_query = {"branch_id": effective_branch} if effective_branch else {}
     phone_snapshot = None
+    phone_sync_supported = False
     if effective_branch:
+        branch_config = await _db['whatsapp_branch_configs'].find_one(
+            {'branch_id': effective_branch}, {'_id': 0, 'provider': 1, 'enabled': 1}
+        )
+        phone_sync_supported = bool(
+            branch_config and _branch_provider(branch_config) == 'whatsflow'
+            and branch_config.get('enabled')
+        )
         phone_snapshot = await _db['whatsapp_phone_sync'].find_one({'branch_id': effective_branch, 'enabled': True}, {'_id': 0})
         if phone_snapshot:
             phone_snapshot = await _refresh_phone_snapshot(effective_branch)
@@ -5579,6 +5594,7 @@ async def list_cloud_inbox_conversations(
     return {
         "conversations": rows,
         "unread_count": unread_count,
+        **({'phone_sync_supported': phone_sync_supported} if effective_branch else {}),
         **({'phone_sync': {**phone_snapshot, 'visible_unread_chats': unread_count}} if phone_snapshot else {}),
         "needs_reply_count": int(needs_reply_count or 0),
     }

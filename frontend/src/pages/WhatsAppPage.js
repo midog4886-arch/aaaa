@@ -548,6 +548,7 @@ export default function WhatsAppPage() {
   const [cloudThread, setCloudThread] = useState(null);
   const [cloudMessages, setCloudMessages] = useState([]);
   const [phoneSync, setPhoneSync] = useState(null);
+  const [phoneSyncSupported, setPhoneSyncSupported] = useState(true);
   const [syncingPhoneBranch, setSyncingPhoneBranch] = useState(false);
   const [markingPhoneUnread, setMarkingPhoneUnread] = useState(false);
   const phoneReadAttemptRef = useRef(null);
@@ -834,6 +835,7 @@ export default function WhatsAppPage() {
       if (!isCurrentRequest()) return;
       setCloudConversations(inboxResponse.data?.conversations || []);
       setPhoneSync(inboxResponse.data?.phone_sync || null);
+      setPhoneSyncSupported(inboxResponse.data?.phone_sync_supported !== false);
       const unreadCount = inboxResponse.data?.unread_count || 0;
       setCloudNeedsReplyCount(inboxResponse.data?.needs_reply_count || 0);
       if (isUnreadView) {
@@ -3799,11 +3801,18 @@ export default function WhatsAppPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="mb-4 flex flex-wrap items-center gap-2">
-                    <Button variant="outline" onClick={handleSyncPhoneBranch}
-                      disabled={syncingPhoneBranch || cloudBranchFilter === 'all'}>
-                      <RefreshCcw className={`w-4 h-4 me-2 ${syncingPhoneBranch ? 'animate-spin' : ''}`} />
-                      {t('مزامنة الرسائل والقراءة مع الجوال', 'Sync phone messages and unread state')}
-                    </Button>
+                    {phoneSyncSupported ? (
+                      <Button variant="outline" onClick={handleSyncPhoneBranch}
+                        disabled={syncingPhoneBranch || cloudBranchFilter === 'all'}>
+                        <RefreshCcw className={`w-4 h-4 me-2 ${syncingPhoneBranch ? 'animate-spin' : ''}`} />
+                        {t('مزامنة الرسائل والقراءة مع الجوال', 'Sync phone messages and unread state')}
+                      </Button>
+                    ) : (
+                      <Button variant="outline" onClick={() => loadCloudConversations()}>
+                        <RefreshCcw className="w-4 h-4 me-2" />
+                        {t('تحديث المحادثات', 'Refresh conversations')}
+                      </Button>
+                    )}
                     {phoneSync && <span className="text-xs text-muted-foreground">
                       {t(`كل محادثات الجوال · ${phoneSync.chats} محادثة · ${phoneSync.visible_unread_chats ?? phoneSync.unread_chats} ظاهرة غير مقروءة`, `All phone chats · ${phoneSync.chats} chats · ${phoneSync.visible_unread_chats ?? phoneSync.unread_chats} shown unread`)}
                       <span className="block font-medium" title={phoneSync.synced_at || ''}>
@@ -3816,12 +3825,14 @@ export default function WhatsAppPage() {
                       {phoneSync.excluded > 0 && <span className="block text-amber-700">{t(`لم يعرض المزود بيانات مكتملة لـ ${phoneSync.excluded} سجلًا؛ المطابقة تشمل المحادثات المتاحة فقط.`, `${phoneSync.excluded} provider records are incomplete; synchronization covers available chats only.`)}</span>}
                     </span>}
                   </div>
-                  <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+                  {phoneSyncSupported ? <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
                     {t(
                       'فتح المحادثة هنا يعلّمها كمقروءة على الجوال عند تأكيد المزود، ويمكنك إعادتها كغير مقروءة من داخلها. زر المزامنة يجلب حالة كل المحادثات من الجوال. «تحتاج ردًا» تتبع الرسائل الواردة التي لم يُرسل لها رد.',
                       'Opening a chat here marks it read on the phone once confirmed by the provider. You can mark it unread again inside the chat. Sync fetches every chat’s phone state. “Needs reply” tracks inbound messages without a reply.'
                     )}
-                  </p>
+                  </p> : <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+                    {t('يعرض WAHA الرسائل التي وصلت للنظام عبر الاتصال المباشر. مزامنة سجل الجوال وحالة قراءته غير متاحة لهذا المزود.', 'WAHA shows messages received by the system connection. Full phone history and phone read-state synchronization are unavailable for this provider.')}
+                  </p>}
                   {loadingCloudInbox && !cloudConversations.length ? (
                     <div className="py-12 text-center"><Loader2 className="w-7 h-7 animate-spin mx-auto" /></div>
                   ) : cloudConversations.length === 0 ? (

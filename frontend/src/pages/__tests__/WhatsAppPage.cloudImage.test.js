@@ -1252,6 +1252,21 @@ test('synchronizes the selected branch without sending messages', async () => {
   expect(whatsappAPI.sendCloudInboxMedia).not.toHaveBeenCalled();
 });
 
+test('WAHA branch refreshes the inbox without calling Whatsflow phone synchronization', async () => {
+  const WhatsAppPage = require('../WhatsAppPage').default;
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({ data: {
+    conversations: [{ ...conversation, provider: 'waha' }],
+    unread_count: 0, phone_sync_supported: false,
+  } });
+  render(<WhatsAppPage />);
+  const user = userEvent.setup();
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'مزامنة الرسائل والقراءة مع الجوال' })).not.toBeInTheDocument());
+  const refresh = screen.getAllByRole('button', { name: 'تحديث المحادثات' })[0];
+  await user.click(refresh);
+  await waitFor(() => expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalled());
+  expect(whatsappAPI.syncCloudPhoneBranch).not.toHaveBeenCalled();
+});
+
 test('loads older phone messages without duplicating the latest page', async () => {
   const WhatsAppPage = require('../WhatsAppPage').default;
   whatsappAPI.getCloudInboxThread.mockResolvedValue({ data: {
