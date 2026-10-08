@@ -29,7 +29,7 @@ services:
   # secrets and WAHA_BASE_URL=http://waha:3000 in the deployment environment.
   waha:
     profiles: [waha]
-    image: devlikeapro/waha
+    image: devlikeapro/waha@sha256:280bdc8f860267a2488a45d00ec88529646f7468c0bf0283c595d6efdd1b5e3b
     expose:
       - "3000"
     environment:
