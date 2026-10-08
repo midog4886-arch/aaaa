@@ -319,6 +319,43 @@ def test_waha_webhook_rejects_unknown_hmac_algorithm(monkeypatch):
     assert exc.value.status_code == 403
 
 
+def test_waha_webhook_resolves_lid_before_storing_inbound(monkeypatch):
+    secret = "webhook-secret"
+    monkeypatch.setenv("WAHA_WEBHOOK_SECRET", secret)
+    physical = whatsapp_mod._waha_physical_session_id(
+        "branch-a", "academy-a", "tenant-a"
+    )
+    db = _DB([{
+        "branch_id": "branch-a", "provider": "waha", "enabled": True,
+        "waha_physical_session_id": physical,
+    }])
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+
+    async def fake_tenant(slug):
+        return "tenant-token"
+
+    monkeypatch.setattr(whatsapp_mod, "_with_webhook_tenant", fake_tenant)
+    monkeypatch.setattr(whatsapp_mod, "reset_current_tenant", lambda token: None)
+    resolver = AsyncMock(return_value=(True, {"pn": "966501234567@c.us"}, None))
+    monkeypatch.setattr(whatsapp_mod.WAHAClient, "phone_by_lid", resolver)
+    envelope = {
+        "event": "message", "session": physical,
+        "payload": {"id": "lid-message-1", "from": "123456789@lid", "body": "مرحبا"},
+    }
+    raw = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
+    signature = hmac.new(secret.encode(), raw, hashlib.sha512).hexdigest()
+
+    class Request:
+        headers = {"x-webhook-hmac": signature, "x-webhook-hmac-algorithm": "sha512"}
+
+        async def body(self):
+            return raw
+
+    assert run(whatsapp_mod.receive_waha_webhook("tenant-a", Request())) == {"received": True}
+    resolver.assert_awaited_once_with(physical, "123456789@lid")
+    assert db["whatsapp_cloud_messages"].rows[0]["phone"] == "966501234567"
+
+
 def test_waha_automation_echo_race_is_bounded_and_never_resolves_as_human(monkeypatch):
     secret = "webhook-secret"
     monkeypatch.setenv("WAHA_WEBHOOK_SECRET", secret)

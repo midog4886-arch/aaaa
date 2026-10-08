@@ -5,6 +5,7 @@ headers/configuration, so callers cannot accidentally expose the API key.
 """
 import base64
 import os
+from urllib.parse import quote
 from typing import Any, Optional
 
 import httpx
@@ -59,6 +60,11 @@ class WAHAClient:
     async def qr(self, name: str):
         return await self._request(
             "GET", f"/api/{name}/auth/qr", headers={"Accept": "image/png"}
+        )
+
+    async def phone_by_lid(self, session: str, lid: str):
+        return await self._request(
+            "GET", f"/api/{quote(session, safe='')}/lids/{quote(lid, safe='')}"
         )
 
     async def send_text(self, session: str, chat_id: str, text: str):

@@ -4094,6 +4094,13 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         chat_id = str(message.get("chatId") or message.get("from") or "")
         if "@g.us" in chat_id:
             return {"received": True}
+        if chat_id.endswith("@lid"):
+            ok, mapping, _ = await WAHAClient().phone_by_lid(session, chat_id)
+            mapped_phone = mapping.get("pn") if ok and isinstance(mapping, dict) else None
+            if not mapped_phone or not str(mapped_phone).endswith("@c.us"):
+                logger.warning("WAHA inbound LID could not be mapped to a phone")
+                return {"received": True}
+            chat_id = str(mapped_phone)
         phone = "".join(filter(str.isdigit, chat_id))
         message_id = _canonical_waha_message_id(message)
         if not phone or not message_id:
