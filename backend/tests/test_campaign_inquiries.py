@@ -621,3 +621,44 @@ def test_campaign_filter_options_and_paid_stats_are_branch_scoped(crm):
     assert selected["counts"]["total"] == 1
     assert selected["paid_stats"] == {"count": 1, "amount": 125.0}
     assert "Secret B2" not in selected["campaigns"]
+
+
+def test_exact_waha_campaign_reply_creates_one_manual_inquiry(crm):
+    module, fake_db = crm
+    fake_db.whatsapp_campaign_jobs.docs.append({
+        "id": "job-1", "branch_id": "B1", "provider": "waha",
+        "source": "campaign", "campaign_title": "Autumn offer",
+        "campaign_id": "campaign-1",
+    })
+    fake_db.whatsapp_campaign_job_items.docs.append({
+        "job_id": "job-1", "branch_id": "B1", "provider": "waha",
+        "phone": "+966 50 123 4567", "source": "campaign",
+        "communication_kind": "marketing", "status": "sent",
+        "provider_message_id": "outbound-1", "recipient_name": "Sara",
+    })
+
+    assert run(module.capture_quoted_campaign_reply("B1", "0501234567", "outbound-1")) is True
+    assert run(module.capture_quoted_campaign_reply("B1", "0501234567", "outbound-1")) is False
+    lead = fake_db.campaign_inquiries.docs[0]
+    assert lead["campaign"] == "Autumn offer"
+    assert lead["source"] == "campaign_reply"
+    assert lead["status"] == "new"
+    assert lead["branch_id"] == "B1"
+    assert "automation_enrolled" not in lead
+
+
+def test_campaign_reply_requires_exact_same_branch_phone_and_message(crm):
+    module, fake_db = crm
+    fake_db.whatsapp_campaign_jobs.docs.append({
+        "id": "job-1", "branch_id": "B1", "provider": "waha", "source": "campaign",
+    })
+    fake_db.whatsapp_campaign_job_items.docs.append({
+        "job_id": "job-1", "branch_id": "B1", "provider": "waha",
+        "phone": "966501234567", "source": "campaign",
+        "communication_kind": "marketing", "status": "sent",
+        "provider_message_id": "outbound-1",
+    })
+    assert run(module.capture_quoted_campaign_reply("B2", "0501234567", "outbound-1")) is False
+    assert run(module.capture_quoted_campaign_reply("B1", "0507654321", "outbound-1")) is False
+    assert run(module.capture_quoted_campaign_reply("B1", "0501234567", "other-message")) is False
+    assert fake_db.campaign_inquiries.docs == []

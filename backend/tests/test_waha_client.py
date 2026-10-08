@@ -258,6 +258,9 @@ def test_waha_webhook_accepts_string_text_and_deduplicates(monkeypatch):
         "waha_physical_session_id": physical,
     }])
     monkeypatch.setattr(whatsapp_mod, "_db", db)
+    from routes import campaign_inquiries
+    capture_reply = AsyncMock(return_value=True)
+    monkeypatch.setattr(campaign_inquiries, "capture_quoted_campaign_reply", capture_reply)
 
     async def fake_tenant(slug):
         assert slug == "tenant-a"
@@ -273,6 +276,7 @@ def test_waha_webhook_accepts_string_text_and_deduplicates(monkeypatch):
             "from": "966501234567@c.us",
             "text": "السلام عليكم",
             "type": "text",
+            "replyTo": {"id": "campaign-message-1"},
         },
     }
     raw = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
@@ -293,6 +297,7 @@ def test_waha_webhook_accepts_string_text_and_deduplicates(monkeypatch):
     conversations = db["whatsapp_cloud_conversations"].rows
     assert len(conversations) == 1
     assert conversations[0]["unread_count"] == 1
+    capture_reply.assert_awaited_once_with("branch-a", "966501234567", "campaign-message-1")
 
 
 def test_waha_automation_echo_race_is_bounded_and_never_resolves_as_human(monkeypatch):

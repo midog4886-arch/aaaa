@@ -716,3 +716,64 @@ def test_status_callback_preserves_hard_stop_race(harness):
     run(automation.completed(item, "sent"))
     assert row["automation_status"] == "first_queued"
     assert row["automation_stop_reason"] == "customer_replied"
+
+
+def test_waha_inquiry_preview_confirm_and_reply_stop(harness, monkeypatch):
+    db, queued = harness
+    monkeypatch.setenv("WAHA_BASE_URL", "http://waha:3000")
+    monkeypatch.setenv("WAHA_API_KEY", "test-key")
+
+    async def waha_config(_branch_id):
+        return {
+            "branch_id": "b1", "provider": "waha", "enabled": True,
+            "waha_session_name": "academy", "waha_physical_session_id": "b1-academy",
+            "waha_session_status": "WORKING",
+        }
+
+    automation.configure(db, waha_config)
+    preview = run(automation.preview("b1", ["i1"], mode="direct", message="Hello {name}"))
+    assert preview["recipients"][0]["eligible"] is True
+    assert run(automation.confirm("b1", preview["preview_id"])) == {"accepted": 1, "skipped": 0}
+    assert queued[0]["provider"] == "waha"
+    item = {
+        "branch_id": "b1", "provider": "waha", "phone": "966501234567",
+        "communication_kind": automation.KIND,
+        "source_metadata": {"inquiry_id": "i1", "sequence": 0},
+    }
+    assert run(automation.authorize_dispatch(item))["action"] in {"send", "defer"}
+    run(automation.note_customer_message("b1", "0501234567", "Please stop"))
+    assert run(automation.authorize_dispatch(item))["action"] == "cancel"
+    assert db.campaign_inquiries.rows[0]["automation_stop_reason"] == "opted_out"
+
+
+def test_waha_followup_keeps_approved_provider_and_stops_on_switch(harness, monkeypatch):
+    db, queued = harness
+    monkeypatch.setenv("WAHA_BASE_URL", "http://waha:3000")
+    monkeypatch.setenv("WAHA_API_KEY", "test-key")
+    config = {
+        "branch_id": "b1", "provider": "waha", "enabled": True,
+        "waha_session_name": "academy", "waha_physical_session_id": "b1-academy",
+        "waha_session_status": "WORKING",
+    }
+
+    async def current_config(_branch_id):
+        return config
+
+    automation.configure(db, current_config)
+    preview = run(automation.preview("b1", ["i1"], mode="followup",
+                                     first_message="First", second_message="Second"))
+    run(automation.confirm("b1", preview["preview_id"]))
+    db.campaign_inquiries.rows[0]["automation_first_due_at"] = "2000-01-01T00:00:00+00:00"
+    run(automation.schedule_due())
+    assert queued[0]["provider"] == "waha"
+
+    config["waha_physical_session_id"] = "replacement-session"
+    item = {
+        "branch_id": "b1", "provider": "waha", "phone": "966501234567",
+        "communication_kind": automation.KIND,
+        "source_metadata": {"inquiry_id": "i1", "sequence": 1},
+    }
+    run(automation.completed(item, "blocked"))
+    assert db.campaign_inquiries.rows[0]["automation_stop_reason"] == "provider_changed"
+    assert run(automation.authorize_dispatch(item))["action"] == "cancel"
+    assert db.campaign_inquiries.rows[0]["automation_stop_reason"] == "provider_changed"

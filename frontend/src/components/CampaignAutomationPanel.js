@@ -49,6 +49,7 @@ const dateLabel = value => {
 
 const RECIPIENT_REASONS = {
   whatsflow_unavailable: 'واتس فلو غير متاح لهذا الفرع',
+  provider_unavailable: 'مزود واتساب غير متصل أو غير مهيأ لهذا الفرع',
   branch_paused: 'الإرسال الآلي متوقف للفرع',
   invalid_phone: 'رقم الجوال غير صالح',
   crm_status: 'حالة الاستفسار لا تسمح بالمتابعة',

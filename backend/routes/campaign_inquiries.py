@@ -348,6 +348,7 @@ async def _atomic_create(document: dict) -> bool:
             return False
         raise
 
+
     if getattr(result, "upserted_id", None) is not None:
         return True
     if getattr(result, "matched_count", 0):
@@ -376,6 +377,52 @@ async def _atomic_create(document: dict) -> bool:
         if await _phone_already_exists(branch_id, phone):
             return False
         raise
+
+
+async def capture_quoted_campaign_reply(branch_id: str, phone: str, quoted_message_id: str) -> bool:
+    """Create a manual CRM lead only for an exact reply to this branch's campaign.
+
+    A plain inbound message is not enough to attribute a campaign: the person
+    could be replying to an invoice or an unrelated conversation.  This path
+    never enrolls the new inquiry in automated follow-ups.
+    """
+    normalized = normalize_phone(phone)
+    quoted_id = str(quoted_message_id or "").strip()
+    if not branch_id or not normalized or not quoted_id:
+        return False
+    item = await db.whatsapp_campaign_job_items.find_one({
+        "branch_id": branch_id,
+        "provider": "waha",
+        "source": "campaign",
+        "communication_kind": "marketing",
+        "status": {"$in": ["sent", "delivered", "read"]},
+        "$or": [
+            {"provider_message_id": quoted_id},
+            {"provider_message_id_aliases": quoted_id},
+        ],
+    }, {"_id": 0, "job_id": 1, "recipient_name": 1, "phone": 1})
+    if not item or normalize_phone(item.get("phone")) != normalized:
+        return False
+    job = await db.whatsapp_campaign_jobs.find_one({
+        "id": item.get("job_id"), "branch_id": branch_id,
+        "provider": "waha", "source": "campaign",
+    }, {"_id": 0, "campaign_title": 1, "campaign_name": 1, "campaign_id": 1})
+    if not job:
+        return False
+    document = _base_document(
+        branch_id=branch_id,
+        phone=normalized,
+        name=item.get("recipient_name") or "",
+        source="campaign_reply",
+        campaign=job.get("campaign_title") or job.get("campaign_name") or "",
+        followup_due_at=_now(),
+    )
+    document.update({
+        "campaign_job_id": item["job_id"],
+        "campaign_id": job.get("campaign_id") or "",
+        "campaign_message_id": quoted_id,
+    })
+    return await _atomic_create(document)
 
 
 async def _phone_already_exists(branch_id: str, phone: str) -> bool:

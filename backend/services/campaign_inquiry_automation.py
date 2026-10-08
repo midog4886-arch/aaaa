@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from pymongo.errors import DuplicateKeyError
 
 from services import whatsapp_bulk_jobs
+from services.waha import WAHAClient
 from utils.phone import normalize_phone
 from utils.tenant import for_each_active_tenant, get_current_tenant_slug
 
@@ -108,17 +109,50 @@ async def _config(branch_id: str) -> dict:
 
 
 def _provider_available(config: dict) -> tuple[bool, str]:
-    if not config or config.get("provider") != "whatsflow":
-        return False, "Whatsflow is not configured"
+    provider = (config or {}).get("provider")
+    if provider not in {"whatsflow", "waha"}:
+        return False, "No session provider is configured"
     if not config.get("enabled"):
-        return False, "Whatsflow is disabled"
-    if not config.get("whatsflow_instance") or not config.get(
-        "whatsflow_api_key_encrypted"
-    ):
-        return False, "Whatsflow is not configured"
-    if str(config.get("whatsflow_state") or "").lower() != "open":
-        return False, "Whatsflow is not connected"
+        return False, "WhatsApp is disabled"
+    if provider == "waha":
+        if not config.get("waha_session_name") or not config.get("waha_physical_session_id") or not WAHAClient().configured:
+            return False, "WAHA is not configured"
+        if config.get("waha_session_status") not in {"WORKING", "CONNECTED"}:
+            return False, "WAHA is not connected"
+    else:
+        if not config.get("whatsflow_instance") or not config.get("whatsflow_api_key_encrypted"):
+            return False, "Whatsflow is not configured"
+        if str(config.get("whatsflow_state") or "").lower() != "open":
+            return False, "Whatsflow is not connected"
     return True, ""
+
+
+def _provider_identity(config: dict) -> dict:
+    """Keep an approved follow-up on the same branch session after confirmation."""
+    provider = (config or {}).get("provider")
+    return {
+        "provider": provider,
+        "session": (
+            config.get("waha_physical_session_id") if provider == "waha"
+            else config.get("whatsflow_instance")
+        ),
+    }
+
+
+def _provider_snapshot(config: dict) -> dict:
+    provider = (config or {}).get("provider")
+    return {
+        **_provider_identity(config),
+        "enabled": bool(config.get("enabled")),
+        "state": (
+            config.get("waha_session_status") if provider == "waha"
+            else config.get("whatsflow_state")
+        ),
+        "credential_present": (
+            WAHAClient().configured if provider == "waha"
+            else bool(config.get("whatsflow_api_key_encrypted"))
+        ),
+    }
 
 
 def _settings_values(doc: Optional[dict]) -> dict:
@@ -229,7 +263,7 @@ def due_within_hours(moment: datetime, settings: dict) -> datetime:
 
 def _reason(row: dict, *, mode: str, available: bool, paused: bool) -> Optional[str]:
     if not available:
-        return "whatsflow_unavailable"
+        return "provider_unavailable"
     if paused:
         return "branch_paused"
     if _is_archived(row):
@@ -315,15 +349,8 @@ def _preview_snapshot(
             "end_hour": settings["end_hour"],
             "timezone": DEFAULT_TIMEZONE,
         },
-        "provider_snapshot": {
-            "provider": config.get("provider"),
-            "enabled": bool(config.get("enabled")),
-            "instance": config.get("whatsflow_instance"),
-            "state": config.get("whatsflow_state"),
-            # Presence/identity is enough to invalidate config changes without
-            # persisting the encrypted credential itself.
-            "credential_present": bool(config.get("whatsflow_api_key_encrypted")),
-        },
+        # Presence/identity invalidates config changes without persisting keys.
+        "provider_snapshot": _provider_snapshot(config),
         "first_due_at": first_due_at,
         "second_due_at": second_due_at,
     }
@@ -481,14 +508,7 @@ async def preview(
 
 
 def _same_provider_snapshot(snapshot: dict, config: dict) -> bool:
-    expected = snapshot or {}
-    return expected == {
-        "provider": config.get("provider"),
-        "enabled": bool(config.get("enabled")),
-        "instance": config.get("whatsflow_instance"),
-        "state": config.get("whatsflow_state"),
-        "credential_present": bool(config.get("whatsflow_api_key_encrypted")),
-    }
+    return (snapshot or {}) == _provider_snapshot(config)
 
 
 async def _confirm_is_stale(preview_doc: dict, settings: dict, config: dict) -> bool:
@@ -548,7 +568,7 @@ async def confirm(branch_id: str, preview_id: str) -> dict:
     settings = await get_settings(branch_id)
     available, _reason_text = _provider_available(config)
     if not available or not settings["available"]:
-        raise ValueError("Whatsflow is unavailable for this branch")
+        raise ValueError("WhatsApp provider is unavailable for this branch")
     if await _confirm_is_stale(preview_doc, settings, config):
         raise RuntimeError("Preview is stale; create a new preview")
     if not await _live_snapshot_matches(preview_doc):
@@ -601,6 +621,7 @@ async def confirm(branch_id: str, preview_id: str) -> dict:
         if mode == "direct":
             claim_values = {
                 "automation_claim_id": preview_id,
+                "automation_provider_identity": _provider_identity(config),
                 "automation_claim_mode": "direct",
                 "automation_confirmation_id": preview_id,
                 "automation_direct_confirmation_id": preview_id,
@@ -618,6 +639,7 @@ async def confirm(branch_id: str, preview_id: str) -> dict:
         else:
             claim_values = {
                 "automation_claim_id": preview_id,
+                "automation_provider_identity": _provider_identity(config),
                 "automation_claim_mode": "followup",
                 "automation_confirmation_id": preview_id,
                 "automation_enrolled": True,
@@ -712,7 +734,7 @@ async def confirm(branch_id: str, preview_id: str) -> dict:
         try:
             job, _created = await whatsapp_bulk_jobs.enqueue(
                 branch_id,
-                "whatsflow",
+                config["provider"],
                 [
                     {
                         "phone": recipient["phone"],
@@ -876,6 +898,16 @@ async def _find_item(item: dict) -> Optional[dict]:
     )
 
 
+def _approved_provider_matches(row: dict, item: dict, config: dict) -> bool:
+    # Legacy approved work predates the snapshot and was Whatsflow-only.
+    approved = row.get("automation_provider_identity") or {"provider": "whatsflow"}
+    return (
+        approved.get("provider") == (item.get("provider") or approved.get("provider"))
+        and approved.get("provider") == (config or {}).get("provider")
+        and (not approved.get("session") or approved.get("session") == _provider_identity(config)["session"])
+    )
+
+
 async def authorize_dispatch(item: dict) -> dict:
     if item.get("communication_kind") != KIND:
         return {"action": "send"}
@@ -900,6 +932,10 @@ async def authorize_dispatch(item: dict) -> dict:
         )
     ):
         return {"action": "cancel", "reason": row.get("automation_stop_reason") or "automation_stopped"}
+    config = await _config(item.get("branch_id"))
+    if not _approved_provider_matches(row, item, config):
+        await _hard_stop_row(row, item.get("branch_id"), "provider_changed")
+        return {"action": "cancel", "reason": "provider_changed"}
     settings = await get_settings(item.get("branch_id"))
     if not settings["available"]:
         return {"action": "defer", "until": _now() + timedelta(minutes=5)}
@@ -932,6 +968,10 @@ async def recheck_dispatch(item: dict) -> bool:
     if not row.get("automation_enrolled") and int(
         (item.get("source_metadata") or {}).get("sequence") or 0
     ) != 0:
+        return False
+    config = await _config(item.get("branch_id"))
+    if not _approved_provider_matches(row, item, config):
+        await _hard_stop_row(row, item.get("branch_id"), "provider_changed")
         return False
     settings = await get_settings(item.get("branch_id"))
     if not settings["available"] or settings["paused"] or not _is_open(_now(), settings):
@@ -1011,6 +1051,10 @@ async def completed(item: dict, status: str):
         # temporary branch outage into a provider failure.
         if row.get("automation_stop_reason") or row.get("automation_status") == "stopped":
             return
+        config = await _config(item["branch_id"])
+        if not _approved_provider_matches(row, item, config):
+            await _hard_stop_row(row, item["branch_id"], "provider_changed")
+            return
         if sequence == 0:
             values = {
                 "automation_status": "direct_queued",
@@ -1077,6 +1121,9 @@ async def schedule_due():
         if not await _verify_claimed_identity(row, branch_id):
             continue
         config = await _config(branch_id)
+        if not _approved_provider_matches(row, {"provider": (row.get("automation_provider_identity") or {}).get("provider", "whatsflow")}, config):
+            await _hard_stop_row(row, branch_id, "provider_changed")
+            continue
         available, _reason_text = _provider_available(config)
         if not available:
             # Keep an explicit enrollment visible without manufacturing jobs
@@ -1134,7 +1181,7 @@ async def schedule_due():
         }
         job, _created = await whatsapp_bulk_jobs.enqueue(
             branch_id,
-            "whatsflow",
+            config["provider"],
             [recipient],
             idempotency,
             kind=KIND,
