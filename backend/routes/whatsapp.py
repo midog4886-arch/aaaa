@@ -4041,8 +4041,10 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
     raw = await request.body()
     secret = os.environ.get("WAHA_WEBHOOK_SECRET", "")
     supplied = request.headers.get("x-webhook-hmac") or ""
-    expected = hmac.new(secret.encode("utf-8"), raw, hashlib.sha256).hexdigest() if secret else ""
-    if not secret or not hmac.compare_digest(supplied, expected):
+    algorithm = (request.headers.get("x-webhook-hmac-algorithm") or "sha256").strip().lower()
+    digest = {"sha256": hashlib.sha256, "sha512": hashlib.sha512}.get(algorithm)
+    expected = hmac.new(secret.encode("utf-8"), raw, digest).hexdigest() if secret and digest else ""
+    if not secret or not digest or not hmac.compare_digest(supplied, expected):
         raise HTTPException(status_code=403, detail="Invalid webhook signature")
     try:
         envelope = json.loads(raw.decode("utf-8"))

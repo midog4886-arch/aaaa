@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 from services.waha import WAHAClient
 from routes import whatsapp as whatsapp_mod
 
@@ -280,10 +282,10 @@ def test_waha_webhook_accepts_string_text_and_deduplicates(monkeypatch):
         },
     }
     raw = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-    signature = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    signature = hmac.new(secret.encode(), raw, hashlib.sha512).hexdigest()
 
     class Request:
-        headers = {"x-webhook-hmac": signature}
+        headers = {"x-webhook-hmac": signature, "x-webhook-hmac-algorithm": "sha512"}
 
         async def body(self):
             return raw
@@ -298,6 +300,23 @@ def test_waha_webhook_accepts_string_text_and_deduplicates(monkeypatch):
     assert len(conversations) == 1
     assert conversations[0]["unread_count"] == 1
     capture_reply.assert_awaited_once_with("branch-a", "966501234567", "campaign-message-1")
+
+
+def test_waha_webhook_rejects_unknown_hmac_algorithm(monkeypatch):
+    monkeypatch.setenv("WAHA_WEBHOOK_SECRET", "webhook-secret")
+
+    class Request:
+        headers = {
+            "x-webhook-hmac": "0" * 128,
+            "x-webhook-hmac-algorithm": "sha999",
+        }
+
+        async def body(self):
+            return b"{}"
+
+    with pytest.raises(whatsapp_mod.HTTPException) as exc:
+        run(whatsapp_mod.receive_waha_webhook("tenant-a", Request()))
+    assert exc.value.status_code == 403
 
 
 def test_waha_automation_echo_race_is_bounded_and_never_resolves_as_human(monkeypatch):
