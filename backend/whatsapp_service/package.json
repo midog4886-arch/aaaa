@@ -12,5 +12,8 @@
     "mongodb": "^7.7.0",
     "pino": "^8.21.0",
     "qrcode": "^1.5.4"
+  },
+  "overrides": {
+    "protobufjs": "^7.6.6"
   }
 }
