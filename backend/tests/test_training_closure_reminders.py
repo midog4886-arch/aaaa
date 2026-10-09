@@ -68,6 +68,7 @@ class DB:
     def __init__(self, closures=(), members=()):
         self.collections = {
             "closures": Collection(closures), "members": Collection(members),
+            "invoices": Collection(),
             "branches": Collection([{"id": "a", "name": "Branch A"}, {"id": "b", "name": "Branch B"}]),
         }
 
@@ -107,6 +108,17 @@ def test_frozen_member_gets_no_daily_reminder(monkeypatch):
         "member_id": "a", "status": "active",
         "start_date": "2026-09-07", "end_date": "2026-09-08",
     })
+    sender = configure(monkeypatch, db)
+    assert run(whatsapp.process_class_reminders(NOW)) == 0
+    assert db["whatsapp_class_reminder_log"].rows == []
+    sender.assert_not_awaited()
+
+
+def test_refunded_source_gets_no_daily_reminder(monkeypatch):
+    refunded = member()
+    refunded["activities"][0]["source_id"] = "invoice-refunded"
+    db = DB(members=[refunded])
+    db["invoices"].rows.append({"id": "invoice-refunded", "status": "partially_refunded"})
     sender = configure(monkeypatch, db)
     assert run(whatsapp.process_class_reminders(NOW)) == 0
     assert db["whatsapp_class_reminder_log"].rows == []

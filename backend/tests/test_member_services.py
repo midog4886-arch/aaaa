@@ -16,6 +16,9 @@ def matches(row, query):
         if isinstance(expected, dict) and '$ne' in expected:
             if expected['$ne'] in actual if isinstance(actual, list) else actual == expected['$ne']:
                 return False
+        elif isinstance(expected, dict) and '$in' in expected:
+            if actual not in expected['$in']:
+                return False
         elif actual != expected:
             return False
     return True
@@ -52,7 +55,8 @@ class Collection:
 
 def database(members=None):
     return SimpleNamespace(members=Collection(members), support_requests=Collection(),
-                           notifications=Collection(), member_notifications=Collection())
+                           notifications=Collection(), member_notifications=Collection(),
+                           invoices=Collection())
 
 
 def test_expiry_stages_skip_invalid_expired_and_distant_dates():
@@ -89,6 +93,21 @@ def test_cancelled_and_prepaid_renewed_periods_do_not_send(monkeypatch):
         {'activity_id': 'b', 'start_date': '2030-01-09', 'end_date': '2030-02-08'},
     ]}])
     assert asyncio.run(send_member_expiry_reminders(db, date(2030, 1, 1))) == 0
+
+
+def test_refunded_invoice_suppresses_only_its_subscription(monkeypatch):
+    db = database([{'id': 'm', 'activities': [
+        {'activity_id': 'swim', 'source_id': 'returned', 'end_date': '2030-01-08'},
+        {'activity_id': 'karate', 'source_id': 'valid', 'end_date': '2030-01-08'},
+    ]}])
+    db.invoices.rows = [
+        {'id': 'returned', 'status': 'partially_refunded'},
+        {'id': 'valid', 'status': 'paid'},
+    ]
+    async def no_push(*args, **kwargs): pass
+    monkeypatch.setattr(push, 'send_push_to_members', no_push)
+    assert asyncio.run(send_member_expiry_reminders(db, date(2030, 1, 1))) == 1
+    assert db.member_notifications.rows[0]['activity_id'] == 'karate'
 
 
 def test_support_creation_is_idempotent_and_member_list_is_owned(monkeypatch):

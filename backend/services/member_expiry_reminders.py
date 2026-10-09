@@ -18,12 +18,16 @@ def reminder_stage(end_date, today):
 
 
 async def send_member_expiry_reminders(db, today=None):
+    from utils.reminder_refunds import refunded_source_ids
     today = today or datetime.now(ZoneInfo('Asia/Riyadh')).date()
     created = 0
-    cursor = db.members.find({'is_active': {'$ne': False}}, {'_id': 0})
-    async for member in cursor:
+    members = await db.members.find({'is_active': {'$ne': False}}, {'_id': 0}).to_list(None)
+    refunded_ids = await refunded_source_ids(db, members)
+    for member in members:
         for activity in member.get('activities') or []:
-            if activity.get('status') in ('cancelled', 'inactive', 'refunded') or str(activity.get('start_date') or '')[:10] > today.isoformat():
+            if (activity.get('source_id') in refunded_ids
+                    or activity.get('status') in ('cancelled', 'inactive', 'refunded')
+                    or str(activity.get('start_date') or '')[:10] > today.isoformat()):
                 continue
             end = str(activity.get('end_date') or '')[:10]
             stage = reminder_stage(end, today)

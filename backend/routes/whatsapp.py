@@ -1533,6 +1533,8 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         {"phone": {"$nin": [None, ""]}, "activities": {"$exists": True, "$ne": []}},
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1, "branch_id": 1, "activities": 1},
     ).to_list(length=None)
+    from utils.reminder_refunds import refunded_source_ids
+    refunded_ids = await refunded_source_ids(_db, members)
     log = _db["whatsapp_class_reminder_log"]
     await log.create_index("dedup_key", unique=True)
     sent = 0
@@ -1545,6 +1547,8 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         if not branch_id or not phone:
             continue
         for activity in member.get("activities") or []:
+            if activity.get("source_id") in refunded_ids:
+                continue
             if training_day_closed(closures, branch_id, activity.get("activity_id")):
                 continue
             if not _activity_is_current(activity, target_date):
@@ -2210,13 +2214,15 @@ async def _get_expiring_members(days_before: int) -> list:
             }
         }
     }).to_list(length=None)
+    from utils.reminder_refunds import refunded_source_ids
+    refunded_ids = await refunded_source_ids(_db, members)
 
     results = []
     for member in members:
         expiring_activities = []
         fees = []
         for act in member.get("activities", []):
-            if act.get("status") != "active":
+            if act.get("status") != "active" or act.get("source_id") in refunded_ids:
                 continue
             raw_end = act.get("end_date", "")
             end_date = str(raw_end)[:10] if raw_end else ""
@@ -2298,6 +2304,8 @@ async def _build_send_now_candidates(branch_id: Optional[str], enabled_offsets: 
             for activity in (member.get("activities") or [])
         )
     ]
+    from utils.reminder_refunds import refunded_source_ids
+    refunded_ids = await refunded_source_ids(_db, members)
 
     branch_ids = {m.get("branch_id") for m in members if m.get("branch_id")}
     branch_names: dict = {}
@@ -2322,7 +2330,8 @@ async def _build_send_now_candidates(branch_id: Optional[str], enabled_offsets: 
         quotas = quotas_by_member.get(member_id, [])
         for activity in member.get("activities", []) or []:
             raw_end = str(activity.get("end_date") or "")[:10]
-            if activity.get("status") != "active" or raw_end not in target_to_offset:
+            if (activity.get("status") != "active" or raw_end not in target_to_offset
+                    or activity.get("source_id") in refunded_ids):
                 continue
             activity_id = activity.get("activity_id", "")
             start_date = str(activity.get("start_date") or "")[:10]
