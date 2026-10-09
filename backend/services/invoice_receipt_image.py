@@ -315,8 +315,6 @@ def render_invoice_receipt_image(invoice: dict, branch: dict | None = None) -> b
         details: list[tuple[str, str, Any]] = []
         if item.get("member_name"):
             details.append(("المشترك", "Member", item["member_name"]))
-        if item.get("level_name"):
-            details.append(("المستوى", "Level", item["level_name"]))
         if item.get("period"):
             details.append(("المدة", "Period", item["period"]))
         if item.get("schedule"):

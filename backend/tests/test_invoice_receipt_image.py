@@ -59,6 +59,15 @@ def test_returns_valid_rgb_png_without_mutating_invoice():
     assert repr(invoice) == original
 
 
+def test_level_is_not_shown_on_receipt():
+    item = {"activity_name": "اشتراك السباحة", "fee": 400, "level_name": "المستوى 1"}
+    with_level = render_invoice_receipt_image(_invoice(items=[item]))
+    without_level = render_invoice_receipt_image(
+        _invoice(items=[{key: value for key, value in item.items() if key != "level_name"}])
+    )
+    assert with_level == without_level
+
+
 def test_arabic_fallback_is_joined_rtl_and_preserves_numbers():
     visual = _basic_rtl("فاتورة رقم INV-230955")
     assert visual != "فاتورة رقم INV-230955"
