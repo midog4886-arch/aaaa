@@ -180,6 +180,24 @@ def test_same_invoice_exact_period_key_and_shift_no_duplicate(monkeypatch):
     assert cards[0]["start_date"] == "2026-10-08"
 
 
+def test_stale_legacy_profile_cannot_move_purchased_period_start(monkeypatch):
+    inv = invoice(10)
+    inv["items"][0]["start_date"] = "2026-10-16"
+    inv["items"][0]["end_date"] = "2026-11-07"
+    keyed = {**inv["items"][0], "source": "invoice", "source_id": inv["id"],
+             "source_period_key": source_key(inv, inv["items"][0], 0), "status": "active"}
+    stale = {**keyed, "start_date": "2026-10-09", "end_date": "2026-10-31"}
+    stale.pop("source_period_key")
+    install(monkeypatch, [inv], [stale, keyed])
+    cards = history()
+    assert len(cards) == 1
+    assert cards[0]["start_date"] == "2026-10-16"
+    assert cards[0]["invoice_number"] == inv["invoice_number"]
+    quotas = asyncio.run(att.check_member_session_quota("M"))
+    assert len(quotas) == 1
+    assert quotas[0]["start_date"] == "2026-10-16"
+
+
 def test_ambiguous_legacy_alias_does_not_guess_source(monkeypatch):
     inv = invoice(10)
     inv["items"].append({**inv["items"][0], "item_id": "other", "activity_id": "B"})

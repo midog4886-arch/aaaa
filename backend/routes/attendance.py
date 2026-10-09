@@ -785,6 +785,11 @@ async def check_member_session_quota(member_id: str, activity_id: str = None, se
     #       from the original invoice window via quota_end_date. ───────────────
     member_doc = await db.members.find_one({"id": member_id}, {"_id": 0, "activities": 1}, **kw)
     linked_source_keys = {a.get("source_period_key") for a in (member_doc or {}).get("activities", []) if a.get("source_period_key")}
+    keyed_invoice_activities = {
+        (a.get("source_id"), a.get("activity_id"))
+        for a in (member_doc or {}).get("activities", [])
+        if a.get("source") == "invoice" and a.get("source_period_key")
+    }
     for act in (member_doc or {}).get("activities", []):
         item_activity_id = act.get("activity_id", "")
         if not item_activity_id:
@@ -795,6 +800,20 @@ async def check_member_session_quota(member_id: str, activity_id: str = None, se
         # today → skip) is the authoritative expiry check, so only skip statuses
         # that mark the entry as deliberately inactive (cancelled, frozen, ...).
         if act.get("status", "active") not in ("active", "expired"):
+            continue
+        if (act.get("source") == "invoice" and not act.get("source_period_key")
+                and (act.get("source_id"), item_activity_id) in keyed_invoice_activities
+                and not any(
+                    inv.get("id") == act.get("source_id")
+                    and item.get("activity_id") == item_activity_id
+                    and str(act.get("start_date") or "")[:10] in (
+                        original_window(item)[0],
+                        operational_window(inv, item, index, effective_periods)[0],
+                    )
+                    for inv in invoices for index, item in enumerate(inv.get("items") or [])
+                )):
+            # A stale legacy profile row must not revive a different period
+            # when a precisely linked row represents the purchased item.
             continue
         quota_end = None
         quota_start = None
@@ -970,7 +989,11 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
             candidates = same_aid or candidates
             if not candidates and act.get("source") == "invoice" and act.get("source_id"):
                 candidates = [s for s in sources if s[0].get("id") == act["source_id"]
-                              and s[1].get("activity_id") == act.get("activity_id")]
+                              and s[1].get("activity_id") == act.get("activity_id")
+                              and not any(
+                                  other.get("source_period_key") == source_key(*s)
+                                  for other in activities
+                              )]
         if len(candidates) == 1:
             matched[ai] = source_key(*candidates[0])
 
@@ -1017,6 +1040,18 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
         })
     for ai, act in enumerate(activities):
         if ai in matched or act.get("status", "active") not in ("active", "expired"):
+            continue
+        if (act.get("source") == "invoice" and not act.get("source_period_key")
+                and any(
+                    other.get("source_period_key") == source_key(inv, item, index)
+                    and other.get("activity_id") == act.get("activity_id")
+                    for inv, item, index in sources
+                    if inv.get("id") == act.get("source_id")
+                    and item.get("activity_id") == act.get("activity_id")
+                    and str(act.get("start_date") or "")[:10] not in (
+                        original_window(item)[0], operational_window(inv, item, index, periods)[0])
+                    for other in activities
+                )):
             continue
         # Do not guess an invoice identity for an unlinked legacy profile row.
         # An identical activity/window/schedule is already represented.
