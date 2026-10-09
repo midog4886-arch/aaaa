@@ -12,9 +12,11 @@ beforeEach(()=>{jest.clearAllMocks();mockAdmin=false;axios.get.mockImplementatio
 test('preview never sends and shows exclusions',async()=>{
   axios.post.mockResolvedValue({data:{count:1,recipients:[{phone:'966500000001',name:'Ali',message:'Hi Ali'}],removed:{duplicates:1,invalid:0,opted_out:1}}});
   render(<Workflow {...props}/>);
+  expect(screen.queryByText('استهداف اشتراكات تنتهي خلال 7 أيام')).not.toBeInTheDocument();
   fireEvent.click(screen.getByText('معاينة المستلمين والرسائل'));
   await screen.findByText('Hi Ali');
   expect(axios.post.mock.calls[0][0]).toBe('/api/whatsapp/workflow/preview');
+  expect(axios.post.mock.calls[0][1]).toMatchObject({audience:'pasted',recipients:[{phone:'0500000001',name:'Ali'}]});
   fireEvent.click(screen.getByLabelText('تحديد 966500000001'));
   expect(screen.getByText('حفظ وإرسال لاعتماد المدير')).toBeDisabled();
 });

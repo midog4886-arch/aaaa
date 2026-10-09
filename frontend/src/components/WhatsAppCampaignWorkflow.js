@@ -17,7 +17,6 @@ const labels = { pending_review:'بانتظار اعتماد المدير', sche
 export default function WhatsAppCampaignWorkflow({ branchId, items, message, defaultName, audience, onSave, onMessage, scheduleAt='', onSchedule=()=>{} }) {
   const { user } = useAuth();
   const [rows,setRows]=useState([]), [groups,setGroups]=useState([]), [group,setGroup]=useState('');
-  const [expiring,setExpiring]=useState(false);
   const when=scheduleAt;
   const [preview,setPreview]=useState(null), [excluded,setExcluded]=useState([]);
   const [busy,setBusy]=useState(false), [report,setReport]=useState(null);
@@ -29,7 +28,7 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     if(scope.current===branchId) setRows(response.data);
   };
   useEffect(()=>{
-    generation.current+=1; setRows([]);setGroups([]);setGroup('');setExpiring(false);setExcluded([]);setPreview(null);setReport(null);setBusy(false);
+    generation.current+=1; setRows([]);setGroups([]);setGroup('');setExcluded([]);setPreview(null);setReport(null);setBusy(false);
     if(!branchId) return undefined;
     refresh().catch(e=>toast.error(apiErrorMessage(e,'تعذر تحميل الحملات المعتمدة')));
     axios.get('/api/whatsapp/workflow/groups',{params:{branch_id:branchId}}).then(r=>{if(scope.current===branchId)setGroups(r.data);}).catch(()=>{});
@@ -37,9 +36,9 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     return ()=>clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[branchId]);
-  useEffect(()=>{generation.current+=1;setPreview(null);setExcluded([]);},[items,message,defaultName,audience,group,expiring]);
-  const data=()=>({branch_id:branchId,audience:expiring?'expiring_members':audience,
-    recipients:!expiring && audience==='pasted'?items.map(i=>({phone:i.phone,name:i.name,member_id:i.member_id})):[],message,default_name:defaultName,group_id:group});
+  useEffect(()=>{generation.current+=1;setPreview(null);setExcluded([]);},[items,message,defaultName,audience,group]);
+  const data=()=>({branch_id:branchId,audience,
+    recipients:audience==='pasted'?items.map(i=>({phone:i.phone,name:i.name,member_id:i.member_id})):[],message,default_name:defaultName,group_id:group});
   const act=async(fn)=>{
     const current=branchId; setBusy(true);
     try { await fn(); if(scope.current===current) await refresh(); }
@@ -87,7 +86,6 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
       </select></label>
       <label>موعد الإرسال الفعلي<input aria-label="موعد الإرسال الفعلي" type="datetime-local" className="block border rounded p-2 w-full" value={when} onChange={e=>onSchedule(e.target.value)}/><small>بتوقيت جهازك. يبدأ الإرسال بعد اعتماد المدير، حسب اتصال الخدمة وحصتها.</small></label>
     </div>
-    <label className="flex gap-2"><input type="checkbox" checked={expiring} onChange={e=>setExpiring(e.target.checked)}/>استهداف اشتراكات تنتهي خلال 7 أيام</label>
     <Button disabled={busy||!branchId||!message.trim()} onClick={showPreview}>معاينة المستلمين والرسائل</Button>
     {preview && <div className="space-y-3">
       <p className="text-emerald-800">المحدد: {chosen.length} · مكرر: {preview.removed.duplicates} · غير صالح: {preview.removed.invalid} · طلب إيقاف الرسائل: {preview.removed.opted_out}</p>
