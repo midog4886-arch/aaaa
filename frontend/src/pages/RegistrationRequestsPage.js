@@ -33,13 +33,13 @@ const STATUS_BADGE = {
 const STAGES = { new: 'جديد', contacted: 'تم التواصل', awaiting_payment: 'بانتظار الدفع', registered: 'مسجل' };
 
 export const RegistrationRequestsPage = () => {
-  const { user } = useAuth();
+  const { user, selectedBranchId } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isAdmin = user?.is_admin;
 
   const [branches, setBranches] = useState([]);
-  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState(selectedBranchId || 'all');
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showLink, setShowLink] = useState(false);
@@ -64,6 +64,9 @@ export const RegistrationRequestsPage = () => {
   const [gatewayReady, setGatewayReady] = useState(false);
   const canManagePayments = Boolean(isAdmin || (user?.permissions || []).includes('invoices'));
   const paymentSequence = useRef(0);
+  useEffect(() => {
+    setSelectedBranch(selectedBranchId || 'all');
+  }, [selectedBranchId]);
   const loadPaymentLinks = async () => {
     const sequence = ++paymentSequence.current;
     if (!canManagePayments) return;

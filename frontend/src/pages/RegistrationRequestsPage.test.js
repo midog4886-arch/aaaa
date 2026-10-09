@@ -5,13 +5,17 @@ import { branchesAPI, registrationRequestsAPI } from '../services/api';
 import axios from 'axios';
 jest.mock('axios', () => ({ get: jest.fn().mockResolvedValue({ data: { links: [], gateway_ready: false } }), post: jest.fn() }));
 
+let mockSelectedBranchId = 'all';
 jest.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { is_admin: true, permissions: ['member-phones'] },
+    user: { is_admin: true, permissions: ['member-phones'] }, selectedBranchId: mockSelectedBranchId,
   }),
 }));
 const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
+jest.mock('react-router-dom', () => ({
+  useNavigate: () => mockNavigate,
+  useSearchParams: () => [new URLSearchParams()],
+}));
 jest.mock('../components/Layout', () => ({
   Layout: ({ children }) => <div>{children}</div>,
 }));
@@ -61,6 +65,19 @@ jest.mock('../services/api', () => ({
 afterEach(() => {
   cleanup();
   jest.clearAllMocks();
+  mockSelectedBranchId = 'all';
+});
+
+test('shows only the selected branch when an admin opens registration requests', async () => {
+  mockSelectedBranchId = 'b1';
+  branchesAPI.getAll.mockResolvedValue({ data: [{ id: 'b1', name_ar: 'فرع أول' }, { id: 'b2', name_ar: 'فرع ثانٍ' }] });
+  registrationRequestsAPI.getAll.mockResolvedValue({ data: [] });
+  render(<RegistrationRequestsPage />);
+  await waitFor(() => {
+    expect(registrationRequestsAPI.getAll).toHaveBeenCalledWith({ status: 'pending', branch_filter: 'b1' });
+    expect(registrationRequestsAPI.overview).toHaveBeenCalledWith({ branch_filter: 'b1' });
+    expect(axios.get).toHaveBeenCalledWith('/api/payment-links', expect.objectContaining({ params: { branch_filter: 'b1' } }));
+  });
 });
 
 test('shows invoice payment actions directly on a processed registration request', async () => {
@@ -84,6 +101,7 @@ test('groups siblings, sorts overdue requests and filters by activity', async ()
   render(<RegistrationRequestsPage />);
   await screen.findByText('نواف');
   expect(screen.getByText(/طلبات أسرة واحدة/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('ترتيب الطلبات'), { target: { value: 'priority' } });
   expect(screen.getAllByRole('heading', { level: 3 }).map(e => e.textContent)).toEqual(['خالد', 'نواف', 'ريما']);
   fireEvent.change(screen.getByLabelText('النشاط'), { target: { value: 'السباحة' } });
   expect(screen.queryByText('خالد')).toBeNull();
