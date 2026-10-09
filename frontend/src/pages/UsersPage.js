@@ -424,17 +424,20 @@ const UsersPage = () => {
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                       placeholder="••••••"
                       dir="ltr"
-                      className="h-9"
+                      className="h-9 ps-20"
                       data-testid="user-password-input"
                     />
                     <button
                       type="button"
-                      className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
                       onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? (language === 'ar' ? 'إخفاء كلمة المرور' : 'Hide password') : (language === 'ar' ? 'إظهار كلمة المرور' : 'Show password')}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? (language === 'ar' ? 'إخفاء' : 'Hide') : (language === 'ar' ? 'إظهار' : 'Show')}
                     </button>
                   </div>
+                  {editingUser && <p className="text-xs text-muted-foreground">{language === 'ar' ? 'كلمة المرور الحالية لا تُعرض. اكتب كلمة جديدة فقط إذا أردت تغييرها.' : 'The current password cannot be shown. Enter a new one only to change it.'}</p>}
                 </div>
 
                 <div className="space-y-1">

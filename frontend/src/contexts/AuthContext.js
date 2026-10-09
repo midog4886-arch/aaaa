@@ -23,6 +23,51 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   useEffect(() => {
+    if (!token) return undefined;
+    let cancelled = false;
+    let renewing = false;
+    const renewIfNeeded = async () => {
+      if (cancelled || renewing) return;
+      const currentToken = localStorage.getItem('token');
+      if (!currentToken) return;
+      try {
+        const payload = JSON.parse(atob(currentToken.split('.')[1]));
+        // Renew only near expiry, so a continuously used staff session stays active.
+        if (!payload.exp || payload.exp - Date.now() / 1000 > 7 * 24 * 3600) return;
+      } catch (_) {
+        return;
+      }
+      renewing = true;
+      try {
+        const response = await axios.post(`${API}/auth/refresh`);
+        const refreshed = response.data?.access_token;
+        if (!cancelled && refreshed && localStorage.getItem('token') === currentToken) {
+          localStorage.setItem('token', refreshed);
+          axios.defaults.headers.common['Authorization'] = `Bearer ${refreshed}`;
+          setToken(refreshed);
+        }
+      } catch (error) {
+        // Temporary connection failures must not sign staff out.
+        if (!cancelled && error.response?.status === 401 && localStorage.getItem('token') === currentToken) {
+          logout();
+        }
+      } finally {
+        renewing = false;
+      }
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') renewIfNeeded(); };
+    renewIfNeeded();
+    const timer = window.setInterval(renewIfNeeded, 60 * 60 * 1000);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
@@ -66,7 +111,7 @@ export const AuthProvider = ({ children }) => {
       applyBranchDefault(userData);
     } catch (error) {
       console.error('Failed to fetch user:', error);
-      logout();
+      if ([401, 403].includes(error.response?.status)) logout();
     } finally {
       setLoading(false);
     }

@@ -93,6 +93,13 @@ async def test_legacy_long_lived_token_is_rejected(session):
     assert error.value.status_code == 401
 
 
+def test_staff_token_lasts_thirty_days(session):
+    _, token = session
+    claims = jwt.decode(token, auth.JWT_SECRET, algorithms=[auth.JWT_ALGORITHM])
+    lifetime = claims["exp"] - claims["iat"]
+    assert lifetime == 30 * 24 * 3600
+
+
 @pytest.mark.anyio
 async def test_token_cannot_cross_tenants(session):
     _, token = session

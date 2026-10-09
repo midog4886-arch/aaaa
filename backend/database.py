@@ -72,7 +72,7 @@ db = TenantDBProxy(_raw_client)
 
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret')
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
+JWT_EXPIRATION_HOURS = 24 * 30
 
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', '')
 

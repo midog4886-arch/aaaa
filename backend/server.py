@@ -170,7 +170,7 @@ from database import db
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET_KEY', 'default_secret')
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = 24
+JWT_EXPIRATION_HOURS = 24 * 30
 
 # Stripe Config
 STRIPE_API_KEY = os.environ.get('STRIPE_API_KEY', '')
@@ -1378,6 +1378,17 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+@api_router.post("/auth/refresh")
+async def refresh_staff_session(current_user: dict = Depends(get_current_user)):
+    """Renew an active staff session without reusing stale role or branch claims."""
+    return {"access_token": create_token(
+        current_user["user_id"], current_user["username"],
+        current_user.get("branch_id"), current_user.get("is_admin", False),
+        branch_ids=current_user.get("branch_ids"),
+        auth_version=current_user.get("auth_version", 0),
+    )}
 
 @api_router.post("/auth/logout")
 async def logout(current_user: dict = Depends(get_current_user)):
