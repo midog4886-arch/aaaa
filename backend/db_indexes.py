@@ -117,6 +117,9 @@ INDEXES = {
         ([("branch_id", 1), ("phone", 1), ("automation_enrolled", 1)], {}),
         ([("branch_id", 1), ("automation_claim_id", 1)], {"sparse": True}),
     ],
+    "whatsapp_campaign_job_items": [
+        ([("branch_id", 1), ("provider", 1), ("source", 1), ("completed_at", -1)], {}),
+    ],
     "campaign_inquiry_automation_settings": [
         ([("tenant_slug", 1), ("branch_id", 1)], {"unique": True}),
     ],

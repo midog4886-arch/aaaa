@@ -20,7 +20,11 @@ const QUICK_OUTCOMES = [
   ['not_interested', 'غير مهتم'],
   ['do_not_contact', 'لا يرغب بالتواصل'],
 ];
-const SOURCE_LABELS = { social_ad: 'إعلان سوشيال ميديا' };
+const SOURCE_LABELS = {
+  social_ad: 'إعلان سوشيال ميديا',
+  campaign_reply: 'رد مباشر على رسالة الحملة',
+  campaign_recent_message: 'ارتباط محتمل بالحملة',
+};
 const SAUDI_TIME_ZONE = 'Asia/Riyadh';
 const TEMPLATES = {
   first: 'مرحباً {name}، معك فريق الأكاديمية. يسعدنا مساعدتك في معرفة التفاصيل المناسبة لك. ما النشاط أو العمر الذي تود الاستفسار عنه؟',

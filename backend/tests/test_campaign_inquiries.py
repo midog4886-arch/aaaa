@@ -36,6 +36,10 @@ def _matches(doc, query):
                 return False
             if "$ne" in expected and doc.get(key) == expected["$ne"]:
                 return False
+            if "$gte" in expected and (doc.get(key) is None or doc[key] < expected["$gte"]):
+                return False
+            if "$lte" in expected and (doc.get(key) is None or doc[key] > expected["$lte"]):
+                return False
             continue
         if doc.get(key) != expected:
             return False
@@ -661,4 +665,43 @@ def test_campaign_reply_requires_exact_same_branch_phone_and_message(crm):
     assert run(module.capture_quoted_campaign_reply("B2", "0501234567", "outbound-1")) is False
     assert run(module.capture_quoted_campaign_reply("B1", "0507654321", "outbound-1")) is False
     assert run(module.capture_quoted_campaign_reply("B1", "0501234567", "other-message")) is False
+    assert fake_db.campaign_inquiries.docs == []
+
+
+def test_ordinary_waha_reply_within_seven_days_is_possible_campaign_inquiry(crm):
+    module, fake_db = crm
+    received = datetime(2026, 10, 9, 12, tzinfo=timezone.utc)
+    fake_db.whatsapp_campaign_jobs.docs.append({
+        "id": "job-1", "branch_id": "B1", "provider": "waha",
+        "source": "campaign", "campaign_title": "Autumn offer",
+    })
+    fake_db.whatsapp_campaign_job_items.docs.append({
+        "job_id": "job-1", "branch_id": "B1", "provider": "waha",
+        "source": "campaign", "communication_kind": "marketing",
+        "phone": "+966 50 123 4567", "recipient_name": "Sara",
+        "status": "sent", "completed_at": received - module.timedelta(days=3),
+    })
+    assert run(module.capture_recent_campaign_message("B1", "0501234567", received)) is True
+    assert run(module.capture_recent_campaign_message("B1", "0501234567", received)) is False
+    lead = fake_db.campaign_inquiries.docs[0]
+    assert lead["source"] == "campaign_recent_message"
+    assert lead["campaign_match_confidence"] == "possible"
+    assert lead["campaign"] == "Autumn offer"
+    assert "automation_enrolled" not in lead
+
+
+def test_ordinary_reply_outside_window_or_other_branch_is_not_attributed(crm):
+    module, fake_db = crm
+    received = datetime(2026, 10, 9, 12, tzinfo=timezone.utc)
+    fake_db.whatsapp_campaign_jobs.docs.append({
+        "id": "job-1", "branch_id": "B1", "provider": "waha", "source": "campaign",
+    })
+    fake_db.whatsapp_campaign_job_items.docs.append({
+        "job_id": "job-1", "branch_id": "B1", "provider": "waha",
+        "source": "campaign", "communication_kind": "marketing",
+        "phone": "966501234567", "status": "sent",
+        "completed_at": received - module.timedelta(days=8),
+    })
+    assert run(module.capture_recent_campaign_message("B1", "0501234567", received)) is False
+    assert run(module.capture_recent_campaign_message("B2", "0501234567", received)) is False
     assert fake_db.campaign_inquiries.docs == []

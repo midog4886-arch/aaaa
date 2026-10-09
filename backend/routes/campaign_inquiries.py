@@ -5,7 +5,7 @@ confirmation paths delegate to the separate campaign-inquiry automation
 service; imports never enroll contacts or enqueue provider work.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -64,6 +64,7 @@ MAX_SHORT_TEXT = 200
 MAX_AGE = 40
 MAX_NOTES = 4000
 MAX_PHONE_TEXT = 120000
+RECENT_CAMPAIGN_REPLY_DAYS = 7
 
 
 class CampaignInquiryCreate(BaseModel):
@@ -421,6 +422,56 @@ async def capture_quoted_campaign_reply(branch_id: str, phone: str, quoted_messa
         "campaign_job_id": item["job_id"],
         "campaign_id": job.get("campaign_id") or "",
         "campaign_message_id": quoted_id,
+    })
+    return await _atomic_create(document)
+
+
+async def capture_recent_campaign_message(
+    branch_id: str, phone: str, received_at: Optional[datetime] = None
+) -> bool:
+    """Flag an ordinary inbound from a recent campaign recipient for manual review.
+
+    This is only a possible attribution. It never enrolls automation, and a
+    pre-existing inquiry is never overwritten or reclassified.
+    """
+    normalized = normalize_phone(phone)
+    if not branch_id or not normalized:
+        return False
+    now = received_at or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    cutoff = now - timedelta(days=RECENT_CAMPAIGN_REPLY_DAYS)
+    items = await db.whatsapp_campaign_job_items.find({
+        "branch_id": branch_id,
+        "provider": "waha",
+        "source": "campaign",
+        "communication_kind": "marketing",
+        "status": {"$in": ["sent", "delivered", "read"]},
+        "completed_at": {"$gte": cutoff, "$lte": now},
+    }, {"_id": 0, "job_id": 1, "phone": 1, "recipient_name": 1,
+        "completed_at": 1}).to_list(None)
+    matches = [item for item in items if normalize_phone(item.get("phone")) == normalized]
+    if not matches:
+        return False
+    latest = max(matches, key=lambda item: _parse_timestamp(item.get("completed_at")) or cutoff)
+    job = await db.whatsapp_campaign_jobs.find_one({
+        "id": latest.get("job_id"), "branch_id": branch_id,
+        "provider": "waha", "source": "campaign",
+    }, {"_id": 0, "campaign_title": 1, "campaign_name": 1, "campaign_id": 1})
+    if not job:
+        return False
+    document = _base_document(
+        branch_id=branch_id, phone=normalized,
+        name=latest.get("recipient_name") or "",
+        source="campaign_recent_message",
+        campaign=job.get("campaign_title") or job.get("campaign_name") or "",
+        notes="ارتباط محتمل بالحملة: وردت رسالة عادية خلال 7 أيام من إرسالها. يُرجى التأكد من موضوع الرسالة قبل المتابعة.",
+        followup_due_at=_now(),
+    )
+    document.update({
+        "campaign_job_id": latest["job_id"],
+        "campaign_id": job.get("campaign_id") or "",
+        "campaign_match_confidence": "possible",
     })
     return await _atomic_create(document)
 

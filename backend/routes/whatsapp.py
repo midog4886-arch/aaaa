@@ -4271,6 +4271,13 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
                 # An optional CRM match must never lose an authenticated inbound
                 # WhatsApp message or its unread state.
                 logger.warning("Campaign reply attribution failed: %s", type(exc).__name__)
+        try:
+            from .campaign_inquiries import capture_recent_campaign_message
+            await capture_recent_campaign_message(config["branch_id"], phone)
+        except Exception as exc:
+            # Possible campaign attribution is optional; keep the inbound
+            # message even if the CRM lookup is unavailable.
+            logger.warning("Recent campaign attribution failed: %s", type(exc).__name__)
         await _db["whatsapp_cloud_conversations"].update_one({"id": conversation_id}, {"$set": {
             "id": conversation_id, "branch_id": config["branch_id"], "provider": "waha", "phone": phone,
             "contact_name": message.get("pushName") or message.get("name") or phone,
