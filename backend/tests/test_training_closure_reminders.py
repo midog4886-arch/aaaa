@@ -101,6 +101,34 @@ def configure(monkeypatch, db):
     return sender
 
 
+def test_frozen_member_gets_no_daily_reminder(monkeypatch):
+    db = DB(members=[member()])
+    db["member_freezes"].rows.append({
+        "member_id": "a", "status": "active",
+        "start_date": "2026-09-07", "end_date": "2026-09-08",
+    })
+    sender = configure(monkeypatch, db)
+    assert run(whatsapp.process_class_reminders(NOW)) == 0
+    assert db["whatsapp_class_reminder_log"].rows == []
+    sender.assert_not_awaited()
+
+
+def test_freeze_added_after_agenda_selection_blocks_send(monkeypatch):
+    db = DB()
+    db["member_freezes"].rows.append({
+        "member_id": "a", "status": "active",
+        "start_date": "2026-09-07", "end_date": "2026-09-07",
+    })
+    sender = configure(monkeypatch, db)
+    first = datetime(2026, 9, 7, 17, tzinfo=RIYADH_TZ)
+    candidate = {**member(), "_daily_classes": [{
+        "member_id": "a", "activity_id": "swim", "activity_name": "swim",
+        "class_time": first,
+    }], "_reminder_now": NOW}
+    assert run(whatsapp.send_class_reminder_whatsapp_notice(candidate, "swim", first, "Branch A")) is False
+    sender.assert_not_awaited()
+
+
 @pytest.mark.parametrize("applied", [False, True])
 @pytest.mark.parametrize("day,closed", [
     ("2026-09-06", False), ("2026-09-07", True), ("2026-09-08", True),

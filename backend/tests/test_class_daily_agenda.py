@@ -13,6 +13,9 @@ def test_daily_message_lists_each_time_in_both_languages(monkeypatch):
         "closures": type("Closures", (), {
             "find": lambda *args: type("Cursor", (), {"to_list": AsyncMock(return_value=[])})(),
         })(),
+        "member_freezes": type("Freezes", (), {
+            "find": lambda *args: type("Cursor", (), {"to_list": AsyncMock(return_value=[])})(),
+        })(),
         "whatsapp_send_log": type("Log", (), {"insert_one": AsyncMock()})(),
     })
     first = datetime(2026, 9, 7, 17, tzinfo=mod.RIYADH_TZ)

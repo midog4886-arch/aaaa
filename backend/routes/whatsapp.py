@@ -1335,6 +1335,16 @@ def _activity_is_current(activity: dict, on_date: date) -> bool:
     return (not start or start <= day) and (not end or end >= day)
 
 
+async def _frozen_members_on_date(on_date: date) -> set:
+    """Freeze dates are inclusive; a frozen member has no class reminder."""
+    rows = await _db["member_freezes"].find({
+        "status": "active",
+        "start_date": {"$lte": on_date.isoformat()},
+        "end_date": {"$gte": on_date.isoformat()},
+    }, {"_id": 0, "member_id": 1}).to_list(length=None)
+    return {row.get("member_id") for row in rows if row.get("member_id")}
+
+
 async def send_class_reminder_whatsapp_notice(
     member: dict, activity_name: str, class_time: datetime, branch_name: str
 ) -> bool:
@@ -1345,6 +1355,9 @@ async def send_class_reminder_whatsapp_notice(
     provider = _branch_provider(config)
     if not (phone and branch_id and config and config.get("enabled")):
         return False
+    frozen_ids = await _frozen_members_on_date(class_time.astimezone(RIYADH_TZ).date())
+    if member.get("id") in frozen_ids and not member.get("_daily_classes"):
+        return False
     # Re-read after configuration lookup: a closure may have been created while
     # this agenda waited behind other recipients. No provider call precedes this.
     closures = await closures_for_date(_db, class_time.astimezone(RIYADH_TZ).date().isoformat())
@@ -1352,7 +1365,8 @@ async def send_class_reminder_whatsapp_notice(
     if daily_classes:
         daily_classes = [
             entry for entry in daily_classes
-            if not training_day_closed(closures, branch_id, entry.get("activity_id"))
+            if entry.get("member_id", member.get("id")) not in frozen_ids
+            and not training_day_closed(closures, branch_id, entry.get("activity_id"))
         ]
         if not daily_classes:
             return False
@@ -1507,6 +1521,7 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         current = current.astimezone(RIYADH_TZ)
     target_date = (current + timedelta(hours=2)).date()
     closures = await closures_for_date(_db, target_date.isoformat())
+    frozen_ids = await _frozen_members_on_date(target_date)
     branch_rows = await _db["branches"].find(
         {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
     ).to_list(length=None)
@@ -1523,6 +1538,8 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
     sent = 0
     groups = {}
     for member in members:
+        if member.get("id") in frozen_ids:
+            continue
         branch_id = member.get("branch_id")
         phone = _format_phone(member.get("phone") or "")
         if not branch_id or not phone:
