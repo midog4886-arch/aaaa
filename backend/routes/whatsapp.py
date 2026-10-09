@@ -76,8 +76,14 @@ def _append_english_section(message: str, english_text: str) -> str:
 
 
 def _ensure_renewal_arabic_date(message: str, end_date: str) -> str:
-    """Keep custom text, but ensure the Arabic section states the expiry date."""
+    """Use the expiry date instead of a relative day count in renewal text."""
     arabic, marker, english = message.partition(BILINGUAL_ENGLISH_MARKER)
+    if end_date:
+        arabic = re.sub(
+            r"(?:بعد|خلال)\s+(?:[0-9٠-٩]+\s+)?(?:يوم/أيام|يومين|يومان|يومًا|يوماً|أيام|ايام|يوم)",
+            f"بتاريخ {end_date}",
+            arabic,
+        )
     if end_date and end_date not in arabic:
         arabic = f"{arabic.rstrip()}\nتاريخ انتهاء الاشتراك: {end_date}"
     if marker:
@@ -89,18 +95,7 @@ def _renewal_english_summary(
     *, name: str, activity: str, end_date: str, days_remaining: int
 ) -> str:
     """Build an English renewal summary solely from structured reminder data."""
-    if days_remaining < 0:
-        timing = (
-            f"expired on {end_date} "
-            f"({abs(days_remaining)} day(s) ago)"
-        )
-    elif days_remaining == 0:
-        timing = f"expires today, {end_date}"
-    else:
-        timing = (
-            f"expires on {end_date} "
-            f"({days_remaining} day(s) remaining)"
-        )
+    timing = f"expired on {end_date}" if days_remaining < 0 else f"expires on {end_date}"
     return (
         f"Hello {name},\n"
         f"Your subscription for {activity} {timing}.\n"
@@ -380,6 +375,8 @@ router = APIRouter(prefix="/whatsapp", tags=["whatsapp"])
 WA_SERVICE_URL = os.environ.get("WA_SERVICE_URL", "http://localhost:3001")
 RIYADH_TZ = ZoneInfo("Asia/Riyadh")
 
+LEGACY_RENEWAL_MESSAGE_TEMPLATE = "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆"
+
 DEFAULT_SETTINGS = {
     "enabled": False,
     # Forward NEW admin bell notifications (رسائل الأعضاء، تنبيهات التجديد…)
@@ -397,7 +394,7 @@ DEFAULT_SETTINGS = {
         {"days": 1, "enabled": True},
         {"days": 0, "enabled": True},
     ],
-    "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆",
+    "message_template": "مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بتاريخ {end_date}.\nيرجى التواصل معنا للتجديد. 🏆",
     # Per-offset overrides keyed by stringified days; empty falls back to message_template
     "templates": {},
     "manual_reminder_template": "السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆",
@@ -1631,6 +1628,7 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
             CaptionLinkError,
             build_invoice_text,
             build_whatsflow_caption,
+            message_options,
         )
 
         branch = await _db["branches"].find_one({"id": branch_id}, {"_id": 0}) or {}
@@ -1774,6 +1772,12 @@ async def send_invoice_payment_whatsapp_notice(invoice: dict) -> bool:
                         raise InvoiceReceiptDeliveryFailed(f"{reason}; text_{text_error}")
                     raise InvoiceReceiptDeliveryUnknown(text_error or "unconfirmed_text_delivery")
                 return True
+
+            options = message_options(branch)
+            if not options["items"] or not options["totals"]:
+                # The image is a full financial receipt. Use only the selected
+                # text when this branch hides item or total details in WhatsApp.
+                return await send_text_fallback("branch_invoice_message_options")
 
             try:
                 caption = build_whatsflow_caption(render_invoice, branch, tenant)
@@ -2109,6 +2113,8 @@ async def _get_settings() -> dict:
     doc = await coll.find_one({})
     if doc:
         doc.pop("_id", None)
+        if doc.get("message_template") == LEGACY_RENEWAL_MESSAGE_TEMPLATE:
+            doc["message_template"] = DEFAULT_SETTINGS["message_template"]
         # Merge defaults but DO NOT inject the default `offsets` for legacy
         # docs that never stored that field — otherwise the legacy
         # days_before/days_before_2/extra_offsets fallback in

@@ -108,6 +108,30 @@ def test_missing_group_does_not_invent_or_reuse_a_global_link():
     assert "example.test" not in caption
 
 
+def test_branch_selects_android_and_iphone_portal_links_independently():
+    branch = {"whatsapp_invoice_message_options": {
+        "android_app": False, "member_portal": True, "group": False,
+    }, "whatsapp_group_url": "https://chat.whatsapp.com/BranchA"}
+    text = build_invoice_text(_invoice(), branch, {"slug": "academy-a"})
+    assert ANDROID_MEMBER_APP_URL not in text
+    assert "member-dashboard?tenant=academy-a" in text
+    assert "chat.whatsapp.com" not in text
+
+
+def test_branch_can_omit_invoice_items_and_amounts_from_text():
+    branch = {"whatsapp_invoice_message_options": {"items": False, "totals": False}}
+    text = build_invoice_text(_invoice(), branch, {"slug": "academy-a"})
+    assert "رقم الفاتورة: 230955" in text
+    assert "السباحة" not in text
+    assert "435.00" not in text
+    names_only = build_invoice_text(_invoice(), {
+        "whatsapp_invoice_message_options": {"items": True, "totals": False}
+    }, {"slug": "academy-a"})
+    assert "السباحة" in names_only
+    assert "435.00" not in names_only
+    assert "400 ر.س" not in names_only
+
+
 def test_text_and_caption_use_saved_item_schedule_and_all_multi_items():
     invoice = _invoice(items=[
         {

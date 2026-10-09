@@ -31,6 +31,7 @@ const WEEKDAYS = [
   { id: 'friday', name_ar: 'الجمعة', name_en: 'Friday' },
 ];
 const ALL_WEEKDAY_IDS = WEEKDAYS.map(d => d.id);
+const DEFAULT_INVOICE_MESSAGE_OPTIONS = { android_app: true, member_portal: true, group: true, items: true, totals: true };
 
 const emptyVenue = () => ({
   id: '',
@@ -52,6 +53,7 @@ const initialFormData = () => ({
   location_url: '',
   code_prefix: '',
   whatsapp_group_url: '',
+  whatsapp_invoice_message_options: {},
   support_whatsapp: '',
   whatsapp_renewal_template: '',
   whatsapp_manual_template: '',
@@ -188,6 +190,7 @@ const BranchesPage = () => {
         is_active: true,
         code_prefix: cleanedPrefix,
         whatsapp_group_url: (formData.whatsapp_group_url || '').trim(),
+        whatsapp_invoice_message_options: formData.whatsapp_invoice_message_options || {},
         support_whatsapp: (formData.support_whatsapp || '').trim(),
         whatsapp_renewal_template: (formData.whatsapp_renewal_template || '').trim(),
         whatsapp_manual_template: (formData.whatsapp_manual_template || '').trim(),
@@ -299,6 +302,7 @@ const BranchesPage = () => {
       location_url: branch.location_url || '',
       code_prefix: branch.code_prefix || '',
       whatsapp_group_url: branch.whatsapp_group_url || '',
+      whatsapp_invoice_message_options: branch.whatsapp_invoice_message_options || {},
       support_whatsapp: branch.support_whatsapp || '',
       whatsapp_renewal_template: branch.whatsapp_renewal_template || '',
       whatsapp_manual_template: branch.whatsapp_manual_template || '',
@@ -999,6 +1003,26 @@ const BranchesPage = () => {
                     ? 'سيتم إدراج هذا الرابط في رسائل واتساب الفواتير واستمارات التسجيل لهذا الفرع. اتركه فارغًا لإخفاء الرابط من الرسائل.'
                     : 'This link will be inserted in WhatsApp messages for invoices and registration forms of this branch. Leave empty to omit the link.'}
                 </p>
+              </div>
+
+              <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-2">
+                <p className="text-sm font-bold text-blue-900">{language === 'ar' ? 'محتوى واتساب بعد إنشاء الفاتورة وبعد الدفع' : 'Invoice WhatsApp content'}</p>
+                <p className="text-xs text-blue-800">{language === 'ar' ? 'اختر روابط الأعضاء وتفاصيل رسالة الدفع لهذا الفرع. رابط توقيع الاستمارة يبقى دائمًا. عند إخفاء البنود أو المبالغ، تُرسل رسالة نصية بدل صورة الإيصال الكاملة عبر Whatsflow؛ وتبقى الفاتورة الكاملة داخل النظام.' : 'Choose member links and payment message details for this branch. The signing link is always included. If items or amounts are hidden, Whatsflow sends text instead of the full receipt image.'}</p>
+                {[
+                  ['android_app', 'رابط تطبيق أندرويد', 'Android app link'],
+                  ['member_portal', 'رابط بوابة الأعضاء للآيفون والويب', 'iPhone and web portal link'],
+                  ['group', 'رابط مجموعة واتساب الفرع', 'Branch WhatsApp group link'],
+                  ['items', 'بنود الفاتورة في رسالة الدفع', 'Invoice items in payment message'],
+                  ['totals', 'مبالغ الفاتورة في رسالة الدفع', 'Invoice amounts in payment message']
+                ].map(([key, ar, en]) => (
+                  <label key={key} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={formData.whatsapp_invoice_message_options?.[key] ?? DEFAULT_INVOICE_MESSAGE_OPTIONS[key]}
+                      onChange={event => setFormData(previous => ({ ...previous, whatsapp_invoice_message_options: {
+                        ...DEFAULT_INVOICE_MESSAGE_OPTIONS, ...previous.whatsapp_invoice_message_options, [key]: event.target.checked
+                      } }))} />
+                    {language === 'ar' ? ar : en}
+                  </label>
+                ))}
               </div>
 
               <div className="space-y-2">

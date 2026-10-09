@@ -282,6 +282,24 @@ async def send_new_invoice_consent(invoice: dict, actor: str) -> str:
     tenant = quote(get_current_tenant_slug() or "default", safe="")
     url = f"{public_base_url()}/consent/{quote(token, safe='')}?tenant={tenant}"
     message = f"يرجى مراجعة استمارة تسجيل النشاط والتوقيع عليها خلال 7 أيام من الرابط التالي:\n{url}"
+    # The signing URL is mandatory; branch-selected member links are optional.
+    branches = getattr(db, "branches", None)
+    branch = await branches.find_one({"id": invoice.get("branch_id")}, {"_id": 0}) if branches else None
+    if branch and branch.get("whatsapp_invoice_message_options"):
+        from services.invoice_whatsapp import invoice_links, message_options
+        options = message_options(branch)
+        message += f"\nرقم الفاتورة: {invoice.get('invoice_number') or invoice['id']}"
+        if options["items"]:
+            names = [str(item.get("activity_name") or item.get("product_name") or item.get("name") or "").strip()
+                     for item in invoice.get("items") or [] if isinstance(item, dict)]
+            names = [name for name in names if name]
+            if names:
+                message += "\nالبنود: " + "، ".join(names)
+        if options["totals"]:
+            message += f"\nالمبلغ المستحق: {invoice.get('total', 0)} ر.س"
+        links = [(label, link) for label, link in invoice_links(invoice, branch) if link.lower().startswith("https://")]
+        if links:
+            message += "\n\n" + "\n".join(f"{label}:\n{link}" for label, link in links)
     try:
         sent = await _send_consent_whatsapp(phone, message, invoice.get("branch_id"))
     except Exception:

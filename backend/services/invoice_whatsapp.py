@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 ANDROID_MEMBER_APP_URL = (
     "https://play.google.com/store/apps/details?id=com.champions.academy.member"
 )
+DEFAULT_MESSAGE_OPTIONS = {
+    "android_app": True, "member_portal": True, "group": True,
+    "items": True, "totals": True,
+}
+
+
+def message_options(branch: Mapping[str, Any] | None) -> dict[str, bool]:
+    saved = (branch or {}).get("whatsapp_invoice_message_options") or {}
+    return {key: bool(saved.get(key, default)) for key, default in DEFAULT_MESSAGE_OPTIONS.items()}
 DEFAULT_PUBLIC_BASE_URL = "https://adaa-alabtal.com"
 DEFAULT_COMPANY_NAME = "شركة اداء الابطال العالمية للرياضة"
 DEFAULT_TAX_NUMBER = "312655637900003"
@@ -217,16 +226,15 @@ def invoice_links(
 ) -> list[tuple[str, str]]:
     """Return the customer-facing links in manual-invoice order."""
     branch = branch or {}
+    options = message_options(branch)
     raw_group = branch.get("whatsapp_group_url")
     group_url = extract_whatsapp_group_url(raw_group)
     if raw_group and not group_url and "chat.whatsapp.com" in str(raw_group).lower():
         logger.warning("Omitting invalid branch WhatsApp invite from invoice caption")
     return [
-        ("تطبيق الأعضاء للأندرويد / Android member app", ANDROID_MEMBER_APP_URL),
-        ("بوابة الأعضاء / Member portal", member_portal_url(
-            invoice, branch, tenant
-        )),
-        *([("مجموعة الواتساب / Branch WhatsApp group", group_url)] if group_url else []),
+        *([("تطبيق الأعضاء للأندرويد / Android member app", ANDROID_MEMBER_APP_URL)] if options["android_app"] else []),
+        *([("بوابة الأعضاء للآيفون والويب / iPhone and web member portal", member_portal_url(invoice, branch, tenant))] if options["member_portal"] else []),
+        *([("مجموعة الواتساب / Branch WhatsApp group", group_url)] if options["group"] and group_url else []),
     ]
 
 
@@ -238,8 +246,7 @@ def _link_block(
     include_optional: bool = True,
 ) -> str:
     links = invoice_links(invoice, branch, tenant)
-    required = links[:2]
-    if any(not url.lower().startswith("https://") for _, url in required):
+    if any(not url.lower().startswith("https://") for _, url in links):
         raise CaptionLinkError("required invoice link is not HTTPS")
 
     def render(rows: list[tuple[str, str]]) -> str:
@@ -249,14 +256,15 @@ def _link_block(
             for line in (f"{label}:", url)
         )
 
+    required = [row for row in links if "Branch WhatsApp group" not in row[0]]
     required_block = render(required)
     if _caption_units(required_block) > limit:
         raise CaptionLinkError("required invoice links exceed caption limit")
 
     if include_optional and len(links) > len(required):
-        optional = links[len(required):]
+        optional = [row for row in links if row not in required]
         optional_block = render(optional)
-        candidate = f"{required_block}\n{optional_block}"
+        candidate = f"{required_block}\n{optional_block}" if required_block else optional_block
         if _caption_units(candidate) <= limit:
             return candidate
         logger.warning(
@@ -287,7 +295,7 @@ def _item_days(item: Mapping[str, Any]) -> str:
     return days_text
 
 
-def _item_detail_lines(item: Mapping[str, Any], language: str = "ar") -> list[str]:
+def _item_detail_lines(item: Mapping[str, Any], language: str = "ar", *, include_amounts: bool = True) -> list[str]:
     """Read only purchased item snapshots; never query/live-merge activities."""
     name = (
         item.get("activity_name")
@@ -305,7 +313,7 @@ def _item_detail_lines(item: Mapping[str, Any], language: str = "ar") -> list[st
     period = _as_text(item.get("period"))
     quantity_text = f" × {quantity}" if quantity != 1 else ""
     if language == "en":
-        lines = [f"• {name}{quantity_text}: SAR {fee}"]
+        lines = [f"• {name}{quantity_text}: SAR {fee}" if include_amounts else f"• {name}{quantity_text}"]
         if period:
             lines.append(f"  Period: {period}")
         if schedule:
@@ -319,7 +327,7 @@ def _item_detail_lines(item: Mapping[str, Any], language: str = "ar") -> list[st
         if item.get("end_date"):
             lines.append(f"  End: {end}")
         return lines
-    lines = [f"• {name}{quantity_text}: {fee} ر.س"]
+    lines = [f"• {name}{quantity_text}: {fee} ر.س" if include_amounts else f"• {name}{quantity_text}"]
     if period:
         lines.append(f"  المدة: {period}")
     if schedule:
@@ -335,11 +343,11 @@ def _item_detail_lines(item: Mapping[str, Any], language: str = "ar") -> list[st
     return lines
 
 
-def _item_lines(items: Iterable[Any], language: str) -> list[str]:
+def _item_lines(items: Iterable[Any], language: str, *, include_amounts: bool = True) -> list[str]:
     lines: list[str] = []
     for raw in items:
         item = raw if isinstance(raw, Mapping) else {}
-        lines.extend(_item_detail_lines(item, language))
+        lines.extend(_item_detail_lines(item, language, include_amounts=include_amounts))
     return lines
 
 
@@ -351,6 +359,7 @@ def build_invoice_text(
     """Build the expanded bilingual text used by WAHA and Meta templates."""
     branch = branch or {}
     tenant = tenant or {}
+    options = message_options(branch)
     customer = (
         invoice.get("customer_name_ar")
         or invoice.get("customer_name")
@@ -384,8 +393,8 @@ def build_invoice_text(
         default=DEFAULT_COMMERCIAL_REG,
         allow_default=allow_default_branding,
     )
-    items = _item_lines(invoice.get("items") or [], "ar")
-    items_en = _item_lines(invoice.get("items") or [], "en")
+    items = _item_lines(invoice.get("items") or [], "ar", include_amounts=options["totals"])
+    items_en = _item_lines(invoice.get("items") or [], "en", include_amounts=options["totals"])
     if not items:
         items = ["• تفاصيل الفاتورة محفوظة في حسابك"]
         items_en = ["• Invoice details are saved in your account"]
@@ -400,18 +409,27 @@ def build_invoice_text(
         else ""
     )
     links = _link_block(invoice, branch, tenant)
+    link_prefix = f"{links}\n\n" if links else ""
+    item_block_ar = f"البنود:\n{chr(10).join(items)}\n\n" if options["items"] else ""
+    item_block_en = f"Items:\n{chr(10).join(items_en)}\n\n" if options["items"] else ""
+    totals_ar = (
+        f"المجموع الفرعي: {_saved_number(invoice.get('subtotal'))} ر.س{discount}\n"
+        f"ضريبة القيمة المضافة: {_saved_number(invoice.get('vat_amount'))} ر.س\n"
+        f"الإجمالي المدفوع: {_saved_number(invoice.get('total'))} ر.س\n"
+    ) if options["totals"] else ""
+    totals_en = (
+        f"Subtotal: SAR {_saved_number(invoice.get('subtotal'))}{discount_en}\n"
+        f"VAT: SAR {_saved_number(invoice.get('vat_amount'))}\n"
+        f"Total paid: SAR {_saved_number(invoice.get('total'))}\n"
+    ) if options["totals"] else ""
     arabic = (
-        f"{links}\n\n"
+        f"{link_prefix}"
         f"الشركة: {company}\n"
         f"رقم الفاتورة: {number}\n"
         f"التاريخ: {date}\n"
         f"العميل: {customer}\n"
         f"رقم العضوية: {member_code}\n\n"
-        f"البنود:\n" + "\n".join(items) + "\n\n"
-        f"المجموع الفرعي: {_saved_number(invoice.get('subtotal'))} ر.س"
-        f"{discount}\n"
-        f"ضريبة القيمة المضافة: {_saved_number(invoice.get('vat_amount'))} ر.س\n"
-        f"الإجمالي المدفوع: {_saved_number(invoice.get('total'))} ر.س\n"
+        f"{item_block_ar}{totals_ar}"
         f"الرقم الضريبي: {tax_number}\nالسجل التجاري: {commercial_reg}"
     )
     english = (
@@ -421,11 +439,7 @@ def build_invoice_text(
         f"Date: {date}\n"
         f"Customer: {customer}\n"
         f"Member code: {member_code}\n\n"
-        f"Items:\n" + "\n".join(items_en) + "\n\n"
-        f"Subtotal: SAR {_saved_number(invoice.get('subtotal'))}"
-        f"{discount_en}\n"
-        f"VAT: SAR {_saved_number(invoice.get('vat_amount'))}\n"
-        f"Total paid: SAR {_saved_number(invoice.get('total'))}\n"
+        f"{item_block_en}{totals_en}"
         f"Tax No.: {tax_number}\nCR: {commercial_reg}"
     )
     return f"{arabic}\n\n— English —\n{english}"
@@ -512,24 +526,25 @@ def fit_media_caption(
         raise CaptionLinkError("required invoice links exceed caption limit")
     if not details:
         return links
+    prefix = f"{links}\n\n" if links else ""
     detail_lines = details.splitlines()
     # Keep payment confirmation and invoice/total summary together before any
     # item lines.  If even this required summary cannot fit, fail rather than
     # dispatching a caption that hides the amount being paid.
     required_detail = "\n".join(detail_lines[:2])
-    required_candidate = f"{links}\n\n{required_detail}"
+    required_candidate = f"{prefix}{required_detail}"
     if _caption_units(required_candidate) > limit:
         raise CaptionLinkError("invoice number/total summary cannot fit caption")
-    if _caption_units(f"{links}\n\n{details}") <= limit:
-        return f"{links}\n\n{details}"
+    if _caption_units(f"{prefix}{details}") <= limit:
+        return f"{prefix}{details}"
     marker = "\n… Full invoice details are in the image."
     lines = detail_lines[:2]
     for line in detail_lines[2:]:
-        candidate = f"{links}\n\n{chr(10).join(lines + [line])}{marker}"
+        candidate = f"{prefix}{chr(10).join(lines + [line])}{marker}"
         if _caption_units(candidate) > limit:
             break
         lines.append(line)
-    candidate = f"{links}\n\n{chr(10).join(lines)}{marker}"
+    candidate = f"{prefix}{chr(10).join(lines)}{marker}"
     if _caption_units(candidate) <= limit:
         return candidate
     # The summary itself fits by construction; omit optional detail lines and

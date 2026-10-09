@@ -457,7 +457,7 @@ export default function WhatsAppPage() {
       { days: 1, enabled: true },
       { days: 0, enabled: true },
     ],
-    message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بعد {days} يوم/أيام.\nيرجى التواصل معنا للتجديد. 🏆',
+    message_template: 'مرحباً {name}،\nنذكركم بأن اشتراككم في نشاط {activity} سينتهي بتاريخ {end_date}.\nيرجى التواصل معنا للتجديد. 🏆',
     templates: {},
     manual_reminder_template: 'السلام عليكم {name}،\nنود تذكيركم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قارب على الانتهاء بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆',
     manual_reminder_expired_template: 'السلام عليكم {name}،\nنود إعلامكم بأن اشتراك ({activity}) في شركة اداء الابطال العالمية للرياضة قد انتهى بتاريخ {end_date}.\nنرجو التواصل معنا للتجديد.\nشكراً لكم 🏆',
@@ -2332,7 +2332,8 @@ export default function WhatsAppPage() {
   const messagePreview = waSettings.message_template
     .replace('{name}', t('أحمد محمد', 'Ahmed Mohammed'))
     .replace('{activity}', t('كرة القدم', 'Football'))
-    .replace('{days}', waSettings.days_before);
+    .replace('{days}', waSettings.days_before)
+    .replace('{end_date}', new Date(Date.now() + waSettings.days_before * 86400000).toLocaleDateString('en-CA').replace(/-/g, '/'));
 
   // ── Tabs definition ──
   const tabs = [

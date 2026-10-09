@@ -4,7 +4,7 @@ Handles branch/location management
 """
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List
+from typing import Optional, List, Dict
 from typing import Literal
 from datetime import datetime, timezone
 import uuid
@@ -35,6 +35,8 @@ class BranchBase(BaseModel):
     is_active: bool = True
     code_prefix: Optional[str] = ""
     whatsapp_group_url: Optional[str] = ""
+    # Optional customer-facing WhatsApp content; absent keeps legacy receipts.
+    whatsapp_invoice_message_options: Dict[str, bool] = Field(default_factory=dict)
     # Per-branch WhatsApp message templates. Empty -> fall back to the shared
     # global templates in whatsapp_settings (backward compatible). Placeholders:
     # {name} {activity} {days} {end_date} {fee}.
@@ -95,6 +97,10 @@ def _validate_location_url(data: dict):
             detail="رابط اللوكيشن يجب أن يبدأ بـ http:// أو https://",
         )
     data["location_url"] = url
+    allowed = {"android_app", "member_portal", "group", "items", "totals"}
+    options = data.get("whatsapp_invoice_message_options") or {}
+    if set(options) - allowed:
+        raise HTTPException(status_code=400, detail="خيار رسالة فاتورة غير معروف")
 
 
 def _validate_branch_templates(data: dict):

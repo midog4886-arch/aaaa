@@ -260,6 +260,27 @@ def test_new_activity_invoice_sends_one_signing_link_and_records_result(monkeypa
     assert asyncio.run(route.link_history(invoice, asyncio.run(route.current_terms('swimming'))))[0]['status'] == 'sent'
 
 
+def test_new_invoice_consent_keeps_signing_link_and_uses_selected_branch_links(monkeypatch):
+    invoice, database, _user = fixture_db(monkeypatch)
+    invoice['customer_phone'] = '0551234567'
+    database.branches = Collection([{'id': 'b1', 'whatsapp_invoice_message_options': {
+        'android_app': False, 'member_portal': True, 'group': False,
+    }}])
+    sent = []
+
+    async def send(phone, message, branch):
+        sent.append(message)
+        return True
+
+    monkeypatch.setattr(route, '_send_consent_whatsapp', send)
+    assert asyncio.run(route.send_new_invoice_consent(invoice, 'staff')) == 'sent'
+    assert '/consent/' in sent[0]
+    assert 'رقم الفاتورة: 530405' in sent[0]
+    assert 'سباحة يومين' in sent[0]
+    assert 'member-dashboard' in sent[0]
+    assert 'play.google.com' not in sent[0]
+
+
 def test_new_invoice_does_not_claim_delivery_when_provider_fails(monkeypatch):
     invoice, database, _user = fixture_db(monkeypatch)
     invoice['customer_phone'] = '0551234567'

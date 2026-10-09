@@ -2047,7 +2047,7 @@ def test_automatic_renewal_preserves_template_and_appends_structured_english_onc
     assert message.startswith("مرحباً محمد Ali، اشتراك الكاراتيه Kids")
     assert "Hello محمد Ali" in message
     assert "subscription for الكاراتيه Kids expires on 2026/09/10" in message
-    assert "(3 day(s) remaining)" in message
+    assert "day(s) remaining" not in message
     assert message.count(whatsapp_mod.BILINGUAL_ENGLISH_MARKER) == 1
     assert sent[0][3] == "CONTACT_US"
 
@@ -2081,16 +2081,22 @@ def test_automatic_renewal_does_not_double_marked_bilingual_template(monkeypatch
     assert sent == ["تنبيه\nتاريخ انتهاء الاشتراك: 2026/09/10\n\n— English —\nAlready bilingual"]
 
 
-def test_renewal_arabic_date_is_added_once():
+def test_renewal_arabic_uses_date_instead_of_relative_days():
     message = "مرحباً، اشتراككم سينتهي بعد يومين."
     result = whatsapp_mod._ensure_renewal_arabic_date(message, "2026/09/12")
-    assert "تاريخ انتهاء الاشتراك: 2026/09/12" in result
+    assert "سينتهي بتاريخ 2026/09/12" in result
+    assert "بعد يومين" not in result
+    numeric = whatsapp_mod._ensure_renewal_arabic_date(
+        "اشتراككم سينتهي بعد 2 يوم/أيام.", "2026/09/12"
+    )
+    assert "سينتهي بتاريخ 2026/09/12" in numeric
+    assert "بعد 2 يوم/أيام" not in numeric
     assert whatsapp_mod._ensure_renewal_arabic_date(result, "2026/09/12") == result
     custom = "ينتهي بتاريخ 2026/09/12، يرجى التجديد."
     assert whatsapp_mod._ensure_renewal_arabic_date(custom, "2026/09/12") == custom
 
 
-def test_automatic_renewal_uses_expired_days_ago_not_negative_remaining(monkeypatch):
+def test_automatic_renewal_uses_expiry_date_without_relative_days(monkeypatch):
     db = _DB()
     monkeypatch.setattr(whatsapp_mod, "_db", db)
     sent = []
@@ -2116,7 +2122,8 @@ def test_automatic_renewal_uses_expired_days_ago_not_negative_remaining(monkeypa
     }], -4, "انتهى الاشتراك بتاريخ {end_date}"))
 
     assert count == 1
-    assert "expired on 2026/09/10 (4 day(s) ago)" in sent[0]
+    assert "expired on 2026/09/10" in sent[0]
+    assert "day(s) ago" not in sent[0]
     assert "-4 day(s) remaining" not in sent[0]
 
 
@@ -2198,7 +2205,7 @@ def test_manual_bulk_expired_renewal_appends_structured_english(monkeypatch):
     assert "Hello عبدالعزيز" in message
     assert (
         f"subscription for الكاراتيه Kids expired on "
-        f"{expired_date.replace('-', '/')} (3 day(s) ago)"
+        f"{expired_date.replace('-', '/')}"
     ) in message
     assert "-3 day(s) remaining" not in message
     assert message.count(whatsapp_mod.BILINGUAL_ENGLISH_MARKER) == 1
