@@ -241,6 +241,16 @@ test('manual mode opens one personalized wa.me chat without queueing', async () 
   expect(mockWhatsappAPI.enqueueClosureNotices).not.toHaveBeenCalled();
 });
 
+test('closure notes appear in the editable message and manual WhatsApp link', async () => {
+  mockApi.dayExtensions.getClosures.mockResolvedValue({ data: [{
+    ...closure, notes: 'Pool closed for maintenance',
+  }] });
+  await openManualPreview();
+  expect(screen.getByDisplayValue(/ملاحظات الإغلاق: Pool closed for maintenance/)).toBeInTheDocument();
+  const link = await screen.findByTestId('manual-whatsapp-member-1');
+  expect(decodeURIComponent(link.getAttribute('href'))).toContain('Pool closed for maintenance');
+});
+
 test('manual mode preserves exclusions and disables missing or invalid phones', async () => {
   const user = await openManualPreview();
 

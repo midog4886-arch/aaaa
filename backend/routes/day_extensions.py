@@ -1209,7 +1209,7 @@ async def apply_extension(data: ExtensionApply, user=Depends(get_current_user)):
         "skipped_members": plan["skipped_members"],
     }
 
-def _personalize_closure_notice(template: str, member: dict) -> str:
+def _personalize_closure_notice(template: str, member: dict, closure_notes: str = "") -> str:
     detail = ((member.get("details") or [{}])[0]) or {}
     values = {
         "name": member.get("name") or "",
@@ -1218,9 +1218,12 @@ def _personalize_closure_notice(template: str, member: dict) -> str:
         "old_end": detail.get("old_end") or "",
         "activity": detail.get("activity") or "",
     }
-    message = template
+    notes = str(closure_notes or "").strip()
+    message = template.replace("{notes}", notes)
     for key, value in values.items():
         message = message.replace("{" + key + "}", str(value))
+    if notes and notes not in message:
+        message += f"\n\nملاحظات الإغلاق: {notes}"
     if "— English —" not in message:
         lines = [
             "— English —",
@@ -1380,7 +1383,7 @@ async def enqueue_closure_notices(
             })
             continue
         item["name"] = member.get("name_ar") or member.get("name") or ""
-        message = _personalize_closure_notice(template, item)
+        message = _personalize_closure_notice(template, item, closure.get("notes") or "")
         if not message or len(message) > 4096:
             raise HTTPException(status_code=400, detail="Personalized message is invalid")
         grouped.setdefault(branch_id, []).append({"phone": normalized_phone, "message": message,

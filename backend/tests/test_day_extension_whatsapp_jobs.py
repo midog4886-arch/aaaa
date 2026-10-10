@@ -56,7 +56,9 @@ class DB:
 
 
 def test_closure_notices_use_db_phones_split_branches_and_personalize(monkeypatch):
-    monkeypatch.setattr(mod, "db", DB())
+    fake_db = DB()
+    fake_db.closures.rows[0]["notes"] = "Training stops today due to administrative meetings"
+    monkeypatch.setattr(mod, "db", fake_db)
     seen_preview = []
     enqueued = []
 
@@ -108,8 +110,17 @@ def test_closure_notices_use_db_phones_split_branches_and_personalize(monkeypatc
     assert message.startswith("محمد|2|2026-09-12|2026-09-10|سباحة")
     assert "New end date: 2026-09-12" in message
     assert "Sessions to compensate: 2" in message
+    assert "ملاحظات الإغلاق: Training stops today due to administrative meetings" in message
     assert enqueued[0][3] == "closure_notice_closure-1"
     assert result["queued"] == 1
+
+
+def test_closure_notes_are_not_duplicated_when_already_in_template():
+    message = mod._personalize_closure_notice(
+        "مرحباً {name}\nملاحظات الإغلاق: Pool maintenance",
+        {"name": "Sara", "details": []}, "Pool maintenance",
+    )
+    assert message.count("Pool maintenance") == 1
 
 
 def test_provider_failure_happens_before_any_enqueue(monkeypatch):

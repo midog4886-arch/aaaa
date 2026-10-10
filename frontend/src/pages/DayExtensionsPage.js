@@ -44,7 +44,7 @@ const getManualWhatsAppUrl = (phone, canViewPhones, message) => {
 
 // Keep browser-opened notices in lockstep with the automatic closure queue's
 // personalization. The queue appends this English evidence section too.
-const personalizeClosureMessage = (template, member) => {
+const personalizeClosureMessage = (template, member, closureNotes = '') => {
   const changes = member?.activity_changes?.length
     ? member.activity_changes.map(change => ({
         activity: change.activity_name,
@@ -61,10 +61,12 @@ const personalizeClosureMessage = (template, member) => {
     old_end: detail.old_end || '',
     activity: detail.activity || ''
   };
-  let message = template || '';
+  const notes = String(closureNotes || '').trim();
+  let message = (template || '').split('{notes}').join(notes);
   Object.entries(values).forEach(([key, value]) => {
     message = message.split(`{${key}}`).join(String(value));
   });
+  if (notes && !message.includes(notes)) message += `\n\nملاحظات الإغلاق: ${notes}`;
   if (!message.includes('— English —')) {
     const lines = [
       '— English —',
@@ -264,7 +266,8 @@ export default function DayExtensionsPage() {
 
   const buildDefaultMessage = (closure) => {
     const title = closure.title_ar || closure.title_en || '';
-    return `السلام عليكم {name}،\nنود إفادتكم بأنه نظراً لـ "${title}" بتاريخ ${closure.start_date} → ${closure.end_date}، تم ترحيل اشتراككم {days} يوم/أيام.\nتاريخ الانتهاء الجديد: {new_end}\nشكراً لكم 🏆\nأكاديمية أداء الأبطال`;
+    const notes = String(closure.notes || '').trim();
+    return `السلام عليكم {name}،\nنود إفادتكم بأنه نظراً لـ "${title}" بتاريخ ${closure.start_date} → ${closure.end_date}، تم ترحيل اشتراككم {days} يوم/أيام.\nتاريخ الانتهاء الجديد: {new_end}${notes ? `\nملاحظات الإغلاق: ${notes}` : ''}\nشكراً لكم 🏆\nأكاديمية أداء الأبطال`;
   };
 
   const handlePreviewExtension = async (closure) => {
@@ -1199,7 +1202,7 @@ export default function DayExtensionsPage() {
                                  </span>
                                  {whatsappMode === 'manual' && (() => {
                                    const messageReady = Boolean(waMessage.trim());
-                                   const personalizedMessage = personalizeClosureMessage(waMessage, m);
+                                   const personalizedMessage = personalizeClosureMessage(waMessage, m, previewClosure?.notes);
                                    const queueLocked = manualQueueLocked(m) || sendingWa;
                                    const manualUrl = !queueLocked && !isExcluded && messageReady
                                      ? getManualWhatsAppUrl(m.phone, canViewPhones, personalizedMessage)
