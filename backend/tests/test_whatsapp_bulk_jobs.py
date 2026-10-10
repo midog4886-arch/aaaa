@@ -765,6 +765,23 @@ def test_migration_held_head_does_not_block_new_authorized_job(queue):
     assert held["status"] == "migration_hold"
 
 
+def test_existing_closure_job_sends_once_per_phone(queue):
+    db, sent, *_ = queue
+    same_phone = [
+        {"phone": "966500000001", "message": "first member"},
+        {"phone": "966500000001", "message": "second member"},
+    ]
+    run(jobs.enqueue("a", "meta_cloud", same_phone, "closure_notice_shared_phone",
+                     source="closure_notice"))
+    items = db["whatsapp_campaign_job_items"].rows
+
+    assert run(jobs.process_one()) is True
+    Clock.set(Clock.now() + timedelta(seconds=30))
+    assert run(jobs.process_one()) is True
+    assert [entry[3] for entry in sent] == [items[0]["id"]]
+    assert items[1]["status"] == "cancelled"
+
+
 def test_inflight_oldest_head_cannot_be_skipped_by_another_worker(queue):
     db, sent, *_ = queue
     run(jobs.enqueue("a", "meta_cloud", recipients(2), "claimed-head-key-123"))

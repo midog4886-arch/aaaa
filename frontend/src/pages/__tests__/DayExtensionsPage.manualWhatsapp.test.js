@@ -326,6 +326,19 @@ test('all invalid authoritative response never displays queue success', async ()
   expect(toast.success).not.toHaveBeenCalled();
 });
 
+test('shared phone is counted once in the closure preview', async () => {
+  mockApi.dayExtensions.applyExtension.mockResolvedValue({ data: {
+    ...preview,
+    extended_members: [previewMembers[0], {
+      ...previewMembers[1], phone: '+966 50 123 4567', branch_id: 'branch-a',
+    }],
+    extended_count: 2,
+  } });
+  render(<DayExtensionsPage />);
+  fireEvent.click(await screen.findByRole('button', { name: /Preview & WhatsApp/i }));
+  expect((await screen.findByText('Unique WhatsApp phones')).nextSibling).toHaveTextContent('1');
+});
+
 test.each(['٠٥٠١٢٣٤٥٦٧', '۰۵۰۱۲۳۴۵۶۷', '501234567', '+966 50 123 4567'])(
   'manual and automatic notice eligibility share normalization: %s', async phone => {
     mockApi.dayExtensions.applyExtension.mockResolvedValue({ data: {
@@ -336,6 +349,6 @@ test.each(['٠٥٠١٢٣٤٥٦٧', '۰۵۰۱۲۳۴۵۶۷', '501234567', '+966 50
       'href', expect.stringContaining('wa.me/966501234567')
     );
     expect(screen.queryByTestId('notice-phone-skips')).not.toBeInTheDocument();
-    expect(screen.getByText('Valid WhatsApp phones').nextSibling).toHaveTextContent('1');
+    expect(screen.getByText('Unique WhatsApp phones').nextSibling).toHaveTextContent('1');
   }
 );

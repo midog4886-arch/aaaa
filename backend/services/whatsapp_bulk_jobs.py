@@ -1071,6 +1071,22 @@ async def _process_one_for_branch(branch_id):
     if parent.get("cancel_requested"):
         await _cancel_owned_item(item, now)
         return False
+    # Older closure jobs were queued per member. Never dispatch a second
+    # notice to the same phone from the same job, even after a restart.
+    if str(parent.get("idempotency_key") or "").startswith("closure_notice_"):
+        earlier = await _db["whatsapp_campaign_job_items"].find_one({
+            "job_id": item["job_id"], "phone": item["phone"],
+            "recipient_index": {"$lt": item["recipient_index"]},
+        })
+        if earlier:
+            await _db["whatsapp_campaign_job_items"].update_one(
+                {"id": item["id"], "status": "claimed", "claim_token": claim_token},
+                {"$set": {"status": "cancelled", "completed_at": now,
+                          "error": "Duplicate phone within closure notice"},
+                 "$unset": {"claim_token": "", "claim_until": ""}},
+            )
+            await _refresh_job(item["job_id"])
+            return True
     # Older closure jobs predate the explicit source. Recognize their existing
     # server-generated key without rewriting queue records or shortening a
     # cooldown already stored on the shared gate.

@@ -1386,8 +1386,29 @@ async def enqueue_closure_notices(
         message = _personalize_closure_notice(template, item, closure.get("notes") or "")
         if not message or len(message) > 4096:
             raise HTTPException(status_code=400, detail="Personalized message is invalid")
-        grouped.setdefault(branch_id, []).append({"phone": normalized_phone, "message": message,
-                                                  "recipient_id": member["id"]})
+        branch_recipients = grouped.setdefault(branch_id, {})
+        recipient = branch_recipients.setdefault(normalized_phone, {
+            "phone": normalized_phone, "recipient_id": member["id"], "messages": [],
+        })
+        recipient["messages"].append((item["name"], message))
+
+    for branch_id, by_phone in grouped.items():
+        recipients = []
+        for recipient in by_phone.values():
+            messages = recipient.pop("messages")
+            if len(messages) == 1:
+                recipient["message"] = messages[0][1]
+            else:
+                recipient["message"] = (
+                    "إشعار إغلاق للأعضاء المرتبطين بهذا الرقم:\n\n"
+                    + "\n\n────────\n\n".join(
+                        f"{name}\n{message}" for name, message in messages
+                    )
+                )
+            if len(recipient["message"]) > 4096:
+                raise HTTPException(status_code=400, detail="Combined message is too long; nothing was queued")
+            recipients.append(recipient)
+        grouped[branch_id] = recipients
 
     # Validate every branch first so unsupported/disabled branches cannot result
     # in an avoidable partial enqueue.

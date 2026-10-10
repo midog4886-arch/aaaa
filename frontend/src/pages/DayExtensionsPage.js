@@ -32,6 +32,13 @@ const REASON_COLORS = {
   other: 'bg-gray-100 text-gray-800'
 };
 
+const countUniqueClosurePhones = (members, selectedBranch) => new Set(
+  members.map(member => {
+    const phone = normalizePhone(member.phone);
+    return phone ? `${member.branch_id || selectedBranch}:${phone}` : null;
+  }).filter(Boolean)
+).size;
+
 // The WhatsApp helper owns country-code normalization. Keep the additional
 // validation here so masked, incomplete, or malformed values can never become
 // a manual-chat link (especially for users without the phone permission).
@@ -354,7 +361,10 @@ export default function DayExtensionsPage() {
       toast.error(t('أدخل نص الرسالة', 'Enter message text'));
       return;
     }
-    const recipientCount = previewResult.extended_members.filter(m => normalizePhone(m.phone) && !excludedMemberIds.includes(m.member_id)).length;
+    const recipientCount = countUniqueClosurePhones(
+      previewResult.extended_members.filter(m => !excludedMemberIds.includes(m.member_id)),
+      applyBranch
+    );
     if (recipientCount === 0) {
       toast.error(t('لا توجد أرقام صالحة؛ لم تُضف أي رسائل', 'No valid phone numbers; no messages queued'));
       return;
@@ -1032,8 +1042,8 @@ export default function DayExtensionsPage() {
                           <p className="text-2xl font-bold text-blue-700">{activeMembers.length}</p>
                         </div>
                         <div className="p-3 rounded-lg bg-green-50 border border-green-200 text-center">
-                          <p className="text-xs text-muted-foreground">{t('أرقام صالحة لواتساب', 'Valid WhatsApp phones')}</p>
-                          <p className="text-2xl font-bold text-green-700">{activeMembers.filter(m => normalizePhone(m.phone)).length}</p>
+                          <p className="text-xs text-muted-foreground">{t('أرقام واتساب مختلفة', 'Unique WhatsApp phones')}</p>
+                          <p className="text-2xl font-bold text-green-700">{countUniqueClosurePhones(activeMembers, applyBranch)}</p>
                         </div>
                         <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-center">
                           <p className="text-xs text-muted-foreground">{t('مستبعدون يدوياً', 'Manually excluded')}</p>
