@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { toast } from 'sonner';
 import WhatsAppCampaignReport from './WhatsAppCampaignReport';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { campaignCalendar, riyadhMonth, shiftMonth } from './campaignCalendar';
 
 const templates = [
   ['تذكير التجديد', 'مرحباً {الاسم} 👋\nاشتراكك ينتهي بتاريخ {تاريخ_الانتهاء}. يسعدنا استمرارك معنا، تواصل مع الفرع للتجديد.'],
@@ -20,6 +21,7 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
   const when=scheduleAt;
   const [preview,setPreview]=useState(null), [excluded,setExcluded]=useState([]);
   const [busy,setBusy]=useState(false), [report,setReport]=useState(null);
+  const [calendarMonth,setCalendarMonth]=useState(riyadhMonth);
   const scope=useRef(branchId), generation=useRef(0);
   scope.current=branchId;
   const refresh=async()=>{
@@ -79,6 +81,8 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     setTimeout(()=>URL.revokeObjectURL(url),60000);
   });
   const chosen=(preview?.recipients||[]).filter(r=>!excluded.includes(r.phone));
+  const calendarDays=campaignCalendar(rows,calendarMonth);
+  const monthLabel=new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${calendarMonth}-01T00:00:00Z`));
   return <section className="rounded-xl border bg-white p-5 space-y-4" dir="rtl">
     <h2 className="font-bold text-lg">معاينة الحملة واعتماد الإرسال</h2>
     <p className="text-sm text-slate-500">تخصيص الاسم: {'{الاسم}'} · تاريخ انتهاء الاشتراك: {'{تاريخ_الانتهاء}'} · حتى {spreadAcrossDays?'1000 مستلم للحملة المقسمة':'200 مستلم للحملة المباشرة'}.</p>
@@ -103,6 +107,15 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
       <Button disabled={busy||!chosen.length} onClick={submit}>حفظ وإرسال لاعتماد المدير</Button>
     </div>}
     <h3 className="font-bold">طلبات الاعتماد وجدولة الحملات</h3>
+    <div className="rounded-lg border p-3 space-y-3" data-testid="branch-campaign-calendar">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div><h4 className="font-bold">جدول إرسال حملات الفرع</h4><p className="text-xs text-slate-500">خطة الإرسال بتوقيت الرياض للفرع المختار أعلاه. الأعداد المعلّقة تنتظر اعتماد المدير؛ التنفيذ الفعلي يتبع حالة الطابور.</p></div>
+        <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" onClick={()=>setCalendarMonth(month=>shiftMonth(month,-1))}>الشهر السابق</Button><span className="min-w-28 text-center font-medium">{monthLabel}</span><Button type="button" variant="outline" size="sm" onClick={()=>setCalendarMonth(month=>shiftMonth(month,1))}>الشهر التالي</Button></div>
+      </div>
+      <div className="max-h-80 overflow-auto rounded border"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-2 text-start">اليوم</th><th className="p-2 text-start">الحملات</th><th className="p-2 text-start">معتمد</th><th className="p-2 text-start">بانتظار الاعتماد</th></tr></thead><tbody>
+        {calendarDays.map(day=><tr key={day.date} className={`border-t ${day.campaigns.length?'':'bg-slate-50/70 text-slate-500'}`}><td className="p-2 whitespace-nowrap" dir="ltr">{day.date}</td><td className="p-2">{day.campaigns.length?day.campaigns.map(item=><div key={item.id}>{item.title} · {item.count} مستلم {item.pending?'(بانتظار الاعتماد)':''}</div>):'لا يوجد إرسال مجدول'}</td><td className="p-2">{day.approved}</td><td className="p-2">{day.awaiting}</td></tr>)}
+      </tbody></table></div>
+    </div>
     {!rows.length && <p className="text-slate-500">لا توجد طلبات اعتماد لهذا الفرع.</p>}
     {rows.map(row=><details key={row.id} className="border rounded p-3">
       <summary>{row.title} · {labels[row.status]||row.status} · {row.count} مستلم {row.daily_recipients?`· ${row.daily_recipients} مستلم يومياً من ${row.start_date} ${row.send_time} بتوقيت الرياض`:(row.schedule_at?`· ${new Date(row.schedule_at).toLocaleString('ar-SA')}`:'· إرسال بعد الاعتماد')}</summary>
