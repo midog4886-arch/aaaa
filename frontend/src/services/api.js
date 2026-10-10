@@ -187,6 +187,7 @@ export const membersAPI = {
     axios.post(`${API}/members/${memberId}/reject-change-request/${messageId}`, { reason }),
   getDailyNewCards: (date, search) => axios.get(`${API}/members/daily-new-cards`, { params: { ...(date ? { date } : {}), ...(search ? { search } : {}) } }),
   markPrinted: (memberIds) => axios.post(`${API}/members/mark-printed`, { member_ids: memberIds }),
+  requestCardPrint: (memberIds) => axios.post(`${API}/members/request-print`, { member_ids: memberIds }),
   getSubscriptionAudit: (memberId) => axios.get(`${API}/members/${memberId}/subscription-audit`),
   getProfileHistory: (memberId, params = {}) =>
     axios.get(`${API}/members/${memberId}/profile-history`, { params }),

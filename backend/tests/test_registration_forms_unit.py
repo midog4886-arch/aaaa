@@ -498,11 +498,19 @@ def test_registration_invoice_payment_card_journey(inv, monkeypatch):
     assert steps["invoice_created"] and steps["level_selected"] and steps["member_linked"]
     assert not steps["paid"] and not steps["card_printed"]
 
-    # Use the payment handler, then the card-print endpoint on the same records.
+    # Requesting the print job must not count as a physically printed card.
     run(inv_mod.pay_invoice(created.id, current_user=ADMIN))
     paid = run(fdb.invoices.find_one({"id": created.id}))
     assert paid["status"] == "paid"
     assert journey.summarize_journey(request, paid, [member])["steps"]["paid"]
+    requested = run(members_mod.request_members_print(
+        {"member_ids": ["journey-member"]}, current_user=ADMIN,
+    ))
+    assert requested["updated"] == 1
+    member = run(fdb.members.find_one({"id": "journey-member"}))
+    assert member["card_print_requested_at"] and not member.get("card_printed_at")
+    assert not journey.summarize_journey(request, paid, [member])["steps"]["card_printed"]
+    # Only an explicit confirmation completes the card step.
     result = run(members_mod.mark_members_printed(
         {"member_ids": ["journey-member"]}, current_user=ADMIN,
     ))

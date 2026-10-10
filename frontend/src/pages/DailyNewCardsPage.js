@@ -23,6 +23,8 @@ const DailyNewCardsPage = () => {
   const [selectedBranchId, setSelectedBranchId] = useState('all');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [renewalSelectedIds, setRenewalSelectedIds] = useState(() => new Set());
+  const [lastPrintBatch, setLastPrintBatch] = useState([]);
+  const [printActionBusy, setPrintActionBusy] = useState(false);
   const [printLang, setPrintLangState] = useState(getPrintLang);
   const changePrintLang = (l) => { setPrintLang(l); setPrintLangState(l); };
 
@@ -40,7 +42,7 @@ const DailyNewCardsPage = () => {
       const next = new Set(prev);
       branch.members.forEach((m) => {
         if (checked) {
-          if (!m.card_printed_at) next.add(m.id);
+          if (!isPrintConfirmed(m)) next.add(m.id);
         } else {
           next.delete(m.id);
         }
@@ -78,22 +80,34 @@ const DailyNewCardsPage = () => {
       const next = new Set();
       (data?.branches || []).forEach((br) => {
         if (selectedBranchId !== 'all' && String(br.branch_id) !== String(selectedBranchId)) return;
-        br.members.forEach((m) => { if (!m.card_printed_at) next.add(m.id); });
+        br.members.forEach((m) => { if (!isPrintConfirmed(m)) next.add(m.id); });
       });
       return next;
     });
   };
 
-  const markIdsPrinted = async (ids) => {
+  const requestPrint = async (ids) => {
     if (!ids || ids.length === 0) return;
     try {
-      await membersAPI.markPrinted(ids);
-      // Reload with the active search (if any) so a print request while searching
-      // keeps showing the search results instead of falling back to day mode.
+      await membersAPI.requestCardPrint(ids);
+      setLastPrintBatch(ids);
       await load(date, debouncedSearch);
       setSelectedIds(new Set());
       setRenewalSelectedIds(new Set());
-    } catch (_e) {}
+    } catch (_e) { setError('فشل تسجيل طلب الطباعة. أعد المحاولة قبل تأكيد أي كرت.'); }
+  };
+
+  const confirmPrinted = async (ids) => {
+    if (!ids.length || printActionBusy) return;
+    setPrintActionBusy(true);
+    try {
+      await membersAPI.markPrinted(ids);
+      setLastPrintBatch((prev) => prev.filter((id) => !ids.includes(id)));
+      setSelectedIds(new Set());
+      setRenewalSelectedIds(new Set());
+      await load(date, debouncedSearch);
+    } catch (_e) { setError('تعذّر تأكيد الطباعة. أعد المحاولة.'); }
+    finally { setPrintActionBusy(false); }
   };
 
   const formatPrintedDate = (iso) => {
@@ -104,11 +118,19 @@ const DailyNewCardsPage = () => {
     } catch (_e) { return iso; }
   };
 
-  const hadPrintRequestAfterRenewal = (member) => {
-    if (!member?.card_printed_at || !member?.renewed_at) return false;
-    const printedAt = Date.parse(member.card_printed_at);
-    const renewedAt = Date.parse(member.renewed_at);
-    return Number.isFinite(printedAt) && Number.isFinite(renewedAt) && printedAt >= renewedAt;
+  const isPrintConfirmed = (member, since = '') => {
+    const printed = Date.parse(member?.card_printed_at || '');
+    const requested = Date.parse(member?.card_print_requested_at || '');
+    const baseline = Date.parse(since || '');
+    return Number.isFinite(printed) && (!Number.isFinite(requested) || printed >= requested)
+      && (!Number.isFinite(baseline) || printed >= baseline);
+  };
+
+  const isPrintPending = (member, since = '') => {
+    const requested = Date.parse(member?.card_print_requested_at || '');
+    const baseline = Date.parse(since || '');
+    return Number.isFinite(requested) && (!Number.isFinite(baseline) || requested >= baseline)
+      && !isPrintConfirmed(member, since);
   };
 
   const load = useCallback(async (d, q) => {
@@ -307,7 +329,7 @@ const DailyNewCardsPage = () => {
       setError('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
       return;
     }
-    markIdsPrinted(pairs.map(({ member }) => member.id));
+    requestPrint(pairs.map(({ member }) => member.id));
     return;
 
     const pagesHtml = [];
@@ -385,7 +407,7 @@ const DailyNewCardsPage = () => {
       ${pagesHtml.join('')}
       </body></html>`);
     win.document.close();
-    markIdsPrinted(pairs.map((p) => p.member.id));
+    requestPrint(pairs.map((p) => p.member.id));
   };
 
   const printCD820 = (mode = 'duplex', lang = printLang, branchesOverride = null, monochrome = false) => {
@@ -403,7 +425,7 @@ const DailyNewCardsPage = () => {
       setError('تعذر فتح نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم أعد المحاولة.');
       return;
     }
-    markIdsPrinted(allMembers.map(({ member }) => member.id));
+    requestPrint(allMembers.map(({ member }) => member.id));
     return;
 
     const pagesHtml = [];
@@ -485,7 +507,7 @@ const DailyNewCardsPage = () => {
       ${pagesHtml.join('')}
       </body></html>`);
     win.document.close();
-    markIdsPrinted(allMembers.map((p) => p.member.id));
+    requestPrint(allMembers.map((p) => p.member.id));
   };
 
   const allBranches = data?.branches || [];
@@ -700,13 +722,25 @@ const DailyNewCardsPage = () => {
               >
                 إلغاء التحديد
               </Button>
+              <Button size="sm" variant="outline" disabled={printActionBusy || selectedIds.size === 0}
+                onClick={() => confirmPrinted(branches.flatMap((b) => b.members)
+                  .filter((m) => selectedIds.has(m.id) && isPrintPending(m)).map((m) => m.id))}>
+                تأكيد طباعة المحدد بعد فحصه
+              </Button>
                 <span className="text-xs text-gray-500 self-center">
                 {selectedIds.size > 0
                   ? `سيتم إرسال طلب طباعة لـ ${selectedIds.size} كرت محدد فقط`
                   : 'بدون تحديد: سيُرسل طلب طباعة لكل أعضاء الفرع المعروض'}
               </span>
-                <span className="text-xs text-gray-500 self-center">التحديد الافتراضي يستثني من سبق طلب طباعته.</span>
+                <span className="text-xs text-gray-500 self-center">لا يتحول الكرت إلى مطبوع حتى تؤكد خروجه من الطابعة. يمكن إعادة محاولة الطلبات المعلقة.</span>
             </div>
+            {lastPrintBatch.length > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 flex flex-wrap items-center gap-3" role="status">
+                <span>تم فتح طباعة {lastPrintBatch.length} كرت. افحص الكروت التي خرجت فعلاً قبل التأكيد؛ إذا تعطلت الطابعة، أعد الطباعة دون تأكيد.</span>
+                <Button size="sm" disabled={printActionBusy} onClick={() => confirmPrinted(lastPrintBatch)}>تأكيد طباعة هذه المجموعة</Button>
+                <Button size="sm" variant="outline" onClick={() => setLastPrintBatch([])}>سأراجعها لاحقاً</Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -783,11 +817,13 @@ const DailyNewCardsPage = () => {
                       const acts = [...new Set((m.activities || []).map((a) => a.activity_name).filter(Boolean))].join('، ');
                       const time = (m.created_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
                       const isSelected = selectedIds.has(m.id);
-                       const hasPrintRequest = !!m.card_printed_at;
+                       const hasPrintRequest = !!m.card_print_requested_at || !!m.card_printed_at;
+                       const confirmed = isPrintConfirmed(m);
+                       const pending = isPrintPending(m);
                       return (
                         <tr
                           key={m.id}
-                           className={`border-t hover:bg-orange-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${hasPrintRequest ? 'opacity-70' : ''}`}
+                           className={`border-t hover:bg-orange-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${confirmed ? 'opacity-70' : ''}`}
                           onClick={() => toggleMember(m.id)}
                         >
                           <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -803,20 +839,22 @@ const DailyNewCardsPage = () => {
                           <td className="p-2 font-medium">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span>{m.name_ar || m.name}</span>
-                               {hasPrintRequest && (
+                               {confirmed && (
                                 <span
                                   className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300"
-                                  title={`طلب طباعة: ${formatPrintedDate(m.card_printed_at)}${m.card_print_count ? ` (${m.card_print_count} طلب)` : ''}`}
+                                  title={`تأكيد الطباعة: ${formatPrintedDate(m.card_printed_at)}`}
                                 >
-                                  ✓ سبق طلب طباعته
+                                  ✓ مطبوع ومؤكد
                                 </span>
                               )}
+                              {pending && <button type="button" disabled={printActionBusy} onClick={(e) => { e.stopPropagation(); confirmPrinted([m.id]); }}
+                                className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">بانتظار التأكيد — تأكيد الطباعة</button>}
                             </div>
                           </td>
                           <td className="p-2" dir="ltr">{m.phone || '-'}</td>
                           <td className="p-2 text-gray-700">{acts || '-'}</td>
                           <td className="p-2 text-gray-500" dir="ltr">{time}</td>
-                          <td className="p-2 text-gray-500 whitespace-nowrap" dir="ltr">{hasPrintRequest ? formatPrintedDate(m.card_printed_at) : '-'}</td>
+                          <td className="p-2 text-gray-500 whitespace-nowrap" dir="ltr">{hasPrintRequest ? formatPrintedDate(m.card_print_requested_at || m.card_printed_at) : '-'}</td>
                         </tr>
                       );
                     })}
@@ -840,6 +878,13 @@ const DailyNewCardsPage = () => {
                 {renewalSelectedIds.size > 0 && (
                   <Button size="sm" variant="outline" onClick={() => setRenewalSelectedIds(new Set())}>
                     إلغاء التحديد ({renewalSelectedIds.size})
+                  </Button>
+                )}
+                {renewalSelectedIds.size > 0 && (
+                  <Button size="sm" variant="outline" disabled={printActionBusy}
+                    onClick={() => confirmPrinted(renewalBranchesView.flatMap((b) => b.members)
+                      .filter((m) => renewalSelectedIds.has(m.id) && isPrintPending(m, m.renewed_at)).map((m) => m.id))}>
+                    تأكيد طباعة التجديدات المحددة
                   </Button>
                 )}
                 <Button
@@ -919,12 +964,14 @@ const DailyNewCardsPage = () => {
                         <tbody>
                           {branch.members.map((m, idx) => {
                             const isSelected = renewalSelectedIds.has(m.id);
-                            const hasPrintRequest = hadPrintRequestAfterRenewal(m);
+                            const hasPrintRequest = isPrintPending(m, m.renewed_at) || isPrintConfirmed(m, m.renewed_at);
+                            const confirmed = isPrintConfirmed(m, m.renewed_at);
+                            const pending = isPrintPending(m, m.renewed_at);
                             const time = (m.renewed_at || '').split('T')[1]?.split('.')[0]?.slice(0, 5) || '';
                             return (
                               <tr
                                 key={m.id}
-                              className={`border-t hover:bg-blue-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${hasPrintRequest ? 'opacity-70' : ''}`}
+                              className={`border-t hover:bg-blue-50/40 cursor-pointer ${isSelected ? 'bg-blue-50' : ''} ${confirmed ? 'opacity-70' : ''}`}
                                 onClick={() => toggleRenewalMember(m.id)}
                               >
                                 <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -940,14 +987,16 @@ const DailyNewCardsPage = () => {
                                 <td className="p-2 font-medium">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span>{m.name_ar || m.name}</span>
-                                  {hasPrintRequest && (
+                                  {confirmed && (
                                       <span
                                         className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300"
                                         title={`طلب طباعة بعد التجديد: ${formatPrintedDate(m.card_printed_at)}`}
                                       >
-                                        ✓ سبق طلب طباعته
+                                        ✓ مطبوع ومؤكد
                                       </span>
                                     )}
+                                    {pending && <button type="button" disabled={printActionBusy} onClick={(e) => { e.stopPropagation(); confirmPrinted([m.id]); }}
+                                      className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">بانتظار التأكيد — تأكيد الطباعة</button>}
                                   </div>
                                 </td>
                                 <td className="p-2" dir="ltr">{m.phone || '-'}</td>
@@ -962,7 +1011,7 @@ const DailyNewCardsPage = () => {
                                   ))}
                                 </td>
                                 <td className="p-2 text-gray-500" dir="ltr">{time}</td>
-                                <td className="p-2 text-gray-500 whitespace-nowrap" dir="ltr">{hasPrintRequest ? formatPrintedDate(m.card_printed_at) : '-'}</td>
+                                <td className="p-2 text-gray-500 whitespace-nowrap" dir="ltr">{hasPrintRequest ? formatPrintedDate(m.card_print_requested_at || m.card_printed_at) : '-'}</td>
                                 <td className="p-2 text-gray-500 text-xs" dir="ltr">{(m.renewal_invoices || []).join('، ') || '-'}</td>
                               </tr>
                             );

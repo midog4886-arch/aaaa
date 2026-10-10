@@ -7,7 +7,7 @@ jest.mock('../../components/Layout', () => ({
   Layout: ({ children }) => <div>{children}</div>,
 }));
 jest.mock('../../services/api', () => ({
-  membersAPI: { getDailyNewCards: jest.fn(), markPrinted: jest.fn() },
+  membersAPI: { getDailyNewCards: jest.fn(), requestCardPrint: jest.fn(), markPrinted: jest.fn() },
 }));
 jest.mock('../../services/branding', () => ({
   getAcademyLogoUrl: () => '/academy-logo.png',
@@ -29,6 +29,7 @@ const member = {
 };
 
 beforeEach(() => {
+  jest.clearAllMocks();
   localStorage.clear();
   membersAPI.getDailyNewCards.mockResolvedValue({ data: {
     date: '2026-09-17',
@@ -42,6 +43,7 @@ beforeEach(() => {
     renewal_branches: [],
   } });
   membersAPI.markPrinted.mockResolvedValue({ data: { success: true } });
+  membersAPI.requestCardPrint.mockResolvedValue({ data: { updated: 1 } });
 });
 
 afterEach(() => {
@@ -79,6 +81,10 @@ test.each([
   expect(html).not.toContain('2020-02-01');
   expect(html).not.toContain('Sunday 17:00');
   await waitFor(() => expect(popup.print).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(membersAPI.requestCardPrint).toHaveBeenCalledWith(['daily-member']));
+  expect(membersAPI.markPrinted).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button', { name: 'تأكيد طباعة هذه المجموعة' }));
+  await waitFor(() => expect(membersAPI.markPrinted).toHaveBeenCalledWith(['daily-member']));
 });
 
 test('daily CD820 black-and-white button preserves the member QR and contacts', async () => {

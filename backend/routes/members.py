@@ -121,6 +121,7 @@ class Member(BaseModel):
     branch_id: Optional[str] = None
     created_at: str = ""
     card_printed_at: Optional[str] = None
+    card_print_requested_at: Optional[str] = None
     preferred_language: Optional[str] = "ar"
     is_vip: bool = False
 
@@ -803,6 +804,27 @@ async def set_member_marked(member_id: str, payload: dict, current_user: dict = 
         raise HTTPException(status_code=404, detail="Member not found")
     return {"id": member_id, "marked": marked}
 
+@router.post("/request-print")
+async def request_members_print(payload: dict, current_user: dict = Depends(get_current_user)):
+    if not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    member_ids = payload.get("member_ids") or []
+    if not isinstance(member_ids, list) or not member_ids:
+        raise HTTPException(status_code=400, detail="member_ids list required")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    query = {"id": {"$in": member_ids}}
+    effective_branch = resolve_branch_filter(current_user, None)
+    if effective_branch:
+        query["branch_id"] = effective_branch
+    result = await db.members.update_many(
+        query,
+        {"$set": {"card_print_requested_at": now_iso,
+                  "card_print_requested_by": current_user.get("username") or current_user.get("id") or ""},
+         "$inc": {"card_print_count": 1}},
+    )
+    return {"updated": result.modified_count, "requested_at": now_iso}
+
+
 @router.post("/mark-printed")
 async def mark_members_printed(payload: dict, current_user: dict = Depends(get_current_user)):
     if not current_user.get("is_admin"):
@@ -817,8 +839,7 @@ async def mark_members_printed(payload: dict, current_user: dict = Depends(get_c
         query["branch_id"] = effective_branch
     result = await db.members.update_many(
         query,
-        {"$set": {"card_printed_at": now_iso, "card_printed_by": current_user.get("username") or current_user.get("id") or ""},
-         "$inc": {"card_print_count": 1}}
+        {"$set": {"card_printed_at": now_iso, "card_printed_by": current_user.get("username") or current_user.get("id") or ""}}
     )
     return {"updated": result.modified_count, "printed_at": now_iso}
 
