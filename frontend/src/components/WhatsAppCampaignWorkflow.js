@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { toast } from 'sonner';
 import WhatsAppCampaignReport from './WhatsAppCampaignReport';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
-import { campaignCalendar, riyadhMonth, shiftMonth } from './campaignCalendar';
+import { campaignCalendar, riyadhDate, riyadhMonth, shiftMonth } from './campaignCalendar';
 
 const templates = [
   ['تذكير التجديد', 'مرحباً {الاسم} 👋\nاشتراكك ينتهي بتاريخ {تاريخ_الانتهاء}. يسعدنا استمرارك معنا، تواصل مع الفرع للتجديد.'],
@@ -22,6 +22,7 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
   const [preview,setPreview]=useState(null), [excluded,setExcluded]=useState([]);
   const [busy,setBusy]=useState(false), [report,setReport]=useState(null);
   const [calendarMonth,setCalendarMonth]=useState(riyadhMonth);
+  const [selectedCalendarDay,setSelectedCalendarDay]=useState('');
   const scope=useRef(branchId), generation=useRef(0);
   scope.current=branchId;
   const refresh=async()=>{
@@ -30,7 +31,7 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     if(scope.current===branchId) setRows(response.data);
   };
   useEffect(()=>{
-    generation.current+=1; setRows([]);setGroups([]);setGroup('');setExcluded([]);setPreview(null);setReport(null);setBusy(false);
+    generation.current+=1; setRows([]);setGroups([]);setGroup('');setExcluded([]);setPreview(null);setReport(null);setBusy(false);setSelectedCalendarDay('');
     if(!branchId) return undefined;
     refresh().catch(e=>toast.error(apiErrorMessage(e,'تعذر تحميل الحملات المعتمدة')));
     axios.get('/api/whatsapp/workflow/groups',{params:{branch_id:branchId}}).then(r=>{if(scope.current===branchId)setGroups(r.data);}).catch(()=>{});
@@ -83,6 +84,10 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
   const chosen=(preview?.recipients||[]).filter(r=>!excluded.includes(r.phone));
   const calendarDays=campaignCalendar(rows,calendarMonth);
   const monthLabel=new Intl.DateTimeFormat('ar-SA-u-ca-gregory',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${calendarMonth}-01T00:00:00Z`));
+  const firstWeekday=new Date(`${calendarMonth}-01T00:00:00Z`).getUTCDay();
+  const calendarCells=[...Array(firstWeekday).fill(null),...calendarDays];
+  const selectedDay=calendarDays.find(day=>day.date===selectedCalendarDay);
+  const today=riyadhDate(new Date());
   return <section className="rounded-xl border bg-white p-5 space-y-4" dir="rtl">
     <h2 className="font-bold text-lg">معاينة الحملة واعتماد الإرسال</h2>
     <p className="text-sm text-slate-500">تخصيص الاسم: {'{الاسم}'} · تاريخ انتهاء الاشتراك: {'{تاريخ_الانتهاء}'} · حتى {spreadAcrossDays?'1000 مستلم للحملة المقسمة':'200 مستلم للحملة المباشرة'}.</p>
@@ -110,11 +115,16 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     <div className="rounded-lg border p-3 space-y-3" data-testid="branch-campaign-calendar">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div><h4 className="font-bold">جدول إرسال حملات الفرع</h4><p className="text-xs text-slate-500">خطة الإرسال بتوقيت الرياض للفرع المختار أعلاه. الأعداد المعلّقة تنتظر اعتماد المدير؛ التنفيذ الفعلي يتبع حالة الطابور.</p></div>
-        <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" onClick={()=>setCalendarMonth(month=>shiftMonth(month,-1))}>الشهر السابق</Button><span className="min-w-28 text-center font-medium">{monthLabel}</span><Button type="button" variant="outline" size="sm" onClick={()=>setCalendarMonth(month=>shiftMonth(month,1))}>الشهر التالي</Button></div>
+        <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" onClick={()=>{setCalendarMonth(month=>shiftMonth(month,-1));setSelectedCalendarDay('');}}>الشهر السابق</Button><span className="min-w-28 text-center font-medium">{monthLabel}</span><Button type="button" variant="outline" size="sm" onClick={()=>{setCalendarMonth(month=>shiftMonth(month,1));setSelectedCalendarDay('');}}>الشهر التالي</Button></div>
       </div>
-      <div className="max-h-80 overflow-auto rounded border"><table className="w-full text-sm"><thead className="sticky top-0 bg-slate-50"><tr><th className="p-2 text-start">اليوم</th><th className="p-2 text-start">الحملات</th><th className="p-2 text-start">معتمد</th><th className="p-2 text-start">بانتظار الاعتماد</th></tr></thead><tbody>
-        {calendarDays.map(day=><tr key={day.date} className={`border-t ${day.campaigns.length?'':'bg-slate-50/70 text-slate-500'}`}><td className="p-2 whitespace-nowrap" dir="ltr">{day.date}</td><td className="p-2">{day.campaigns.length?day.campaigns.map(item=><div key={item.id}>{item.title} · {item.count} مستلم {item.pending?'(بانتظار الاعتماد)':''}</div>):'لا يوجد إرسال مجدول'}</td><td className="p-2">{day.approved}</td><td className="p-2">{day.awaiting}</td></tr>)}
-      </tbody></table></div>
+      <div className="overflow-x-auto"><div className="min-w-[700px]"><div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-slate-500">{['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'].map(name=><div key={name} className="py-2">{name}</div>)}</div>
+      <div className="grid grid-cols-7 gap-1" role="grid" aria-label={`تقويم حملات ${monthLabel}`}>
+        {calendarCells.map((day,index)=>day?<button type="button" key={day.date} aria-label={`${day.date}: ${day.approved} معتمد، ${day.awaiting} بانتظار الاعتماد`} aria-pressed={selectedCalendarDay===day.date} onClick={()=>setSelectedCalendarDay(day.date)} className={`min-h-24 rounded border p-2 text-right align-top transition-colors hover:border-blue-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ${selectedCalendarDay===day.date?'border-blue-600 bg-blue-50':day.campaigns.length?'border-blue-200 bg-blue-50/40':'border-slate-200 bg-slate-50/50'}`}>
+          <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-bold ${today===day.date?'bg-blue-600 text-white':'text-slate-700'}`}>{Number(day.date.slice(-2))}</span>
+          {day.campaigns.length?<div className="mt-1 space-y-1 text-xs"><div className="font-semibold text-emerald-800">{day.approved} معتمد</div>{day.awaiting>0&&<div className="font-semibold text-amber-700">{day.awaiting} ينتظر</div>}<div className="truncate text-slate-600" title={day.campaigns.map(item=>item.title).join('، ')}>{day.campaigns[0].title}{day.campaigns.length>1?` +${day.campaigns.length-1}`:''}</div></div>:<div className="mt-2 text-xs text-slate-400">لا إرسال</div>}
+        </button>:<div key={`blank-${index}`} aria-hidden="true" className="min-h-24 rounded bg-slate-50/40"/>)}
+      </div></div></div>
+      {selectedDay&&<div className="rounded border bg-white p-3 text-sm"><h5 className="mb-2 font-bold">{selectedDay.date} · {selectedDay.campaigns.length?'تفاصيل الحملات':'لا يوجد إرسال مجدول'}</h5>{selectedDay.campaigns.map(item=><div key={item.id} className="border-t py-2">{item.title} · {item.count} مستلم · {item.pending?'بانتظار اعتماد المدير':'معتمد'}</div>)}</div>}
     </div>
     {!rows.length && <p className="text-slate-500">لا توجد طلبات اعتماد لهذا الفرع.</p>}
     {rows.map(row=><details key={row.id} className="border rounded p-3">

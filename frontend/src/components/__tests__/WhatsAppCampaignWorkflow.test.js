@@ -45,3 +45,19 @@ test('daily campaign preview uses the plan and supports a large reviewed audienc
   expect(axios.post.mock.calls[0][1]).toMatchObject({daily_recipients:30,start_date:'2099-01-01',send_time:'10:00'});
   expect(screen.getByText('حفظ وإرسال لاعتماد المدير')).toBeEnabled();
 });
+
+test('calendar shows campaign batches and empty dates for the selected branch',async()=>{
+  axios.get.mockImplementation(url=>Promise.resolve({data:url.endsWith('/groups')?[]:[
+    {id:'r',title:'October campaign',status:'queued',count:120,daily_recipients:50,start_date:'2026-10-10',recipients:[]},
+  ]}));
+  render(<Workflow {...props}/>);
+  await screen.findAllByText(/October campaign/);
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Riyadh',year:'numeric',month:'numeric'}).formatToParts(new Date());
+  const year=Number(parts.find(part=>part.type==='year').value);
+  const month=Number(parts.find(part=>part.type==='month').value);
+  const offset=(2026-year)*12+10-month;
+  for(let step=0;step<Math.abs(offset);step++) fireEvent.click(screen.getByRole('button',{name:offset<0?'الشهر السابق':'الشهر التالي'}));
+  fireEvent.click(screen.getByRole('button',{name:/2026-10-10: 50 معتمد/}));
+  expect(screen.getByText(/2026-10-10 · تفاصيل الحملات/)).toBeInTheDocument();
+  expect(screen.getAllByText('لا إرسال').length).toBeGreaterThan(0);
+});

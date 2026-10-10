@@ -1,5 +1,5 @@
 const dateKey = date => date.toISOString().slice(0, 10);
-const riyadhDate = date => {
+export const riyadhDate = date => {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(date);
