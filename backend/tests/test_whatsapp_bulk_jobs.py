@@ -5,6 +5,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import HTTPException
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from services import whatsapp_bulk_jobs as jobs
@@ -390,6 +391,25 @@ def test_quota_is_reserved_per_send_on_actual_execution_day_and_failed_released(
     run(jobs.process_one())
     assert [entry["_id"] for entry in reservations] == ["a:2026-01-01", "a:2026-01-02"]
     assert releases == [("a:2026-01-02", 1)]
+
+
+def test_scheduled_campaign_defers_on_full_daily_quota_without_sending(queue):
+    db, sent, reservations, _ = queue
+    scheduled = [{**recipients()[0], "source_metadata": {
+        "daily_schedule": {"send_time": "10:00", "day": 1}}}]
+    run(jobs.enqueue("a", "waha", scheduled, "schedule-quota-key-123"))
+
+    async def full_quota(_branch, _limit, _amount):
+        raise HTTPException(429, detail="Daily limit reached")
+
+    jobs._handlers["reserve_quota"] = full_quota
+    assert run(jobs.process_one()) is False
+    item = db["whatsapp_campaign_job_items"].rows[0]
+    job = db["whatsapp_campaign_jobs"].rows[0]
+    assert item["status"] == "pending"
+    assert item["next_attempt_at"] == datetime(2026, 1, 2, 7, tzinfo=timezone.utc)
+    assert job["status"] == "pending"
+    assert sent == reservations == []
 
 
 def test_worker_does_not_start_or_send_in_test_environment(queue, monkeypatch):

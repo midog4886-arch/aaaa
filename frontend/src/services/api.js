@@ -883,7 +883,12 @@ export const whatsappAPI = {
       campaign_id: metadata.campaign_id || null,
       campaign_title: metadata.campaign_title || '',
       dispatch_source: metadata.dispatch_source || 'campaign',
-      branch_name: metadata.branch_name || ''
+      branch_name: metadata.branch_name || '',
+      ...(metadata.daily_recipients ? {
+        daily_recipients: metadata.daily_recipients,
+        start_date: metadata.start_date,
+        send_time: metadata.send_time,
+      } : {})
     }),
   sendBranchCloudBulkMedia: (formData, metadata = {}) => {
     // Keep the multipart contract explicit for callers that build their own

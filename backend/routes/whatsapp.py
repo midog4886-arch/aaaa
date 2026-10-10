@@ -39,6 +39,7 @@ from services.waha import WAHAClient
 from services.whatsflow import WhatsflowClient, parse_connection_state
 from services import whatsapp_media_archive
 from services import whatsapp_bulk_jobs
+from services.campaign_daily_schedule import schedule_recipients, MAX_SCHEDULED_RECIPIENTS
 from services import campaign_inbox, registration_followups
 from services import campaign_inquiry_automation
 from services import whatsapp_phone_mirror
@@ -7285,6 +7286,9 @@ class BulkCloudSendRequest(BaseModel):
     campaign_id: Optional[str] = Field(default=None, max_length=128)
     branch_name: Optional[str] = Field(default=None, max_length=200)
     dispatch_source: Literal['campaign', 'branch_bulk'] = 'campaign'
+    daily_recipients: Optional[int] = None
+    start_date: Optional[str] = None
+    send_time: Optional[str] = None
 
 
 def _bulk_campaign_metadata(
@@ -8131,11 +8135,14 @@ async def send_branch_cloud_bulk(
     _assert_branch_access(current_user, data.branch_id)
     if not data.recipients:
         raise HTTPException(status_code=400, detail="No recipients supplied")
-    if len(data.recipients) > 200:
-        raise HTTPException(status_code=400, detail="Maximum 200 recipients per batch")
+    if len(data.recipients) > (MAX_SCHEDULED_RECIPIENTS if data.daily_recipients else 200):
+        raise HTTPException(status_code=400, detail="Too many recipients for this campaign")
     metadata = _bulk_campaign_metadata(
         data.campaign_title, data.campaign_id, data.branch_name
     )
+    if data.daily_recipients is not None:
+        metadata.update(daily_recipients=data.daily_recipients,
+                        start_date=data.start_date, send_time=data.send_time)
     config = await _get_branch_cloud_config(data.branch_id)
     provider = _branch_provider(config)
     if provider not in {"meta_cloud", "waha", "whatsflow"}:
@@ -8167,9 +8174,17 @@ async def send_branch_cloud_bulk(
     if len(key) < 12:
         raise HTTPException(status_code=400, detail="Invalid idempotency key")
     recipients = [_bulk_recipient_payload(r) for r in data.recipients]
+    if data.daily_recipients is not None:
+        schedule_recipients(
+            recipients, daily_recipients=data.daily_recipients,
+            start_date=data.start_date, send_time=data.send_time,
+            provider_limit=int(config.get("waha_daily_limit") or 30)
+            if provider in {"waha", "whatsflow"} else None,
+        )
     if current_user.get('_campaign_schedule'):
         for recipient in recipients:
-            recipient['next_attempt_at'] = current_user['_campaign_schedule']
+            if not recipient.get('next_attempt_at') or recipient['next_attempt_at'] < current_user['_campaign_schedule']:
+                recipient['next_attempt_at'] = current_user['_campaign_schedule']
     if any(not _format_cloud_phone(r["phone"]) or not r["message"] or len(r["message"]) > 4096
            for r in recipients):
         raise HTTPException(status_code=400, detail="Invalid phone or message")
@@ -8745,6 +8760,9 @@ async def send_branch_cloud_bulk_media(
     campaign_title: str = Form(""),
     campaign_id: str = Form(""),
     branch_name: str = Form(""),
+    daily_recipients: Optional[int] = Form(None),
+    start_date: str = Form(""),
+    send_time: str = Form(""),
     attachment: Optional[UploadFile] = File(None),
     attachments: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
@@ -8755,13 +8773,16 @@ async def send_branch_cloud_bulk_media(
         raise HTTPException(403, detail='جهّز الحملة وأرسلها لاعتماد المدير قبل الإرسال')
     _assert_branch_access(current_user, branch_id)
     metadata = _bulk_campaign_metadata(campaign_title, campaign_id, branch_name)
+    if daily_recipients is not None:
+        metadata.update(daily_recipients=daily_recipients,
+                        start_date=start_date, send_time=send_time)
     try:
         raw_recipients = json.loads(recipients_json)
         recipients = [BulkCloudRecipient(**item) for item in raw_recipients]
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid recipients")
-    if not recipients or len(recipients) > 200:
-        raise HTTPException(status_code=400, detail="Supply 1-200 recipients")
+    if not recipients or len(recipients) > (MAX_SCHEDULED_RECIPIENTS if daily_recipients else 200):
+        raise HTTPException(status_code=400, detail="Too many recipients for this campaign")
     config = await _get_branch_cloud_config(branch_id)
     provider = _branch_provider(config)
     if provider not in {"meta_cloud", "waha", "whatsflow"}:
@@ -8879,9 +8900,18 @@ async def send_branch_cloud_bulk_media(
                         "mime_type": item["mime_type"]})
             stored.append(ref)
         prepared_recipients = [_bulk_recipient_payload(r) for r in recipients]
+        if daily_recipients is not None:
+            schedule_recipients(
+                prepared_recipients, daily_recipients=daily_recipients,
+                start_date=start_date, send_time=send_time,
+                attachment_count=len(stored),
+                provider_limit=int(config.get("waha_daily_limit") or 30)
+                if provider in {"waha", "whatsflow"} else None,
+            )
         if current_user.get('_campaign_schedule'):
             for recipient in prepared_recipients:
-                recipient['next_attempt_at'] = current_user['_campaign_schedule']
+                if not recipient.get('next_attempt_at') or recipient['next_attempt_at'] < current_user['_campaign_schedule']:
+                    recipient['next_attempt_at'] = current_user['_campaign_schedule']
         enqueue_args = (
             branch_id, provider,
             prepared_recipients,

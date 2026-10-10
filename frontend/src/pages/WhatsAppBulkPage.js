@@ -146,6 +146,10 @@ export default function WhatsAppBulkPage() {
   const [branchId, setBranchId] = useState(selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : '');
   const [cloudStatus, setCloudStatus] = useState({ loading: false, enabled: false, provider: 'meta_cloud', configured: false, connected: false, template_configured: false, daily_limit: 0, daily_used: 0, daily_remaining: 0 });
   const [cloudSending, setCloudSending] = useState(false);
+  const [spreadAcrossDays, setSpreadAcrossDays] = useState(false);
+  const [dailyRecipients, setDailyRecipients] = useState(30);
+  const [startDate, setStartDate] = useState('');
+  const [sendTime, setSendTime] = useState('10:00');
   const [cloudJobs, setCloudJobs] = useState([]);
   const [reportJob, setReportJob] = useState(null);
   const [cloudJobsPollVersion, setCloudJobsPollVersion] = useState(0);
@@ -630,7 +634,7 @@ export default function WhatsAppBulkPage() {
       ));
       return;
     }
-    if (whatsflowQuotaExhausted) {
+    if (whatsflowQuotaExhausted && !spreadAcrossDays) {
       toast.error(t('تم استنفاد حد إرسال Whatsflow اليومي', 'The daily Whatsflow sending quota is exhausted'));
       return;
     }
@@ -638,19 +642,31 @@ export default function WhatsAppBulkPage() {
       toast.error(t('أضف أرقاماً واكتب الرسالة أولاً', 'Add recipients and enter a message first'));
       return;
     }
-    if (validItems.length > 200) {
-      toast.error(t('الحد الأقصى للإرسال التلقائي هو 200 رقم في الدفعة', 'Automatic sending is limited to 200 recipients per batch'));
+    if (validItems.length > (spreadAcrossDays ? 1000 : 200)) {
+      toast.error(t('الحد الأقصى 200 رقم للإرسال المباشر أو 1000 رقم للحملة المقسمة', 'Limit: 200 immediate or 1000 scheduled recipients'));
       return;
+    }
+    if (spreadAcrossDays) {
+      const count = Number(dailyRecipients);
+      const messagesPerDay = count * Math.max(attachments.length, 1);
+      const [hour, minute] = sendTime.split(':').map(Number);
+      const minutesAvailable = 1200 - (hour * 60 + minute);
+      const maxInWindow = Math.floor((minutesAvailable - 1) / (3 * Math.max(attachments.length, 1))) + 1;
+      if (!startDate || !sendTime || !Number.isInteger(count) || count < 1 || hour < 10 || hour >= 20 || minute < 0 || minute > 59 || count > maxInWindow || (isSessionProvider && messagesPerDay > Number(cloudStatus.daily_limit || 30))) {
+        toast.error(t('تحقق من تاريخ البداية وعدد المستلمين اليومي ووقت الإرسال وحد الفرع', 'Check the start date, daily recipients, send time and branch limit'));
+        return;
+      }
     }
     const branchName = branches.find(branch => branch.id === branchId)?.name || '';
     const campaignMetadata = {
       campaign_id: campaignId || null,
       campaign_title: campaignName.trim(),
       branch_name: branchName,
+      ...(spreadAcrossDays ? { daily_recipients: Number(dailyRecipients), start_date: startDate, send_time: sendTime } : {}),
     };
     if (!window.confirm(t(
-       `ستتم إضافة ${automaticMessageCount} رسالة إلى قائمة الانتظار (لم تُرسل بعد). الفاصل 3 دقائق على الأقل بين الرسائل داخل الفرع والمدة التقديرية الدنيا ${Math.max(0, automaticMessageCount - 1) * 3} دقيقة. قد تزيد المدة بسبب الحملات الأخرى قيد الانتظار. لا يشمل هذا الحد إشعارات المعاملات. هل تريد المتابعة؟`,
-       `Queue ${automaticMessageCount} message(s) (queued is not sent). At least 3 minutes apart within the branch; estimated minimum ${Math.max(0, automaticMessageCount - 1) * 3} minute(s). Other queued campaigns may increase this duration. Transactional notices are not affected. Continue?`
+       spreadAcrossDays ? `سيُجدول ${validItems.length} مستلم على ${Math.ceil(validItems.length / Number(dailyRecipients))} أيام، بدءاً من ${startDate} الساعة ${sendTime} بتوقيت الرياض. الحد ${dailyRecipients} مستلم يومياً. قد يتأخر الإرسال إذا امتلأ حد الفرع أو كان هناك طابور سابق. هل تريد المتابعة؟` : `ستتم إضافة ${automaticMessageCount} رسالة إلى قائمة الانتظار (لم تُرسل بعد). الفاصل 3 دقائق على الأقل بين الرسائل داخل الفرع والمدة التقديرية الدنيا ${Math.max(0, automaticMessageCount - 1) * 3} دقيقة. قد تزيد المدة بسبب الحملات الأخرى قيد الانتظار. لا يشمل هذا الحد إشعارات المعاملات. هل تريد المتابعة؟`,
+       spreadAcrossDays ? `Schedule ${validItems.length} recipients over ${Math.ceil(validItems.length / Number(dailyRecipients))} days from ${startDate} at ${sendTime} Riyadh time, up to ${dailyRecipients} recipients per day. Existing queues or daily limits may delay delivery. Continue?` : `Queue ${automaticMessageCount} message(s) (queued is not sent). At least 3 minutes apart within the branch; estimated minimum ${Math.max(0, automaticMessageCount - 1) * 3} minute(s). Other queued campaigns may increase this duration. Transactional notices are not affected. Continue?`
     ))) return;
 
     setCloudSending(true);
@@ -671,6 +687,11 @@ export default function WhatsAppBulkPage() {
         formData.append('campaign_id', campaignMetadata.campaign_id || '');
         formData.append('campaign_title', campaignMetadata.campaign_title);
         formData.append('branch_name', campaignMetadata.branch_name);
+        if (spreadAcrossDays) {
+          formData.append('daily_recipients', String(campaignMetadata.daily_recipients));
+          formData.append('start_date', campaignMetadata.start_date);
+          formData.append('send_time', campaignMetadata.send_time);
+        }
         attachments.forEach(file => formData.append('attachments', file));
         response = await whatsappAPI.sendBranchCloudBulkMedia(formData, campaignMetadata);
       } else {
@@ -937,7 +958,7 @@ export default function WhatsAppBulkPage() {
               <div className="pb-1">
                 {cloudStatus.loading ? (
                   <Badge variant="outline"><Loader2 className="w-3 h-3 me-1 animate-spin" />{t('جاري التحقق', 'Checking')}</Badge>
-                ) : cloudStatus.enabled && selectedTemplateReady && (!isSessionProvider || cloudStatus.connected) && !whatsflowQuotaExhausted ? (
+                ) : cloudStatus.enabled && selectedTemplateReady && (!isSessionProvider || cloudStatus.connected) && (!whatsflowQuotaExhausted || spreadAcrossDays) ? (
                   <Badge className="bg-emerald-100 text-emerald-800">{t('API والقالب جاهزان', 'API and template ready')}</Badge>
                 ) : (
                   <Badge className="bg-amber-100 text-amber-800">{t('API أو القالب غير مهيأ', 'API or template not configured')}</Badge>
@@ -1157,7 +1178,7 @@ export default function WhatsAppBulkPage() {
                 </>
               )}
              {isSessionProvider && <p className="text-xs text-amber-700">{t(`حد الإرسال اليومي مؤشر تشغيلي داخلي. يجب أن يكون اتصال ${isWaha ? 'WAHA' : 'Whatsflow'} جاهزاً قبل الإرسال.`, `The daily limit is an internal operating guard. ${isWaha ? 'WAHA' : 'Whatsflow'} must be connected before sending.`)}</p>}
-             {whatsflowQuotaExhausted && <p className="text-xs text-red-700">{t('تم استنفاد حد إرسال Whatsflow اليومي؛ لا يمكن إضافة حملة جديدة حالياً.', 'The daily Whatsflow quota is exhausted; a new campaign cannot be queued right now.')}</p>}
+             {whatsflowQuotaExhausted && !spreadAcrossDays && <p className="text-xs text-red-700">{t('تم استنفاد حد إرسال Whatsflow اليومي؛ لا يمكن إضافة حملة جديدة حالياً.', 'The daily Whatsflow quota is exhausted; a new campaign cannot be queued right now.')}</p>}
              {!isSessionProvider && <p className="text-xs text-muted-foreground">
                 {t(
                   'الصورة تحتاج قالب IMAGE معتمد، وPDF يحتاج قالب DOCUMENT معتمد في إعدادات الفرع.',
@@ -1193,10 +1214,30 @@ export default function WhatsAppBulkPage() {
               </div>
             )}
 
+            <div className="rounded-lg border p-3 space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={spreadAcrossDays} onChange={event => setSpreadAcrossDays(event.target.checked)} />
+                {t('تقسيم الحملة على عدة أيام', 'Spread campaign across days')}
+              </label>
+              {spreadAcrossDays && <>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="text-xs">{t('مستلمون يومياً', 'Recipients per day')}
+                    <Input type="number" min="1" max="1000" value={dailyRecipients} onChange={event => setDailyRecipients(event.target.value)} />
+                  </label>
+                  <label className="text-xs">{t('تاريخ البداية', 'Start date')}
+                    <Input type="date" value={startDate} onChange={event => setStartDate(event.target.value)} />
+                  </label>
+                  <label className="text-xs">{t('وقت البداية بتوقيت الرياض', 'Start time (Riyadh)')}
+                    <Input type="time" min="10:00" max="19:59" value={sendTime} onChange={event => setSendTime(event.target.value)} />
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">{t(`الخطة: ${validItems.length} مستلم خلال ${Math.ceil(validItems.length / (Number(dailyRecipients) || 1))} أيام. فاصل 3 دقائق على الأقل بين الرسائل؛ قد يتأخر التنفيذ بسبب طابور الفرع أو حد الإرسال اليومي.`, `Plan: ${validItems.length} recipients over ${Math.ceil(validItems.length / (Number(dailyRecipients) || 1))} days. At least 3 minutes between messages; branch queues or daily limits may delay delivery.`)}</p>
+              </>}
+            </div>
             <div className="flex flex-wrap gap-2">
             <Button
               onClick={sendViaCloudApi}
-                disabled={user?.is_admin === false || !validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || whatsflowQuotaExhausted || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !selectedTemplateReady)}
+                disabled={user?.is_admin === false || !validItems.length || !message.trim() || messageTooLong || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId) || cloudStatus.loading || !cloudStatus.enabled || (whatsflowQuotaExhausted && !spreadAcrossDays) || (isSessionProvider ? (!cloudStatus.configured || !cloudStatus.connected) : !selectedTemplateReady)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Send className="w-4 h-4 ml-1" />
@@ -1239,6 +1280,9 @@ export default function WhatsAppBulkPage() {
                     <div className="mt-1 text-muted-foreground">
                       {t('معلّق', 'Pending')}: {job.pending || 0} · {t('تم', 'Sent')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
                     </div>
+                    {job.daily_recipients && <div className="mt-1 text-muted-foreground">
+                      {t(`مجدولة من ${job.start_date} الساعة ${job.send_time} بتوقيت الرياض · ${job.daily_recipients} مستلم يومياً`, `Scheduled from ${job.start_date} at ${job.send_time} Riyadh time · ${job.daily_recipients} recipients daily`)}
+                    </div>}
                     {job.lane_frozen && (
                       <div className="mt-2 rounded bg-amber-50 p-2 text-amber-900">
                         {t(

@@ -163,6 +163,23 @@ test('an exhausted Whatsflow daily quota cannot queue a campaign', async () => {
   expect(window.confirm).not.toHaveBeenCalled();
 });
 
+test('a future daily plan can be queued despite today being at quota', async () => {
+  whatsappAPI.getBranchCloudAvailability.mockResolvedValueOnce({
+    data: { ...connectedStatus, daily_used: 30, daily_remaining: 0 },
+  });
+  render(<WhatsAppBulkPage />);
+  const sendButton = await enterCampaign();
+  fireEvent.click(screen.getByLabelText('Spread campaign across days'));
+  fireEvent.change(screen.getByLabelText('Recipients per day'), { target: { value: '1' } });
+  fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2099-01-01' } });
+  expect(sendButton).toBeEnabled();
+  fireEvent.click(sendButton);
+  await waitFor(() => expect(whatsappAPI.sendBranchCloudBulk).toHaveBeenCalledWith(
+    'branch-a', expect.any(Array), 'whatsflow-ui-key',
+    expect.objectContaining({ daily_recipients: 1, start_date: '2099-01-01', send_time: '10:00' }),
+  ));
+});
+
 test('a connected Whatsflow session queues personalized text only after confirmation', async () => {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
   render(<WhatsAppBulkPage />);

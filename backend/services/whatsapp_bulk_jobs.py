@@ -10,6 +10,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -676,7 +677,8 @@ async def enqueue(branch_id, provider, recipients, idempotency_key, attachments=
     # Keep optional enqueue-time campaign metadata for future reports.  Do not
     # copy message bodies or phone numbers into the parent job.
     for key in (
-        "campaign_title", "campaign_name", "campaign_id", "branch_name"
+        "campaign_title", "campaign_name", "campaign_id", "branch_name",
+        "daily_recipients", "start_date", "send_time"
     ):
         value = (metadata or {}).get(key)
         if value not in (None, ""):
@@ -1160,6 +1162,21 @@ async def _process_one_for_branch(branch_id):
                 {"$set": {"status": "unknown", "completed_at": datetime.now(timezone.utc),
                           "error": "Quota was reserved but persistence outcome is uncertain"}})
             await _freeze_lane(item, "uncertain quota persistence", datetime.now(timezone.utc))
+            await _refresh_job(item["job_id"])
+            return False
+        daily_plan = (item.get("source_metadata") or {}).get("daily_schedule")
+        if daily_plan and getattr(exc, "status_code", None) == 429:
+            local_now = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Riyadh"))
+            send_hour, send_minute = map(int, daily_plan["send_time"].split(":"))
+            next_day = (local_now + timedelta(days=1)).replace(
+                hour=send_hour, minute=send_minute, second=0, microsecond=0
+            ).astimezone(timezone.utc)
+            await _db["whatsapp_campaign_job_items"].update_one(
+                {"id": item["id"], "status": {"$in": ["claimed", "quota_reserving"]},
+                 "claim_token": claim_token}, {"$set": {
+                    "status": "pending", "next_attempt_at": next_day,
+                    "error": "Deferred to the next sending day because the branch quota is full"}})
+            await _release_lane(item, lane_token, datetime.now(timezone.utc))
             await _refresh_job(item["job_id"])
             return False
         await _db["whatsapp_campaign_job_items"].update_one(
