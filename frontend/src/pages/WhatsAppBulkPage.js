@@ -1332,7 +1332,9 @@ export default function WhatsAppBulkPage() {
         </Card>
 
         <WhatsAppCampaignWorkflow branchId={branchId} items={items} message={message} defaultName={defaultName}
-          audience={audience} onSave={saveCampaign} onMessage={setMessage} scheduleAt={proposedSendAt} onSchedule={setProposedSendAt} />
+          audience={audience} onSave={saveCampaign} onMessage={setMessage} scheduleAt={proposedSendAt} onSchedule={setProposedSendAt}
+          spreadAcrossDays={spreadAcrossDays} dailyRecipients={dailyRecipients} startDate={startDate} sendTime={sendTime}
+          dailyLimit={isSessionProvider ? Number(cloudStatus.daily_limit || 30) : null} attachmentCount={Math.max(attachments.length, 1)} />
         <WhatsAppCampaignReport
           branchId={branchId}
           job={reportJob}

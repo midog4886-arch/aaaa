@@ -14,7 +14,7 @@ const templates = [
 ];
 const labels = { pending_review:'بانتظار اعتماد المدير', scheduled:'معتمد ومجدول', preparing:'جارٍ تجهيز الإرسال', queued:'معتمد في طابور الإرسال', cancelled:'ملغى' };
 
-export default function WhatsAppCampaignWorkflow({ branchId, items, message, defaultName, audience, onSave, onMessage, scheduleAt='', onSchedule=()=>{} }) {
+export default function WhatsAppCampaignWorkflow({ branchId, items, message, defaultName, audience, onSave, onMessage, scheduleAt='', onSchedule=()=>{}, spreadAcrossDays=false, dailyRecipients=30, startDate='', sendTime='10:00', dailyLimit=null, attachmentCount=1 }) {
   const { user } = useAuth();
   const [rows,setRows]=useState([]), [groups,setGroups]=useState([]), [group,setGroup]=useState('');
   const when=scheduleAt;
@@ -36,9 +36,10 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     return ()=>clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[branchId]);
-  useEffect(()=>{generation.current+=1;setPreview(null);setExcluded([]);},[items,message,defaultName,audience,group]);
+  useEffect(()=>{generation.current+=1;setPreview(null);setExcluded([]);},[items,message,defaultName,audience,group,spreadAcrossDays,dailyRecipients,startDate,sendTime]);
   const data=()=>({branch_id:branchId,audience,
-    recipients:audience==='pasted'?items.map(i=>({phone:i.phone,name:i.name,member_id:i.member_id})):[],message,default_name:defaultName,group_id:group});
+    recipients:audience==='pasted'?items.map(i=>({phone:i.phone,name:i.name,member_id:i.member_id})):[],message,default_name:defaultName,group_id:group,
+    ...(spreadAcrossDays ? {daily_recipients:Number(dailyRecipients),start_date:startDate,send_time:sendTime} : {})});
   const act=async(fn)=>{
     const current=branchId; setBusy(true);
     try { await fn(); if(scope.current===current) await refresh(); }
@@ -46,6 +47,8 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     finally {if(scope.current===current)setBusy(false);}
   };
   const showPreview=()=>act(async()=>{
+    if(spreadAcrossDays && dailyLimit && Number(dailyRecipients)*attachmentCount>dailyLimit)
+      throw new Error(`حد الفرع ${dailyLimit} رسالة يومياً. خفّض عدد المستلمين اليومي إلى ${Math.floor(dailyLimit/attachmentCount)} أو أقل.`);
     const version=++generation.current;
     const response=await axios.post('/api/whatsapp/workflow/preview',data());
     if(version===generation.current && scope.current===branchId) {setPreview(response.data);setExcluded([]);}
@@ -60,7 +63,7 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     if(!id || scope.current!==branchId || currentGeneration!==generation.current)return;
     await axios.post('/api/whatsapp/workflow/submit',{...data(),audience:'pasted',
       recipients:preview.recipients,excluded_phones:excluded,campaign_id:id,
-      schedule_at:when?new Date(when).toISOString():null});
+      schedule_at:spreadAcrossDays?null:(when?new Date(when).toISOString():null)});
     toast.success('تم إرسال نسخة ثابتة من الرسائل والمستلمين لاعتماد المدير');setPreview(null);
   });
   const action=(row,name)=>act(async()=>{
@@ -78,13 +81,14 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
   const chosen=(preview?.recipients||[]).filter(r=>!excluded.includes(r.phone));
   return <section className="rounded-xl border bg-white p-5 space-y-4" dir="rtl">
     <h2 className="font-bold text-lg">معاينة الحملة واعتماد الإرسال</h2>
-    <p className="text-sm text-slate-500">تخصيص الاسم: {'{الاسم}'} · تاريخ انتهاء الاشتراك: {'{تاريخ_الانتهاء}'} · حتى 200 مستلم للحملة.</p>
+    <p className="text-sm text-slate-500">تخصيص الاسم: {'{الاسم}'} · تاريخ انتهاء الاشتراك: {'{تاريخ_الانتهاء}'} · حتى {spreadAcrossDays?'1000 مستلم للحملة المقسمة':'200 مستلم للحملة المباشرة'}.</p>
     <div className="flex flex-wrap gap-2">{templates.map(([name,text])=><Button key={name} variant="outline" onClick={()=>onMessage(text)}>{name}</Button>)}</div>
     <div className="grid md:grid-cols-2 gap-3">
       <label>المجموعة<select aria-label="مجموعة الحملة" className="block border rounded p-2 w-full" value={group} onChange={e=>setGroup(e.target.value)}>
         <option value="">كل المجموعات</option>{groups.map(g=><option key={g.id} value={g.id}>{g.custom_name||`المستوى ${g.level_number}`}</option>)}
       </select></label>
-      <label>موعد الإرسال الفعلي<input aria-label="موعد الإرسال الفعلي" type="datetime-local" className="block border rounded p-2 w-full" value={when} onChange={e=>onSchedule(e.target.value)}/><small>بتوقيت جهازك. يبدأ الإرسال بعد اعتماد المدير، حسب اتصال الخدمة وحصتها.</small></label>
+      {!spreadAcrossDays && <label>موعد الإرسال الفعلي<input aria-label="موعد الإرسال الفعلي" type="datetime-local" className="block border rounded p-2 w-full" value={when} onChange={e=>onSchedule(e.target.value)}/><small>بتوقيت جهازك. يبدأ الإرسال بعد اعتماد المدير، حسب اتصال الخدمة وحصتها.</small></label>}
+      {spreadAcrossDays && <p className="text-sm text-slate-600">تبدأ الدفعة الأولى بتاريخ {startDate||'—'} الساعة {sendTime} بتوقيت الرياض، بعد اعتماد المدير. حتى {dailyRecipients} مستلم يومياً. {dailyLimit?`حد الفرع ${dailyLimit} رسالة يومياً.`:''}</p>}
     </div>
     <Button disabled={busy||!branchId||!message.trim()} onClick={showPreview}>معاينة المستلمين والرسائل</Button>
     {preview && <div className="space-y-3">
@@ -101,7 +105,7 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
     <h3 className="font-bold">طلبات الاعتماد وجدولة الحملات</h3>
     {!rows.length && <p className="text-slate-500">لا توجد طلبات اعتماد لهذا الفرع.</p>}
     {rows.map(row=><details key={row.id} className="border rounded p-3">
-      <summary>{row.title} · {labels[row.status]||row.status} · {row.count} مستلم {row.schedule_at?`· ${new Date(row.schedule_at).toLocaleString('ar-SA')}`:'· إرسال بعد الاعتماد'}</summary>
+      <summary>{row.title} · {labels[row.status]||row.status} · {row.count} مستلم {row.daily_recipients?`· ${row.daily_recipients} مستلم يومياً من ${row.start_date} ${row.send_time} بتوقيت الرياض`:(row.schedule_at?`· ${new Date(row.schedule_at).toLocaleString('ar-SA')}`:'· إرسال بعد الاعتماد')}</summary>
       <div className="space-y-3 mt-3">
         <div className="max-h-60 overflow-auto">{row.recipients.map(r=><div key={r.phone} className="border-b py-2"><b>{r.name} · +{r.phone}</b><p className="whitespace-pre-wrap">{r.message}</p></div>)}</div>
         <div className="flex gap-2 flex-wrap">{(row.media||[]).map((ref,index)=><Button variant="outline" key={index} disabled={busy} onClick={()=>viewMedia(row,index)}>معاينة المرفق: {ref.attachment_name}</Button>)}</div>

@@ -15,17 +15,21 @@ from utils.auth import get_current_user
 from utils.phone import normalize_phone
 from routes import whatsapp as wa
 from services import whatsapp_bulk_jobs as jobs
+from services.campaign_daily_schedule import schedule_recipients, MAX_SCHEDULED_RECIPIENTS
 
 router = APIRouter(prefix='/whatsapp/workflow', tags=['WhatsApp campaign review'])
 
 class PreviewRequest(BaseModel):
     branch_id: str
     audience: str = 'pasted'
-    recipients: list[dict] = Field(default_factory=list, max_length=200)
+    recipients: list[dict] = Field(default_factory=list, max_length=MAX_SCHEDULED_RECIPIENTS)
     message: str = Field(min_length=1, max_length=4096)
     default_name: str = Field(default='', max_length=200)
     group_id: str = ''
-    excluded_phones: list[str] = Field(default_factory=list, max_length=200)
+    excluded_phones: list[str] = Field(default_factory=list, max_length=MAX_SCHEDULED_RECIPIENTS)
+    daily_recipients: int | None = None
+    start_date: str | None = None
+    send_time: str | None = None
 
 class SubmitRequest(PreviewRequest):
     campaign_id: str
@@ -50,7 +54,7 @@ async def prepare(data):
         today = datetime.now(wa.RIYADH_TZ).date()
         rows = await db.members.find({'branch_id': data.branch_id, 'activities': {'$elemMatch': {
             'end_date': {'$gte': today.isoformat(), '$lte': (today+timedelta(days=7)).isoformat()}
-        }}}, {'_id':0}).to_list(201)
+        }}}, {'_id':0}).to_list(MAX_SCHEDULED_RECIPIENTS + 1)
         source = [{'phone': r.get('phone'), 'member_id':r.get('id'), 'name':r.get('name_ar') or r.get('name')} for r in rows]
     else:
         source = data.recipients if data.audience == 'pasted' else await wa._campaign_audience_recipients(data.branch_id, data.audience)
@@ -84,7 +88,17 @@ async def prepare(data):
         message = re.sub(r'\{\s*(تاريخ_الانتهاء|expiry_date)\s*\}', lambda _:end, message, flags=re.I)
         if not message.strip() or len(message)>4096: raise HTTPException(400, 'الرسالة فارغة أو أطول من الحد المسموح')
         result.append({'phone':phone,'name':name,'member_id':member_id,'message':message})
-    if len(result)>200: raise HTTPException(400, 'قسّم الجمهور إلى حملات لا تتجاوز 200 مستلم')
+    if len(result) > (MAX_SCHEDULED_RECIPIENTS if data.daily_recipients is not None else 200):
+        raise HTTPException(400, 'الحد الأقصى 200 مستلم للحملة المباشرة أو 1000 للحملة المقسمة')
+    if data.daily_recipients is not None and result:
+        config = await wa._get_branch_cloud_config(data.branch_id)
+        provider = wa._branch_provider(config)
+        schedule_recipients(
+            [dict(row) for row in result], daily_recipients=data.daily_recipients,
+            start_date=data.start_date, send_time=data.send_time,
+            provider_limit=int(config.get('waha_daily_limit') or 30)
+            if provider in {'waha', 'whatsflow'} else None,
+        )
     # Warn about the same personalized text recently accepted for the same phone.
     # This is advisory: an uncertain provider result is included so the operator
     # can decide whether to exclude it rather than accidentally sending twice.
@@ -123,6 +137,8 @@ async def submit(data:SubmitRequest, user:dict=Depends(get_current_user)):
     row={'id':str(uuid.uuid4()),'branch_id':data.branch_id,'campaign_id':data.campaign_id,
          'title':campaign['name'],'status':'pending_review','created_by':user['user_id'],
          'created_at':datetime.now(timezone.utc),'schedule_at':when,**snapshot,
+         'daily_recipients':data.daily_recipients,'start_date':data.start_date,
+         'send_time':data.send_time,
          'attachments':wa._campaign_attachment_items(campaign)}
     await db.whatsapp_reviews.insert_one(row)
     return {'id':row['id'],'status':row['status']}
@@ -181,11 +197,13 @@ async def dispatch(row,user):
                 uploads.append(UploadFile(io.BytesIO(content), filename=ref.get('attachment_name','attachment'),headers=Headers({'content-type':ref['attachment_type']})))
             try:
                 job=await wa.send_branch_cloud_bulk_media(branch_id=branch_id,recipients_json=json.dumps(row['recipients']),idempotency_key=key,
-                    campaign_title=row['title'],campaign_id=row['campaign_id'],branch_name='',attachment=None,attachments=uploads,current_user=context,response=None)
+                    campaign_title=row['title'],campaign_id=row['campaign_id'],branch_name='',
+                    daily_recipients=row.get('daily_recipients'),start_date=row.get('start_date') or '',
+                    send_time=row.get('send_time') or '',attachment=None,attachments=uploads,current_user=context,response=None)
             finally:
                 for upload in uploads: await upload.close()
         else:
-            job=await wa.send_branch_cloud_bulk(wa.BulkCloudSendRequest(branch_id=branch_id,recipients=row['recipients'],idempotency_key=key,campaign_title=row['title'],campaign_id=row['campaign_id']),context)
+            job=await wa.send_branch_cloud_bulk(wa.BulkCloudSendRequest(branch_id=branch_id,recipients=row['recipients'],idempotency_key=key,campaign_title=row['title'],campaign_id=row['campaign_id'],daily_recipients=row.get('daily_recipients'),start_date=row.get('start_date'),send_time=row.get('send_time')),context)
         await db.whatsapp_reviews.update_one({'id':review_id},{'$set':{'status':'queued','job_id':job['id']}})
         return job
     except Exception:

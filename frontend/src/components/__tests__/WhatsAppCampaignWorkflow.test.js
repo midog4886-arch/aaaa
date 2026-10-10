@@ -36,3 +36,12 @@ test('changing branch clears previous preview',async()=>{
   view.rerender(<Workflow {...props} branchId="b"/>);
   await waitFor(()=>expect(screen.queryByText('Private preview')).not.toBeInTheDocument());
 });
+test('daily campaign preview uses the plan and supports a large reviewed audience',async()=>{
+  axios.post.mockResolvedValue({data:{count:463,recipients:[{phone:'966500000001',name:'Ali',message:'Hi Ali'}],removed:{duplicates:0,invalid:0,opted_out:0}}});
+  render(<Workflow {...props} spreadAcrossDays dailyRecipients={30} startDate="2099-01-01" sendTime="10:00" dailyLimit={30}/>);
+  expect(screen.getByText(/1000 مستلم للحملة المقسمة/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText('معاينة المستلمين والرسائل'));
+  await screen.findByText('Hi Ali');
+  expect(axios.post.mock.calls[0][1]).toMatchObject({daily_recipients:30,start_date:'2099-01-01',send_time:'10:00'});
+  expect(screen.getByText('حفظ وإرسال لاعتماد المدير')).toBeEnabled();
+});

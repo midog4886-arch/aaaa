@@ -44,6 +44,43 @@ def test_preview_warns_about_recent_identical_delivery_without_excluding_it(env)
     assert result['count']==1
     assert result['recent_similar_phones']==['966500000001']
 
+def test_daily_preview_accepts_463_recipients_and_keeps_200_limit_without_plan(env, monkeypatch):
+    recipients=[{'phone':f'9665{index:08d}','name':f'Person {index}'} for index in range(463)]
+    monkeypatch.setattr(workflow.wa,'_get_branch_cloud_config',AsyncMock(return_value={'waha_daily_limit':30}))
+    monkeypatch.setattr(workflow.wa,'_branch_provider',lambda _config:'waha')
+    planned=workflow.PreviewRequest(branch_id='a',message='Hello {name}',recipients=recipients,
+        daily_recipients=30,start_date='2099-01-01',send_time='10:00')
+    assert run(workflow.prepare(planned))['count']==463
+    with pytest.raises(HTTPException):
+        run(workflow.prepare(workflow.PreviewRequest(branch_id='a',message='Hi',recipients=recipients)))
+    with pytest.raises(HTTPException):
+        run(workflow.prepare(planned.model_copy(update={'daily_recipients':50})))
+
+def test_approved_daily_review_passes_plan_to_durable_queue(env, monkeypatch):
+    row={'id':'r','branch_id':'a','campaign_id':'c','title':'Campaign','status':'pending_review',
+         'recipients':[{'phone':'966500000001','message':'Hi'}],'attachments':[],
+         'daily_recipients':30,'start_date':'2099-01-01','send_time':'10:00'}
+    sender=AsyncMock(return_value={'id':'job'})
+    monkeypatch.setattr(workflow.wa,'send_branch_cloud_bulk',sender)
+    run(workflow.dispatch(row,{'user_id':'admin','is_admin':True}))
+    request=sender.call_args.args[0]
+    assert request.daily_recipients==30
+    assert request.start_date=='2099-01-01'
+    assert request.send_time=='10:00'
+
+def test_submit_preserves_daily_plan_for_manager_approval(env, monkeypatch):
+    env.whatsapp_campaigns.find_one.return_value={'id':'c','name':'Campaign'}
+    monkeypatch.setattr(workflow,'prepare',AsyncMock(return_value={
+        'count':1,'recipients':[{'phone':'966500000001','message':'Hi'}],
+        'removed':{'invalid':0,'duplicates':0,'opted_out':0,'excluded':0},
+        'recent_similar_phones':[]}))
+    monkeypatch.setattr(workflow.wa,'_campaign_attachment_items',lambda _campaign:[])
+    request=workflow.SubmitRequest(branch_id='a',campaign_id='c',message='Hi',
+        daily_recipients=30,start_date='2099-01-01',send_time='10:00')
+    run(workflow.submit(request,{'user_id':'staff'}))
+    saved=env.whatsapp_reviews.insert_one.call_args.args[0]
+    assert (saved['daily_recipients'],saved['start_date'],saved['send_time'])==(30,'2099-01-01','10:00')
+
 def test_group_scope_and_authoritative_expiry(env):
     env.levels.find_one.return_value={'id':'g','branch_id':'a'}
     env.members.find_one.return_value={'id':'m','phone':'0500000001','name':'Stored name','activities':[{'level_id':'g','end_date':'2099-01-01'}]}
