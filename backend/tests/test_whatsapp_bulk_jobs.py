@@ -751,6 +751,20 @@ def test_future_deferred_head_preserves_branch_fifo_and_pacing(queue):
     assert [entry[3] for entry in sent] == [items[0]["id"], items[1]["id"]]
 
 
+def test_migration_held_head_does_not_block_new_authorized_job(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "held-migration-key-123"))
+    held = db["whatsapp_campaign_job_items"].rows[0]
+    held["status"] = "migration_hold"
+    db["whatsapp_campaign_jobs"].rows[0]["status"] = "paused"
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "new-closure-key-123"))
+    fresh = db["whatsapp_campaign_job_items"].rows[1]
+
+    assert run(jobs.process_one()) is True
+    assert [entry[3] for entry in sent] == [fresh["id"]]
+    assert held["status"] == "migration_hold"
+
+
 def test_inflight_oldest_head_cannot_be_skipped_by_another_worker(queue):
     db, sent, *_ = queue
     run(jobs.enqueue("a", "meta_cloud", recipients(2), "claimed-head-key-123"))

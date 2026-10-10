@@ -940,9 +940,11 @@ async def _oldest_branch_item(branch_id):
     # Include claimed/dispatching heads in the peek.  A second worker must
     # not skip an in-flight head and claim a later pending item for the same
     # branch.
+    # Migration-held items are deliberately inert until reviewed. They must
+    # not become a permanent FIFO head blocking newly authorized campaigns.
     cursor = _db["whatsapp_campaign_job_items"].find({
         "branch_id": branch_id,
-        "status": {"$nin": list(TERMINAL_ITEM_STATUSES)},
+        "status": {"$nin": list(TERMINAL_ITEM_STATUSES | {"migration_hold"})},
     }).sort(_pending_item_sort())
     if hasattr(cursor, "to_list"):
         rows = await cursor.to_list(length=1)
