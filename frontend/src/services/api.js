@@ -440,6 +440,7 @@ export const registrationRequestsAPI = {
 // followed by an explicit confirmation in the UI.
 export const campaignInquiriesAPI = {
   getAll: (params = {}) => axios.get(`${API}/campaign-inquiries`, { params }),
+  getReplies: (id) => axios.get(`${API}/campaign-inquiries/${id}/replies`),
   create: (data) => axios.post(`${API}/campaign-inquiries`, data),
   preview: (data) => axios.post(`${API}/campaign-inquiries/preview`, data),
   import: (data) => axios.post(`${API}/campaign-inquiries/import`, data),

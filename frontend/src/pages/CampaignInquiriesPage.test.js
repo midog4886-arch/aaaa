@@ -14,7 +14,7 @@ jest.mock('lucide-react', () => {
   return { Archive:I, CalendarClock:I, ChevronDown:I, ClipboardPlus:I, MessageCircle:I, Pencil:I, Phone:I, Plus:I, Search:I, Users:I };
 });
 
-jest.mock('../services/api', () => ({ branchesAPI: { getAll: jest.fn() }, campaignInquiriesAPI: { getAll: jest.fn(), create: jest.fn(), preview: jest.fn(), import: jest.fn(), update: jest.fn(), delete: jest.fn() } }));
+jest.mock('../services/api', () => ({ branchesAPI: { getAll: jest.fn() }, campaignInquiriesAPI: { getAll: jest.fn(), getReplies: jest.fn(), create: jest.fn(), preview: jest.fn(), import: jest.fn(), update: jest.fn(), delete: jest.fn() } }));
 
 const inquiry = { id: 'i1', branch_id: 'b1', name: 'ليان', phone: '966501234567', source: 'social_ad', status: 'new', notes: '' };
 beforeEach(() => {
@@ -31,6 +31,18 @@ test('opening a personal WhatsApp chat does not mutate or log contact', async ()
   fireEvent.click(await screen.findByText('فتح المحادثة'));
   expect(window.open).toHaveBeenCalledWith('https://wa.me/966501234567', '_blank', 'noopener,noreferrer');
   expect(campaignInquiriesAPI.update).not.toHaveBeenCalled();
+});
+
+test('opens stored incoming replies without treating them as campaign-specific', async () => {
+  campaignInquiriesAPI.getReplies.mockResolvedValue({ data: { items: [
+    { id: 'm1', body: 'ما مواعيد التدريب؟', type: 'text', created_at: '2026-10-11T10:00:00Z' },
+  ] } });
+  render(<CampaignInquiriesPage />);
+  await screen.findByText('ليان');
+  fireEvent.click(screen.getByText('عرض الردود'));
+  expect(await screen.findByText('ما مواعيد التدريب؟')).toBeTruthy();
+  expect(screen.getByText(/قد تشمل أسئلة غير متعلقة بالحملة/)).toBeTruthy();
+  expect(campaignInquiriesAPI.getReplies).toHaveBeenCalledWith('i1');
 });
 
 test('do-not-contact suppresses phone actions', async () => {

@@ -841,6 +841,37 @@ async def list_campaign_inquiries(
     }
 
 
+@router.get("/{inquiry_id}/replies")
+async def get_campaign_inquiry_replies(
+    inquiry_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """Show stored inbound WhatsApp messages for this inquiry's branch and phone."""
+    await _require_campaign_access(current_user)
+    await _require_phone_access(current_user)
+    inquiry = await db.campaign_inquiries.find_one(
+        {"id": inquiry_id}, {"_id": 0, "branch_id": 1, "phone": 1, "archived_at": 1, "archived": 1}
+    )
+    if not inquiry or inquiry.get("archived_at") or inquiry.get("archived"):
+        raise HTTPException(status_code=404, detail="Inquiry not found")
+    branch_id = inquiry.get("branch_id") or ""
+    effective = require_branch_scope(current_user, branch_id)
+    if effective and effective != branch_id:
+        raise HTTPException(status_code=403, detail="No access to this branch")
+    phone = normalize_phone(inquiry.get("phone"))
+    if not phone:
+        return {"items": []}
+    messages = await db.whatsapp_cloud_messages.find(
+        {"branch_id": branch_id, "phone": phone, "direction": "inbound"},
+        {"_id": 0, "id": 1, "body": 1, "type": 1, "created_at": 1},
+    ).sort("created_at", -1).to_list(50)
+    return {"items": [
+        {"id": row.get("id"), "body": str(row.get("body") or "")[:4096],
+         "type": row.get("type") or "text", "created_at": row.get("created_at")}
+        for row in messages
+    ]}
+
+
 def _ensure_automation_service():
     """Bind the service to the route's tenant-local DB (also test doubles)."""
     if campaign_inquiry_automation._db is db:

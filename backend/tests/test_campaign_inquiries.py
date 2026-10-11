@@ -510,6 +510,36 @@ def test_write_scope_and_phone_permission_fail_closed(crm):
     assert listed["items"][0]["phone_masked"] is True
 
 
+def test_inquiry_replies_are_inbound_and_scoped_to_phone_and_branch(crm):
+    module, fake_db = crm
+    fake_db.campaign_inquiries.docs.append({
+        "id": "i1", "branch_id": "B1", "phone": "966501234567", "status": "new",
+    })
+    fake_db.whatsapp_cloud_messages.docs.extend([
+        {"id": "recent", "branch_id": "B1", "phone": "966501234567", "direction": "inbound", "body": "أريد معرفة المواعيد", "type": "text", "created_at": "2026-10-11T10:00:00Z"},
+        {"id": "older", "branch_id": "B1", "phone": "966501234567", "direction": "inbound", "body": "مرحباً", "type": "text", "created_at": "2026-10-10T10:00:00Z"},
+        {"id": "out", "branch_id": "B1", "phone": "966501234567", "direction": "outbound", "body": "أهلاً", "created_at": "2026-10-11T11:00:00Z"},
+        {"id": "other-phone", "branch_id": "B1", "phone": "966509999999", "direction": "inbound", "body": "خاص", "created_at": "2026-10-11T11:00:00Z"},
+        {"id": "other-branch", "branch_id": "B2", "phone": "966501234567", "direction": "inbound", "body": "خاص", "created_at": "2026-10-11T11:00:00Z"},
+    ])
+    result = run(module.get_campaign_inquiry_replies("i1", current_user=ADMIN))
+    assert [item["id"] for item in result["items"]] == ["recent", "older"]
+
+    staff_b2 = {"user_id": "staff", "branch_id": "B2", "permissions": ["messages", "member-phones"]}
+    with pytest.raises(HTTPException) as error:
+        run(module.get_campaign_inquiry_replies("i1", current_user=staff_b2))
+    assert error.value.status_code == 403
+
+    async def deny_phone(_user, permission):
+        if permission == module.PHONE_PERMISSION:
+            raise HTTPException(status_code=403, detail="member phones required")
+
+    module.require_permission = deny_phone
+    with pytest.raises(HTTPException) as error:
+        run(module.get_campaign_inquiry_replies("i1", current_user=ADMIN))
+    assert error.value.status_code == 403
+
+
 def test_concurrent_imports_converge_without_overwriting(crm):
     module, fake_db = crm
     payload = module.CampaignInquiryImport(
