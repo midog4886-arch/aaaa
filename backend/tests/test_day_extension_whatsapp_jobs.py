@@ -164,6 +164,45 @@ def test_closure_notices_combine_members_sharing_a_phone(monkeypatch):
     assert "أحمد: كرة قدم حتى 2026-10-13" in enqueued[0]["message"]
 
 
+def test_long_shared_phone_notice_keeps_one_message_with_member_details(monkeypatch):
+    fake_db = DB()
+    fake_db.members.rows[1].update(phone="0501111111", branch_id="branch-a")
+    monkeypatch.setattr(mod, "db", fake_db)
+    enqueued = []
+
+    async def authorize(_user):
+        return None
+
+    async def preview(_data, _user):
+        return {"extended_members": [
+            {"member_id": "m1", "details": [{"activity": "سباحة", "missed_sessions": 1,
+                "old_end": "2026-10-10", "new_end": "2026-10-11"}]},
+            {"member_id": "m2", "details": [{"activity": "قدم", "missed_sessions": 2,
+                "old_end": "2026-10-12", "new_end": "2026-10-14"}]},
+        ]}
+
+    async def enqueue(_branch_id, _provider, recipients, _key, *, source):
+        enqueued.extend(recipients)
+        return {"id": "job-a", "total": len(recipients)}, True
+
+    monkeypatch.setattr(mod, "_require_current_admin", authorize)
+    monkeypatch.setattr(mod, "apply_extension", preview)
+    monkeypatch.setattr(mod, "_closure_provider", lambda _branch_id: authorize(None))
+    monkeypatch.setattr(mod.whatsapp_bulk_jobs, "enqueue", enqueue)
+    template = "إعلان مهم " + "نص " * 650 + " {name}: {activity} {new_end}"
+    result = run(mod.enqueue_closure_notices(
+        mod.ClosureNoticeSend(closure_id="closure-1", branch_id="branch-a", message=template),
+        {"is_admin": True},
+    ))
+    assert result["queued"] == 1
+    assert len(enqueued) == 1
+    message = enqueued[0]["message"]
+    assert len(message) <= 4096
+    assert "محمد" in message and "أحمد" in message
+    assert "قدم: 2 حصة تعويضية" in message
+    assert "2026-10-12 ← 2026-10-14" in message
+
+
 def test_provider_failure_happens_before_any_enqueue(monkeypatch):
     fake_db = DB()
     fake_db.members = Collection([

@@ -1241,6 +1241,22 @@ def _personalize_closure_notice(template: str, member: dict, closure_notes: str 
     return message
 
 
+def _compact_shared_phone_notice(messages: list, members: list) -> str:
+    """Keep the full first notice and summarize other members on the same phone."""
+    lines = [messages[0], "", "يشمل الإشعار أيضًا الأعضاء المرتبطين بهذا الرقم:"]
+    for member in members[1:]:
+        lines.append(f"• {member.get('name') or 'عضو'}")
+        for detail in member.get("details") or []:
+            activity = detail.get("activity") or "النشاط"
+            old_end = detail.get("old_end") or "—"
+            new_end = detail.get("new_end") or "—"
+            sessions = detail.get("missed_sessions") or 0
+            lines.append(
+                f"  {activity}: {sessions} حصة تعويضية، نهاية الاشتراك {old_end} ← {new_end}"
+            )
+    return "\n".join(lines)
+
+
 async def _require_current_admin(user: dict) -> None:
     """Do not authorize a sensitive send from stale JWT role claims alone."""
     require_admin(user)
@@ -1390,7 +1406,7 @@ async def enqueue_closure_notices(
         recipient = branch_recipients.setdefault(normalized_phone, {
             "phone": normalized_phone, "recipient_id": member["id"], "messages": [],
         })
-        recipient["messages"].append((item["name"], message))
+        recipient["messages"].append((item["name"], message, item))
 
     for branch_id, by_phone in grouped.items():
         recipients = []
@@ -1402,11 +1418,19 @@ async def enqueue_closure_notices(
                 recipient["message"] = (
                     "إشعار إغلاق للأعضاء المرتبطين بهذا الرقم:\n\n"
                     + "\n\n────────\n\n".join(
-                        f"{name}\n{message}" for name, message in messages
+                        f"{name}\n{message}" for name, message, _ in messages
                     )
                 )
+                if len(recipient["message"]) > 4096:
+                    recipient["message"] = _compact_shared_phone_notice(
+                        [message for _, message, _ in messages],
+                        [item for _, _, item in messages],
+                    )
             if len(recipient["message"]) > 4096:
-                raise HTTPException(status_code=400, detail="Combined message is too long; nothing was queued")
+                raise HTTPException(
+                    status_code=400,
+                    detail="الرسالة المجمعة لهذا الرقم طويلة جدًا حتى بعد اختصار بيانات الأعضاء؛ قصّر نص الرسالة ثم أعد المحاولة. لم تُجدول أي رسالة.",
+                )
             recipients.append(recipient)
         grouped[branch_id] = recipients
 
