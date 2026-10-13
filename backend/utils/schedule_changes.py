@@ -18,6 +18,24 @@ def conflict(message):
     raise HTTPException(409, detail=message)
 
 
+def matching_paid_items(invoice, member, activity):
+    """Resolve a legacy subscription to one paid item without guessing across renewals."""
+    candidates = []
+    for index, item in enumerate((invoice or {}).get("items") or []):
+        if item.get("is_product") or (item.get("member_id") or invoice.get("member_id")) != member["id"]:
+            continue
+        key = source_key(invoice, item, index)
+        if activity.get("source_period_key"):
+            if key == activity["source_period_key"]:
+                candidates.append((key, item))
+        elif item.get("activity_id") == activity.get("activity_id"):
+            candidates.append((key, item))
+    if not activity.get("source_period_key") and len(candidates) > 1:
+        start = str(activity.get("start_date") or "")[:10]
+        candidates = [entry for entry in candidates if start and original_window(entry[1])[0] == start]
+    return candidates
+
+
 def weekdays(activity):
     from routes.attendance import parse_schedule_days
     return set(parse_schedule_days(activity.get("schedule") or ""))
@@ -111,17 +129,7 @@ async def build_plan(db, member, activity_id, payload, today=None, session=None)
     if dimensions_changed or old.get("source") != "invoice" or not old.get("source_id"):
         return await build_combined_plan(db, member, index, old, payload, today, session)
     invoice = await db.invoices.find_one({"id": old.get("source_id"), "status": {"$in": ["paid", "partial"]}}, {"_id": 0}, **kw)
-    candidates = []
-    for n, item in enumerate((invoice or {}).get("items") or []):
-        if item.get("is_product") or (item.get("member_id") or invoice.get("member_id")) != member["id"]:
-            continue
-        key = source_key(invoice, item, n)
-        if old.get("source_period_key"):
-            match = key == old["source_period_key"]
-        else:
-            match = item.get("activity_id") == activity_id
-        if match:
-            candidates.append((key, item))
+    candidates = matching_paid_items(invoice, member, old)
     if len(candidates) != 1:
         conflict("مصدر الحصص المدفوعة غير محدد بشكل فريد؛ يلزم مراجعة الفاتورة")
     key, item = candidates[0]
@@ -305,13 +313,7 @@ async def build_combined_plan(db, member, index, old, payload, today, session=No
     invoice, item, key, effective = None, None, None, None
     if old.get("source") == "invoice" and old.get("source_id"):
         invoice = await db.invoices.find_one({"id": old["source_id"], "status": {"$in": ["paid", "partial"]}}, {"_id": 0}, **kw)
-        candidates = []
-        for n, candidate in enumerate((invoice or {}).get("items") or []):
-            if candidate.get("is_product") or (candidate.get("member_id") or invoice.get("member_id")) != member["id"]:
-                continue
-            candidate_key = source_key(invoice, candidate, n)
-            if (candidate_key == old["source_period_key"] if old.get("source_period_key") else candidate.get("activity_id") == old["activity_id"]):
-                candidates.append((candidate_key, candidate))
+        candidates = matching_paid_items(invoice, member, old)
         if len(candidates) != 1:
             conflict("مصدر الاشتراك غير محدد بشكل فريد؛ يلزم مراجعة الفاتورة")
         key, item = candidates[0]

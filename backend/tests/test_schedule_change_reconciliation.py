@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from utils.schedule_changes import build_plan, commit_plan, protect_schedule_edit
+from utils.schedule_changes import build_plan, commit_plan, protect_schedule_edit, matching_paid_items
 from utils.effective_periods import source_key
 
 
@@ -389,6 +389,45 @@ def test_uncertainty_blocks(damage):
         db.closures.rows.append({"branch_id": "b", "end_date": "2026-09-30", "stop_type": "specific_time"})
     else:
         member["activities"].append({"activity_id": "other", "level_id": "l"})
+    with pytest.raises(HTTPException) as exc:
+        run_plan(db, member, payload)
+    assert exc.value.status_code == 409
+
+
+def test_legacy_invoice_with_two_renewal_periods_resolves_by_start_date():
+    db, member, payload = fixture()
+    old = member["activities"][0]
+    old.pop("source_period_key")
+    payload["activity"].pop("source_period_key")
+    later = {**db.invoices.rows[0]["items"][0],
+             "start_date": "2026-10-25", "end_date": "2026-11-21"}
+    db.invoices.rows[0]["items"].append(later)
+    matches = matching_paid_items(db.invoices.rows[0], member, old)
+    assert len(matches) == 1
+    assert matches[0][1]["start_date"] == "2026-09-09"
+    plan = run_plan(db, member, payload)
+    assert plan["after"]["source_period_key"] == matches[0][0]
+
+
+def test_combined_edit_uses_same_period_resolution_for_legacy_invoice():
+    db, member, payload = combined_fixture()
+    member["activities"][0].pop("source_period_key")
+    payload["activity"].pop("source_period_key")
+    db.invoices.rows[0]["items"].append({
+        **db.invoices.rows[0]["items"][0],
+        "start_date": "2026-10-25", "end_date": "2026-11-21",
+    })
+    plan = run_plan(db, member, payload)
+    expected = source_key(db.invoices.rows[0], db.invoices.rows[0]["items"][0], 0)
+    assert plan["after"]["source_period_key"] == expected
+
+
+def test_legacy_invoice_period_match_remains_ambiguous_when_starts_repeat():
+    db, member, payload = fixture()
+    old = member["activities"][0]
+    old.pop("source_period_key")
+    db.invoices.rows[0]["items"].append(copy.deepcopy(db.invoices.rows[0]["items"][0]))
+    assert len(matching_paid_items(db.invoices.rows[0], member, old)) == 2
     with pytest.raises(HTTPException) as exc:
         run_plan(db, member, payload)
     assert exc.value.status_code == 409
