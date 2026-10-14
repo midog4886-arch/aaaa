@@ -15,7 +15,7 @@ const templates = [
 ];
 const labels = { pending_review:'بانتظار اعتماد المدير', scheduled:'معتمد ومجدول', preparing:'جارٍ تجهيز الإرسال', queued:'معتمد في طابور الإرسال', cancelled:'ملغى' };
 
-export default function WhatsAppCampaignWorkflow({ branchId, items, message, defaultName, audience, onSave, onMessage, scheduleAt='', onSchedule=()=>{}, spreadAcrossDays=false, dailyRecipients=30, startDate='', sendTime='10:00', dailyLimit=null, attachmentCount=1 }) {
+export default function WhatsAppCampaignWorkflow({ branchId, items, message, defaultName, audience, onSave, onMessage, onOfferTemplate=()=>{}, scheduleAt='', onSchedule=()=>{}, spreadAcrossDays=false, dailyRecipients=30, startDate='', sendTime='10:00', dailyLimit=null, attachmentCount=1 }) {
   const { user } = useAuth();
   const [rows,setRows]=useState([]), [groups,setGroups]=useState([]), [group,setGroup]=useState('');
   const when=scheduleAt;
@@ -91,7 +91,7 @@ export default function WhatsAppCampaignWorkflow({ branchId, items, message, def
   return <section className="rounded-xl border bg-white p-5 space-y-4" dir="rtl">
     <h2 className="font-bold text-lg">معاينة الحملة واعتماد الإرسال</h2>
     <p className="text-sm text-slate-500">تخصيص الاسم: {'{الاسم}'} · تاريخ انتهاء الاشتراك: {'{تاريخ_الانتهاء}'} · حتى {spreadAcrossDays?'1000 مستلم للحملة المقسمة':'200 مستلم للحملة المباشرة'}.</p>
-    <div className="flex flex-wrap gap-2">{templates.map(([name,text])=><Button key={name} variant="outline" onClick={()=>onMessage(text)}>{name}</Button>)}</div>
+    <div className="flex flex-wrap gap-2">{templates.map(([name,text])=><Button key={name} variant="outline" onClick={()=>{onMessage(text);if(name==='عرض اشتراك')onOfferTemplate();}}>{name}</Button>)}</div>
     <div className="grid md:grid-cols-2 gap-3">
       <label>المجموعة<select aria-label="مجموعة الحملة" className="block border rounded p-2 w-full" value={group} onChange={e=>setGroup(e.target.value)}>
         <option value="">كل المجموعات</option>{groups.map(g=><option key={g.id} value={g.id}>{g.custom_name||`المستوى ${g.level_number}`}</option>)}

@@ -939,6 +939,8 @@ export const whatsappAPI = {
     axios.get(`${API}/whatsapp/campaigns`, { params: { branch_id: branchId } }),
   getCampaign: (campaignId, branchId) =>
     axios.get(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}`, { params: { branch_id: branchId } }),
+  getCampaignOfferResponses: (campaignId, branchId) =>
+    axios.get(`${API}/whatsapp/campaigns/${encodeURIComponent(campaignId)}/offer-responses`, { params: { branch_id: branchId } }),
   previewCampaignAudience: (branchId, audience) =>
     axios.get(`${API}/whatsapp/campaigns/audience-preview`, { params: { branch_id: branchId, audience } }),
   createCampaign: (formData) =>

@@ -66,6 +66,83 @@ MAX_NOTES = 4000
 MAX_PHONE_TEXT = 120000
 RECENT_CAMPAIGN_REPLY_DAYS = 7
 
+OFFER_CHOICE_LABELS = {
+    "details": "أرسلوا التفاصيل",
+    "visit": "أريد زيارة",
+    "not_interested": "غير مهتم",
+}
+
+
+def parse_offer_choice(body: str) -> Optional[str]:
+    """Only explicit short replies count; unrelated questions remain ordinary inquiries."""
+    value = " ".join(str(body or "").strip().split()).rstrip(".!؟")
+    value = value.translate(str.maketrans("١٢٣۱۲۳", "123123"))
+    return {
+        "1": "details", "أرسلوا التفاصيل": "details", "ارسلوا التفاصيل": "details",
+        "2": "visit", "أريد زيارة": "visit", "اريد زيارة": "visit",
+        "3": "not_interested", "غير مهتم": "not_interested",
+    }.get(value)
+
+
+async def capture_offer_choice(branch_id: str, phone: str, body: str, message_id: str) -> bool:
+    """Store one answer per campaign and phone after an actually sent offer.
+
+    Provider message IDs make webhook retries idempotent; a later deliberate
+    answer from the same phone may replace its earlier selection.
+    """
+    choice = parse_offer_choice(body)
+    normalized = normalize_phone(phone)
+    if not choice or not normalized or not message_id:
+        return False
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=RECENT_CAMPAIGN_REPLY_DAYS)
+    items = await db.whatsapp_campaign_job_items.find({
+        "branch_id": branch_id,
+        "source": "campaign",
+        "status": {"$in": ["sent", "delivered", "read"]},
+        "completed_at": {"$gte": cutoff, "$lte": now},
+    }, {"_id": 0, "job_id": 1, "phone": 1, "recipient_name": 1,
+        "message": 1, "completed_at": 1}).to_list(None)
+    matches = [item for item in items if normalize_phone(item.get("phone")) == normalized
+               and "1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم" in (item.get("message") or "")]
+    for item in sorted(matches, key=lambda row: _parse_timestamp(row.get("completed_at")) or cutoff, reverse=True):
+        job = await db.whatsapp_campaign_jobs.find_one({
+            "id": item.get("job_id"), "branch_id": branch_id, "source": "campaign",
+        }, {"_id": 0, "campaign_id": 1, "campaign_title": 1})
+        campaign_id = (job or {}).get("campaign_id")
+        if not campaign_id:
+            continue
+        campaign = await db.whatsapp_campaigns.find_one({
+            "id": campaign_id, "branch_id": branch_id, "offer_choices_enabled": True,
+        }, {"_id": 0, "name": 1})
+        if not campaign:
+            continue
+        response_id = f"{branch_id}:{campaign_id}:{normalized}"
+        previous = await db.whatsapp_campaign_offer_responses.find_one({"_id": response_id})
+        if previous and previous.get("message_id") == message_id:
+            return False
+        await db.whatsapp_campaign_offer_responses.update_one(
+            {"_id": response_id},
+            {"$set": {
+                "branch_id": branch_id, "campaign_id": campaign_id,
+                "campaign_name": campaign.get("name") or (job or {}).get("campaign_title") or "",
+                "phone": normalized, "name": item.get("recipient_name") or "",
+                "choice": choice, "choice_label": OFFER_CHOICE_LABELS[choice],
+                "message_id": message_id, "responded_at": now.isoformat(),
+            }, "$setOnInsert": {"created_at": now.isoformat()}}, upsert=True,
+        )
+        document = _base_document(
+            branch_id=branch_id, phone=normalized, name=item.get("recipient_name") or "",
+            source="campaign_offer_choice", campaign=campaign.get("name") or "",
+            notes=f"اختيار عرض الاشتراك: {OFFER_CHOICE_LABELS[choice]}",
+            status={"details": "interested", "visit": "visit", "not_interested": "not_interested"}[choice],
+            followup_due_at=_now() if choice != "not_interested" else None,
+        )
+        document["campaign_id"] = campaign_id
+        await _atomic_create(document)
+        return True
+    return False
+
 
 class CampaignInquiryCreate(BaseModel):
     branch_id: str = Field(..., min_length=1, max_length=100)

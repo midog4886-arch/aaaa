@@ -103,6 +103,7 @@ class FakeCollection:
         if not upsert:
             return Result()
         document = dict(update.get("$setOnInsert", {}))
+        document.update(update.get("$set", {}))
         for key, value in query.items():
             if not isinstance(value, dict):
                 document.setdefault(key, value)
@@ -135,6 +136,36 @@ ADMIN = {
     "is_admin": True,
     "branch_id": None,
 }
+
+
+def test_subscription_offer_reply_is_deduplicated_and_branch_scoped(crm):
+    module, fake_db = crm
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    fake_db.whatsapp_campaign_job_items.docs.extend([
+        {"branch_id": "B1", "source": "campaign", "status": "sent",
+         "completed_at": now - timedelta(minutes=2), "job_id": "job-1",
+         "phone": "966501234567", "recipient_name": "ولي الأمر",
+         "message": "عرض\n1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم"},
+        {"branch_id": "B2", "source": "campaign", "status": "sent",
+         "completed_at": now - timedelta(minutes=1), "job_id": "job-2",
+         "phone": "966501234567", "message": "عرض\n1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم"},
+    ])
+    fake_db.whatsapp_campaign_jobs.docs.extend([
+        {"id": "job-1", "branch_id": "B1", "source": "campaign", "campaign_id": "offer-1"},
+        {"id": "job-2", "branch_id": "B2", "source": "campaign", "campaign_id": "offer-2"},
+    ])
+    fake_db.whatsapp_campaigns.docs.extend([
+        {"id": "offer-1", "branch_id": "B1", "name": "اشتراك السباحة", "offer_choices_enabled": True},
+        {"id": "offer-2", "branch_id": "B2", "name": "اشتراك القدم", "offer_choices_enabled": True},
+    ])
+    assert run(module.capture_offer_choice("B1", "0501234567", "1", "inbound-1"))
+    assert not run(module.capture_offer_choice("B1", "0501234567", "1", "inbound-1"))
+    assert len(fake_db.whatsapp_campaign_offer_responses.docs) == 1
+    assert fake_db.whatsapp_campaign_offer_responses.docs[0]["campaign_id"] == "offer-1"
+    assert len(fake_db.campaign_inquiries.docs) == 1
+    assert fake_db.campaign_inquiries.docs[0]["status"] == "interested"
 
 
 @pytest.fixture()

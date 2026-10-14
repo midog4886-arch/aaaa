@@ -4007,6 +4007,11 @@ async def receive_meta_webhook(tenant_slug: str, request: Request):
                 await campaign_inquiry_automation.note_customer_message(
                     config["branch_id"], phone, body
                 )
+                try:
+                    from .campaign_inquiries import capture_offer_choice
+                    await capture_offer_choice(config["branch_id"], phone, body, meta_id)
+                except Exception as exc:
+                    logger.warning("Offer choice capture failed: %s", type(exc).__name__)
                 await _db["whatsapp_cloud_conversations"].update_one(
                     {"id": conversation_id},
                     {
@@ -4271,6 +4276,11 @@ async def receive_waha_webhook(tenant_slug: str, request: Request):
         await campaign_inquiry_automation.note_customer_message(
             config["branch_id"], phone, body
         )
+        try:
+            from .campaign_inquiries import capture_offer_choice
+            await capture_offer_choice(config["branch_id"], phone, body, message_id)
+        except Exception as exc:
+            logger.warning("Offer choice capture failed: %s", type(exc).__name__)
         reply_to = message.get("replyTo")
         quoted_id = reply_to.get("id") if isinstance(reply_to, dict) else None
         if quoted_id:
@@ -5141,6 +5151,11 @@ async def receive_whatsflow_webhook(tenant_slug: str, branch_id: str, request: R
         await campaign_inquiry_automation.note_customer_message(
             config["branch_id"], phone, body
         )
+        try:
+            from .campaign_inquiries import capture_offer_choice
+            await capture_offer_choice(config["branch_id"], phone, body, message_id)
+        except Exception as exc:
+            logger.warning("Offer choice capture failed: %s", type(exc).__name__)
         await _db["whatsapp_cloud_conversations"].update_one(
             {"id": conversation_id},
             {"$set": {
@@ -7334,6 +7349,25 @@ def _campaign_scope(branch_id: str) -> dict:
     return {"tenant_slug": get_current_tenant_slug(), "branch_id": branch_id}
 
 
+OFFER_CHOICE_FOOTER = "\n\nللاستفسار عن عرض الاشتراك، رد برقم واحد:\n1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم"
+
+
+async def _add_offer_choices(branch_id: str, campaign_id: str, recipients: list) -> None:
+    if not campaign_id:
+        return
+    campaign = await _db["whatsapp_campaigns"].find_one({
+        **_campaign_scope(branch_id), "id": campaign_id, "offer_choices_enabled": True,
+    }, {"_id": 0, "id": 1})
+    if not campaign:
+        return
+    for recipient in recipients:
+        message = (recipient.get("message") or "").rstrip()
+        if OFFER_CHOICE_FOOTER.strip() not in message:
+            if len(message) + len(OFFER_CHOICE_FOOTER) > 4096:
+                raise HTTPException(status_code=400, detail="Offer message is too long with choices")
+            recipient["message"] = message + OFFER_CHOICE_FOOTER
+
+
 def _campaign_public(doc: dict, include_recipients: bool = True) -> dict:
     excluded = {"_id", "tenant_slug", "attachment_id", "attachment_ids"}
     if not include_recipients:
@@ -7709,6 +7743,30 @@ async def get_campaign(
     return _campaign_public(doc)
 
 
+@router.get("/campaigns/{campaign_id}/offer-responses")
+async def get_campaign_offer_responses(
+    campaign_id: str,
+    branch_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    _require_bulk_whatsapp_access(current_user)
+    await _require_campaign_branch(current_user, branch_id)
+    await _require_campaign_phone_access(current_user)
+    campaign = await _db["whatsapp_campaigns"].find_one(
+        {**_campaign_scope(branch_id), "id": campaign_id}, {"_id": 0, "id": 1}
+    )
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    rows = await _db["whatsapp_campaign_offer_responses"].find(
+        {"branch_id": branch_id, "campaign_id": campaign_id}, {"_id": 0}
+    ).sort("responded_at", -1).to_list(1000)
+    counts = {"details": 0, "visit": 0, "not_interested": 0}
+    for row in rows:
+        if row.get("choice") in counts:
+            counts[row["choice"]] += 1
+    return {"counts": counts, "responses": rows}
+
+
 @router.get("/campaigns/{campaign_id}/attachment")
 async def get_campaign_attachment(
     campaign_id: str,
@@ -7761,6 +7819,7 @@ async def create_campaign(
     proposed_send_at: str = Form(""),
     default_name: str = Form(""),
     recipients_json: str = Form("[]"),
+    offer_choices_enabled: bool = Form(False),
     attachment: Optional[UploadFile] = File(None),
     attachments: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
@@ -7779,6 +7838,7 @@ async def create_campaign(
     doc = {
         **_campaign_scope(branch_id), "id": campaign_id, "name": campaign_name,
         "message": message, "audience": audience, "proposed_send_at": _validate_proposed_send_at(proposed_send_at),
+        "offer_choices_enabled": offer_choices_enabled is True,
         "default_name": default_name[:200], "recipients": recipients,
         "created_at": now, "updated_at": now,
         "created_by": current_user.get("user_id") or current_user.get("id"),
@@ -7810,6 +7870,7 @@ async def update_campaign(
     proposed_send_at: str = Form(""),
     default_name: str = Form(""),
     recipients_json: str = Form("[]"),
+    offer_choices_enabled: bool = Form(False),
     remove_attachment: bool = Form(False),
     attachment: Optional[UploadFile] = File(None),
     attachments: List[UploadFile] = File(default=[]),
@@ -7829,6 +7890,7 @@ async def update_campaign(
         raise HTTPException(status_code=400, detail="Invalid campaign audience")
     update = {
         "name": campaign_name, "message": message, "audience": audience,
+        "offer_choices_enabled": offer_choices_enabled is True,
         "proposed_send_at": _validate_proposed_send_at(proposed_send_at), "default_name": default_name[:200],
         "recipients": _parse_campaign_recipients(recipients_json) if audience == "pasted" else [],
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -8174,6 +8236,7 @@ async def send_branch_cloud_bulk(
     if len(key) < 12:
         raise HTTPException(status_code=400, detail="Invalid idempotency key")
     recipients = [_bulk_recipient_payload(r) for r in data.recipients]
+    await _add_offer_choices(data.branch_id, data.campaign_id or "", recipients)
     if data.daily_recipients is not None:
         schedule_recipients(
             recipients, daily_recipients=data.daily_recipients,
@@ -8900,6 +8963,7 @@ async def send_branch_cloud_bulk_media(
                         "mime_type": item["mime_type"]})
             stored.append(ref)
         prepared_recipients = [_bulk_recipient_payload(r) for r in recipients]
+        await _add_offer_choices(branch_id, campaign_id, prepared_recipients)
         if daily_recipients is not None:
             schedule_recipients(
                 prepared_recipients, daily_recipients=daily_recipients,

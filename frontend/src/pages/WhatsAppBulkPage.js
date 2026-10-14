@@ -22,6 +22,7 @@ const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[
 // Placeholder that gets replaced by each recipient's name. Accepts the Arabic
 // {الاسم} and the English {name} (case-insensitive, optional inner spaces).
 const NAME_TOKEN = '{الاسم}';
+const OFFER_CHOICE_FOOTER = '\n\nللاستفسار عن عرض الاشتراك، رد برقم واحد:\n1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم';
 // Built fresh on each use — a shared /g/ regex is stateful across .test()/.replace().
 const nameTokenRe = () => /\{\s*(?:الاسم|name)\s*\}/gi;
 const hasLetters = (s) => /[A-Za-z\u0600-\u06FF]/.test(s || '');
@@ -157,6 +158,8 @@ export default function WhatsAppBulkPage() {
   const [attachments, setAttachments] = useState([]);
   const [campaignName, setCampaignName] = useState('');
   const [campaignId, setCampaignId] = useState(null);
+  const [offerChoicesEnabled, setOfferChoicesEnabled] = useState(false);
+  const [offerResponses, setOfferResponses] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
   const [campaignSearch, setCampaignSearch] = useState('');
@@ -177,6 +180,8 @@ export default function WhatsAppBulkPage() {
   const invalidCount = items.length - validItems.length;
   const namedCount = useMemo(() => items.filter(i => i.name).length, [items]);
   const usesName = nameTokenRe().test(message);
+  const workflowMessage = offerChoicesEnabled && !message.includes(OFFER_CHOICE_FOOTER.trim())
+    ? `${message.trimEnd()}${OFFER_CHOICE_FOOTER}` : message;
   const isWaha = cloudStatus.provider === 'waha';
   const isSessionProvider = isWaha || cloudStatus.provider === 'whatsflow';
   const whatsflowQuotaExhausted = cloudStatus.provider === 'whatsflow'
@@ -347,6 +352,8 @@ export default function WhatsAppBulkPage() {
   const newCampaign = () => {
     setCampaignId(null);
     setCampaignName('');
+    setOfferChoicesEnabled(false);
+    setOfferResponses(null);
     setMessage('');
     setDefaultName('');
     setProposedSendAt('');
@@ -382,6 +389,8 @@ export default function WhatsAppBulkPage() {
       setCampaignId(asCopy ? null : draft.id);
       setCampaignName(asCopy ? `${draft.name || ''} (${t('نسخة', 'Copy')})`.slice(0, 160) : draft.name || '');
       setMessage(draft.message || '');
+      setOfferChoicesEnabled(Boolean(draft.offer_choices_enabled));
+      setOfferResponses(null);
       setDefaultName(draft.default_name || '');
       setProposedSendAt(asCopy ? '' : draft.proposed_send_at || '');
       setAudience(draft.audience || 'pasted');
@@ -442,6 +451,7 @@ export default function WhatsAppBulkPage() {
     formData.append('branch_id', branchId);
     formData.append('name', campaignName.trim());
     formData.append('message', message);
+    formData.append('offer_choices_enabled', String(offerChoicesEnabled));
     formData.append('audience', audience);
     formData.append('proposed_send_at', proposedSendAt);
     formData.append('default_name', defaultName);
@@ -803,6 +813,31 @@ export default function WhatsAppBulkPage() {
                   </label>
                   <p className="text-sm text-muted-foreground">{proposedSendAt || t('حدّد الموعد في قسم معاينة الحملة واعتماد الإرسال أدناه.', 'Set the time in campaign preview and approval below.')}</p>
                 </div>
+              </div>
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" checked={offerChoicesEnabled} onChange={event => setOfferChoicesEnabled(event.target.checked)} />
+                  {t('خيارات الرد على عرض الاشتراك', 'Subscription offer reply choices')}
+                </label>
+                {offerChoicesEnabled && <p className="text-xs text-muted-foreground whitespace-pre-line">
+                  {t('تضاف تلقائياً عند الإرسال: 1- أرسلوا التفاصيل، 2- أريد زيارة، 3- غير مهتم. تُحسب الردود الواضحة خلال 7 أيام من الإرسال، ولكل رقم اختيار واحد في الحملة.', 'Added when sent: 1- Send details, 2- I want a visit, 3- Not interested. Explicit replies within 7 days count once per phone and campaign.')}
+                </p>}
+                {campaignId && offerChoicesEnabled && <div className="space-y-2">
+                  <Button type="button" size="sm" variant="outline" onClick={async () => {
+                    try {
+                      const result = await whatsappAPI.getCampaignOfferResponses(campaignId, branchId);
+                      setOfferResponses(result.data);
+                    } catch (error) {
+                      toast.error(apiErrorMessage(error, t('تعذر تحميل ردود العرض', 'Could not load offer responses')));
+                    }
+                  }}>{t('عرض ردود العرض', 'View offer responses')}</Button>
+                  {offerResponses && <div className="text-sm space-y-1">
+                    <p>{t(`طلب التفاصيل: ${offerResponses.counts.details} · طلب زيارة: ${offerResponses.counts.visit} · غير مهتم: ${offerResponses.counts.not_interested}`, `Details: ${offerResponses.counts.details} · Visit: ${offerResponses.counts.visit} · Not interested: ${offerResponses.counts.not_interested}`)}</p>
+                    <div className="max-h-44 overflow-y-auto space-y-1">
+                      {offerResponses.responses.map(row => <p key={`${row.campaign_id}:${row.phone}`} className="rounded bg-white px-2 py-1" dir="auto">{row.name || row.phone} ({row.phone}) — {row.choice_label}</p>)}
+                    </div>
+                  </div>}
+                </div>}
               </div>
               <div className="flex items-center justify-between gap-3 rounded-lg border bg-emerald-50/60 p-3">
                 <div>
@@ -1331,8 +1366,8 @@ export default function WhatsAppBulkPage() {
           </CardContent>
         </Card>
 
-        <WhatsAppCampaignWorkflow branchId={branchId} items={items} message={message} defaultName={defaultName}
-          audience={audience} onSave={saveCampaign} onMessage={setMessage} scheduleAt={proposedSendAt} onSchedule={setProposedSendAt}
+        <WhatsAppCampaignWorkflow branchId={branchId} items={items} message={workflowMessage} defaultName={defaultName}
+          audience={audience} onSave={saveCampaign} onMessage={setMessage} onOfferTemplate={() => setOfferChoicesEnabled(true)} scheduleAt={proposedSendAt} onSchedule={setProposedSendAt}
           spreadAcrossDays={spreadAcrossDays} dailyRecipients={dailyRecipients} startDate={startDate} sendTime={sendTime}
           dailyLimit={isSessionProvider ? Number(cloudStatus.daily_limit || 30) : null} attachmentCount={Math.max(attachments.length, 1)} />
         <WhatsAppCampaignReport
