@@ -39,7 +39,9 @@ def _safe_regex(q: str) -> dict:
     # Arabic spelling variants and optional vowel marks should not prevent a match.
     variants = {'ا': '[اأإآ]', 'أ': '[اأإآ]', 'إ': '[اأإآ]', 'آ': '[اأإآ]',
                 'ي': '[يى]', 'ى': '[يى]', 'ه': '[هة]', 'ة': '[هة]'}
-    marks = r'[\u064b-\u065f\u0670\u0640]*'
+    # MongoDB's PCRE engine needs actual Unicode characters here; a literal
+    # backslash-u escape can make every search fail with an invalid regex.
+    marks = '[\u064b-\u065f\u0670\u0640]*'
     normalized = q.translate(str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'))
     pattern = marks.join(variants.get(char, re.escape(char)) for char in normalized)
     return {"$regex": pattern, "$options": "i"}

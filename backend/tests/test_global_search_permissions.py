@@ -56,5 +56,7 @@ def test_arabic_phone_matches_formatted_number():
 def test_arabic_name_variants_and_relevance():
     pattern = search._safe_regex('احمد')['$regex']
     assert re.search(pattern, 'أحمد')
+    assert '\\u' not in pattern
+    assert '\\u' not in search._safe_regex('El')['$regex']
     assert search._relevance({'name_ar': 'أحمد علي'}, 'احمد', [], ['name_ar']) < search._relevance(
         {'name_ar': 'محمد أحمد'}, 'احمد', [], ['name_ar'])
