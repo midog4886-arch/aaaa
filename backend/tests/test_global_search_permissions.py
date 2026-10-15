@@ -50,3 +50,11 @@ def test_arabic_phone_matches_formatted_number():
     pattern = search._phone_regex('٠٥٥ ١٢٣-٤٥٦٧')['$regex']
     assert re.search(pattern, '055 123-4567')
     assert not re.search(pattern, '055 987-6543')
+    assert re.search(pattern, '+966 55 123 4567')
+
+
+def test_arabic_name_variants_and_relevance():
+    pattern = search._safe_regex('احمد')['$regex']
+    assert re.search(pattern, 'أحمد')
+    assert search._relevance({'name_ar': 'أحمد علي'}, 'احمد', [], ['name_ar']) < search._relevance(
+        {'name_ar': 'محمد أحمد'}, 'احمد', [], ['name_ar'])

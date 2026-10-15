@@ -6,11 +6,23 @@ import { globalSearchAPI } from '../services/api';
 import { Search, Users, Receipt, Dumbbell, X, Loader2, Clock, Trash2 } from 'lucide-react';
 
 const MAX_HISTORY = 10;
+const historyKey = (userId, branchId) => `global-search:v2:${userId}:${branchId || 'all'}`;
+const readHistory = key => {
+  if (!key) return { queries: [], items: [] };
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    return {
+      queries: Array.isArray(saved.queries) ? saved.queries.filter(q => typeof q === 'string').slice(0, MAX_HISTORY) : [],
+      items: Array.isArray(saved.items) ? saved.items.filter(item => item && typeof item.path === 'string' && typeof item.label === 'string' && ['member', 'invoice', 'activity'].includes(item.type)).slice(0, MAX_HISTORY) : [],
+    };
+  } catch { return { queries: [], items: [] }; }
+};
 
 const GlobalSearch = () => {
   const { language } = useLanguage();
-  const { selectedBranchId, user, token, isAdmin } = useAuth();
-  const scope = `${token || user?.id || 'anonymous'}:${selectedBranchId}`;
+  const { selectedBranchId, user, isAdmin } = useAuth();
+  const storageKey = user?.id ? historyKey(user.id, selectedBranchId) : null;
+  const scope = storageKey || 'anonymous';
   const canSearch = permission => isAdmin || user?.permissions?.includes(permission);
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -18,6 +30,7 @@ const GlobalSearch = () => {
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [history, setHistory] = useState([]);
+  const [queryHistory, setQueryHistory] = useState([]);
   const [searchError, setSearchError] = useState(false);
   const inputRef = useRef(null);
   const containerRef = useRef(null);
@@ -27,29 +40,53 @@ const GlobalSearch = () => {
   useEffect(() => {
     requestRef.current += 1;
     clearTimeout(debounceRef.current);
-    setQuery(''); setResults(null); setLoading(false); setSearchError(false); setIsOpen(false); setHistory([]);
+    const saved = readHistory(storageKey);
+    setQuery(''); setResults(null); setLoading(false); setSearchError(false); setIsOpen(false);
+    setHistory(saved.items); setQueryHistory(saved.queries);
     return () => { requestRef.current += 1; clearTimeout(debounceRef.current); };
-  }, [scope]);
+  }, [scope, storageKey]);
+
+  const saveHistory = useCallback((queries, items) => {
+    if (!storageKey) return;
+    try { localStorage.setItem(storageKey, JSON.stringify({ queries, items })); } catch { /* storage may be unavailable */ }
+  }, [storageKey]);
+
+  const addQueryToHistory = useCallback((value) => {
+    const term = value.trim().replace(/\s+/g, ' ');
+    if (term.length < 2) return;
+    const saved = readHistory(storageKey);
+    const updated = [term, ...saved.queries.filter(q => q.toLocaleLowerCase() !== term.toLocaleLowerCase())].slice(0, MAX_HISTORY);
+    saveHistory(updated, saved.items);
+    setQueryHistory(updated);
+  }, [saveHistory, storageKey]);
 
   const addToHistory = useCallback((item) => {
-    setHistory(prev => {
-      const filtered = prev.filter(h => h.path !== item.path);
-      const updated = [item, ...filtered].slice(0, MAX_HISTORY);
-      return updated;
-    });
-  }, []);
+    const saved = readHistory(storageKey);
+    const updated = [item, ...saved.items.filter(h => h.path !== item.path)].slice(0, MAX_HISTORY);
+    saveHistory(saved.queries, updated);
+    setHistory(updated);
+  }, [saveHistory, storageKey]);
 
   const removeFromHistory = useCallback((path, e) => {
     e.stopPropagation();
-    setHistory(prev => {
-      const updated = prev.filter(h => h.path !== path);
-      return updated;
-    });
-  }, []);
+    const saved = readHistory(storageKey);
+    const updated = saved.items.filter(h => h.path !== path);
+    saveHistory(saved.queries, updated);
+    setHistory(updated);
+  }, [saveHistory, storageKey]);
+
+  const removeQueryFromHistory = useCallback((term) => {
+    const saved = readHistory(storageKey);
+    const updated = saved.queries.filter(q => q !== term);
+    saveHistory(updated, saved.items);
+    setQueryHistory(updated);
+  }, [saveHistory, storageKey]);
 
   const clearHistory = useCallback(() => {
     setHistory([]);
-  }, []);
+    setQueryHistory([]);
+    if (storageKey) try { localStorage.removeItem(storageKey); } catch { /* storage may be unavailable */ }
+  }, [storageKey]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -112,6 +149,7 @@ const GlobalSearch = () => {
     clearTimeout(debounceRef.current);
     setLoading(false);
     addToHistory({ path, label, type, timestamp: Date.now() });
+    addQueryToHistory(query);
     setIsOpen(false);
     setQuery('');
     setResults(null);
@@ -133,6 +171,7 @@ const GlobalSearch = () => {
           maxLength={200}
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') addQueryToHistory(query); }}
           onFocus={() => { setIsOpen(true); }}
           placeholder={language === 'ar' ? 'بحث في الأعضاء، الفواتير، الأنشطة... (Ctrl+K)' : 'Search members, invoices, activities... (Ctrl+K)'}
           className="w-full h-9 ps-9 pe-9 rounded-lg border bg-muted/50 text-sm outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all placeholder:text-muted-foreground/60"
@@ -147,7 +186,7 @@ const GlobalSearch = () => {
 
       {isOpen && searchError && <div role="alert" className="absolute top-full mt-2 w-full rounded-lg border bg-card p-4 text-sm z-50"><p>{language === 'ar' ? 'تعذر البحث. حاول مجددًا.' : 'Search failed. Please try again.'}</p><button type="button" onClick={() => handleSearch(query)} className="mt-2 text-primary">{language === 'ar' ? 'إعادة المحاولة' : 'Retry'}</button></div>}
 
-      {isOpen && !results && !query && history.length > 0 && (
+      {isOpen && !results && !query && (history.length > 0 || queryHistory.length > 0) && (
         <div className="fixed top-[60px] inset-x-2 sm:absolute sm:top-full sm:inset-x-auto sm:start-0 sm:end-0 sm:mt-2 sm:w-full bg-white rounded-xl shadow-2xl border z-50 overflow-hidden max-h-[70vh] overflow-y-auto">
           <div className="px-3 py-2 bg-gray-50 text-xs font-semibold text-gray-600 flex items-center gap-2 sticky top-0">
             <Clock className="w-3.5 h-3.5" />
@@ -157,7 +196,15 @@ const GlobalSearch = () => {
               {language === 'ar' ? 'مسح الكل' : 'Clear all'}
             </button>
           </div>
-          {history.map((h) => {
+          {queryHistory.map(term => (
+            <div key={term} className="flex items-center border-b hover:bg-gray-50">
+              <button type="button" onClick={() => handleSearch(term)} className="flex-1 min-w-0 text-start px-4 py-2.5 text-sm flex items-center gap-3">
+                <Search className="w-4 h-4 text-muted-foreground flex-shrink-0" /><span className="truncate">{term}</span>
+              </button>
+              <button type="button" aria-label={language === 'ar' ? 'حذف البحث من السجل' : 'Remove search from history'} onClick={() => removeQueryFromHistory(term)} className="p-2 me-2 text-muted-foreground hover:text-red-600"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+          {history.filter(h => canSearch(h.type === 'member' ? 'members' : h.type === 'invoice' ? 'invoices' : 'activities')).map((h) => {
             const iconMap = {
               member: { icon: Users, bg: 'bg-blue-100', color: 'text-blue-700', hoverBg: 'hover:bg-blue-50/50', label: language === 'ar' ? 'عضو' : 'Member' },
               invoice: { icon: Receipt, bg: 'bg-green-100', color: 'text-green-700', hoverBg: 'hover:bg-green-50/50', label: language === 'ar' ? 'فاتورة' : 'Invoice' },
@@ -166,11 +213,8 @@ const GlobalSearch = () => {
             const cfg = iconMap[h.type] || iconMap.member;
             const Icon = cfg.icon;
             return (
-              <button
-                key={h.path}
-                onClick={() => { navigate(h.path); setIsOpen(false); }}
-                className={`w-full text-start px-4 py-2.5 ${cfg.hoverBg} transition-colors flex items-center gap-3 border-b last:border-b-0 group`}
-              >
+              <div key={h.path} className={`flex items-center border-b last:border-b-0 group ${cfg.hoverBg}`}>
+              <button type="button" onClick={() => handleNavigate(h.path, h.label, h.type)} className="flex-1 min-w-0 text-start px-4 py-2.5 flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-full ${cfg.bg} flex items-center justify-center ${cfg.color} flex-shrink-0`}>
                   <Icon className="w-4 h-4" />
                 </div>
@@ -178,13 +222,13 @@ const GlobalSearch = () => {
                   <p className="text-sm font-medium truncate">{h.label}</p>
                   <p className="text-xs text-muted-foreground">{cfg.label}</p>
                 </div>
-                <span role="button" tabIndex={0} aria-label={language === 'ar' ? 'حذف من السجل' : 'Remove from history'} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); removeFromHistory(h.path, e); } }}
-                  onClick={(e) => removeFromHistory(h.path, e)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-100 rounded"
+              </button>
+                <button type="button" aria-label={language === 'ar' ? 'حذف من السجل' : 'Remove from history'} onClick={(e) => removeFromHistory(h.path, e)}
+                  className="p-2 me-2 text-muted-foreground hover:text-red-600 rounded"
                 >
                   <X className="w-3.5 h-3.5 text-red-400" />
-                </span>
-              </button>
+                </button>
+              </div>
             );
           })}
         </div>

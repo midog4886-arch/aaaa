@@ -36,7 +36,36 @@ def _member_overall_status(activities: list) -> str:
 
 
 def _safe_regex(q: str) -> dict:
-    return {"$regex": re.escape(q), "$options": "i"}
+    # Arabic spelling variants and optional vowel marks should not prevent a match.
+    variants = {'ا': '[اأإآ]', 'أ': '[اأإآ]', 'إ': '[اأإآ]', 'آ': '[اأإآ]',
+                'ي': '[يى]', 'ى': '[يى]', 'ه': '[هة]', 'ة': '[هة]'}
+    marks = r'[\u064b-\u065f\u0670\u0640]*'
+    normalized = q.translate(str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'))
+    pattern = marks.join(variants.get(char, re.escape(char)) for char in normalized)
+    return {"$regex": pattern, "$options": "i"}
+
+
+def _normalized(value: str) -> str:
+    value = str(value or '').translate(str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'))
+    value = re.sub(r'[\u064b-\u065f\u0670\u0640]', '', value)
+    return value.translate(str.maketrans({'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ى': 'ي', 'ة': 'ه'})).casefold().strip()
+
+
+def _relevance(item: dict, q: str, exact_fields: list, name_fields: list) -> int:
+    query = _normalized(q)
+    identifiers = [_normalized(item.get(field)) for field in exact_fields]
+    names = [_normalized(item.get(field)) for field in name_fields]
+    if query in identifiers:
+        return 0
+    if any(value.startswith(query) for value in identifiers if value):
+        return 1
+    if query in names:
+        return 2
+    if any(value.startswith(query) for value in names if value):
+        return 3
+    if all(any(token in name for name in names) for token in query.split()):
+        return 4
+    return 5
 
 
 def _phone_regex(q: str) -> dict:
@@ -44,7 +73,14 @@ def _phone_regex(q: str) -> dict:
     digits = re.sub(r'[\s()+-]', '', digits)
     if not digits.isdigit():
         return _safe_regex(q)
-    return {'$regex': r'[\s()+-]*'.join(re.escape(digit) for digit in digits), '$options': 'i'}
+    variants = {digits}
+    # Searching a Saudi mobile works whether it was saved as 05… or +9665… .
+    if digits.startswith('05') and len(digits) >= 3:
+        variants.add('966' + digits[1:])
+    elif digits.startswith('9665'):
+        variants.add('0' + digits[3:])
+    patterns = [r'[\s()+-]*'.join(re.escape(digit) for digit in variant) for variant in sorted(variants)]
+    return {'$regex': '|'.join(f'(?:{pattern})' for pattern in patterns), '$options': 'i'}
 
 
 def _name_match(fields: list, tokens: list) -> dict:
@@ -91,11 +127,12 @@ async def global_search(
     members_raw = await db.members.find(
         member_query,
         {
-            "_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1,
+            "_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1,
             "activities": 1,
             "guardian_name_ar": 1, "guardian_name": 1, "guardian_phone": 1,
         },
-    ).limit(10).to_list(10) if 'members' in permissions else []
+    ).limit(50).to_list(50) if 'members' in permissions else []
+    members_raw.sort(key=lambda m: _relevance(m, q, ['member_code', 'phone', 'guardian_phone'], member_name_fields))
     members = [
         {
             "id": m.get("id"),
@@ -106,7 +143,7 @@ async def global_search(
             "activities_count": len(m.get("activities") or []),
             "subscription_status": _member_overall_status(m.get("activities") or []),
         }
-        for m in members_raw
+        for m in members_raw[:10]
     ]
 
     invoice_query = {
@@ -120,7 +157,8 @@ async def global_search(
     invoices_raw = await db.invoices.find(
         invoice_query,
         {"_id": 0, "id": 1, "invoice_number": 1, "member_name": 1, "total": 1, "status": 1, "created_at": 1},
-    ).limit(10).to_list(10) if 'invoices' in permissions else []
+    ).limit(50).to_list(50) if 'invoices' in permissions else []
+    invoices_raw.sort(key=lambda i: _relevance(i, q, ['invoice_number', 'id'], ['member_name']))
     invoices = [
         {
             "id": i.get("id"),
@@ -130,7 +168,7 @@ async def global_search(
             "status": i.get("status") or "pending",
             "created_at": i.get("created_at") or "",
         }
-        for i in invoices_raw
+        for i in invoices_raw[:10]
     ]
 
     activity_query = {
@@ -140,14 +178,15 @@ async def global_search(
     activities_raw = await db.activities.find(
         activity_query,
         {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "monthly_fee": 1, "price": 1},
-    ).limit(10).to_list(10) if 'activities' in permissions else []
+    ).limit(50).to_list(50) if 'activities' in permissions else []
+    activities_raw.sort(key=lambda a: _relevance(a, q, [], ['name', 'name_ar']))
     activities = [
         {
             "id": a.get("id"),
             "name": a.get("name_ar") or a.get("name") or "",
             "monthly_fee": a.get("monthly_fee") or a.get("price") or 0,
         }
-        for a in activities_raw
+        for a in activities_raw[:10]
     ]
 
     return {"members": members, "invoices": invoices, "activities": activities}
