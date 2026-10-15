@@ -278,7 +278,7 @@ export const MembersPage = () => {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
-  const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal' });
+  const [freezeForm, setFreezeForm] = useState({ start_date: '', end_date: '', reason: 'personal', activity_id: '' });
   const [memberTournaments, setMemberTournaments] = useState([]);
   const [memberFreezes, setMemberFreezes] = useState([]);
   const [memberAuditLog, setMemberAuditLog] = useState([]);
@@ -1443,12 +1443,12 @@ export const MembersPage = () => {
   const openFreezeDialog = (member) => {
     // No standalone freeze modal exists — reuse the member view dialog,
     // landing directly on its freeze tab (which openViewDialog fully loads).
-    setFreezeForm({ start_date: new Date().toISOString().split('T')[0], end_date: '', reason: 'personal' });
+    setFreezeForm({ start_date: new Date().toISOString().split('T')[0], end_date: '', reason: 'personal', activity_id: '' });
     openViewDialog(member, 'freeze');
   };
 
   const handleCreateFreeze = async () => {
-    if (!selectedMember || !freezeForm.start_date || !freezeForm.end_date) {
+    if (!selectedMember || !freezeForm.start_date || !freezeForm.end_date || !freezeForm.activity_id) {
       toast.error(language === 'ar' ? 'يرجى تعبئة جميع الحقول' : 'Please fill all fields');
       return;
     }
@@ -1459,9 +1459,10 @@ export const MembersPage = () => {
         member_id: targetId,
         start_date: freezeForm.start_date,
         end_date: freezeForm.end_date,
-        reason: freezeForm.reason
+        reason: freezeForm.reason,
+        activity_id: freezeForm.activity_id === 'all' ? null : freezeForm.activity_id
       });
-      toast.success(language === 'ar' ? 'تم تجميد العضوية بنجاح' : 'Membership frozen successfully');
+      toast.success(language === 'ar' ? 'تم تسجيل التجميد بنجاح' : 'Freeze recorded successfully');
       const [freezesRes, statsRes] = await Promise.all([
         freezesAPI.getMemberFreezes(targetId),
         freezesAPI.getMemberStats(targetId)
@@ -4874,29 +4875,39 @@ export const MembersPage = () => {
                       </div>
                     )}
 
-                    {memberFreezeStats?.active_freeze && (
-                      <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    {(memberFreezeStats?.active_freezes || (memberFreezeStats?.active_freeze ? [memberFreezeStats.active_freeze] : [])).map((activeFreeze) => (
+                      <div key={activeFreeze.id} className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-2">
                               <Snowflake className="w-4 h-4" />
-                              {language === 'ar' ? 'تجميد نشط حالياً' : 'Currently Frozen'}
+                              {language === 'ar' ? `تجميد نشط: ${activeFreeze.activity_name || 'كل الأنشطة'}` : `Active freeze: ${activeFreeze.activity_name || 'All activities'}`}
                             </div>
                             <div className="text-sm text-blue-600 dark:text-blue-400 mt-1">
-                              {memberFreezeStats.active_freeze.start_date} → {memberFreezeStats.active_freeze.end_date} ({memberFreezeStats.active_freeze.duration_days} {language === 'ar' ? 'يوم' : 'days'})
+                              {activeFreeze.start_date} → {activeFreeze.end_date} · {activeFreeze.total_extension_days ?? 0} {language === 'ar' ? 'حصة متأثرة' : 'affected sessions'}
                             </div>
                           </div>
-                          <Button variant="outline" size="sm" className="text-red-600 border-red-300" onClick={() => handleCancelFreeze(memberFreezeStats.active_freeze.id)}>
+                          <Button variant="outline" size="sm" className="text-red-600 border-red-300" onClick={() => handleCancelFreeze(activeFreeze.id)}>
                             <PlayCircle className="w-4 h-4 me-1" />
                             {language === 'ar' ? 'إلغاء التجميد' : 'Unfreeze'}
                           </Button>
                         </div>
                       </div>
-                    )}
+                    ))}
 
-                    {!memberFreezeStats?.active_freeze && memberFreezeStats?.remaining_days > 0 && (
+                    {memberFreezeStats?.remaining_days > 0 && (
                       <div className="border rounded-lg p-4 space-y-3">
                         <h4 className="font-semibold">{language === 'ar' ? 'تجميد جديد' : 'New Freeze'}</h4>
+                        <div>
+                          <Label>{language === 'ar' ? 'النشاط الذي تريد تجميده' : 'Activity to freeze'}</Label>
+                          <select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={freezeForm.activity_id} onChange={(e) => setFreezeForm({...freezeForm, activity_id: e.target.value})}>
+                            <option value="">{language === 'ar' ? 'اختر النشاط' : 'Choose an activity'}</option>
+                            {[...new Map((selectedMember?.activities || []).filter(a => a.activity_id && (!a.status || a.status === 'active')).map(a => [a.activity_id, a])).values()].map(a => (
+                              <option key={a.activity_id} value={a.activity_id}>{a.activity_name || a.activity_id}</option>
+                            ))}
+                            <option value="all">{language === 'ar' ? 'كل الأنشطة' : 'All activities'}</option>
+                          </select>
+                        </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <Label>{language === 'ar' ? 'تاريخ البداية' : 'Start Date'}</Label>
@@ -4918,7 +4929,7 @@ export const MembersPage = () => {
                         </div>
                         <Button onClick={handleCreateFreeze} disabled={freezeLoading} className="w-full">
                           {freezeLoading ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Snowflake className="w-4 h-4 me-2" />}
-                          {language === 'ar' ? 'تجميد العضوية' : 'Freeze Membership'}
+                          {language === 'ar' ? 'تسجيل التجميد' : 'Record Freeze'}
                         </Button>
                       </div>
                     )}
@@ -4934,7 +4945,7 @@ export const MembersPage = () => {
                               <div className="flex items-center justify-between">
                                 <div>
                                   <span className="text-sm font-medium">{f.start_date} → {f.end_date}</span>
-                                  <span className="text-xs text-muted-foreground ms-2">({f.duration_days} {language === 'ar' ? 'يوم' : 'days'})</span>
+                                  <span className="text-xs text-muted-foreground ms-2">{f.activity_name || (language === 'ar' ? 'كل الأنشطة' : 'All activities')} · {f.total_extension_days ?? 0} {language === 'ar' ? 'حصة متأثرة' : 'affected sessions'}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <Badge className={f.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}>
@@ -4959,14 +4970,14 @@ export const MembersPage = () => {
                                   <div className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 inline-flex items-center gap-1 font-medium">
                                     <span>✓</span>
                                     {language === 'ar'
-                                      ? `تم ترحيل ${f.total_extension_days || 0} يوم تدريب على نهاية الاشتراك`
-                                      : `${f.total_extension_days || 0} training day(s) added to subscription end`}
+                                      ? `تم ترحيل ${f.total_extension_days || 0} حصة تدريبية إلى نهاية الاشتراك`
+                                      : `${f.total_extension_days || 0} training session(s) moved to subscription end`}
                                   </div>
                                   {Array.isArray(f.extensions) && f.extensions.length > 0 && (
                                     <ul className="mt-1.5 text-[11px] text-muted-foreground space-y-0.5 ps-3">
                                       {f.extensions.map((ext, idx) => (
                                         <li key={idx}>
-                                          • {ext.activity_name || ext.activity_id}: +{ext.days} {language === 'ar' ? 'يوم' : 'day(s)'} {ext.new_end_date ? `→ ${ext.new_end_date}` : ''}
+                                          • {ext.activity_name || ext.activity_id}: +{ext.days} {language === 'ar' ? 'حصة' : 'session(s)'} {ext.new_end_date ? `→ ${ext.new_end_date}` : ''}
                                         </li>
                                       ))}
                                     </ul>

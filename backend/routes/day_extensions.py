@@ -408,6 +408,13 @@ async def extend_freezes_for_closure(closure: dict, member_ids: list, applied_by
 
     now_str = datetime.now(timezone.utc).isoformat()
     for fz in freezes:
+        scoped_activity = fz.get("activity_id")
+        closure_activities = set(closure.get("activity_ids") or [])
+        if closure.get("activity_id"):
+            closure_activities.add(closure["activity_id"])
+        if scoped_activity and closure.get("scope") == "specific" and scoped_activity not in closure_activities:
+            result["skipped"] += 1
+            continue
         try:
             fz_start = datetime.strptime(fz["start_date"], "%Y-%m-%d")
             fz_end = datetime.strptime(fz["end_date"], "%Y-%m-%d")
@@ -658,13 +665,13 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
         "status": "active",
         "start_date": {"$lte": closure["end_date"]},
         "end_date": {"$gte": closure["start_date"]},
-    }, {"_id": 0, "member_id": 1, "start_date": 1, "end_date": 1}, **session_arg).to_list(20000)
+    }, {"_id": 0, "member_id": 1, "activity_id": 1, "start_date": 1, "end_date": 1}, **session_arg).to_list(20000)
     frozen_dates = {}
     for freeze in freezes:
         try:
             lo = max(closure_start, datetime.strptime(freeze["start_date"], "%Y-%m-%d"))
             hi = min(closure_end, datetime.strptime(freeze["end_date"], "%Y-%m-%d"))
-            frozen_dates.setdefault(freeze["member_id"], set()).update(
+            frozen_dates.setdefault((freeze["member_id"], freeze.get("activity_id") or ""), set()).update(
                 day.strftime("%Y-%m-%d") for day in _dates_between(lo, hi)
             )
         except (KeyError, ValueError):
@@ -779,7 +786,7 @@ async def _build_safe_extension_plan(data: ExtensionApply, closure: dict, sessio
                     if not occurrence_time or occurrence_time not in affected_times:
                         continue
                     had_affected_time = True
-                if date in frozen_dates.get(mid, set()):
+                if date in frozen_dates.get((mid, ""), set()) or date in frozen_dates.get((mid, aid), set()):
                     continue
                 if date in compensated.get((mid, aid), set()):
                     continue

@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 from .common import db, get_current_user
 from .attendance import parse_schedule_days
+from utils.freeze_scope import freeze_applies_to_activity
 
 router = APIRouter(prefix="/freezes", tags=["freezes"])
 logger = logging.getLogger(__name__)
@@ -107,6 +108,7 @@ class FreezeCreate(BaseModel):
     start_date: str
     end_date: str
     reason: str
+    activity_id: Optional[str] = None
 
 
 @router.post("")
@@ -129,14 +131,28 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    overlapping = await db.member_freezes.find_one({
+    activities = member.get("activities", [])
+    selected_activity_id = (freeze.activity_id or "").strip()
+    if selected_activity_id and not any(
+        act.get("activity_id") == selected_activity_id
+        and act.get("status", "active") == "active"
+        and (not act.get("start_date") or act["start_date"] <= freeze.end_date)
+        and (not act.get("end_date") or act["end_date"] >= freeze.start_date)
+        for act in activities
+    ):
+        raise HTTPException(status_code=400, detail="النشاط المختار غير موجود في عضوية هذا العضو")
+
+    overlapping = await db.member_freezes.find({
         "member_id": freeze.member_id,
         "status": "active",
         "$or": [
             {"start_date": {"$lte": freeze.end_date}, "end_date": {"$gte": freeze.start_date}}
         ]
-    })
-    if overlapping:
+    }).to_list(100)
+    if any(
+        not selected_activity_id or freeze_applies_to_activity(row, selected_activity_id)
+        for row in overlapping
+    ):
         raise HTTPException(status_code=400, detail="Overlapping freeze exists for this member")
 
     # ── Quota: 30 freeze days PER SUBSCRIPTION PERIOD (per renewal), not per
@@ -163,11 +179,12 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
             detail=f"تجاوز الحد الأقصى 30 يوم تجميد لكل اشتراك. المستخدم: {total_frozen_days}، المتبقي: {remaining}، المطلوب: {duration_days}"
         )
 
-    activities = member.get("activities", [])
     # Per-activity extension records keyed by position so duplicate activity_ids
     # don't get their days collapsed together.
     extension_records = []
     for i, act in enumerate(activities):
+        if selected_activity_id and act.get("activity_id") != selected_activity_id:
+            continue
         act_end = act.get("end_date", "")
         if not act_end:
             continue
@@ -190,6 +207,9 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
             "new_end_date": new_end_dt.strftime("%Y-%m-%d"),
         })
 
+    if selected_activity_id and not extension_records:
+        raise HTTPException(status_code=400, detail="لا توجد حصص مجدولة لهذا النشاط خلال فترة التجميد")
+
     await db.members.update_one(
         {"id": freeze.member_id},
         {"$set": {"activities": activities}}
@@ -201,6 +221,8 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     freeze_doc = {
         "id": freeze_id,
         "member_id": freeze.member_id,
+        "activity_id": selected_activity_id or None,
+        "activity_name": next((a.get("activity_name") or selected_activity_id for a in activities if a.get("activity_id") == selected_activity_id), selected_activity_id) if selected_activity_id else "",
         "start_date": freeze.start_date,
         "end_date": freeze.end_date,
         "reason": freeze.reason,
@@ -237,14 +259,15 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
         pass
 
     member_name = member.get("name_ar", member.get("name", ""))
+    session_count_ar = "حصة واحدة" if total_extension == 1 else "حصتان" if total_extension == 2 else f"{total_extension} حصص"
     notification = {
         "id": str(uuid.uuid4()),
         "member_id": freeze.member_id,
         "type": "freeze",
         "title_ar": "تجميد العضوية",
-        "message_ar": f"تم تجميد عضويتك من {freeze.start_date} إلى {freeze.end_date} ({duration_days} يوم) — تم تمديد الاشتراك بـ {total_extension} يوم تدريب",
+        "message_ar": f"تم تجميد {'نشاط ' + freeze_doc['activity_name'] if selected_activity_id else 'عضويتك'} من {freeze.start_date} إلى {freeze.end_date} ({session_count_ar} متأثرة) — تم ترحيل الحصص إلى نهاية الاشتراك",
         "title_en": "Membership Frozen",
-        "message_en": f"Your membership has been frozen from {freeze.start_date} to {freeze.end_date} ({duration_days} days) — subscription extended by {total_extension} training day(s)",
+        "message_en": f"Your {'activity ' + freeze_doc['activity_name'] if selected_activity_id else 'membership'} has been frozen from {freeze.start_date} to {freeze.end_date} ({total_extension} affected sessions) — sessions moved to the subscription end",
         "read": False,
         "created_at": now
     }
@@ -434,9 +457,9 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
         "member_id": freeze_doc["member_id"],
         "type": "freeze",
         "title_ar": "إلغاء تجميد العضوية",
-        "message_ar": f"تم إلغاء تجميد عضويتك الذي كان من {freeze_doc['start_date']} إلى {freeze_doc['end_date']}",
+        "message_ar": f"تم إلغاء تجميد {'نشاط ' + freeze_doc.get('activity_name', '') if freeze_doc.get('activity_id') else 'عضويتك'} الذي كان من {freeze_doc['start_date']} إلى {freeze_doc['end_date']}",
         "title_en": "Freeze Cancelled",
-        "message_en": f"Your membership freeze from {freeze_doc['start_date']} to {freeze_doc['end_date']} has been cancelled",
+        "message_en": f"Your {'activity ' + freeze_doc.get('activity_name', '') if freeze_doc.get('activity_id') else 'membership'} freeze from {freeze_doc['start_date']} to {freeze_doc['end_date']} has been cancelled",
         "read": False,
         "created_at": now_str
     }
@@ -512,18 +535,19 @@ async def get_member_freeze_stats(member_id: str, current_user: dict = Depends(g
 
     # Active freeze may have started before the current period (e.g. right
     # before a renewal) — look it up independently of the quota window.
-    active_freeze = await db.member_freezes.find_one({
+    active_freezes = await db.member_freezes.find({
         "member_id": member_id,
         "status": "active",
         "start_date": {"$lte": today_str},
         "end_date": {"$gte": today_str},
-    }, {"_id": 0})
+    }, {"_id": 0}).to_list(100)
 
     return {
         "member_id": member_id,
         "period_start": period_start,
         "total_days_frozen": total_days,
         "remaining_days": max(0, 30 - total_days),
-        "active_freeze": active_freeze,
+        "active_freeze": active_freezes[0] if active_freezes else None,
+        "active_freezes": active_freezes,
         "freezes_count": len(period_freezes)
     }

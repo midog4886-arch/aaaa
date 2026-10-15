@@ -203,6 +203,22 @@ def test_create_attendance_frozen_membership_400(db):
     assert len(db.attendance.docs) == 0
 
 
+def test_create_attendance_freeze_only_blocks_selected_activity(db):
+    db.members.docs.append({"id": "m1", "name_ar": "علي", "branch_id": "b1"})
+    db.member_freezes.docs.append({
+        "member_id": "m1", "activity_id": "swim", "status": "active",
+        "start_date": "2026-01-01", "end_date": "2026-01-31",
+    })
+    with pytest.raises(HTTPException):
+        run(att.create_attendance(
+            att.AttendanceCreate(member_id="m1", activity_id="swim", date="2026-01-05"),
+            admin_user()))
+    other = run(att.create_attendance(
+        att.AttendanceCreate(member_id="m1", activity_id="football", date="2026-01-05"),
+        admin_user()))
+    assert other["record"]["activity_id"] == "football"
+
+
 def test_create_attendance_enriches_activity_name(db):
     db.members.docs.append({"id": "m1", "name_ar": "علي", "branch_id": "b1"})
     db.activities.docs.append({"id": "act1", "name_ar": "كاراتيه"})

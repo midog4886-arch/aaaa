@@ -1170,29 +1170,36 @@ async def send_freeze_whatsapp_notice(
                 start_date = str(freeze.get("start_date") or "")
                 end_date = str(freeze.get("end_date") or "")
                 duration = int(freeze.get("duration_days") or 0)
+                sessions = freeze.get("total_extension_days")
+                activity_name = freeze.get("activity_name") or ""
+                scope_ar = f"النشاط: {activity_name}\n" if freeze.get("activity_id") else ""
+                scope_en = f"Activity: {activity_name}\n" if freeze.get("activity_id") else ""
+                session_count_ar = "حصة واحدة" if sessions == 1 else "حصتان" if sessions == 2 else f"{sessions} حصص"
+                duration_ar = f"المدة: {session_count_ar}" if sessions is not None else f"مدة الفترة: {duration} أيام تقويمية"
+                duration_en = f"Duration: {sessions} session(s)" if sessions is not None else f"Period length: {duration} calendar day(s)"
                 branch_ar = f"\nالفرع: {branch_name}" if branch_name else ""
                 branch_en = f"\nBranch: {branch_name}" if branch_name else ""
                 if event_type == "freeze_created":
                     message = (
-                        f"مرحباً {name}، تم تسجيل تجميد عضويتك للفترة التالية.\n"
+                        f"مرحباً {name}، تم تسجيل تجميد {'نشاط ' + activity_name if freeze.get('activity_id') else 'عضويتك'} للفترة التالية.\n"
                         f"الفترة (شاملة): من {start_date} إلى {end_date}\n"
-                        f"المدة: {duration} يوم{branch_ar}"
+                        f"{scope_ar}{duration_ar}{branch_ar}"
                     )
                     english = (
-                        f"Hello {name}, your membership freeze has been recorded for the following period.\n"
+                        f"Hello {name}, your {'activity ' + activity_name if freeze.get('activity_id') else 'membership'} freeze has been recorded for the following period.\n"
                         f"Inclusive period: {start_date} to {end_date}\n"
-                        f"Duration: {duration} day(s){branch_en}"
+                        f"{scope_en}{duration_en}{branch_en}"
                     )
                 elif event_type == "freeze_cancelled":
                     message = (
-                        f"مرحباً {name}، تم إلغاء تجميد عضويتك.\n"
+                        f"مرحباً {name}، تم إلغاء تجميد {'نشاط ' + activity_name if freeze.get('activity_id') else 'عضويتك'}.\n"
                         f"الفترة الملغاة (شاملة): من {start_date} إلى {end_date}\n"
-                        f"المدة: {duration} يوم{branch_ar}"
+                        f"{scope_ar}{duration_ar}{branch_ar}"
                     )
                     english = (
-                        f"Hello {name}, your membership freeze has been cancelled.\n"
+                        f"Hello {name}, your {'activity ' + activity_name if freeze.get('activity_id') else 'membership'} freeze has been cancelled.\n"
                         f"Cancelled inclusive period: {start_date} to {end_date}\n"
-                        f"Duration: {duration} day(s){branch_en}"
+                        f"{scope_en}{duration_en}{branch_en}"
                     )
                 else:
                     error = "unsupported_freeze_event"

@@ -1,4 +1,6 @@
 import asyncio
+import pytest
+from fastapi import HTTPException
 
 from routes import freezes as freezes_mod
 from routes import whatsapp as whatsapp_mod
@@ -194,3 +196,75 @@ def test_unsupported_provider_is_logged_and_isolated(monkeypatch):
     log = database.whatsapp_send_log.rows[0]
     assert log["error"] == "unsupported_provider:disabled"
     assert log["success"] is False
+
+
+def test_single_activity_freeze_moves_only_its_sessions_and_can_overlap_another(monkeypatch):
+    database = DB({
+        "members": Collection([{
+            "id": "member-1", "name_ar": "مرام", "phone": "0501234567", "branch_id": "branch-1",
+            "activities": [
+                {"activity_id": "swim", "activity_name": "السباحة", "status": "active",
+                 "start_date": "2026-10-01", "end_date": "2026-11-01", "schedule": "Monday, Wednesday"},
+                {"activity_id": "football", "activity_name": "القدم", "status": "active",
+                 "start_date": "2026-10-01", "end_date": "2026-11-01", "schedule": "Tuesday"},
+            ],
+        }]),
+        "member_freezes": Collection(), "member_notifications": Collection(),
+    })
+    monkeypatch.setattr(freezes_mod, "db", database)
+
+    async def no_send(*args, **kwargs):
+        return False
+
+    monkeypatch.setattr(whatsapp_mod, "send_freeze_whatsapp_notice", no_send)
+    swim = run(freezes_mod.create_freeze(freezes_mod.FreezeCreate(
+        member_id="member-1", activity_id="swim", start_date="2026-10-19",
+        end_date="2026-10-21", reason="personal",
+    ), current_user={"username": "admin"}))
+    assert swim["duration_days"] == 3
+    assert swim["total_extension_days"] == 2
+    assert swim["activity_name"] == "السباحة"
+    member = database.members.rows[0]
+    assert member["activities"][0]["end_date"] == "2026-11-04"
+    assert member["activities"][1]["end_date"] == "2026-11-01"
+    assert "حصتان" in database.member_notifications.rows[0]["message_ar"]
+
+    with pytest.raises(HTTPException):
+        run(freezes_mod.create_freeze(freezes_mod.FreezeCreate(
+            member_id="member-1", activity_id="swim", start_date="2026-10-20",
+            end_date="2026-10-21", reason="personal",
+        ), current_user={"username": "admin"}))
+
+    football = run(freezes_mod.create_freeze(freezes_mod.FreezeCreate(
+        member_id="member-1", activity_id="football", start_date="2026-10-19",
+        end_date="2026-10-21", reason="personal",
+    ), current_user={"username": "admin"}))
+    assert football["total_extension_days"] == 1
+    assert member["activities"][1]["end_date"] == "2026-11-03"
+
+    run(freezes_mod.cancel_freeze(swim["id"], current_user={"username": "admin"}))
+    assert member["activities"][0]["end_date"] == "2026-11-01"
+    assert member["activities"][1]["end_date"] == "2026-11-03"
+
+
+def test_freeze_whatsapp_uses_session_duration_when_available(monkeypatch):
+    database = _whatsapp_db("waha")
+    monkeypatch.setattr(whatsapp_mod, "_db", database)
+    messages = []
+
+    async def send(phone, message, config):
+        messages.append(message)
+        return True, "provider-1", None
+
+    monkeypatch.setattr(whatsapp_mod, "_send_session_provider_result", send)
+    run(whatsapp_mod.send_freeze_whatsapp_notice(
+        {"id": "member-1", "name_ar": "مرام", "phone": "0501234567", "branch_id": "branch-1"},
+        {"id": "freeze-1", "member_id": "member-1", "activity_id": "swim",
+         "activity_name": "السباحة", "start_date": "2026-10-19", "end_date": "2026-10-21",
+         "duration_days": 3, "total_extension_days": 2},
+        event_type="freeze_created",
+    ))
+    assert "المدة: حصتان" in messages[0]
+    assert "Duration: 2 session(s)" in messages[0]
+    assert "السباحة" in messages[0]
+    assert "3 day(s)" not in messages[0]

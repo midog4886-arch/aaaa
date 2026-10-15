@@ -9,6 +9,7 @@ import asyncio
 
 from .common import db, get_current_user
 from utils.auth import resolve_branch_filter
+from utils.freeze_scope import freeze_applies_to_activity
 from utils.effective_periods import (
     effective_period_map, operational_window, original_window, source_key,
 )
@@ -249,12 +250,13 @@ async def create_attendance(
     # Check if member has active freeze
     saudi_tz_w = timezone(timedelta(hours=3))
     record_date_check = attendance.date or datetime.now(saudi_tz_w).strftime("%Y-%m-%d")
-    active_freeze = await db.member_freezes.find_one({
+    active_freezes = await db.member_freezes.find({
         "member_id": attendance.member_id,
         "status": "active",
         "start_date": {"$lte": record_date_check},
         "end_date": {"$gte": record_date_check}
-    })
+    }).to_list(100)
+    active_freeze = next((f for f in active_freezes if freeze_applies_to_activity(f, attendance.activity_id)), None)
     if active_freeze:
         raise HTTPException(status_code=400, detail=f"عضوية مجمّدة حتى {active_freeze['end_date']} - لا يمكن تسجيل الحضور")
     
@@ -1206,7 +1208,7 @@ async def get_today_summary(
         db.member_freezes.find(
             {"status": "active", "start_date": {"$lte": today_str},
              "end_date": {"$gte": today_str}},
-            {"_id": 0, "member_id": 1}
+            {"_id": 0, "member_id": 1, "activity_id": 1}
         ).to_list(100000)
     )
 
@@ -1255,7 +1257,10 @@ async def get_today_summary(
     members = _heavy["members"]
     levels_docs = _heavy["levels_docs"]
     invoices_by_member_pre = _heavy["invoices_by_member"]
-    active_freezes = {f.get("member_id") for f in await _freezes_task if f.get("member_id")}
+    active_freezes = {}
+    for freeze in await _freezes_task:
+        if freeze.get("member_id"):
+            active_freezes.setdefault(freeze["member_id"], []).append(freeze)
 
     today_records = await _attendance_task
     active_member_ids = {m.get("id") for m in members if m.get("id") and m.get("status", "active") == "active"}
@@ -1403,7 +1408,7 @@ async def get_today_summary(
         mid = m.get("id")
         if mid not in active_member_ids:
             continue
-        if mid in active_freezes:
+        if any(not f.get("activity_id") for f in active_freezes.get(mid, [])):
             continue
 
         active_invoice_activity_ids = set()
@@ -1485,6 +1490,8 @@ async def get_today_summary(
         for a in scheduled_activities:
             key = a.get("activity_id") or a.get("activity_name")
             if key in seen_act:
+                continue
+            if any(freeze_applies_to_activity(f, a.get("activity_id")) for f in active_freezes.get(mid, [])):
                 continue
             seen_act.add(key)
             unique_acts.append(a)
@@ -1868,13 +1875,25 @@ async def qr_checkin(
     today = datetime.now(saudi_tz_q).strftime("%Y-%m-%d")
     check_in_time = datetime.now(saudi_tz_q).strftime("%H:%M")
     
-    # Check if member has active freeze
-    active_freeze = await db.member_freezes.find_one({
+    # Resolve the activity before checking the freeze: one activity may be
+    # frozen while another remains open for attendance.
+    target_activity_id = activity_id
+    activity_name = ""
+    if not target_activity_id:
+        active_activities = [a for a in member.get("activities", []) if a.get("status") == "active"]
+        if active_activities:
+            target_activity_id = active_activities[0].get("activity_id")
+            activity_name = active_activities[0].get("activity_name", "")
+    if not target_activity_id:
+        raise HTTPException(status_code=400, detail="No active activity found for member")
+
+    active_freezes = await db.member_freezes.find({
         "member_id": member["id"],
         "status": "active",
         "start_date": {"$lte": today},
         "end_date": {"$gte": today}
-    })
+    }).to_list(100)
+    active_freeze = next((f for f in active_freezes if freeze_applies_to_activity(f, target_activity_id)), None)
     if active_freeze:
         return {
             "status": "frozen",
@@ -1887,19 +1906,6 @@ async def qr_checkin(
             },
             "freeze_end_date": active_freeze["end_date"]
         }
-    
-    target_activity_id = activity_id
-    activity_name = ""
-    
-    if not target_activity_id:
-        activities = member.get("activities", [])
-        active_activities = [a for a in activities if a.get("status") == "active"]
-        if active_activities:
-            target_activity_id = active_activities[0].get("activity_id")
-            activity_name = active_activities[0].get("activity_name", "")
-    
-    if not target_activity_id:
-        raise HTTPException(status_code=400, detail="No active activity found for member")
     
     if not activity_name:
         activity = await db.activities.find_one({"id": target_activity_id}, {"_id": 0})

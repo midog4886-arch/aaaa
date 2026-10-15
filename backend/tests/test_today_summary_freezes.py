@@ -56,7 +56,7 @@ def test_freeze_excludes_member_even_with_cached_expected_inputs(monkeypatch):
         def find(self, query, projection):
             assert query == {"status": "active", "start_date": {"$lte": "2026-09-28"},
                              "end_date": {"$gte": "2026-09-28"}}
-            assert projection == {"_id": 0, "member_id": 1}
+            assert projection == {"_id": 0, "member_id": 1, "activity_id": 1}
             return Cursor(frozen)
 
     class Attendance:
@@ -78,3 +78,40 @@ def test_freeze_excludes_member_even_with_cached_expected_inputs(monkeypatch):
     active_result = asyncio.run(attendance.get_today_summary(current_user={"is_admin": True}))
     assert active_result["expected_count"] == active_result["absent_count"] == 1
     assert active_result["expected"][0]["member_id"] == "M"
+
+
+def test_activity_freeze_keeps_other_activity_in_expected_list(monkeypatch):
+    monkeypatch.setattr(attendance, "datetime", Clock)
+    member = {
+        "id": "M", "status": "active", "name": "Athlete", "member_code": "M1",
+        "activities": [
+            {"activity_id": "A", "activity_name": "Swimming", "status": "active",
+             "start_date": "2026-09-01", "end_date": "2026-10-01", "schedule": "Monday"},
+            {"activity_id": "B", "activity_name": "Football", "status": "active",
+             "start_date": "2026-09-01", "end_date": "2026-10-01", "schedule": "Monday"},
+        ],
+    }
+    invoice = {"member_id": "M", "items": [
+        {"activity_id": aid, "activity_name": name, "start_date": "2026-09-01",
+         "end_date": "2026-10-01", "schedule": "Monday"}
+        for aid, name in (("A", "Swimming"), ("B", "Football"))
+    ]}
+
+    async def cached(*_args, **_kwargs):
+        return {"members": [member], "levels_docs": [], "invoices_by_member": {"M": [invoice]}}
+
+    monkeypatch.setattr(cache, "cache_swr", cached)
+
+    class Freezes:
+        def find(self, *_args):
+            return Cursor([{"member_id": "M", "activity_id": "A"}])
+
+    class Empty:
+        def find(self, *_args):
+            return Cursor([])
+
+    monkeypatch.setattr(attendance, "db", SimpleNamespace(
+        member_freezes=Freezes(), attendance=Empty(), members=Empty()))
+    result = asyncio.run(attendance.get_today_summary(current_user={"is_admin": True}))
+    assert result["expected_count"] == 1
+    assert [a["activity_id"] for a in result["expected"][0]["activities"]] == ["B"]
