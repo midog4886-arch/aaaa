@@ -325,6 +325,8 @@ def test_candidate_builder_matches_legacy_timestamp_quota_dates(monkeypatch):
                 return RowsCollection([member])
             if name == "branches":
                 return RowsCollection([{"id": "branch-1", "name_ar": "فرع"}])
+            if name == "invoices":
+                return RowsCollection([])
             raise AssertionError(name)
 
     async def quota(_member_id):

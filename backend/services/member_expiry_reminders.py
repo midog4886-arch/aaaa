@@ -19,10 +19,16 @@ def reminder_stage(end_date, today):
 
 async def send_member_expiry_reminders(db, today=None):
     from utils.reminder_refunds import refunded_source_ids
+    from routes.whatsapp import _renewed_expiry_keys
     today = today or datetime.now(ZoneInfo('Asia/Riyadh')).date()
     created = 0
     members = await db.members.find({'is_active': {'$ne': False}}, {'_id': 0}).to_list(None)
     refunded_ids = await refunded_source_ids(db, members)
+    candidates = [member for member in members if any(
+        reminder_stage(activity.get('end_date'), today) is not None
+        for activity in member.get('activities') or []
+    )]
+    renewed = await _renewed_expiry_keys(candidates, db)
     for member in members:
         for activity in member.get('activities') or []:
             if (activity.get('source_id') in refunded_ids
@@ -38,7 +44,7 @@ async def send_member_expiry_reminders(db, today=None):
                         str(a.get('start_date') or '')[:10] > end and
                         a.get('status') not in ('cancelled', 'refunded', 'inactive')
                         for a in member.get('activities') or [])
-            if later:
+            if later or (member.get('id'), activity.get('activity_id'), end) in renewed:
                 continue
             identity = f"expiry:{member['id']}:{activity['activity_id']}:{end}:{stage}"
             nid = str(uuid.uuid5(uuid.NAMESPACE_URL, identity))

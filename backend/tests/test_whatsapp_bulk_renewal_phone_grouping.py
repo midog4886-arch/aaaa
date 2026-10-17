@@ -1,4 +1,5 @@
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -177,3 +178,24 @@ def test_cross_branch_authorization_happens_before_any_dispatch(monkeypatch):
 
     assert exc.value.status_code == 403
     assert sent == []
+
+
+def test_manual_bulk_omits_renewed_old_period(monkeypatch):
+    _db, sent = _install(monkeypatch, [{
+        "id": "m1", "name": "Sara", "phone": "0500000001", "branch_id": "b1",
+    }])
+    monkeypatch.setattr(whatsapp_mod, "_renewed_expiry_keys", AsyncMock(
+        return_value={("m1", "swim", "2026-10-20")}))
+    payload = whatsapp_mod.BulkReminderRequest(items=[
+        whatsapp_mod.BulkReminderItem(member_id="m1", activity_id="swim",
+                                       activity_name="Swimming", end_date="2026-10-20"),
+        whatsapp_mod.BulkReminderItem(member_id="m1", activity_id="football",
+                                       activity_name="Football", end_date="2026-10-20"),
+    ])
+    result = asyncio.run(whatsapp_mod.send_bulk_renewal_reminders(
+        payload, current_user={"is_admin": True}
+    ))
+    assert result["skipped_indices"] == [0]
+    assert result["wa_sent"] == 1
+    assert "Football" in sent[0][1]
+    assert "Swimming" not in sent[0][1]

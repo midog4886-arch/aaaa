@@ -2225,6 +2225,7 @@ async def _get_expiring_members(days_before: int) -> list:
     }).to_list(length=None)
     from utils.reminder_refunds import refunded_source_ids
     refunded_ids = await refunded_source_ids(_db, members)
+    renewed = await _renewed_expiry_keys(members)
 
     results = []
     for member in members:
@@ -2235,7 +2236,7 @@ async def _get_expiring_members(days_before: int) -> list:
                 continue
             raw_end = act.get("end_date", "")
             end_date = str(raw_end)[:10] if raw_end else ""
-            if end_date == target_str:
+            if end_date == target_str and (member.get("id"), act.get("activity_id"), end_date) not in renewed:
                 expiring_activities.append(act.get("activity_name", ""))
                 fee_val = act.get("fee") or act.get("amount") or 0
                 try:
@@ -2256,6 +2257,77 @@ async def _get_expiring_members(days_before: int) -> list:
             "fee_str": fee_str,
         })
     return results
+
+
+async def _renewed_expiry_keys(members: list[dict], db=None) -> set[tuple[str, str, str]]:
+    """Old activity periods already followed by a purchased period of the same activity.
+
+    A paid renewal may still be waiting on the invoice rather than appearing in
+    member.activities. Family invoice items use their own member id. Never let
+    a different activity, unpaid invoice, or the original invoice suppress a
+    reminder.
+    """
+    from utils.effective_periods import effective_period_map, operational_window
+    db = db if db is not None else _db
+
+    by_id = {m.get("id"): m for m in members if m.get("id")}
+    if not by_id:
+        return set()
+    candidates = []
+    for member in members:
+        for activity in member.get("activities") or []:
+            activity_id = activity.get("activity_id")
+            end = str(activity.get("end_date") or "")[:10]
+            if activity.get("status") in {"cancelled", "refunded", "inactive"} or not activity_id or not end:
+                continue
+            candidates.append((member, activity, activity_id, end))
+    if not candidates:
+        return set()
+
+    invoices_collection = db["invoices"] if hasattr(db, "__getitem__") else db.invoices
+    invoices = await invoices_collection.find(
+        {
+            "status": "paid",
+            "$or": [
+                {"member_id": {"$in": list(by_id)}},
+                {"items.member_id": {"$in": list(by_id)}},
+            ],
+        },
+        {"_id": 0, "id": 1, "member_id": 1, "branch_id": 1, "items": 1},
+    ).to_list(None)
+    effective_periods = await effective_period_map(db, invoices)
+    paid_periods: dict[tuple[str, str], list[tuple[str, str, str]]] = {}
+    for invoice in invoices:
+        for index, item in enumerate(invoice.get("items") or []):
+            if item.get("is_product"):
+                continue
+            member_id = item.get("member_id") or invoice.get("member_id")
+            member = by_id.get(member_id)
+            activity_id = item.get("activity_id")
+            if not member or not activity_id or invoice.get("branch_id") != member.get("branch_id"):
+                continue
+            start, end = operational_window(invoice, item, index, effective_periods)
+            if start and end and end >= start:
+                paid_periods.setdefault((member_id, activity_id), []).append((start, end, invoice.get("id")))
+
+    renewed = set()
+    for member, activity, activity_id, old_end in candidates:
+        member_id = member["id"]
+        later_on_card = any(
+            next_activity is not activity
+            and next_activity.get("activity_id") == activity_id
+            and next_activity.get("status") not in {"cancelled", "refunded", "inactive"}
+            and str(next_activity.get("start_date") or "")[:10] > old_end
+            and str(next_activity.get("end_date") or "")[:10] >= str(next_activity.get("start_date") or "")[:10]
+            for next_activity in member.get("activities") or []
+        )
+        later_paid = any(
+            start > old_end and end > old_end and invoice_id != activity.get("source_id")
+            for start, end, invoice_id in paid_periods.get((member_id, activity_id), [])
+        )
+        if later_on_card or later_paid:
+            renewed.add((member_id, activity_id, old_end))
+    return renewed
 
 
 def _send_now_settings_fingerprint(settings: dict) -> str:
@@ -2315,6 +2387,7 @@ async def _build_send_now_candidates(branch_id: Optional[str], enabled_offsets: 
     ]
     from utils.reminder_refunds import refunded_source_ids
     refunded_ids = await refunded_source_ids(_db, members)
+    renewed = await _renewed_expiry_keys(members)
 
     branch_ids = {m.get("branch_id") for m in members if m.get("branch_id")}
     branch_names: dict = {}
@@ -2340,7 +2413,8 @@ async def _build_send_now_candidates(branch_id: Optional[str], enabled_offsets: 
         for activity in member.get("activities", []) or []:
             raw_end = str(activity.get("end_date") or "")[:10]
             if (activity.get("status") != "active" or raw_end not in target_to_offset
-                    or activity.get("source_id") in refunded_ids):
+                    or activity.get("source_id") in refunded_ids
+                    or (member_id, activity.get("activity_id"), raw_end) in renewed):
                 continue
             activity_id = activity.get("activity_id", "")
             start_date = str(activity.get("start_date") or "")[:10]
@@ -9510,6 +9584,7 @@ async def get_target_count(current_user: dict = Depends(get_current_user)):
 
 class BulkReminderItem(BaseModel):
     member_id: str
+    activity_id: Optional[str] = ""
     activity_name: Optional[str] = ""
     end_date: Optional[str] = ""
     days_remaining: Optional[int] = None
@@ -9985,6 +10060,7 @@ async def send_bulk_renewal_reminders(
     push_sent = 0
     portal_inserted = 0
     skipped = 0
+    skipped_indices = []
     # WhatsApp is buffered separately from the per-member channels below.
     # A family may share one phone number, and the same number may legitimately
     # be configured in different branches (which can use different senders).
@@ -9992,7 +10068,22 @@ async def send_bulk_renewal_reminders(
 
     # Group by member_id for WhatsApp
     groups: dict = {}
-    for it in payload.items:
+    renewed = await _renewed_expiry_keys(list(members_by_id.values()))
+    for index, it in enumerate(payload.items):
+        member = members_by_id.get(it.member_id)
+        if not member:
+            skipped += 1
+            skipped_indices.append(index)
+            continue
+        activity_id = it.activity_id or next((
+            activity.get("activity_id") for activity in (member or {}).get("activities") or []
+            if activity.get("activity_name") == it.activity_name
+            and str(activity.get("end_date") or "")[:10] == str(it.end_date or "")[:10]
+        ), "")
+        if (it.member_id, activity_id, str(it.end_date or "")[:10]) in renewed:
+            skipped += 1
+            skipped_indices.append(index)
+            continue
         groups.setdefault(it.member_id, []).append(it)
 
     for mid, items in groups.items():
@@ -10288,6 +10379,7 @@ async def send_bulk_renewal_reminders(
         "push_sent": push_sent,
         "portal_inserted": portal_inserted,
         "skipped": skipped,
+        "skipped_indices": skipped_indices,
         "wa_connected": wa_connected,
         "groups_processed": len(groups),
     }

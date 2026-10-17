@@ -715,6 +715,10 @@ const RenewalsPage = () => {
 
   // Open one WhatsApp chat (per-card "Remind" button)
   const handleSingleRemind = async (item) => {
+    if (item.prepaid || item._renewed) {
+      toast.info(language === 'ar' ? 'لدى العضو فترة اشتراك جديدة؛ لا يُرسل تذكير الفترة القديمة' : 'A new subscription period exists; the old expiry reminder is skipped');
+      return;
+    }
     if (!item.phone) {
       toast.error(language === 'ar' ? 'لا يوجد رقم جوال' : 'No phone number');
       return;
@@ -726,6 +730,7 @@ const RenewalsPage = () => {
     try {
       await whatsappAPI.sendBulkReminders([{
         member_id: item.member_id,
+        activity_id: item.activity_id || '',
         activity_name: item.activity_name || '',
         end_date: item.end_date || '',
         days_remaining: item.days_remaining,
@@ -742,7 +747,7 @@ const RenewalsPage = () => {
   // opens chat windows as a fallback to ensure something happens locally.
   const handleBulkSendReminder = async () => {
     const visible = filterItems(activeTab === 'expiring' ? expiringList : expiredList);
-    const target = selectedKeys.size > 0 ? getSelectedItems(visible) : visible;
+    const target = (selectedKeys.size > 0 ? getSelectedItems(visible) : visible).filter(it => !it.prepaid && !it._renewed);
     if (target.length === 0) {
       toast.info(language === 'ar' ? 'لا توجد اشتراكات للتذكير' : 'No subscriptions to remind');
       return;
@@ -751,6 +756,7 @@ const RenewalsPage = () => {
     try {
       const payload = target.map(it => ({
         member_id: it.member_id,
+        activity_id: it.activity_id || '',
         activity_name: it.activity_name || '',
         end_date: it.end_date || '',
         days_remaining: it.days_remaining,
@@ -767,12 +773,14 @@ const RenewalsPage = () => {
       }
       // Fallback: if WhatsApp wasn't connected, open chat windows manually
       if (!data.wa_connected) {
+        const skippedIndices = new Set(data.skipped_indices || []);
+        const eligibleTarget = target.filter((_, index) => !skippedIndices.has(index));
         const phoneSeen = new Set();
         let opened = 0;
-        target.forEach((it, idx) => {
+        eligibleTarget.forEach((it, idx) => {
           if (!it.phone || phoneSeen.has(it.phone)) return;
           phoneSeen.add(it.phone);
-          const sameMember = target.filter(x => x.phone === it.phone);
+          const sameMember = eligibleTarget.filter(x => x.phone === it.phone);
           const activitiesText = sameMember.map(x => x.activity_name).join('، ');
           const msg = buildReminderText({ ...it, activity_name: activitiesText });
           const url = `https://wa.me/966${it.phone.replace(/^0/, '')}?text=${encodeURIComponent(msg)}`;
@@ -1446,10 +1454,10 @@ const RenewalsPage = () => {
               <RefreshCcw className="w-3.5 h-3.5 me-1" />
               {language === 'ar' ? 'تجديد' : 'Renew'}
             </Button>
-            <Button size="sm" variant="outline" className="flex-1" onClick={stopAndCall(() => handleSingleRemind(item))}>
+            {!item.prepaid && <Button size="sm" variant="outline" className="flex-1" onClick={stopAndCall(() => handleSingleRemind(item))}>
               <Bell className="w-3.5 h-3.5 me-1" />
               {language === 'ar' ? 'تذكير' : 'Remind'}
-            </Button>
+            </Button>}
           </div>
           )}
         </CardContent>
