@@ -3518,6 +3518,12 @@ async def branch_provider_overview(current_user: dict = Depends(get_current_user
     ).to_list(100) if branch_ids else []
     by_branch = {config["branch_id"]: config for config in configs if config.get("branch_id")}
     semaphore = asyncio.Semaphore(5)
+    legacy_status = None
+    if any(_branch_provider(by_branch.get(branch_id)) == "legacy" for branch_id in branch_ids):
+        try:
+            legacy_status = await asyncio.wait_for(_get_wa_status(), timeout=6)
+        except Exception:
+            legacy_status = {"error": "status_check_failed"}
 
     async def inspect(branch: dict) -> dict:
         branch_id = branch["id"]
@@ -3530,7 +3536,14 @@ async def branch_provider_overview(current_user: dict = Depends(get_current_user
             "state": "unconfigured",
             "connected": None,
         }
-        if config and (not config.get("enabled") or provider == "disabled"):
+        if provider == "legacy":
+            # Legacy branches send through the shared WhatsApp service.
+            if isinstance(legacy_status, dict) and not legacy_status.get("error") and isinstance(legacy_status.get("connected"), bool):
+                result["connected"] = legacy_status["connected"]
+                result["state"] = "connected" if result["connected"] else "disconnected"
+            else:
+                result["state"] = "unavailable"
+        elif config and (not config.get("enabled") or provider == "disabled"):
             result["state"] = "disabled"
         elif provider == "meta_cloud":
             # Cloud API has no persistent session; credentials imply readiness only.

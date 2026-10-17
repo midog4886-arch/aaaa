@@ -68,3 +68,15 @@ def test_overview_provider_failure_is_not_disconnected(monkeypatch):
     result = asyncio.run(mod.branch_provider_overview({"is_admin": True}))
     assert result["branches"][0]["state"] == "unavailable"
     assert result["branches"][0]["connected"] is None
+
+
+def test_legacy_branches_report_shared_service_connection(monkeypatch):
+    monkeypatch.setattr(mod, "_db", {
+        "branches": Collection([{"id": "a", "name": "A"}, {"id": "b", "name": "B"}]),
+        "whatsapp_branch_configs": Collection([]),
+    })
+    status = AsyncMock(return_value={"connected": True})
+    monkeypatch.setattr(mod, "_get_wa_status", status)
+    result = asyncio.run(mod.branch_provider_overview({"is_admin": True}))
+    assert [row["state"] for row in result["branches"]] == ["connected", "connected"]
+    assert status.await_count == 1
