@@ -37,3 +37,36 @@ def test_forbidden_group_never_returns_a_count(monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(mod.ask(mod.Question(question="كم محادثة تحتاج ردًا؟"), {"user_id": "limited"}))
     assert error.value.status_code == 403
+
+
+def test_weekday_activity_counts_unique_active_members_and_labels_schedule(monkeypatch):
+    class Collection:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def find(self, *_args, **_kwargs):
+            return self
+
+        async def to_list(self, _limit):
+            return self.rows
+
+    class Database:
+        activities = Collection([{"id": "karate", "name_ar": "كاراتيه", "name": "Karate"}])
+        members = Collection([
+            {"status": "active", "activities": [
+                {"activity_id": "karate", "status": "active", "start_date": "2026-01-01", "end_date": "2099-01-01", "schedule": "الاثنين والأربعاء"},
+                {"activity_id": "karate", "status": "active", "end_date": "2099-01-01", "schedule": "الاثنين"},
+            ]},
+            {"status": "active", "activities": [{"activity_id": "karate", "end_date": "2020-01-01", "schedule": "الاثنين"}]},
+            {"status": "inactive", "activities": [{"activity_id": "karate", "end_date": "2099-01-01", "schedule": "الاثنين"}]},
+            {"status": "active", "activities": [{"activity_id": "karate", "end_date": "2099-01-01", "schedule": "الثلاثاء"}]},
+        ])
+
+    monkeypatch.setattr(mod, "db", Database())
+    monkeypatch.setattr(mod, "resolve_branch_filter", lambda user, branch: branch)
+    assert mod._scheduled_weekday("كم واحد في الكاراتيه يوم الاثنين") == (0, "الاثنين")
+    result = asyncio.run(mod.ask(mod.Question(question="كم واحد في الكاراتيه يوم الاثنين", branch_filter="b1"), {"is_admin": True}))
+    assert result["count"] == 1
+    assert "مجدول" in result["answer"]
+    assert "لا يمثل الحضور الفعلي" in result["definition"]
+    assert result["date"]
