@@ -1,0 +1,15 @@
+.branch-whatsapp-status{padding:18px 22px;border:1px solid #e8e5f1;border-radius:20px;background:#fff;box-shadow:0 8px 24px #2024470a}
+.branch-whatsapp-status__header,.branch-whatsapp-status__title,.branch-whatsapp-status__branch,.branch-whatsapp-status__badge,.branch-whatsapp-status__refresh{display:flex;align-items:center}
+.branch-whatsapp-status__header,.branch-whatsapp-status__branch{justify-content:space-between;gap:12px}
+.branch-whatsapp-status__title{gap:9px;color:#17213f}.branch-whatsapp-status__title svg{color:#17a66b}.branch-whatsapp-status__title h2{font-size:16px;font-weight:750}
+.branch-whatsapp-status__refresh{gap:5px;padding:5px 10px;border:1px solid #dce3ef;border-radius:8px;color:#42526c;font-size:12px}.branch-whatsapp-status__refresh:hover{background:#f4f6fb}
+.branch-whatsapp-status__time,.branch-whatsapp-status__notice{margin:5px 0 0;color:#78869e;font-size:11px}.branch-whatsapp-status__notice{margin-top:12px}
+.branch-whatsapp-status__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:10px;margin-top:13px}
+.branch-whatsapp-status__branch{min-width:0;padding:11px 13px;border:1px solid #e8edf4;border-radius:12px;background:#fbfcff}
+.branch-whatsapp-status__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:650;color:#25304d}
+.branch-whatsapp-status__badge{flex:none;gap:6px;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.branch-whatsapp-status__dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.branch-whatsapp-status__badge--connected{background:#e5f8ed;color:#15804b}.branch-whatsapp-status__badge--disconnected{background:#feecea;color:#c54239}
+.branch-whatsapp-status__badge--ready{background:#e8f1ff;color:#2463a4}.branch-whatsapp-status__badge--unavailable{background:#fff3dc;color:#9b690e}
+.branch-whatsapp-status__badge--unconfigured,.branch-whatsapp-status__badge--disabled{background:#edf0f5;color:#6b7688}
+@media(max-width:640px){.branch-whatsapp-status{padding:16px}.branch-whatsapp-status__grid{grid-template-columns:1fr}}

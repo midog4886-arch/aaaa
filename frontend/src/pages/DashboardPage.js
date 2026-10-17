@@ -39,6 +39,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import WelcomeOnboardingDialog from '../components/WelcomeOnboardingDialog';
 import DailyActions from '../components/DailyActions';
+import BranchWhatsAppStatus from '../components/BranchWhatsAppStatus';
 import './DashboardPage.css';
 
 const DEFAULT_WIDGETS = [
@@ -364,6 +365,7 @@ export const DashboardPage = () => {
             <a href="/admin/members">{language === 'ar' ? 'الأعضاء' : 'Members'} <span aria-hidden="true">↗</span></a>
           </div>
         </div>
+        <BranchWhatsAppStatus />
         <DailyActions />
         {/* Dashboard Controls */}
         <div className="flex items-center justify-between gap-2">

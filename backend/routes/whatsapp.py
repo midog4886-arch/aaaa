@@ -26,6 +26,7 @@ from .common import get_current_user
 from utils.auth import (
     require_branch_scope,
     resolve_branch_filter,
+    get_allowed_branch_ids,
 )
 from utils.training_closures import closures_for_date, training_day_closed
 from utils.tenant import (
@@ -3419,6 +3420,87 @@ async def _require_session_provider_branch(branch_id: str) -> dict:
     ):
         raise HTTPException(status_code=400, detail="WhatsApp provider is not configured for this branch")
     return config
+
+
+@router.get("/branch-provider/overview")
+async def branch_provider_overview(current_user: dict = Depends(get_current_user)):
+    """Live, branch-scoped connection summary for the dashboard; no provider secrets."""
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    if current_user.get("is_admin", False):
+        branch_filter = {}
+    else:
+        allowed = get_allowed_branch_ids(current_user)
+        if not allowed:
+            raise HTTPException(status_code=403, detail="No branch assigned")
+        branch_filter = {"id": {"$in": allowed}}
+
+    branches = await _db["branches"].find(
+        branch_filter, {"_id": 0, "id": 1, "name_ar": 1, "name": 1}
+    ).to_list(100)
+    branch_ids = [branch["id"] for branch in branches if branch.get("id")]
+    configs = await _db["whatsapp_branch_configs"].find(
+        {"branch_id": {"$in": branch_ids}}, {"_id": 0}
+    ).to_list(100) if branch_ids else []
+    by_branch = {config["branch_id"]: config for config in configs if config.get("branch_id")}
+    semaphore = asyncio.Semaphore(5)
+
+    async def inspect(branch: dict) -> dict:
+        branch_id = branch["id"]
+        config = by_branch.get(branch_id)
+        provider = _branch_provider(config)
+        result = {
+            "branch_id": branch_id,
+            "branch_name": branch.get("name_ar") or branch.get("name") or branch_id,
+            "provider": provider,
+            "state": "unconfigured",
+            "connected": None,
+        }
+        if config and (not config.get("enabled") or provider == "disabled"):
+            result["state"] = "disabled"
+        elif provider == "meta_cloud":
+            # Cloud API has no persistent session; credentials imply readiness only.
+            if config.get("phone_number_id") and config.get("access_token_encrypted"):
+                result["state"] = "ready"
+        elif provider == "waha" and config.get("waha_session_name"):
+            client = WAHAClient()
+            if not client.configured:
+                result["state"] = "unavailable"
+            else:
+                physical_id = config.get("waha_physical_session_id") or _waha_physical_session_id(
+                    branch_id, config.get("waha_session_name") or ""
+                )
+                try:
+                    async with semaphore:
+                        ok, data, _ = await asyncio.wait_for(client.session(physical_id), timeout=7)
+                    status = data.get("status") if isinstance(data, dict) else None
+                    if ok and isinstance(status, str) and status:
+                        result["connected"] = status.upper() in {"WORKING", "CONNECTED"}
+                        result["state"] = "connected" if result["connected"] else "disconnected"
+                    else:
+                        result["state"] = "unavailable"
+                except Exception:
+                    result["state"] = "unavailable"
+        elif provider == "whatsflow" and config.get("whatsflow_instance") and config.get("whatsflow_api_key_encrypted"):
+            try:
+                async with semaphore:
+                    ok, data, error = await asyncio.wait_for(
+                        _whatsflow_client(config).connection_state(), timeout=7
+                    )
+                status = parse_connection_state(ok, data, error)
+                if status["check_ok"]:
+                    result["connected"] = status["connected"]
+                    result["state"] = "connected" if status["connected"] else "disconnected"
+                else:
+                    result["state"] = "unavailable"
+            except Exception:
+                result["state"] = "unavailable"
+        return result
+
+    return {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "branches": await asyncio.gather(*(inspect(branch) for branch in branches if branch.get("id"))),
+    }
 
 
 @router.get("/branch-provider/{branch_id}/status")
