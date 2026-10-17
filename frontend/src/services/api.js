@@ -2,6 +2,13 @@ import axios from 'axios';
 
 const API = '/api';
 
+export const askSystemAPI = {
+  ask: (question, branchFilter) => axios.post(`${API}/ask-system/ask`, {
+    question,
+    branch_filter: branchFilter && branchFilter !== 'all' ? branchFilter : null,
+  }),
+};
+
 // Set up axios interceptor to add token + tenant header
 axios.interceptors.request.use((config) => {
   const url = config.url || '';

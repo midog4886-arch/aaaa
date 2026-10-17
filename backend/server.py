@@ -265,6 +265,8 @@ api_router.include_router(global_search_router)
 
 from routes.dashboard_actions import router as dashboard_actions_router
 api_router.include_router(dashboard_actions_router)
+from routes.ask_system import router as ask_system_router
+api_router.include_router(ask_system_router)
 from routes.data_integrity import router as data_integrity_router
 api_router.include_router(data_integrity_router)
 from routes.registration_journey import router as registration_journey_router

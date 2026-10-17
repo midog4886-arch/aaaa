@@ -40,6 +40,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recha
 import WelcomeOnboardingDialog from '../components/WelcomeOnboardingDialog';
 import DailyActions from '../components/DailyActions';
 import BranchWhatsAppStatus from '../components/BranchWhatsAppStatus';
+import AskSystem from '../components/AskSystem';
 import './DashboardPage.css';
 
 const DEFAULT_WIDGETS = [
@@ -366,6 +367,7 @@ export const DashboardPage = () => {
           </div>
         </div>
         <BranchWhatsAppStatus />
+        <AskSystem />
         <DailyActions />
         {/* Dashboard Controls */}
         <div className="flex items-center justify-between gap-2">
