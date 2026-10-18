@@ -36,7 +36,7 @@ export const poseMetrics = (points, sport, side = 'right', aspect = 1) => {
   return metrics;
 };
 
-export const drawPose = (canvas, video, points) => {
+export const drawPose = (canvas, video, points, boxes = [], selectedIndex = null) => {
   if (!canvas || !video) return;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -47,13 +47,27 @@ export const drawPose = (canvas, video, points) => {
   if (!context) return;
   context.scale(scale, scale);
   context.clearRect(0, 0, width, height);
-  if (!Array.isArray(points) || !video.videoWidth || !video.videoHeight) return;
+  if (!video.videoWidth || !video.videoHeight) return;
   const fit = Math.min(width / video.videoWidth, height / video.videoHeight);
   const imageWidth = video.videoWidth * fit;
   const imageHeight = video.videoHeight * fit;
   const originX = (width - imageWidth) / 2;
   const originY = (height - imageHeight) / 2;
   const at = point => [originX + point.x * imageWidth, originY + point.y * imageHeight];
+  boxes.forEach((box, index) => {
+    if (!box) return;
+    const [x, y] = at({ x: box.left, y: box.top });
+    const selected = index === selectedIndex;
+    context.strokeStyle = selected ? '#2ef2b3' : '#ffb347';
+    context.lineWidth = selected ? 4 : 2;
+    context.strokeRect(x, y, box.width * imageWidth, box.height * imageHeight);
+    context.fillStyle = selected ? '#096b50' : '#9a5700';
+    context.fillRect(x, Math.max(0, y - 22), 74, 22);
+    context.fillStyle = '#fff';
+    context.font = 'bold 13px Arial';
+    context.fillText(selected ? `✓ ${index + 1}` : `${index + 1}`, x + 5, Math.max(15, y - 6));
+  });
+  if (!Array.isArray(points)) return;
   context.lineWidth = 3;
   context.strokeStyle = '#2ef2b3';
   for (const [a, b] of EDGES) {

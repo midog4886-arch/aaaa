@@ -5,6 +5,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { memberVideoReviewsAPI } from '../../services/api';
 import { drawPose, poseMetrics } from '../../utils/poseAnalysis';
+import { matchPose, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
 
 const timeLabel = (seconds) => {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -32,9 +33,12 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const [poseError, setPoseError] = useState('');
   const [poseSide, setPoseSide] = useState('right');
   const [poseInfo, setPoseInfo] = useState(null);
+  const [targetStatus, setTargetStatus] = useState('select');
   const videoRef = useRef(null);
   const poseCanvasRef = useRef(null);
   const poseModelRef = useRef(null);
+  const targetRef = useRef(null);
+  const candidatesRef = useRef([]);
   const lastInferenceRef = useRef(0);
   const lastModelTimestampRef = useRef(0);
   const comparisonRef = useRef(null);
@@ -78,6 +82,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setPoseInfo(null);
     setPoseEnabled(false);
     setPoseError('');
+    targetRef.current = null;
+    candidatesRef.current = [];
+    setTargetStatus('select');
     if (!selectedId) return;
     let active = true;
     memberVideoReviewsAPI.playTicket(selectedId).then(response => {
@@ -115,11 +122,25 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     try {
       const timestamp = Math.max(now, lastModelTimestampRef.current + 1);
       lastModelTimestampRef.current = timestamp;
-      const points = model.detectForVideo(video, timestamp).landmarks?.[0] || null;
-      drawPose(poseCanvasRef.current, video, points);
+      const poses = model.detectForVideo(video, timestamp).landmarks || [];
+      const boxes = poses.map(poseBox);
+      candidatesRef.current = poses;
+      let selectedIndex = null;
+      if (targetRef.current) {
+        selectedIndex = matchPose(targetRef.current, boxes);
+        if (selectedIndex === null) {
+          targetRef.current = null;
+          setTargetStatus('lost');
+        } else {
+          targetRef.current = boxes[selectedIndex];
+          setTargetStatus('tracking');
+        }
+      }
+      const points = selectedIndex === null ? null : poses[selectedIndex];
+      drawPose(poseCanvasRef.current, video, points, boxes, selectedIndex);
       const seen = points?.filter(point => (point.visibility ?? 1) >= 0.5).length || 0;
       const metrics = seen >= 8 ? poseMetrics(points, draft.sport, poseSide, video.videoWidth / video.videoHeight) : null;
-      const result = { metrics, seen, time: video.currentTime };
+      const result = { metrics, seen, time: video.currentTime, detected: boxes.filter(Boolean).length, selected: selectedIndex !== null };
       setPoseInfo(result);
       return result;
     } catch (error) {
@@ -132,6 +153,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (poseEnabled) {
       setPoseEnabled(false);
       setPoseInfo(null);
+      targetRef.current = null;
+      candidatesRef.current = [];
+      setTargetStatus('select');
       drawPose(poseCanvasRef.current, videoRef.current, null);
       return;
     }
@@ -143,7 +167,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
         const vision = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
         poseModelRef.current = await PoseLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: '/mediapipe/models/pose_landmarker_lite.task', delegate: 'CPU' },
-          runningMode: 'VIDEO', numPoses: 1,
+          runningMode: 'VIDEO', numPoses: 6,
           minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
         });
       }
@@ -154,6 +178,33 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     } finally {
       setPoseLoading(false);
     }
+  };
+
+  const selectPlayer = (event) => {
+    if (!poseEnabled) return;
+    const position = videoPoint(event, videoRef.current, poseCanvasRef.current);
+    const poses = candidatesRef.current;
+    const boxes = poses.map(poseBox);
+    const index = position ? pickPose(boxes, position) : null;
+    if (index === null) {
+      setTargetStatus('select');
+      return;
+    }
+    targetRef.current = boxes[index];
+    setTargetStatus('tracking');
+    const points = poses[index];
+    drawPose(poseCanvasRef.current, videoRef.current, points, boxes, index);
+    const seen = points.filter(point => (point.visibility ?? 1) >= 0.5).length;
+    setPoseInfo({ metrics: seen >= 8 ? poseMetrics(points, draft.sport, poseSide, videoRef.current.videoWidth / videoRef.current.videoHeight) : null,
+      seen, detected: boxes.filter(Boolean).length, selected: true, time: videoRef.current.currentTime });
+  };
+
+  const resetPlayerOnSeek = () => {
+    if (!poseEnabled) return;
+    targetRef.current = null;
+    setTargetStatus('lost');
+    setPoseInfo(null);
+    analyzeFrame(true);
   };
 
   const upload = async (event) => {
@@ -280,8 +331,10 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       <div className={`grid gap-3 ${compareId ? 'lg:grid-cols-2' : ''}`}>
         <div className="space-y-2">
           <div className="relative overflow-hidden rounded-lg bg-black">
-            {sourceUrl && <video ref={videoRef} src={sourceUrl} controls playsInline preload="metadata" className="aspect-video w-full object-contain" onTimeUpdate={() => { if (poseEnabled) analyzeFrame(); }} onSeeked={() => { if (poseEnabled) analyzeFrame(true); }} />}
+            {sourceUrl && <video ref={videoRef} src={sourceUrl} controls playsInline preload="metadata" className="aspect-video w-full object-contain" onTimeUpdate={() => { if (poseEnabled) analyzeFrame(); }} onSeeked={resetPlayerOnSeek} />}
             <canvas ref={poseCanvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
+            {poseEnabled && !drawing && <div className="absolute inset-x-0 top-0 bottom-12 cursor-crosshair" onClick={selectPlayer} role="button" tabIndex={0}
+              aria-label={ar ? 'اضغط على إطار اللاعب لاختياره' : 'Click a person box to select them'} />}
             {activeMarker?.drawing && <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               <line x1={activeMarker.drawing.x1 * 100} y1={activeMarker.drawing.y1 * 100} x2={activeMarker.drawing.x2 * 100} y2={activeMarker.drawing.y2 * 100} stroke="#f97316" strokeWidth="0.8" />
               <circle cx={activeMarker.drawing.x2 * 100} cy={activeMarker.drawing.y2 * 100} r="1.2" fill="#f97316" />
@@ -307,8 +360,8 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               <span className="font-semibold">{draft.sport === 'football' ? (ar ? 'كرة قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')}</span>
             </div>
             {poseError && <p className="text-red-700" role="alert">{poseError}</p>}
-            {poseEnabled && <p>{poseInfo?.seen >= 8 ? (ar ? `نقاط ظاهرة: ${poseInfo.seen} من 33` : `Visible landmarks: ${poseInfo.seen} of 33`) : (ar ? 'الجسم غير واضح بما يكفي في هذه اللقطة؛ لن تُعرض قياسات غير موثوقة.' : 'Body visibility is too low in this frame; no measurements shown.')}</p>}
-            {poseEnabled && poseInfo?.seen >= 8 && <div className="flex flex-wrap gap-2">
+            {poseEnabled && <p>{targetStatus === 'lost' ? (ar ? 'فُقد اللاعب أو تغيّر موضعه؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.' : 'Player lost or moved; measurements paused. Pause and select again.') : !poseInfo?.selected ? (ar ? `اختر اللاعب بالضغط على إطاره في الفيديو. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Click the player's box. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع اللاعب المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected player · ${poseInfo.seen} visible landmarks`) : (ar ? 'اللاعب المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected player visibility is too low; no measurements shown.')}</p>}
+            {poseEnabled && poseInfo?.selected && poseInfo?.seen >= 8 && <div className="flex flex-wrap gap-2">
               {Object.entries(poseInfo.metrics || {}).map(([key, value]) => Number.isFinite(value) && <span key={key} className="rounded-md bg-white px-2 py-1">
                 {key === 'knee_angle' ? (ar ? 'زاوية الركبة' : 'Knee angle') : key === 'elbow_angle' ? (ar ? 'زاوية المرفق' : 'Elbow angle') : key === 'hip_angle' ? (ar ? 'زاوية الورك' : 'Hip angle') : (ar ? 'ميل الجذع عن العمودي' : 'Trunk tilt from vertical')}: {value}°
               </span>)}
