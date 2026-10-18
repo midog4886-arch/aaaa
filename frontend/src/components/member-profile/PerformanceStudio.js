@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { memberVideoReviewsAPI } from '../../services/api';
 import { drawPose, poseMetrics } from '../../utils/poseAnalysis';
-import { matchPose, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
+import { ambiguousPose, matchPose, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
 import { comparisonReport, metricLabel, SKILLS } from '../../utils/performanceReport';
 import ComparisonChart from './ComparisonChart';
 
@@ -147,8 +147,14 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       candidatesRef.current = poses;
       let selectedIndex = null;
       if (targetRef.current) {
-        selectedIndex = matchPose(targetRef.current, boxes, Math.abs(video.currentTime - lastTargetTimeRef.current) * 1000);
-        if (selectedIndex === null) {
+        const elapsed = Math.abs(video.currentTime - lastTargetTimeRef.current) * 1000;
+        const ambiguous = ambiguousPose(targetRef.current, boxes, elapsed);
+        selectedIndex = ambiguous ? null : matchPose(targetRef.current, boxes, elapsed);
+        if (ambiguous) {
+          targetRef.current = null;
+          targetMissesRef.current = 0;
+          setTargetStatus('lost');
+        } else if (selectedIndex === null) {
           targetMissesRef.current += 1;
           if (targetMissesRef.current >= 5 || Math.abs(video.currentTime - lastTargetTimeRef.current) > 0.8) {
             targetRef.current = null;
@@ -464,7 +470,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               <span className="font-semibold">{draft.sport === 'football' ? (ar ? 'كرة قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')}</span>
             </div>
             {poseError && <p className="text-red-700" role="alert">{poseError}</p>}
-            {poseEnabled && <p>{targetStatus === 'lost' ? (ar ? 'فُقد اللاعب أو تغيّر موضعه؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.' : 'Player lost or moved; measurements paused. Pause and select again.') : targetStatus === 'searching' ? (ar ? 'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.' : 'Player temporarily obscured; measurements paused.') : !poseInfo?.selected ? (ar ? `اختر اللاعب بالضغط على إطاره في الفيديو. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Click the player's box. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع اللاعب المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected player · ${poseInfo.seen} visible landmarks`) : (ar ? 'اللاعب المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected player visibility is too low; no measurements shown.')}</p>}
+            {poseEnabled && <p>{targetStatus === 'lost' ? (ar ? 'تداخل اللاعب مع شخص آخر أو فُقد مساره؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.' : 'Player overlap or lost track; measurements paused. Pause and reselect.') : targetStatus === 'searching' ? (ar ? 'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.' : 'Player temporarily obscured; measurements paused.') : !poseInfo?.selected ? (ar ? `اختر اللاعب بالضغط على إطاره في الفيديو. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Click the player's box. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع اللاعب المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected player · ${poseInfo.seen} visible landmarks`) : (ar ? 'اللاعب المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected player visibility is too low; no measurements shown.')}</p>}
             {poseEnabled && poseInfo?.selected && poseInfo?.seen >= 8 && <div className="flex flex-wrap gap-2">
               {Object.entries(poseInfo.metrics || {}).map(([key, value]) => Number.isFinite(value) && <span key={key} className="rounded-md bg-white px-2 py-1">
                 {key === 'knee_angle' ? (ar ? 'زاوية الركبة' : 'Knee angle') : key === 'elbow_angle' ? (ar ? 'زاوية المرفق' : 'Elbow angle') : key === 'hip_angle' ? (ar ? 'زاوية الورك' : 'Hip angle') : (ar ? 'ميل الجذع عن العمودي' : 'Trunk tilt from vertical')}: {value}°

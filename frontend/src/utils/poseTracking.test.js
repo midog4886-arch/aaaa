@@ -1,4 +1,4 @@
-import { matchPose, pickPose, poseBox, videoPoint } from './poseTracking';
+import { ambiguousPose, matchPose, pickPose, poseBox, videoPoint } from './poseTracking';
 
 const pose = (x, y, scale = 1) => {
   const points = Array.from({ length: 33 }, () => ({ x, y, visibility: 0 }));
@@ -31,6 +31,15 @@ test('fast movement stays with the same isolated person between video frames', (
 test('tracking stops when two people become indistinguishable', () => {
   const previous = poseBox(pose(0.5, 0.5));
   expect(matchPose(previous, [poseBox(pose(0.49, 0.5)), poseBox(pose(0.51, 0.5))])).toBeNull();
+});
+
+test('crossing people require a new selection before measurements resume', () => {
+  const previous = poseBox(pose(0.45, 0.5));
+  const crossing = [poseBox(pose(0.46, 0.5)), poseBox(pose(0.49, 0.5))];
+  expect(ambiguousPose(previous, crossing)).toBe(true);
+  expect(matchPose(previous, crossing)).toBeNull();
+  expect(ambiguousPose(previous, [poseBox(pose(0.48, 0.5)), poseBox(pose(0.9, 0.5))])).toBe(false);
+  expect(ambiguousPose(previous, [poseBox(pose(0.45, 0.5, 1.6))])).toBe(true);
 });
 
 test('click mapping accounts for video letterboxing', () => {

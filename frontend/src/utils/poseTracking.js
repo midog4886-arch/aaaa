@@ -31,8 +31,33 @@ export const pickPose = (boxes, position) => {
   return hits[0].index;
 };
 
+const overlapRatio = (a, b) => {
+  const width = Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+  const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  return width * height / Math.min(a.width * a.height, b.width * b.height);
+};
+
+export const ambiguousPose = (previous, boxes, elapsedMs = 180) => {
+  if (!previous) return false;
+  const gate = Math.max(0.12, Math.min(0.32,
+    Math.max(previous.width, previous.height) * 0.8 + Math.min(0.1, Math.max(0, elapsedMs) * 0.0004)));
+  const nearby = boxes.filter(box => box &&
+    Math.hypot(box.center.x - previous.center.x, box.center.y - previous.center.y) <= gate);
+  // A single oversized detection may be two people merged into one pose.
+  if (nearby.length === 1 && nearby[0].width * nearby[0].height > previous.width * previous.height * 2) return true;
+  for (let i = 0; i < nearby.length; i += 1) {
+    for (let j = i + 1; j < nearby.length; j += 1) {
+      const a = nearby[i], b = nearby[j];
+      const centerDistance = Math.hypot(a.center.x - b.center.x, a.center.y - b.center.y);
+      if (overlapRatio(a, b) > 0.12 || centerDistance < Math.max(a.width, a.height, b.width, b.height) * 0.75) return true;
+    }
+  }
+  return false;
+};
+
 export const matchPose = (previous, boxes, elapsedMs = 180) => {
   if (!previous) return null;
+  if (ambiguousPose(previous, boxes, elapsedMs)) return null;
   const ranked = boxes.map((box, index) => {
     if (!box) return null;
     const distance = Math.hypot(box.center.x - previous.center.x, box.center.y - previous.center.y);
@@ -42,7 +67,7 @@ export const matchPose = (previous, boxes, elapsedMs = 180) => {
       Math.max(previous.width, previous.height) * 0.8 + Math.min(0.1, Math.max(0, elapsedMs) * 0.0004)));
     const sizeRatio = Math.max(box.width / previous.width, previous.width / box.width,
       box.height / previous.height, previous.height / box.height);
-    return distance <= allowed && sizeRatio < 2.4 ? { index, score: distance / allowed + Math.max(0, sizeRatio - 1) * 0.3 } : null;
+    return distance <= allowed && sizeRatio < 1.8 ? { index, score: distance / allowed + Math.max(0, sizeRatio - 1) * 0.3 } : null;
   }).filter(Boolean).sort((a, b) => a.score - b.score);
   if (!ranked.length || (ranked.length > 1 && ranked[1].score - ranked[0].score < 0.35)) return null;
   return ranked[0].index;

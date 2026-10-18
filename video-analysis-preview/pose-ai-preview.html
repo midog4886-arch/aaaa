@@ -85,14 +85,29 @@ function poseBox(points) {
   }};
 }
 function match(previous, list, elapsedMs=180) {
+  if (ambiguous(previous,list,elapsedMs)) return null;
   const ranked = list.map((box,index)=>{
     if (!box) return null;
     const distance = Math.hypot(box.center.x-previous.center.x,box.center.y-previous.center.y);
     const allowed = Math.max(.12,Math.min(.32,Math.max(previous.width,previous.height)*.8+Math.min(.1,Math.max(0,elapsedMs)*.0004)));
     const sizeRatio = Math.max(box.width/previous.width,previous.width/box.width,box.height/previous.height,previous.height/box.height);
-    return distance <= allowed && sizeRatio < 2.4 ? {index,score:distance/allowed+Math.max(0,sizeRatio-1)*.3} : null;
+    return distance <= allowed && sizeRatio < 1.8 ? {index,score:distance/allowed+Math.max(0,sizeRatio-1)*.3} : null;
   }).filter(Boolean).sort((a,b)=>a.score-b.score);
   return ranked.length && !(ranked.length>1 && ranked[1].score-ranked[0].score<.35) ? ranked[0].index : null;
+}
+function ambiguous(previous,list,elapsedMs=180) {
+  const gate=Math.max(.12,Math.min(.32,Math.max(previous.width,previous.height)*.8+Math.min(.1,Math.max(0,elapsedMs)*.0004)));
+  const nearby=list.filter(box=>box&&Math.hypot(box.center.x-previous.center.x,box.center.y-previous.center.y)<=gate);
+  if(nearby.length===1&&nearby[0].width*nearby[0].height>previous.width*previous.height*2) return true;
+  for(let i=0;i<nearby.length;i++) for(let j=i+1;j<nearby.length;j++) {
+    const a=nearby[i],b=nearby[j];
+    const width=Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left));
+    const height=Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top));
+    const overlap=width*height/Math.min(a.width*a.height,b.width*b.height);
+    const distance=Math.hypot(a.center.x-b.center.x,a.center.y-b.center.y);
+    if(overlap>.12||distance<Math.max(a.width,a.height,b.width,b.height)*.75) return true;
+  }
+  return false;
 }
 function angle(a,b,c,ratio) {
   if (![a,b,c].every(visible)) return null;
@@ -207,8 +222,11 @@ function frame(force=false) {
     boxes=candidates.map(poseBox);
     let index=null;
     if (selectedBox) {
-      index=match(selectedBox,boxes,Math.abs(video.currentTime-lastTargetTime)*1000);
-      if (index===null) {
+      const elapsed=Math.abs(video.currentTime-lastTargetTime)*1000;
+      const crossing=ambiguous(selectedBox,boxes,elapsed);
+      index=crossing?null:match(selectedBox,boxes,elapsed);
+      if(crossing) {selectedBox=null;targetLost=true;missedFrames=0;}
+      else if (index===null) {
         missedFrames+=1;
         if (missedFrames>=5 || Math.abs(video.currentTime-lastTargetTime)>.8) {selectedBox=null;targetLost=true;}
       } else {selectedBox=boxes[index];missedFrames=0;lastTargetTime=video.currentTime;}
@@ -218,7 +236,7 @@ function frame(force=false) {
     else {
       if (selectedBox) recordSample(false);
       metrics.replaceChildren();
-      status.textContent=targetLost?'فُقد اللاعب أو اختلط بغيره؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.'
+      status.textContent=targetLost?'تداخل اللاعب مع شخص آخر أو فُقد مساره؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.'
         :selectedBox?'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.'
         : boxes.some(Boolean)?`تم اكتشاف ${boxes.filter(Boolean).length} شخص. أوقف الفيديو واضغط على إطار اللاعب المطلوب.`
         :'النموذج يعمل، لكن لم يكتشف شخصًا واضحًا في هذه اللقطة.';
