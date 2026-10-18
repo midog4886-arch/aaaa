@@ -9,6 +9,20 @@ export const askSystemAPI = {
   }),
 };
 
+export const memberVideoReviewsAPI = {
+  list: (memberId) => axios.get(`${API}/member-video-reviews/member/${encodeURIComponent(memberId)}`),
+  upload: (memberId, file, sport) => {
+    const data = new FormData();
+    data.append('file', file);
+    data.append('sport', sport);
+    return axios.post(`${API}/member-video-reviews/member/${encodeURIComponent(memberId)}/upload`, data);
+  },
+  update: (reviewId, data) => axios.put(`${API}/member-video-reviews/${encodeURIComponent(reviewId)}`, data),
+  setStatus: (reviewId, status) => axios.put(`${API}/member-video-reviews/${encodeURIComponent(reviewId)}/status`, { status }),
+  delete: (reviewId) => axios.delete(`${API}/member-video-reviews/${encodeURIComponent(reviewId)}`),
+  playTicket: (reviewId) => axios.get(`${API}/member-video-reviews/${encodeURIComponent(reviewId)}/play-ticket`),
+};
+
 // Set up axios interceptor to add token + tenant header
 axios.interceptors.request.use((config) => {
   const url = config.url || '';

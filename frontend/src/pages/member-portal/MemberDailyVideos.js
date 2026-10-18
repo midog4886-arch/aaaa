@@ -20,6 +20,7 @@ import {
 import PullToRefresh from '../../components/PullToRefresh';
 import InfiniteScroll from '../../components/InfiniteScroll';
 import PushNotificationManager from '../../components/PushNotificationManager';
+import MemberPerformanceReviews from './MemberPerformanceReviews';
 
 // Skeleton Component for Video Cards
 const VideoCardSkeleton = ({ darkMode }) => (
@@ -391,6 +392,7 @@ const MemberDailyVideos = () => {
       <div className="space-y-6">
         {/* Push Notifications Manager */}
         <PushNotificationManager memberId={member?.id} />
+        <MemberPerformanceReviews />
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

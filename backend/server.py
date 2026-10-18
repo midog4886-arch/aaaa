@@ -134,6 +134,7 @@ from routes.notifications import router as notifications_router
 from routes.bank_reports import router as bank_reports_router
 from routes.advertisements import router as advertisements_router
 from routes.daily_videos import router as daily_videos_router, set_loyalty_award_function as set_videos_loyalty, set_push_notify_function
+from routes.member_video_reviews import router as member_video_reviews_router
 from routes.loyalty import router as loyalty_router, set_database as set_loyalty_db, award_points as loyalty_award_points
 from routes.push_notifications import (
     router as push_notifications_router,
@@ -218,6 +219,7 @@ api_router.include_router(notifications_router)
 api_router.include_router(bank_reports_router)
 api_router.include_router(advertisements_router)
 api_router.include_router(daily_videos_router)
+api_router.include_router(member_video_reviews_router)
 api_router.include_router(loyalty_router)
 api_router.include_router(push_notifications_router)
 api_router.include_router(messages_router)
