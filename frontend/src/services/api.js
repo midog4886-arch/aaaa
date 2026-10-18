@@ -11,10 +11,11 @@ export const askSystemAPI = {
 
 export const memberVideoReviewsAPI = {
   list: (memberId) => axios.get(`${API}/member-video-reviews/member/${encodeURIComponent(memberId)}`),
-  upload: (memberId, file, sport) => {
+  upload: (memberId, file, sport, skill) => {
     const data = new FormData();
     data.append('file', file);
     data.append('sport', sport);
+    data.append('skill', skill);
     return axios.post(`${API}/member-video-reviews/member/${encodeURIComponent(memberId)}/upload`, data);
   },
   update: (reviewId, data) => axios.put(`${API}/member-video-reviews/${encodeURIComponent(reviewId)}`, data),

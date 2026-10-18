@@ -15,6 +15,7 @@ button,select,.file{border:1px solid #cdd9eb;border-radius:9px;padding:10px 13px
 .metric strong{display:block;font-size:24px;color:#1148a7}.notice{border-radius:11px;padding:11px 13px;background:#fff5dc;color:#815600;font-size:13px;margin-top:15px}
 .badge{background:#e7f7ee;color:#137b43;border-radius:30px;padding:7px 12px}.hint{background:#eff7f1;padding:13px;border-radius:11px;margin:12px 0}
 .steps{line-height:2}.file input{display:none}@media(max-width:850px){.layout{grid-template-columns:1fr}.wrap{padding:12px}}
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.compare-grid video{width:100%;background:#07101d;border-radius:10px;aspect-ratio:16/9}.report-table{width:100%;border-collapse:collapse;margin:14px 0}.report-table th,.report-table td{padding:9px;border-bottom:1px solid #dfe7f2;text-align:right}textarea{width:100%;min-height:65px;border:1px solid #cdd9eb;border-radius:9px;padding:10px;font:inherit}.chart{width:100%;height:170px;background:#f6f9fe;border-radius:10px}.quality{padding:10px;border-radius:9px;background:#eff7f1;margin:10px 0}@media(max-width:850px){.compare-grid{grid-template-columns:1fr}}
 </style>
 <div class="wrap">
   <div class="head"><div><h1>تحليل الحركة بالفيديو · القدم والسباحة</h1><div class="muted">معاينة تفاعلية؛ النموذج يعمل على جهازك ويعرض قياسات تقريبية للمدرب</div></div><span class="badge">مسودة خاصة · لا تُشارك تلقائيًا</span></div>
@@ -38,6 +39,18 @@ button,select,.file{border:1px solid #cdd9eb;border-radius:9px;padding:10px 13px
       <p class="muted">هذه صفحة عرض محلية. الحفظ والاعتماد الفعليان في ملف العضو داخل النظام.</p>
     </section>
   </div>
+  <section class="panel" style="margin-top:18px">
+    <h2>تقرير مقارنة قبل وبعد</h2>
+    <p class="muted">اختر اللاعب وحلل فيديو «قبل»، ثم احفظه هنا. افتح فيديو «بعد» وحلل اللاعب نفسه. حدد لحظة الحركة في كل فيديو لتزامن المقارنة.</p>
+    <div class="bar"><select id="skill"><option value="freestyle">سباحة حرة</option><option value="backstroke">سباحة ظهر</option><option value="shot">تسديد</option><option value="pass">تمرير</option></select><button id="saveBefore">حفظ الفيديو الحالي كـ «قبل»</button><button id="markAfter">تحديد لحظة الحركة في «بعد»</button><button id="sync" class="primary">مزامنة عند اللحظة</button></div>
+    <div class="compare-grid"><div><h3>قبل <button id="markBefore">تحديد لحظة الحركة</button></h3><video id="beforeVideo" controls playsinline></video></div><div><h3>بعد</h3><video id="afterVideo" controls playsinline></video></div></div>
+    <div id="reportStatus" class="quality">لم تُحفظ مقارنة بعد. القياسات تظهر فقط عندما يتتبع النموذج اللاعب بوضوح.</div>
+    <div class="bar"><label>الزاوية في الرسم <select id="chartMetric"><option value="knee_angle">الركبة</option><option value="elbow_angle">المرفق</option><option value="hip_angle">الورك</option><option value="trunk_angle">ميل الجذع</option></select></label></div>
+    <svg id="chart" class="chart" viewBox="0 0 600 170" role="img" aria-label="رسم الزاوية قبل وبعد حول لحظة الحركة"></svg>
+    <table class="report-table"><thead><tr><th>القياس حول لحظة الحركة</th><th>قبل</th><th>بعد</th><th>الفرق</th></tr></thead><tbody id="reportRows"><tr><td colspan="4">حلّل الفيديوين أولًا.</td></tr></tbody></table>
+    <label>ملاحظة المدرب<textarea id="finding" placeholder="ما الذي تغير في الأداء؟"></textarea></label><label>التمرين التالي<textarea id="exercise" placeholder="ما التمرين الذي ستطبقه مع اللاعب؟"></textarea></label>
+    <p class="muted">هذه معاينة محلية فقط. لا تُرسل لولي الأمر؛ المشاركة الفعلية تحتاج حفظ التقرير واعتماد المدرب داخل النظام.</p>
+  </section>
 </div>
 <script type="module">
 import {FilesetResolver, PoseLandmarker} from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs';
@@ -51,6 +64,11 @@ const selectArea = document.getElementById('selectArea');
 const edges = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
 let model = null, enabled = false, last = 0, lastStamp = 0, selectedBox = null, candidates = [], boxes = [], targetLost = false;
 let missedFrames = 0, lastTargetTime = 0, frameRequest = null, timer = null;
+let currentSamples=new Map(), before=null, afterAnchor=0, afterSource=video.src;
+const beforeVideo=document.getElementById('beforeVideo'),afterVideo=document.getElementById('afterVideo');
+const reportStatus=document.getElementById('reportStatus'),reportRows=document.getElementById('reportRows'),chart=document.getElementById('chart');
+let lastSampleBucket=-1;
+const sampleLabels={knee_angle:'زاوية الركبة',elbow_angle:'زاوية المرفق',hip_angle:'زاوية الورك',trunk_angle:'ميل الجذع عن العمودي'};
 const visible = point => point && (point.visibility ?? 1) >= .5 && (point.presence ?? 1) >= .5;
 function poseBox(points) {
   const body = [11,12,23,24].map(index => points[index]).filter(visible);
@@ -115,7 +133,7 @@ function showMeasurements(points) {
   metrics.replaceChildren();
   if (!points) return;
   const seen=points.filter(visible).length;
-  if (seen<8) {status.textContent='اللاعب المحدد غير واضح بما يكفي؛ القياسات متوقفة.';return;}
+  if (seen<8) {recordSample(false);status.textContent='اللاعب المحدد غير واضح بما يكفي؛ القياسات متوقفة.';return;}
   const side=document.getElementById('side').value;
   const ids=side==='left'?[11,13,15,23,25,27]:[12,14,16,24,26,28];
   const ratio=video.videoWidth/video.videoHeight;
@@ -125,12 +143,59 @@ function showMeasurements(points) {
     : [['زاوية المرفق',angle(points[ids[0]],points[ids[1]],points[ids[2]],ratio)],['زاوية الورك',angle(points[ids[0]],points[ids[3]],points[ids[4]],ratio)]];
   if (visible(points[ids[0]]) && visible(points[ids[3]]))
     values.push(['ميل الجذع عن العمودي',Math.round(Math.atan2(Math.abs(points[ids[0]].x-points[ids[3]].x)*ratio,Math.abs(points[ids[0]].y-points[ids[3]].y))*180/Math.PI)]);
+  recordSample(seen>=8,values);
   for (const [label,value] of values) {
     if (value===null) continue;
     const el=document.createElement('div');el.className='metric';el.textContent=label;
     const strong=document.createElement('strong');strong.textContent=value+'°';el.appendChild(strong);metrics.appendChild(el);
   }
   status.textContent=`اللاعب المحدد · نقاط ظاهرة: ${seen} من 33 · راجع موضع الخطوط قبل اعتماد أي قياس.`;
+}
+function recordSample(good,values=[]) {
+  const bucket=Math.floor(video.currentTime*4);
+  if (bucket===lastSampleBucket && currentSamples.has(bucket)) return;
+  lastSampleBucket=bucket;
+  const names={'زاوية الركبة':'knee_angle','زاوية المرفق':'elbow_angle','زاوية الورك':'hip_angle','ميل الجذع عن العمودي':'trunk_angle'};
+  const measurements=Object.fromEntries(values.filter(([,value])=>Number.isFinite(value)).map(([name,value])=>[names[name],value]));
+  if (currentSamples.size<3000 || currentSamples.has(bucket)) currentSamples.set(bucket,{time:bucket/4,valid:good && Object.keys(measurements).length>0,metrics:measurements});
+  renderReport();
+}
+function summary(samples,anchor) {
+  const nearby=[...samples.values()].filter(item=>Math.abs(item.time-anchor)<=1);
+  const valid=nearby.filter(item=>item.valid);
+  const coverage=Math.min(1,valid.length/8);
+  const result={coverage,usable:valid.length>=5 && coverage>=.6,metrics:{}};
+  for (const key of Object.keys(sampleLabels)) {
+    const values=valid.map(item=>item.metrics[key]).filter(Number.isFinite).sort((a,b)=>a-b);
+    if (values.length>=3) result.metrics[key]=values[Math.floor(values.length/2)];
+  }
+  return result;
+}
+function renderReport() {
+  if (!before || !currentSamples.size || before.src===video.src) return;
+  if(before.sport!==document.getElementById('sport').value || before.skill!==document.getElementById('skill').value){
+    reportStatus.textContent='اختر الرياضة والمهارة نفسها في فيديو «قبل» و«بعد».';reportRows.innerHTML='<tr><td colspan="4">الرياضة أو المهارة مختلفة.</td></tr>';chart.replaceChildren();return;
+  }
+  const old=summary(before.samples,before.anchor),recent=summary(currentSamples,afterAnchor);
+  reportStatus.textContent=`تغطية التتبع حول لحظة الحركة: قبل ${Math.round(old.coverage*100)}٪ · بعد ${Math.round(recent.coverage*100)}٪. ${old.usable&&recent.usable?'يمكن مراجعة فرق الزوايا؛ يحدد المدرب معنى التغير.':'القياس غير كافٍ للمقارنة الرقمية. اختر لقطة أوضح وأعد التتبع.'}`;
+  reportStatus.style.background=old.usable&&recent.usable?'#eff7f1':'#fff5dc';
+  reportRows.replaceChildren();
+  for (const [key,label] of Object.entries(sampleLabels)) {
+    if (!(key in old.metrics) && !(key in recent.metrics)) continue;
+    const a=old.metrics[key],b=recent.metrics[key],row=document.createElement('tr');
+    const cells=[label,old.usable&&Number.isFinite(a)?`${a}°`:'—',recent.usable&&Number.isFinite(b)?`${b}°`:'—',old.usable&&recent.usable&&Number.isFinite(a)&&Number.isFinite(b)?`${b-a>0?'+':''}${b-a}°`:'—'];
+    for (const value of cells) {const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);} reportRows.appendChild(row);
+  }
+  if (!reportRows.children.length) reportRows.innerHTML='<tr><td colspan="4">لا توجد زوايا كافية في نافذة الحركة المختارة.</td></tr>';
+  const key=document.getElementById('chartMetric').value;
+  chart.replaceChildren();
+  for (const [samples,anchor,color] of [[before.samples,before.anchor,'#d68912'],[currentSamples,afterAnchor,'#1750bd']]) {
+    const data=[...samples.values()].filter(item=>item.valid&&Number.isFinite(item.metrics[key])&&Math.abs(item.time-anchor)<=2).sort((a,b)=>a.time-b.time);
+    let segment=[];
+    const drawSegment=()=>{if(segment.length<2)return;const path=document.createElementNS('http://www.w3.org/2000/svg','polyline');path.setAttribute('points',segment.map(item=>`${300+(item.time-anchor)*135},${155-item.metrics[key]*.72}`).join(' '));path.setAttribute('fill','none');path.setAttribute('stroke',color);path.setAttribute('stroke-width','3');chart.appendChild(path);};
+    for(const item of data){if(segment.length&&item.time-segment.at(-1).time>.38){drawSegment();segment=[];}segment.push(item);}drawSegment();
+  }
+  const axis=document.createElementNS('http://www.w3.org/2000/svg','line');axis.setAttribute('x1','300');axis.setAttribute('x2','300');axis.setAttribute('y1','0');axis.setAttribute('y2','170');axis.setAttribute('stroke','#93a4bb');axis.setAttribute('stroke-dasharray','4 4');chart.prepend(axis);
 }
 function frame(force=false) {
   if (!enabled || !model || video.readyState<2) return;
@@ -151,6 +216,7 @@ function frame(force=false) {
     draw(index===null?null:candidates[index],index);
     if (index!==null) showMeasurements(candidates[index]);
     else {
+      if (selectedBox) recordSample(false);
       metrics.replaceChildren();
       status.textContent=targetLost?'فُقد اللاعب أو اختلط بغيره؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.'
         :selectedBox?'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.'
@@ -205,8 +271,29 @@ document.getElementById('file').onchange=event=>{
   const file=event.target.files?.[0];
   if (!file) return;
   selectedBox=null;targetLost=false;missedFrames=0;candidates=[];boxes=[];metrics.replaceChildren();
+  currentSamples=new Map();lastSampleBucket=-1;afterAnchor=0;
   video.src=URL.createObjectURL(file);
+  afterSource=video.src;afterVideo.src=afterSource;
   status.textContent='تم فتح الفيديو محليًا. شغّله ثم اختر اللاعب.';
 };
+document.getElementById('saveBefore').onclick=()=>{
+  if(currentSamples.size<5){reportStatus.textContent='حلّل فيديو «قبل» مع اختيار اللاعب أولًا.';return;}
+  before={src:video.src,samples:new Map(currentSamples),anchor:video.currentTime,sport:document.getElementById('sport').value,skill:document.getElementById('skill').value};
+  beforeVideo.src=before.src;reportStatus.textContent='حُفظ فيديو «قبل» محليًا. افتح فيديو «بعد» واختر اللاعب، ثم حدد لحظة الحركة.';renderReport();
+};
+document.getElementById('markBefore').onclick=()=>{if(!before)return;before.anchor=beforeVideo.currentTime;renderReport();};
+document.getElementById('markAfter').onclick=()=>{afterAnchor=video.currentTime;afterVideo.currentTime=afterAnchor;renderReport();};
+document.getElementById('chartMetric').onchange=renderReport;
+document.getElementById('sync').onclick=()=>{
+  if(!before||before.src===afterSource){reportStatus.textContent='افتح فيديو «بعد» مختلفًا أولًا.';return;}
+  beforeVideo.pause();afterVideo.pause();beforeVideo.currentTime=before.anchor;afterVideo.currentTime=afterAnchor;
+};
+beforeVideo.onplay=()=>{if(!afterVideo.src)return;afterVideo.currentTime=Math.max(0,afterAnchor+beforeVideo.currentTime-before.anchor);afterVideo.play().catch(()=>{});};
+beforeVideo.onpause=()=>afterVideo.pause();
+afterVideo.onplay=()=>{if(!beforeVideo.src)return;beforeVideo.currentTime=Math.max(0,before.anchor+afterVideo.currentTime-afterAnchor);beforeVideo.play().catch(()=>{});};
+afterVideo.onpause=()=>beforeVideo.pause();
+document.getElementById('sport').onchange=()=>{currentSamples=new Map();lastSampleBucket=-1;};
+document.getElementById('side').onchange=()=>{currentSamples=new Map();lastSampleBucket=-1;};
+document.getElementById('skill').onchange=renderReport;
 </script>
 </html>

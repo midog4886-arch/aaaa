@@ -6,6 +6,7 @@ import sys
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -56,3 +57,28 @@ def test_sport_and_pose_metrics_are_validated_before_saving():
     assert review.model_dump()["markers"][0]["pose_metrics"] == {"knee_angle": 92.0}
     with pytest.raises(ValidationError):
         reviews.ReviewUpdate(title="تسديدة", sport="basketball")
+    with pytest.raises(ValidationError):
+        reviews.ReviewUpdate(title="تسديدة", sport="football", skill="swimming_freestyle")
+
+
+def test_approval_rejects_comparison_with_insufficient_tracking(monkeypatch):
+    current = {"id": "review-2", "member_id": "child-1", "sport": "swimming", "skill": "swimming_freestyle",
+               "parent_summary": "ملخص", "samples": [], "comparison": {
+                   "baseline_review_id": "review-1", "baseline_event_time": 1.0, "current_event_time": 1.0,
+                   "coach_finding": "ملاحظة", "next_exercise": "تمرين", "share_with_parent": True}}
+    baseline = {"id": "review-1", "member_id": "child-1", "sport": "swimming", "skill": "swimming_freestyle",
+                "status": "approved", "samples": []}
+
+    async def staff_review(*_args, **_kwargs):
+        return current
+
+    class Collection:
+        async def find_one(self, *_args, **_kwargs):
+            return baseline
+
+    monkeypatch.setattr(reviews, "_staff_review", staff_review)
+    monkeypatch.setattr(reviews, "db", SimpleNamespace(member_video_reviews=Collection()))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(reviews.set_review_status("review-2", reviews.ReviewStatus(status="approved"), {"user_id": "coach"}))
+    assert error.value.status_code == 400
+    assert "تتبّع" in error.value.detail

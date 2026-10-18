@@ -12,12 +12,13 @@ from typing import Literal
 import jwt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from database import JWT_ALGORITHM, JWT_SECRET, db, _raw_client
 from routes.member_portal import get_current_member
 from routes.members import _scoped_member_query
 from utils.auth import get_current_user, require_any_permission, require_permission
+from utils.performance_comparison import comparison_summary
 from utils.tenant import DEFAULT_TENANT_SLUG, get_current_tenant_slug, slug_to_db_name
 
 
@@ -45,12 +46,41 @@ class Marker(BaseModel):
     pose_side: Literal["left", "right"] | None = None
 
 
+Skill = Literal["general", "swimming_freestyle", "swimming_backstroke", "swimming_breaststroke",
+                "swimming_butterfly", "football_shot", "football_pass", "football_dribble", "football_run"]
+
+
+class AnalysisSample(BaseModel):
+    time: float = Field(ge=0, le=36000)
+    quality: Literal["valid", "unreliable", "lost"]
+    seen: int = Field(ge=0, le=33)
+    metrics: dict[str, float] = Field(default_factory=dict, max_length=3)
+
+
+class Comparison(BaseModel):
+    baseline_review_id: str = Field(min_length=1, max_length=80)
+    current_event_time: float = Field(ge=0, le=36000)
+    baseline_event_time: float = Field(ge=0, le=36000)
+    coach_finding: str = Field(default="", max_length=1000)
+    next_exercise: str = Field(default="", max_length=500)
+    share_with_parent: bool = False
+
+
 class ReviewUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     sport: Literal["football", "swimming"] = "swimming"
+    skill: Skill = "general"
     coach_summary: str = Field(default="", max_length=2000)
     parent_summary: str = Field(default="", max_length=2000)
     markers: list[Marker] = Field(default_factory=list, max_length=100)
+    samples: list[AnalysisSample] = Field(default_factory=list, max_length=3000)
+    comparison: Comparison | None = None
+
+    @model_validator(mode="after")
+    def skill_matches_sport(self):
+        if self.skill != "general" and not self.skill.startswith(f"{self.sport}_"):
+            raise ValueError("المهارة لا تتبع الرياضة المختارة")
+        return self
 
 
 class ReviewStatus(BaseModel):
@@ -87,8 +117,11 @@ async def list_member_reviews(member_id: str, user: dict = Depends(get_current_u
 
 
 @router.post("/member/{member_id}/upload")
-async def upload_member_review(member_id: str, file: UploadFile = File(...), sport: Literal["football", "swimming"] = Form("swimming"), user: dict = Depends(get_current_user)):
+async def upload_member_review(member_id: str, file: UploadFile = File(...), sport: Literal["football", "swimming"] = Form("swimming"),
+                               skill: Skill = Form("general"), user: dict = Depends(get_current_user)):
     member = await _staff_member(member_id, user, edit=True)
+    if skill != "general" and not skill.startswith(f"{sport}_"):
+        raise HTTPException(status_code=400, detail="المهارة لا تتبع الرياضة المختارة")
     if await db.member_video_reviews.count_documents({"member_id": member_id}) >= MAX_MEMBER_VIDEOS:
         raise HTTPException(status_code=409, detail="وصل العضو إلى حد 20 فيديو؛ احذف فيديو قديمًا أولًا")
     if not (file.filename or "").lower().endswith(".mp4"):
@@ -117,9 +150,10 @@ async def upload_member_review(member_id: str, file: UploadFile = File(...), spo
             "id": uuid.uuid4().hex, "member_id": member_id, "member_name": member.get("name_ar") or member.get("name") or "",
             "branch_id": member.get("branch_id"),
             "tenant_slug": tenant, "storage_name": storage_name, "size": total,
-            "title": Path(file.filename).stem[:120] or "تحليل أداء", "sport": sport,
+            "title": Path(file.filename).stem[:120] or "تحليل أداء", "sport": sport, "skill": skill,
             "coach_summary": "", "parent_summary": "",
-            "markers": [], "status": "draft", "created_at": now, "updated_at": now,
+            "markers": [], "samples": [], "comparison": None,
+            "status": "draft", "created_at": now, "updated_at": now,
             "created_by": user.get("user_id"), "approved_at": None,
         }
         await db.member_video_reviews.insert_one(doc)
@@ -134,6 +168,15 @@ async def update_review(review_id: str, payload: ReviewUpdate, user: dict = Depe
     doc = await _staff_review(review_id, user, edit=True)
     if doc["status"] != "draft":
         raise HTTPException(status_code=409, detail="أعد التحليل إلى مسودة قبل التعديل")
+    if payload.skill != "general" and not payload.skill.startswith(f"{payload.sport}_"):
+        raise HTTPException(status_code=400, detail="المهارة لا تتبع الرياضة المختارة")
+    if payload.comparison:
+        if payload.comparison.baseline_review_id == review_id:
+            raise HTTPException(status_code=400, detail="اختر فيديو سابقًا مختلفًا للمقارنة")
+        baseline = await db.member_video_reviews.find_one({"id": payload.comparison.baseline_review_id,
+                                                            "member_id": doc["member_id"]}, {"_id": 0})
+        if not baseline or baseline.get("sport", "swimming") != payload.sport or baseline.get("skill", "general") != payload.skill:
+            raise HTTPException(status_code=400, detail="المقارنة تتطلب نفس العضو والرياضة والمهارة")
     data = payload.model_dump()
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.member_video_reviews.update_one({"id": review_id, "status": "draft"}, {"$set": data})
@@ -145,6 +188,18 @@ async def set_review_status(review_id: str, payload: ReviewStatus, user: dict = 
     doc = await _staff_review(review_id, user, edit=True)
     if payload.status == "approved" and not doc.get("parent_summary", "").strip():
         raise HTTPException(status_code=400, detail="اكتب ملخص ولي الأمر قبل الاعتماد")
+    comparison = doc.get("comparison")
+    if payload.status == "approved" and comparison and comparison.get("share_with_parent"):
+        baseline = await db.member_video_reviews.find_one({"id": comparison["baseline_review_id"],
+                                                            "member_id": doc["member_id"], "status": "approved"}, {"_id": 0})
+        if not baseline:
+            raise HTTPException(status_code=400, detail="اعتمد فيديو المقارنة السابق أولًا")
+        if baseline.get("sport", "swimming") != doc.get("sport", "swimming") or baseline.get("skill", "general") != doc.get("skill", "general"):
+            raise HTTPException(status_code=400, detail="المقارنة تتطلب نفس الرياضة والمهارة")
+        if not comparison.get("coach_finding", "").strip() or not comparison.get("next_exercise", "").strip():
+            raise HTTPException(status_code=400, detail="أكمل نتيجة المقارنة والتمرين التالي")
+        if not comparison_summary(doc, baseline, comparison)["usable"]:
+            raise HTTPException(status_code=400, detail="تتبّع اللاعب غير كافٍ حول لحظتي المقارنة؛ لا يمكن مشاركة أرقام غير موثوقة")
     now = datetime.now(timezone.utc).isoformat()
     changes = {"status": payload.status, "updated_at": now, "approved_at": now if payload.status == "approved" else None,
                "approved_by": user.get("user_id") if payload.status == "approved" else None}
@@ -165,13 +220,35 @@ async def portal_reviews(member: dict = Depends(get_current_member)):
     ids = member.get("_linked_member_ids", [member["id"]])
     docs = await db.member_video_reviews.find({"member_id": {"$in": ids}, "status": "approved"},
                                                {"_id": 0}).sort("approved_at", -1).to_list(30)
-    return [{
-        "id": doc["id"], "member_id": doc["member_id"], "member_name": doc.get("member_name", ""),
-        "title": doc.get("title", ""), "parent_summary": doc.get("parent_summary", ""),
-        "sport": doc.get("sport", "swimming"),
-        "approved_at": doc.get("approved_at"),
-        "markers": [marker for marker in doc.get("markers", []) if marker.get("share_with_parent")],
-    } for doc in docs]
+    approved_by_id = {doc["id"]: doc for doc in docs}
+    result = []
+    for doc in docs:
+        item = {
+            "id": doc["id"], "member_id": doc["member_id"], "member_name": doc.get("member_name", ""),
+            "title": doc.get("title", ""), "parent_summary": doc.get("parent_summary", ""),
+            "sport": doc.get("sport", "swimming"), "skill": doc.get("skill", "general"),
+            "approved_at": doc.get("approved_at"),
+            "markers": [marker for marker in doc.get("markers", []) if marker.get("share_with_parent")],
+        }
+        comparison = doc.get("comparison")
+        baseline = approved_by_id.get(comparison.get("baseline_review_id")) if comparison else None
+        if comparison and not baseline and comparison.get("share_with_parent"):
+            baseline = await db.member_video_reviews.find_one({"id": comparison["baseline_review_id"],
+                                                                 "member_id": doc["member_id"], "status": "approved"}, {"_id": 0})
+        if (baseline and baseline.get("member_id") == doc["member_id"]
+                and baseline.get("sport", "swimming") == doc.get("sport", "swimming")
+                and baseline.get("skill", "general") == doc.get("skill", "general")
+                and comparison.get("share_with_parent")):
+            summary = comparison_summary(doc, baseline, comparison)
+            if summary["usable"]:
+                item["comparison"] = {"baseline_review_id": baseline["id"],
+                                      "coach_finding": comparison.get("coach_finding", ""),
+                                      "next_exercise": comparison.get("next_exercise", ""),
+                                      "current_event_time": comparison["current_event_time"],
+                                      "baseline_event_time": comparison["baseline_event_time"],
+                                      "summary": summary}
+        result.append(item)
+    return result
 
 
 @router.get("/{review_id}/play-ticket")

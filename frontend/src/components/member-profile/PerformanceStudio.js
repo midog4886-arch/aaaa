@@ -6,6 +6,8 @@ import { Textarea } from '../ui/textarea';
 import { memberVideoReviewsAPI } from '../../services/api';
 import { drawPose, poseMetrics } from '../../utils/poseAnalysis';
 import { matchPose, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
+import { comparisonReport, metricLabel, SKILLS } from '../../utils/performanceReport';
+import ComparisonChart from './ComparisonChart';
 
 const timeLabel = (seconds) => {
   const safe = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -28,6 +30,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const [dirty, setDirty] = useState(false);
   const [drawing, setDrawing] = useState(false);
   const [uploadSport, setUploadSport] = useState('swimming');
+  const [uploadSkill, setUploadSkill] = useState('swimming_freestyle');
+  const [sampleCount, setSampleCount] = useState(0);
+  const [chartMetric, setChartMetric] = useState('elbow_angle');
   const [poseEnabled, setPoseEnabled] = useState(false);
   const [poseLoading, setPoseLoading] = useState(false);
   const [poseError, setPoseError] = useState('');
@@ -39,6 +44,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const poseModelRef = useRef(null);
   const targetRef = useRef(null);
   const candidatesRef = useRef([]);
+  const samplesRef = useRef(new Map());
   const targetMissesRef = useRef(0);
   const lastTargetTimeRef = useRef(0);
   const analyzeRef = useRef(null);
@@ -68,16 +74,26 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   }, [refresh]);
 
   const selected = reviews.find(row => row.id === selectedId);
+  const baseline = reviews.find(row => row.id === compareId);
   const activeMarker = draft?.markers?.find(row => row.id === activeMarkerId);
+  const currentSamples = [...samplesRef.current.values()].sort((a, b) => a.time - b.time);
+  const report = draft?.comparison && baseline
+    ? comparisonReport(currentSamples, baseline.samples || [], draft.comparison, draft.sport) : null;
 
   useEffect(() => {
     setDraft(selected ? {
       title: selected.title || '',
       sport: selected.sport || 'swimming',
+      skill: selected.skill || 'general',
       coach_summary: selected.coach_summary || '',
       parent_summary: selected.parent_summary || '',
       markers: (selected.markers || []).map(marker => ({ ...marker })),
+      comparison: selected.comparison || null,
     } : null);
+    samplesRef.current = new Map((selected?.samples || []).map(sample => [Math.round(sample.time * 4), sample]));
+    setSampleCount(samplesRef.current.size);
+    setCompareId(selected?.comparison?.baseline_review_id || '');
+    setChartMetric(selected?.sport === 'football' ? 'knee_angle' : 'elbow_angle');
     setActiveMarkerId('');
     setDirty(false);
     setDrawing(false);
@@ -152,6 +168,22 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       const seen = points?.filter(point => (point.visibility ?? 1) >= 0.5).length || 0;
       const metrics = seen >= 8 ? poseMetrics(points, draft.sport, poseSide, video.videoWidth / video.videoHeight) : null;
       const result = { metrics, seen, time: video.currentTime, detected: boxes.filter(Boolean).length, selected: selectedIndex !== null };
+      if (canEdit && selected?.status === 'draft' && Number.isFinite(video.currentTime)) {
+        const bucket = Math.round(video.currentTime * 4);
+        if (bucket >= 0 && bucket <= 36000 * 4 && samplesRef.current.size < 3000) {
+          const primary = draft.sport === 'football' ? ['knee_angle', 'hip_angle'] : ['elbow_angle', 'hip_angle'];
+          const quality = selectedIndex === null ? 'lost'
+            : primary.every(key => Number.isFinite(metrics?.[key])) ? 'valid' : 'unreliable';
+          const sample = { time: Math.round(video.currentTime * 4) / 4, quality, seen,
+            metrics: Object.fromEntries(Object.entries(metrics || {}).filter(([, value]) => Number.isFinite(value))) };
+          const previous = samplesRef.current.get(bucket);
+          if (!previous || previous.quality !== sample.quality || previous.seen !== sample.seen) {
+            samplesRef.current.set(bucket, sample);
+            setSampleCount(samplesRef.current.size);
+            setDirty(true);
+          }
+        }
+      }
       setPoseInfo(result);
       return result;
     } catch (error) {
@@ -258,7 +290,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     }
     setUploading(true);
     try {
-      const response = await memberVideoReviewsAPI.upload(member.id, file, uploadSport);
+      const response = await memberVideoReviewsAPI.upload(member.id, file, uploadSport, uploadSkill);
       await refresh();
       setSelectedId(response.data.id);
       toast.success(ar ? 'تم رفع الفيديو كمسودة خاصة' : 'Video uploaded as a private draft');
@@ -287,7 +319,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (!selected || !draft) return;
     setBusy(true);
     try {
-      const response = await memberVideoReviewsAPI.update(selected.id, draft);
+      const response = await memberVideoReviewsAPI.update(selected.id, { ...draft, samples: [...samplesRef.current.values()].sort((a, b) => a.time - b.time) });
       setReviews(current => current.map(row => row.id === selected.id ? response.data : row));
       setDirty(false);
       toast.success(ar ? 'تم حفظ تحليل المدرب' : 'Coach review saved');
@@ -338,6 +370,23 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (videoRef.current) seek(Math.max(0, videoRef.current.currentTime + direction / 30));
   };
 
+  const syncComparison = (jumpToEvent = false) => {
+    const current = videoRef.current;
+    const before = comparisonRef.current;
+    const comparison = draft?.comparison;
+    if (!current || !before || !comparison || !Number.isFinite(before.duration)) return;
+    if (jumpToEvent) current.currentTime = comparison.current_event_time;
+    const desired = Math.max(0, Math.min(before.duration,
+      comparison.baseline_event_time + current.currentTime - comparison.current_event_time));
+    if (jumpToEvent || Math.abs(before.currentTime - desired) > 0.25) before.currentTime = desired;
+    if (current.paused) before.pause();
+  };
+
+  const updateComparison = patch => {
+    if (!draft?.comparison) return;
+    change({ comparison: { ...draft.comparison, ...patch } });
+  };
+
   const pointInOverlay = (event) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return { x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
@@ -350,9 +399,12 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       <p className="mt-1">{ar ? 'الفيديو ومسودة التحليل خاصان بالمدربين. لا يرى ولي الأمر سوى التقرير بعد اعتماده.' : 'Videos and drafts stay private to staff. Parents only see approved reports.'}</p>
     </div>
     <div className="flex flex-wrap items-center gap-2">
-      {canEdit && <select aria-label={ar ? 'رياضة الفيديو الجديد' : 'Sport for new video'} value={uploadSport} onChange={event => setUploadSport(event.target.value)} className="rounded-md border bg-white p-2 text-sm">
+      {canEdit && <select aria-label={ar ? 'رياضة الفيديو الجديد' : 'Sport for new video'} value={uploadSport} onChange={event => { const sport = event.target.value; setUploadSport(sport); setUploadSkill(SKILLS[sport][0][0]); }} className="rounded-md border bg-white p-2 text-sm">
         <option value="swimming">{ar ? 'سباحة' : 'Swimming'}</option>
         <option value="football">{ar ? 'كرة قدم' : 'Football'}</option>
+      </select>}
+      {canEdit && <select aria-label={ar ? 'مهارة الفيديو الجديد' : 'Skill for new video'} value={uploadSkill} onChange={event => setUploadSkill(event.target.value)} className="rounded-md border bg-white p-2 text-sm">
+        {SKILLS[uploadSport].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>}
       {canEdit && <label className="inline-flex cursor-pointer items-center rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white">
         {uploading ? (ar ? 'جارٍ الرفع...' : 'Uploading...') : (ar ? 'رفع فيديو MP4' : 'Upload MP4')}
@@ -362,9 +414,17 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
         <option value="">{ar ? 'اختر فيديو' : 'Choose video'}</option>
         {reviews.map(row => <option key={row.id} value={row.id}>{row.title} · {row.sport === 'football' ? (ar ? 'قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')} · {row.status === 'approved' ? (ar ? 'معتمد' : 'Approved') : (ar ? 'مسودة' : 'Draft')}</option>)}
       </select>
-      {selected && <select aria-label={ar ? 'فيديو المقارنة' : 'Comparison video'} value={compareId} onChange={event => setCompareId(event.target.value)} className="min-w-[220px] rounded-md border bg-white p-2 text-sm">
+      {selected && <select aria-label={ar ? 'فيديو المقارنة' : 'Comparison video'} value={compareId} disabled={!canEdit || selected.status !== 'draft'} onChange={event => {
+        const id = event.target.value;
+        setCompareId(id);
+        change({ comparison: id ? {
+          baseline_review_id: id, current_event_time: 0, baseline_event_time: 0,
+          coach_finding: '', next_exercise: '', share_with_parent: false,
+        } : null });
+      }} className="min-w-[220px] rounded-md border bg-white p-2 text-sm">
         <option value="">{ar ? 'مقارنة مع فيديو سابق' : 'Compare with another video'}</option>
-        {reviews.filter(row => row.id !== selectedId).map(row => <option key={row.id} value={row.id}>{row.title}</option>)}
+        {reviews.filter(row => row.id !== selectedId && row.sport === draft?.sport && (row.skill || 'general') === draft?.skill)
+          .map(row => <option key={row.id} value={row.id}>{row.title} · {row.created_at?.slice(0, 10)}</option>)}
       </select>}
     </div>
     {!selected && <p className="rounded-lg border p-8 text-center text-muted-foreground">{ar ? 'لا توجد فيديوهات تحليل لهذا العضو بعد.' : 'No performance review videos yet.'}</p>}
@@ -372,7 +432,10 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       <div className={`grid gap-3 ${compareId ? 'lg:grid-cols-2' : ''}`}>
         <div className="space-y-2">
           <div className="relative overflow-hidden rounded-lg bg-black">
-            {sourceUrl && <video ref={videoRef} src={sourceUrl} controls playsInline preload="metadata" className="aspect-video w-full object-contain" onTimeUpdate={() => { if (poseEnabled) analyzeFrame(); }} onSeeked={resetPlayerOnSeek} />}
+            {sourceUrl && <video ref={videoRef} src={sourceUrl} controls playsInline preload="metadata" className="aspect-video w-full object-contain"
+              onPlay={() => { if (comparisonRef.current && draft?.comparison) { comparisonRef.current.playbackRate = videoRef.current.playbackRate; syncComparison(); comparisonRef.current.play().catch(() => {}); } }}
+              onPause={() => comparisonRef.current?.pause()}
+              onTimeUpdate={() => { if (poseEnabled) analyzeFrame(); if (draft?.comparison) syncComparison(); }} onSeeked={resetPlayerOnSeek} />}
             <canvas ref={poseCanvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
             {poseEnabled && !drawing && <div className="absolute inset-x-0 top-0 bottom-12 cursor-crosshair" onClick={selectPlayer} role="button" tabIndex={0}
               aria-label={ar ? 'اضغط على إطار اللاعب لاختياره' : 'Click a person box to select them'} />}
@@ -387,7 +450,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => step(-1)}>{ar ? 'إطار للخلف' : 'Previous frame'}</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => step(1)}>{ar ? 'إطار للأمام' : 'Next frame'}</Button>
-            {[0.25, 0.5, 1].map(rate => <Button type="button" key={rate} variant="outline" size="sm" onClick={() => { if (videoRef.current) videoRef.current.playbackRate = rate; }}>{rate}×</Button>)}
+            {[0.25, 0.5, 1].map(rate => <Button type="button" key={rate} variant="outline" size="sm" onClick={() => { if (videoRef.current) videoRef.current.playbackRate = rate; if (comparisonRef.current) comparisonRef.current.playbackRate = rate; }}>{rate}×</Button>)}
             {canEdit && selected.status === 'draft' && <Button type="button" size="sm" onClick={addMarker}>{ar ? 'حدد لقطة' : 'Mark moment'}</Button>}
           </div>
           <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
@@ -412,9 +475,54 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
         </div>
         {compareId && <div className="space-y-2">
           {compareUrl && <video ref={comparisonRef} src={compareUrl} controls playsInline preload="metadata" className="aspect-video w-full rounded-lg bg-black" />}
-          <Button type="button" variant="outline" size="sm" onClick={() => { if (videoRef.current && comparisonRef.current) { comparisonRef.current.currentTime = videoRef.current.currentTime; comparisonRef.current.pause(); } }}>{ar ? 'زامن وقت الفيديوين' : 'Sync video times'}</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => syncComparison(true)}>{ar ? 'اذهب للحظة الحركة في الفيديوين' : 'Jump to matched event'}</Button>
         </div>}
       </div>
+      <section className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold">{ar ? 'تقرير الأداء قبل / بعد' : 'Before / after performance report'}</h3>
+          <span className="text-xs text-slate-600">{ar ? `عينات الحركة المحفوظة: ${sampleCount}` : `Recorded motion samples: ${sampleCount}`}</span>
+        </div>
+        <p className="text-xs text-slate-600">{ar ? 'اختر فيديوين لنفس العضو والرياضة والمهارة. شغّل تتبّع اللاعب في كل فيديو واحفظ العينات، ثم حدد لحظة الحركة نفسها في الاثنين.' : 'Compare the same member, sport, and skill. Track and save both videos, then mark the matching movement event.'}</p>
+        {draft.comparison && baseline && <>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-lg border bg-white p-3 text-sm">
+              <strong>{ar ? 'قبل · الفيديو السابق' : 'Before · baseline'}</strong>
+              <p className="text-xs text-slate-600">{baseline.title}</p>
+              <p className="mt-1">{ar ? 'لحظة الحركة:' : 'Event:'} {timeLabel(draft.comparison.baseline_event_time)}</p>
+              {canEdit && selected.status === 'draft' && <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => updateComparison({ baseline_event_time: Number((comparisonRef.current?.currentTime || 0).toFixed(2)) })}>{ar ? 'احفظ هذه اللحظة من الفيديو السابق' : 'Mark baseline event'}</Button>}
+            </div>
+            <div className="rounded-lg border bg-white p-3 text-sm">
+              <strong>{ar ? 'بعد · الفيديو الحالي' : 'After · current'}</strong>
+              <p className="text-xs text-slate-600">{selected.title}</p>
+              <p className="mt-1">{ar ? 'لحظة الحركة:' : 'Event:'} {timeLabel(draft.comparison.current_event_time)}</p>
+              {canEdit && selected.status === 'draft' && <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => updateComparison({ current_event_time: Number((videoRef.current?.currentTime || 0).toFixed(2)) })}>{ar ? 'احفظ هذه اللحظة من الفيديو الحالي' : 'Mark current event'}</Button>}
+            </div>
+          </div>
+          {report && <>
+            <div className="grid gap-2 sm:grid-cols-2 text-sm">
+              <div className={`rounded-lg border p-3 ${report.before.usable ? 'bg-emerald-50' : 'bg-amber-50'}`}>{ar ? 'وضوح التتبّع قبل' : 'Baseline tracking coverage'}: {Math.round(report.before.coverage * 100)}% · {report.before.validSamples} {ar ? 'عينات صالحة' : 'valid samples'}</div>
+              <div className={`rounded-lg border p-3 ${report.after.usable ? 'bg-emerald-50' : 'bg-amber-50'}`}>{ar ? 'وضوح التتبّع بعد' : 'Current tracking coverage'}: {Math.round(report.after.coverage * 100)}% · {report.after.validSamples} {ar ? 'عينات صالحة' : 'valid samples'}</div>
+            </div>
+            {!report.usable && <p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-900">{ar ? 'المقارنة الرقمية غير صالحة للمشاركة: يحتاج كل فيديو إلى تتبّع واضح حول لحظة الحركة. لن نملأ الفجوات بقيم تخمينية.' : 'Not enough reliable tracking around both events. Missing values are not estimated.'}</p>}
+            <div className="overflow-x-auto rounded-lg border bg-white">
+              <table className="w-full text-sm"><thead><tr className="bg-slate-50"><th className="p-2 text-start">{ar ? 'القياس' : 'Metric'}</th><th className="p-2">{ar ? 'قبل' : 'Before'}</th><th className="p-2">{ar ? 'بعد' : 'After'}</th><th className="p-2">{ar ? 'الفرق' : 'Change'}</th></tr></thead><tbody>
+                {(draft.sport === 'football' ? ['knee_angle', 'hip_angle', 'body_tilt'] : ['elbow_angle', 'hip_angle', 'body_tilt']).map(key => <tr key={key} className="border-t"><td className="p-2">{metricLabel(key)}</td><td className="p-2 text-center">{report.before.values[key] == null ? '—' : `${report.before.values[key]}°`}</td><td className="p-2 text-center">{report.after.values[key] == null ? '—' : `${report.after.values[key]}°`}</td><td className="p-2 text-center">{report.deltas[key] == null ? '—' : `${report.deltas[key] > 0 ? '+' : ''}${report.deltas[key]}°`}</td></tr>)}
+              </tbody></table>
+            </div>
+            <select aria-label={ar ? 'زاوية الرسم البياني' : 'Chart metric'} value={chartMetric} onChange={event => setChartMetric(event.target.value)} className="rounded-md border bg-white p-2 text-sm">
+              {(draft.sport === 'football' ? ['knee_angle', 'hip_angle', 'body_tilt'] : ['elbow_angle', 'hip_angle', 'body_tilt']).map(key => <option key={key} value={key}>{metricLabel(key)}</option>)}
+            </select>
+            <ComparisonChart beforeSamples={baseline.samples || []} afterSamples={currentSamples} beforeAnchor={draft.comparison.baseline_event_time} afterAnchor={draft.comparison.current_event_time} metric={chartMetric} />
+          </>}
+          <label className="block text-sm font-medium">{ar ? 'استنتاج المدرب من المقارنة' : 'Coach comparison finding'}</label>
+          <Textarea value={draft.comparison.coach_finding} disabled={!canEdit || selected.status !== 'draft'} maxLength={1000} onChange={event => updateComparison({ coach_finding: event.target.value })} placeholder={ar ? 'ما تغيّر في الحركة؟ لا تصف فرق الزاوية تلقائيًا بأنه تحسن.' : 'What changed in the movement?'} />
+          <label className="block text-sm font-medium">{ar ? 'التمرين التالي المقترح' : 'Next training exercise'}</label>
+          <Textarea value={draft.comparison.next_exercise} disabled={!canEdit || selected.status !== 'draft'} maxLength={500} onChange={event => updateComparison({ next_exercise: event.target.value })} />
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.comparison.share_with_parent} disabled={!canEdit || selected.status !== 'draft' || !report?.usable || baseline.status !== 'approved'} onChange={event => updateComparison({ share_with_parent: event.target.checked })} />{ar ? 'أظهر المقارنة المعتمدة لولي الأمر' : 'Share approved comparison with parent'}</label>
+          {baseline.status !== 'approved' && <p className="text-xs text-amber-700">{ar ? 'اعتمد تقرير الفيديو السابق أولًا قبل مشاركة المقارنة.' : 'Approve the baseline report before sharing the comparison.'}</p>}
+        </>}
+      </section>
       <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
         <div className="space-y-2 rounded-lg border p-3">
           <h3 className="font-semibold">{ar ? 'اللقطات المحددة' : 'Marked moments'}</h3>
@@ -425,8 +533,19 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           </button>)}
         </div>
         <div className="space-y-3 rounded-lg border p-3">
-          {canEdit && selected.status === 'draft' && <select aria-label={ar ? 'رياضة التحليل' : 'Review sport'} value={draft.sport} onChange={event => change({ sport: event.target.value })} className="w-full rounded-md border bg-white p-2 text-sm">
+          {canEdit && selected.status === 'draft' && <select aria-label={ar ? 'رياضة التحليل' : 'Review sport'} value={draft.sport} onChange={event => {
+            const sport = event.target.value;
+            samplesRef.current = new Map(); setSampleCount(0); setCompareId('');
+            setChartMetric(sport === 'football' ? 'knee_angle' : 'elbow_angle');
+            change({ sport, skill: SKILLS[sport][0][0], comparison: null });
+          }} className="w-full rounded-md border bg-white p-2 text-sm">
             <option value="swimming">{ar ? 'سباحة' : 'Swimming'}</option><option value="football">{ar ? 'كرة قدم' : 'Football'}</option>
+          </select>}
+          {canEdit && selected.status === 'draft' && <select aria-label={ar ? 'مهارة التحليل' : 'Review skill'} value={draft.skill} onChange={event => {
+            setCompareId(''); change({ skill: event.target.value, comparison: null });
+          }} className="w-full rounded-md border bg-white p-2 text-sm">
+            <option value="general">{ar ? 'مهارة غير محددة' : 'Unspecified skill'}</option>
+            {SKILLS[draft.sport].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>}
           <label className="block text-sm font-medium">{ar ? 'عنوان التحليل' : 'Review title'}</label>
           <Input value={draft.title} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ title: event.target.value })} maxLength={120} />
