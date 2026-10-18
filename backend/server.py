@@ -11034,6 +11034,76 @@ async def get_purchases_report(
 
 # ============ VAT REPORT ============
 
+def _vat_period_query(start_date=None, end_date=None, branch_filter=None, current_user=None):
+    """Use the same source and inclusive calendar period for VAT review/export."""
+    user = current_user or {}
+    if not user.get("is_admin") and not user.get("branch_id"):
+        raise HTTPException(status_code=403, detail="Branch access required")
+    try:
+        if start_date:
+            datetime.strptime(start_date, "%Y-%m-%d")
+        if end_date:
+            datetime.strptime(end_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=400, detail="Start date must precede end date")
+    branch = branch_filter if user.get("is_admin") else user.get("branch_id")
+    scope = {"branch_id": branch} if branch and branch != "all" else {}
+    sales = {**scope, "status": "paid"}
+    purchases = dict(scope)
+    refunds = dict(scope)
+    if start_date:
+        sales["paid_at"] = {"$gte": start_date}
+        purchases["invoice_date"] = {"$gte": start_date}
+        refunds["created_at"] = {"$gte": start_date}
+    if end_date:
+        # paid_at/created_at are timestamps; $lte YYYY-MM-DD misses that day's records.
+        next_day = (datetime.fromisoformat(end_date).date() + timedelta(days=1)).isoformat()
+        sales.setdefault("paid_at", {})["$lt"] = next_day
+        purchases.setdefault("invoice_date", {})["$lte"] = end_date
+        refunds.setdefault("created_at", {})["$lt"] = next_day
+    return sales, purchases, refunds
+
+
+def _vat_excluded_query(sales_query, refund_query):
+    """Unpaid/cancelled sales created in the period; review only, zero report impact."""
+    query = {"status": {"$ne": "paid"}}
+    if "branch_id" in sales_query:
+        query["branch_id"] = sales_query["branch_id"]
+    if "created_at" in refund_query:
+        query["created_at"] = refund_query["created_at"]
+    return query
+
+
+@api_router.get("/reports/vat/details")
+async def get_vat_details(
+    kind: str, start_date: Optional[str] = None, end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None, page: int = Query(1, ge=1),
+    current_user: dict = Depends(get_current_user)
+):
+    """Paginated source documents for a VAT report, with no financial recalculation."""
+    sales, purchases, refunds = _vat_period_query(start_date, end_date, branch_filter, current_user)
+    if kind == "sales":
+        collection, query, date_field = db.invoices, sales, "paid_at"
+    elif kind == "purchases":
+        collection, query, date_field = db.purchase_invoices, purchases, "invoice_date"
+    elif kind == "refunds":
+        collection, query, date_field = db.credit_notes, refunds, "created_at"
+    elif kind == "excluded":
+        collection, query, date_field = db.invoices, _vat_excluded_query(sales, refunds), "created_at"
+    else:
+        raise HTTPException(status_code=400, detail="Unknown VAT detail type")
+    size = 50
+    fields = {"_id": 0, "id": 1, "invoice_number": 1, "supplier_invoice_number": 1,
+              "credit_note_number": 1, "original_invoice_number": 1, "member_name": 1,
+              "customer_name_ar": 1, "supplier_name": 1, "status": 1, "paid_at": 1,
+              "invoice_date": 1, "created_at": 1, "subtotal": 1, "vat_amount": 1,
+              "tax_amount": 1, "total": 1, "refund_amount": 1, "reason": 1}
+    total = await collection.count_documents(query)
+    rows = await collection.find(query, fields).sort(date_field, -1).skip((page - 1) * size).limit(size).to_list(size)
+    return {"items": rows, "total": total, "page": page, "page_size": size}
+
 @api_router.get("/reports/vat")
 async def get_vat_report(
     start_date: Optional[str] = None,
@@ -11042,34 +11112,16 @@ async def get_vat_report(
     current_user: dict = Depends(get_current_user)
 ):
     """Get VAT declaration report - إقرار ضريبة القيمة المضافة"""
-    query_sales = {"status": "paid"}
-    query_purchases = {}
-    
-    if branch_filter and branch_filter != "all":
-        query_sales["branch_id"] = branch_filter
-        query_purchases["branch_id"] = branch_filter
-    elif not current_user.get("is_admin") and current_user.get("branch_id"):
-        query_sales["branch_id"] = current_user["branch_id"]
-        query_purchases["branch_id"] = current_user["branch_id"]
-    
-    if start_date:
-        query_sales["paid_at"] = {"$gte": start_date}
-        query_purchases["invoice_date"] = {"$gte": start_date}
-    if end_date:
-        if "paid_at" in query_sales:
-            query_sales["paid_at"]["$lte"] = end_date
-        else:
-            query_sales["paid_at"] = {"$lte": end_date}
-        if "invoice_date" in query_purchases:
-            query_purchases["invoice_date"]["$lte"] = end_date
-        else:
-            query_purchases["invoice_date"] = {"$lte": end_date}
+    query_sales, query_purchases, query_refunds = _vat_period_query(
+        start_date, end_date, branch_filter, current_user)
     
     # Get sales invoices (فواتير المبيعات)
     sales_invoices = await db.invoices.find(query_sales, {"_id": 0}).to_list(10000)
     
     # Get purchase invoices (فواتير المشتريات)
     purchase_invoices = await db.purchase_invoices.find(query_purchases, {"_id": 0}).to_list(10000)
+    refund_count = await db.credit_notes.count_documents(query_refunds)
+    excluded_count = await db.invoices.count_documents(_vat_excluded_query(query_sales, query_refunds))
     
     # Calculate sales VAT (ضريبة المخرجات)
     sales_subtotal = sum(inv.get("subtotal", 0) for inv in sales_invoices)
@@ -11099,6 +11151,8 @@ async def get_vat_report(
             "total": round(purchases_subtotal + input_vat, 2),
             "invoices_count": len(purchase_invoices)
         },
+        "review": {"refund_count": refund_count, "excluded_count": excluded_count,
+                   "note": "الإشعارات الدائنة معروضة للمراجعة فقط؛ لم تُخصم تلقائيًا من أرقام هذا التقرير."},
         "vat_summary": {
             "output_vat": round(output_vat, 2),  # ضريبة المخرجات (على المبيعات)
             "input_vat": round(input_vat, 2),    # ضريبة المدخلات (على المشتريات)
@@ -11408,11 +11462,12 @@ async def export_purchases_report(
 async def export_vat_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    branch_filter: Optional[str] = None,
     format: str = "xlsx",
     token: Optional[str] = None
 ):
     """Export VAT declaration report to Excel"""
-    await _require_export_admin_token(token)
+    export_user = await _require_export_admin_token(token)
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
@@ -11420,21 +11475,8 @@ async def export_vat_report(
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
     
-    query_sales = {"status": "paid"}
-    query_purchases = {}
-    
-    if start_date:
-        query_sales["paid_at"] = {"$gte": start_date}
-        query_purchases["invoice_date"] = {"$gte": start_date}
-    if end_date:
-        if "paid_at" in query_sales:
-            query_sales["paid_at"]["$lte"] = end_date
-        else:
-            query_sales["paid_at"] = {"$lte": end_date}
-        if "invoice_date" in query_purchases:
-            query_purchases["invoice_date"]["$lte"] = end_date
-        else:
-            query_purchases["invoice_date"] = {"$lte": end_date}
+    query_sales, query_purchases, _ = _vat_period_query(
+        start_date, end_date, branch_filter, export_user)
     
     sales_invoices = await db.invoices.find(query_sales, {"_id": 0}).to_list(10000)
     purchase_invoices = await db.purchase_invoices.find(query_purchases, {"_id": 0}).to_list(10000)

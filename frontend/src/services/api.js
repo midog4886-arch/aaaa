@@ -599,6 +599,7 @@ export const accountingReportsAPI = {
   getPurchasesReport: (params = {}) => axios.get(`${API}/reports/purchases`, { params }),
   getSalesReport: (params = {}) => axios.get(`${API}/reports/sales`, { params }),
   getVatReport: (params = {}) => axios.get(`${API}/reports/vat`, { params }),
+  getVatDetails: (params = {}) => axios.get(`${API}/reports/vat/details`, { params }),
 };
 
 // Export Accounting API

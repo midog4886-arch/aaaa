@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -6,6 +6,7 @@ import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { toast } from 'sonner';
+import { vatPresetRange } from '../utils/vatPeriod';
 import { 
   accountsAPI, 
   suppliersAPI, 
@@ -115,6 +116,15 @@ export default function AccountingPage() {
   const [products, setProducts] = useState([]);
   const [salesReport, setSalesReport] = useState(null);
   const [vatReport, setVatReport] = useState(null);
+  const [vatLoading, setVatLoading] = useState(false);
+  const [vatPreset, setVatPreset] = useState('all');
+  const [vatDetailKind, setVatDetailKind] = useState(null);
+  const [vatDetails, setVatDetails] = useState(null);
+  const [vatDetailsLoading, setVatDetailsLoading] = useState(false);
+  const [vatReviewOpen, setVatReviewOpen] = useState(false);
+  const [vatReviewConfirmed, setVatReviewConfirmed] = useState(false);
+  const vatRequestRef = useRef(0);
+  const vatDetailsRequestRef = useRef(0);
   const [financialReport, setFinancialReport] = useState(null);
   const [internalExpenses, setInternalExpenses] = useState([]);
   const [expenseTypes, setExpenseTypes] = useState([]);
@@ -366,17 +376,51 @@ export default function AccountingPage() {
   }, [selectedBranchId, dateFilter]);
 
   const fetchVatReport = useCallback(async () => {
+    const request = ++vatRequestRef.current;
+    vatDetailsRequestRef.current += 1;
+    setVatReport(null);
+    setVatDetailKind(null);
+    setVatDetails(null);
+    if (dateFilter.start && dateFilter.end && dateFilter.start > dateFilter.end) {
+      setVatLoading(false);
+      toast.error('تاريخ البداية يجب أن يسبق تاريخ النهاية');
+      return;
+    }
+    setVatLoading(true);
     try {
       const params = {};
       if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
       if (dateFilter.start) params.start_date = dateFilter.start;
       if (dateFilter.end) params.end_date = dateFilter.end;
       const res = await accountingReportsAPI.getVatReport(params);
-      setVatReport(res.data);
+      if (request === vatRequestRef.current) setVatReport(res.data);
     } catch (error) {
       console.error('Error fetching VAT report:', error);
+      if (request === vatRequestRef.current) toast.error('تعذر تحميل الإقرار الضريبي');
+    } finally {
+      if (request === vatRequestRef.current) setVatLoading(false);
     }
   }, [selectedBranchId, dateFilter]);
+
+  const fetchVatDetails = async (kind, page = 1) => {
+    const request = ++vatDetailsRequestRef.current;
+    setVatDetailKind(kind);
+    setVatDetails(null);
+    setVatDetailsLoading(true);
+    requestAnimationFrame(() => document.getElementById('vat-invoice-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    try {
+      const params = { kind, page };
+      if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
+      if (dateFilter.start) params.start_date = dateFilter.start;
+      if (dateFilter.end) params.end_date = dateFilter.end;
+      const res = await accountingReportsAPI.getVatDetails(params);
+      if (request === vatDetailsRequestRef.current) setVatDetails(res.data);
+    } catch (error) {
+      if (request === vatDetailsRequestRef.current) toast.error('تعذر تحميل الفواتير المكوِّنة للرقم');
+    } finally {
+      if (request === vatDetailsRequestRef.current) setVatDetailsLoading(false);
+    }
+  };
 
   const fetchFinancialReport = useCallback(async () => {
     try {
@@ -1625,6 +1669,7 @@ export default function AccountingPage() {
         url = exportAccountingAPI.purchases(params);
         break;
       case 'vat':
+        if (selectedBranchId && selectedBranchId !== 'all') params.branch_filter = selectedBranchId;
         url = exportAccountingAPI.vat(params);
         break;
       default:
@@ -2663,8 +2708,8 @@ export default function AccountingPage() {
           <Button onClick={() => handleExportExcel('purchases')} className="bg-blue-600 hover:bg-blue-700">
             📥 تصدير فواتير المشتريات
           </Button>
-          <Button onClick={() => handleExportExcel('vat')} className="bg-purple-600 hover:bg-purple-700">
-            📥 تصدير الإقرار الضريبي
+          <Button onClick={() => { setVatReviewConfirmed(false); setVatReviewOpen(true); }} disabled={!vatReport || vatLoading} className="bg-purple-600 hover:bg-purple-700">
+            مراجعة الإقرار وتصديره
           </Button>
         </div>
         )}
@@ -2672,16 +2717,22 @@ export default function AccountingPage() {
       
       {/* Date Filters */}
       <div className="flex gap-4 flex-wrap p-4 bg-gray-50 rounded-lg">
+        <div className="flex w-full flex-wrap gap-2" aria-label="فترات الإقرار السريعة">
+          {[['month', 'هذا الشهر'], ['previous-month', 'الشهر السابق'], ['quarter', 'هذا الربع'], ['all', 'كل الفترات']].map(([key, label]) => (
+            <Button key={key} size="sm" variant={vatPreset === key ? 'default' : 'outline'} onClick={() => { setVatPreset(key); setDateFilter(vatPresetRange(key)); }}>{label}</Button>
+          ))}
+        </div>
         <div>
           <label className="text-sm text-gray-600">من تاريخ</label>
-          <Input type="date" value={dateFilter.start} onChange={e => setDateFilter(prev => ({ ...prev, start: e.target.value }))} className="w-40" />
+          <Input type="date" value={dateFilter.start} onChange={e => { setVatPreset('custom'); setDateFilter(prev => ({ ...prev, start: e.target.value })); }} className="w-40" />
         </div>
         <div>
           <label className="text-sm text-gray-600">إلى تاريخ</label>
-          <Input type="date" value={dateFilter.end} onChange={e => setDateFilter(prev => ({ ...prev, end: e.target.value }))} className="w-40" />
+          <Input type="date" value={dateFilter.end} onChange={e => { setVatPreset('custom'); setDateFilter(prev => ({ ...prev, end: e.target.value })); }} className="w-40" />
         </div>
         <Button variant="outline" onClick={fetchVatReport}>تحديث التقرير</Button>
       </div>
+      {dateFilter.start && dateFilter.end && dateFilter.start > dateFilter.end && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">تاريخ البداية يجب أن يسبق تاريخ النهاية.</p>}
       
       {vatReport ? (
         <>
@@ -2690,7 +2741,13 @@ export default function AccountingPage() {
             <h3 className="font-bold text-lg mb-2">{vatReport.company_info?.name}</h3>
             <p className="text-sm">الرقم الضريبي: {vatReport.company_info?.tax_number}</p>
             <p className="text-sm">الفترة: {vatReport.period?.start_date} إلى {vatReport.period?.end_date}</p>
+            <p className="text-xs text-gray-600 mt-1">المبيعات: فواتير مدفوعة حسب تاريخ الدفع · المشتريات: حسب تاريخ الفاتورة. اضغط «عرض الفواتير» لمراجعة مصدر كل إجمالي.</p>
           </div>
+
+          {(vatReport.purchases?.invoices_count || 0) === 0 && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900">
+            لا توجد فواتير مشتريات في هذه الفترة. راجع إدخالها قبل تصدير الإقرار.
+            <Button variant="outline" size="sm" className="mr-3" onClick={() => setActiveTab(TABS.PURCHASES)}>فتح فواتير المشتريات</Button>
+          </div>}
           
           {/* Sales Section */}
           <div className="border rounded-lg overflow-hidden">
@@ -2698,6 +2755,7 @@ export default function AccountingPage() {
               📈 المبيعات (ضريبة المخرجات)
             </div>
             <div className="p-4">
+              <Button variant="outline" size="sm" className="mb-3" onClick={() => fetchVatDetails('sales')}>عرض فواتير المبيعات المكوِّنة للأرقام ({vatReport.sales?.invoices_count || 0})</Button>
               <div className="grid grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-sm text-gray-500">عدد الفواتير</div>
@@ -2725,6 +2783,7 @@ export default function AccountingPage() {
               📉 المشتريات (ضريبة المدخلات)
             </div>
             <div className="p-4">
+              <Button variant="outline" size="sm" className="mb-3" onClick={() => fetchVatDetails('purchases')}>عرض فواتير المشتريات المكوِّنة للأرقام ({vatReport.purchases?.invoices_count || 0})</Button>
               <div className="grid grid-cols-4 gap-4">
                 <div className="text-center">
                   <div className="text-sm text-gray-500">عدد الفواتير</div>
@@ -2745,6 +2804,42 @@ export default function AccountingPage() {
               </div>
             </div>
           </div>
+
+          <div className="rounded-lg border bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><h3 className="font-bold">مراجعة الإشعارات الدائنة</h3><p className="text-xs text-gray-600">تُعرض للمراجعة فقط؛ التقرير الحالي لا يخصمها تلقائيًا من ضريبة المبيعات.</p></div>
+              <Button variant="outline" size="sm" onClick={() => fetchVatDetails('refunds')}>عرض الإشعارات ({vatReport.review?.refund_count || 0})</Button>
+            </div>
+          </div>
+          <div className="rounded-lg border bg-white p-4 flex flex-wrap items-center justify-between gap-2">
+            <div><h3 className="font-bold">فواتير خارج الإقرار</h3><p className="text-xs text-gray-600">فواتير غير مدفوعة أو ملغاة أُنشئت خلال الفترة؛ أثرها في الأرقام المعروضة صفر.</p></div>
+            <Button variant="outline" size="sm" onClick={() => fetchVatDetails('excluded')}>عرض الفواتير ({vatReport.review?.excluded_count || 0})</Button>
+          </div>
+
+          {vatDetailKind && <div className="rounded-lg border bg-white p-4" id="vat-invoice-details">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="font-bold">{vatDetailKind === 'sales' ? 'فواتير المبيعات المحتسبة' : vatDetailKind === 'purchases' ? 'فواتير المشتريات المحتسبة' : vatDetailKind === 'excluded' ? 'فواتير خارج الإقرار' : 'الإشعارات الدائنة للمراجعة'}</h3>
+              <Button variant="outline" size="sm" onClick={() => { setVatDetailKind(null); setVatDetails(null); }}>إغلاق</Button>
+            </div>
+            {vatDetailsLoading ? <p>جارٍ تحميل التفاصيل…</p> : vatDetails && <>
+              <p className="text-xs text-gray-600 mb-2">{vatDetails.total} سجل · صفحة {vatDetails.page} من {Math.max(1, Math.ceil(vatDetails.total / vatDetails.page_size))}</p>
+              <div className="overflow-x-auto"><table className="w-full text-sm">
+                <thead className="bg-gray-50"><tr><th className="p-2 text-right">الرقم</th><th className="p-2 text-right">العميل / المورد</th><th className="p-2 text-right">التاريخ</th><th className="p-2 text-right">الحالة</th><th className="p-2 text-right">الصافي</th><th className="p-2 text-right">الضريبة</th><th className="p-2 text-right">الإجمالي</th><th className="p-2 text-right">فتح</th></tr></thead>
+                <tbody>{vatDetails.items.map((row, index) => <tr key={row.id || index} className="border-t">
+                  <td className="p-2">{row.invoice_number || row.credit_note_number || row.supplier_invoice_number || row.id}</td>
+                  <td className="p-2">{row.member_name || row.customer_name_ar || row.supplier_name || '—'}</td>
+                  <td className="p-2" dir="ltr">{String(vatDetailKind === 'excluded' ? row.created_at : (row.paid_at || row.invoice_date || row.created_at || '')).slice(0, 10)}</td>
+                  <td className="p-2">{row.status || (vatDetailKind === 'refunds' ? 'إشعار دائن' : '—')}</td>
+                  <td className="p-2">{Number(row.subtotal || 0).toLocaleString()}</td>
+                  <td className="p-2">{Number(row.vat_amount ?? row.tax_amount ?? 0).toLocaleString()}</td>
+                  <td className="p-2">{Number(row.total ?? row.refund_amount ?? 0).toLocaleString()}</td>
+                  <td className="p-2">{vatDetailKind === 'sales' || vatDetailKind === 'excluded' ? <a className="text-blue-700 underline" href={`/admin/invoices?view=${encodeURIComponent(row.id)}`}>الفاتورة</a> : vatDetailKind === 'purchases' ? <button type="button" className="text-blue-700 underline" onClick={async () => { try { const result = await purchaseInvoicesAPI.getById(row.id); setSelectedInvoice(result.data); setIsViewInvoiceDialogOpen(true); } catch { toast.error('تعذر فتح الفاتورة'); } }}>الفاتورة</button> : '—'}</td>
+                </tr>)}</tbody>
+              </table></div>
+              {vatDetails.items.length === 0 && <p className="py-4 text-center text-gray-500">لا توجد سجلات لهذه الفترة.</p>}
+              <div className="flex items-center gap-2 mt-3"><Button size="sm" variant="outline" disabled={vatDetails.page <= 1} onClick={() => fetchVatDetails(vatDetailKind, vatDetails.page - 1)}>السابق</Button><Button size="sm" variant="outline" disabled={vatDetails.page * vatDetails.page_size >= vatDetails.total} onClick={() => fetchVatDetails(vatDetailKind, vatDetails.page + 1)}>التالي</Button></div>
+            </>}
+          </div>}
           
           {/* VAT Summary */}
           <div className="border-2 border-purple-500 rounded-lg overflow-hidden">
@@ -2776,12 +2871,25 @@ export default function AccountingPage() {
             </div>
           </div>
         </>
-      ) : (
+      ) : vatLoading ? <div className="text-center p-12 bg-gray-50 rounded-lg">جارٍ تحميل الإقرار…</div> : (
         <div className="text-center p-12 bg-gray-50 rounded-lg">
           <div className="text-4xl mb-4">📋</div>
           <p className="text-gray-500">اختر الفترة واضغط "تحديث التقرير" لعرض إقرار الضريبة</p>
         </div>
       )}
+      <Dialog open={vatReviewOpen} onOpenChange={setVatReviewOpen}>
+        <DialogContent className="max-w-xl" dir="rtl"><DialogHeader><DialogTitle>مراجعة الإقرار قبل التصدير</DialogTitle></DialogHeader>
+          <p className="text-sm">الفترة: {vatReport?.period?.start_date} إلى {vatReport?.period?.end_date}</p>
+          <p className="text-sm">فواتير المبيعات: {vatReport?.sales?.invoices_count || 0} · ضريبة المخرجات: {Number(vatReport?.vat_summary?.output_vat || 0).toLocaleString()} ر.س</p>
+          <p className="text-sm">فواتير المشتريات: {vatReport?.purchases?.invoices_count || 0} · ضريبة المدخلات: {Number(vatReport?.vat_summary?.input_vat || 0).toLocaleString()} ر.س</p>
+          <p className="font-bold">الصافي المعروض: {Number(vatReport?.vat_summary?.net_vat || 0).toLocaleString()} ر.س</p>
+          {(vatReport?.purchases?.invoices_count || 0) === 0 && <p className="rounded bg-amber-50 p-2 text-amber-800">تنبيه: لا توجد فواتير مشتريات في الفترة.</p>}
+          {(vatReport?.review?.refund_count || 0) > 0 && <p className="rounded bg-amber-50 p-2 text-amber-800">يوجد {vatReport.review.refund_count} إشعار دائن للمراجعة، ولم يُخصم من هذا التقرير.</p>}
+          {(vatReport?.review?.excluded_count || 0) > 0 && <p className="rounded bg-gray-50 p-2 text-gray-700">يوجد {vatReport.review.excluded_count} فاتورة غير مدفوعة أو ملغاة خارج أرقام الإقرار.</p>}
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={vatReviewConfirmed} onChange={event => setVatReviewConfirmed(event.target.checked)} />راجعت الفترة والفواتير والإشعارات الدائنة قبل تنزيل الملف</label>
+          <Button disabled={!vatReviewConfirmed || !vatReport || !isAdmin} onClick={() => { handleExportExcel('vat'); setVatReviewOpen(false); }}>تصدير الإقرار الضريبي</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
