@@ -78,5 +78,14 @@ def test_one_family_signature_marks_each_sibling_invoice(monkeypatch):
         pass
 
     monkeypatch.setattr(invoices, '_enrich_branch_names', no_branch_names)
+    original_current_terms = invoice_consents.current_terms
+    terms_lookups = []
+
+    async def tracked_current_terms(form_type):
+        terms_lookups.append(form_type)
+        return await original_current_terms(form_type)
+
+    monkeypatch.setattr(invoice_consents, 'current_terms', tracked_current_terms)
     rows = asyncio.run(invoices.get_invoices(current_user={'is_admin': True}))
     assert all(row['consent_signed'] and row['consent_family'] for row in rows)
+    assert terms_lookups == ['swimming']
