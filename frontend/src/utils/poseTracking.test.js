@@ -23,6 +23,11 @@ test('tracking holds the selected person even when detection order changes', () 
   expect(matchPose(first, [poseBox(pose(0.8, 0.5))])).toBeNull();
 });
 
+test('fast movement stays with the same isolated person between video frames', () => {
+  const previous = poseBox(pose(0.3, 0.5));
+  expect(matchPose(previous, [poseBox(pose(0.51, 0.5)), poseBox(pose(0.9, 0.5))], 250)).toBe(0);
+});
+
 test('tracking stops when two people become indistinguishable', () => {
   const previous = poseBox(pose(0.5, 0.5));
   expect(matchPose(previous, [poseBox(pose(0.49, 0.5)), poseBox(pose(0.51, 0.5))])).toBeNull();

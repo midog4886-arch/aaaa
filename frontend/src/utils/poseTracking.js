@@ -31,15 +31,18 @@ export const pickPose = (boxes, position) => {
   return hits[0].index;
 };
 
-export const matchPose = (previous, boxes) => {
+export const matchPose = (previous, boxes, elapsedMs = 180) => {
   if (!previous) return null;
   const ranked = boxes.map((box, index) => {
     if (!box) return null;
     const distance = Math.hypot(box.center.x - previous.center.x, box.center.y - previous.center.y);
-    const allowed = Math.max(0.075, Math.min(0.18, Math.max(previous.width, previous.height) * 0.55));
+    // Fast movement can move the torso substantially between sampled frames.
+    // Expand the gate with elapsed time, but cap it to avoid jumping across the video.
+    const allowed = Math.max(0.12, Math.min(0.32,
+      Math.max(previous.width, previous.height) * 0.8 + Math.min(0.1, Math.max(0, elapsedMs) * 0.0004)));
     const sizeRatio = Math.max(box.width / previous.width, previous.width / box.width,
       box.height / previous.height, previous.height / box.height);
-    return distance <= allowed && sizeRatio < 1.8 ? { index, score: distance / allowed + Math.max(0, sizeRatio - 1) * 0.3 } : null;
+    return distance <= allowed && sizeRatio < 2.4 ? { index, score: distance / allowed + Math.max(0, sizeRatio - 1) * 0.3 } : null;
   }).filter(Boolean).sort((a, b) => a.score - b.score);
   if (!ranked.length || (ranked.length > 1 && ranked[1].score - ranked[0].score < 0.35)) return null;
   return ranked[0].index;

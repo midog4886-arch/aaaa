@@ -50,6 +50,7 @@ const button = document.getElementById('start');
 const selectArea = document.getElementById('selectArea');
 const edges = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
 let model = null, enabled = false, last = 0, lastStamp = 0, selectedBox = null, candidates = [], boxes = [], targetLost = false;
+let missedFrames = 0, lastTargetTime = 0, frameRequest = null, timer = null;
 const visible = point => point && (point.visibility ?? 1) >= .5 && (point.presence ?? 1) >= .5;
 function poseBox(points) {
   const body = [11,12,23,24].map(index => points[index]).filter(visible);
@@ -65,13 +66,13 @@ function poseBox(points) {
     y:body.reduce((sum,point)=>sum+point.y,0)/body.length
   }};
 }
-function match(previous, list) {
+function match(previous, list, elapsedMs=180) {
   const ranked = list.map((box,index)=>{
     if (!box) return null;
     const distance = Math.hypot(box.center.x-previous.center.x,box.center.y-previous.center.y);
-    const allowed = Math.max(.075,Math.min(.18,Math.max(previous.width,previous.height)*.55));
+    const allowed = Math.max(.12,Math.min(.32,Math.max(previous.width,previous.height)*.8+Math.min(.1,Math.max(0,elapsedMs)*.0004)));
     const sizeRatio = Math.max(box.width/previous.width,previous.width/box.width,box.height/previous.height,previous.height/box.height);
-    return distance <= allowed && sizeRatio < 1.8 ? {index,score:distance/allowed+Math.max(0,sizeRatio-1)*.3} : null;
+    return distance <= allowed && sizeRatio < 2.4 ? {index,score:distance/allowed+Math.max(0,sizeRatio-1)*.3} : null;
   }).filter(Boolean).sort((a,b)=>a.score-b.score);
   return ranked.length && !(ranked.length>1 && ranked[1].score-ranked[0].score<.35) ? ranked[0].index : null;
 }
@@ -134,22 +135,25 @@ function showMeasurements(points) {
 function frame(force=false) {
   if (!enabled || !model || video.readyState<2) return;
   const now=performance.now();
-  if (!force && now-last<180) return;
+  if (!force && now-last<80) return;
   last=now;lastStamp=Math.max(now,lastStamp+1);
   try {
     candidates=model.detectForVideo(video,lastStamp).landmarks||[];
     boxes=candidates.map(poseBox);
     let index=null;
     if (selectedBox) {
-      index=match(selectedBox,boxes);
-      if (index===null) {selectedBox=null;targetLost=true;}
-      else selectedBox=boxes[index];
+      index=match(selectedBox,boxes,Math.abs(video.currentTime-lastTargetTime)*1000);
+      if (index===null) {
+        missedFrames+=1;
+        if (missedFrames>=5 || Math.abs(video.currentTime-lastTargetTime)>.8) {selectedBox=null;targetLost=true;}
+      } else {selectedBox=boxes[index];missedFrames=0;lastTargetTime=video.currentTime;}
     }
     draw(index===null?null:candidates[index],index);
     if (index!==null) showMeasurements(candidates[index]);
     else {
       metrics.replaceChildren();
       status.textContent=targetLost?'فُقد اللاعب أو اختلط بغيره؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.'
+        :selectedBox?'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.'
         : boxes.some(Boolean)?`تم اكتشاف ${boxes.filter(Boolean).length} شخص. أوقف الفيديو واضغط على إطار اللاعب المطلوب.`
         :'النموذج يعمل، لكن لم يكتشف شخصًا واضحًا في هذه اللقطة.';
     }
@@ -168,11 +172,12 @@ selectArea.onclick=event=>{
     position.x>=box.left && position.x<=box.right && position.y>=box.top && position.y<=box.bottom);
   if (hits.length!==1) {status.textContent='حدد لاعبًا واحدًا داخل إطار واضح؛ الإطارات المتداخلة غير مؤكدة.';return;}
   const index=hits[0].index;
-  selectedBox=boxes[index];targetLost=false;
+  selectedBox=boxes[index];targetLost=false;missedFrames=0;lastTargetTime=video.currentTime;
   draw(candidates[index],index);showMeasurements(candidates[index]);
+  if (video.paused) video.play().catch(()=>{status.textContent='تم اختيار اللاعب؛ اضغط تشغيل الفيديو للمتابعة.';});
 };
 button.onclick=async()=>{
-  if (enabled) {enabled=false;selectedBox=null;targetLost=false;candidates=[];boxes=[];selectArea.style.display='none';button.textContent='تشغيل تتبّع المفاصل AI';draw(null,null);metrics.replaceChildren();status.textContent='التتبّع متوقف.';return;}
+  if (enabled) {enabled=false;selectedBox=null;targetLost=false;missedFrames=0;candidates=[];boxes=[];selectArea.style.display='none';button.textContent='تشغيل تتبّع المفاصل AI';draw(null,null);metrics.replaceChildren();status.textContent='التتبّع متوقف.';return;}
   button.disabled=true;status.textContent='جارٍ تحميل نموذج الحركة…';
   try {
     if (!model) {
@@ -188,12 +193,18 @@ button.onclick=async()=>{
 };
 video.onplay=()=>{if (!enabled && !button.disabled) button.click();};
 video.ontimeupdate=()=>frame();
-video.onseeked=()=>{if (selectedBox) {selectedBox=null;targetLost=true;}frame(true);};
+video.onseeked=()=>{if (selectedBox) {selectedBox=null;targetLost=true;missedFrames=0;}frame(true);};
 video.onloadeddata=()=>frame(true);
+if (video.requestVideoFrameCallback) {
+  const tick=()=>{frame();frameRequest=video.requestVideoFrameCallback(tick);};
+  frameRequest=video.requestVideoFrameCallback(tick);
+} else {
+  timer=setInterval(()=>{if (!video.paused) frame();},90);
+}
 document.getElementById('file').onchange=event=>{
   const file=event.target.files?.[0];
   if (!file) return;
-  selectedBox=null;targetLost=false;candidates=[];boxes=[];metrics.replaceChildren();
+  selectedBox=null;targetLost=false;missedFrames=0;candidates=[];boxes=[];metrics.replaceChildren();
   video.src=URL.createObjectURL(file);
   status.textContent='تم فتح الفيديو محليًا. شغّله ثم اختر اللاعب.';
 };

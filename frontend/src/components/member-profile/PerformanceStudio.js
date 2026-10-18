@@ -39,6 +39,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const poseModelRef = useRef(null);
   const targetRef = useRef(null);
   const candidatesRef = useRef([]);
+  const targetMissesRef = useRef(0);
+  const lastTargetTimeRef = useRef(0);
+  const analyzeRef = useRef(null);
   const lastInferenceRef = useRef(0);
   const lastModelTimestampRef = useRef(0);
   const comparisonRef = useRef(null);
@@ -84,6 +87,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setPoseError('');
     targetRef.current = null;
     candidatesRef.current = [];
+    targetMissesRef.current = 0;
     setTargetStatus('select');
     if (!selectedId) return;
     let active = true;
@@ -117,7 +121,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     const model = poseModelRef.current;
     if (!model || !video || video.readyState < 2 || !draft) return null;
     const now = performance.now();
-    if (!force && now - lastInferenceRef.current < 180) return null;
+    if (!force && now - lastInferenceRef.current < 80) return null;
     lastInferenceRef.current = now;
     try {
       const timestamp = Math.max(now, lastModelTimestampRef.current + 1);
@@ -127,12 +131,19 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       candidatesRef.current = poses;
       let selectedIndex = null;
       if (targetRef.current) {
-        selectedIndex = matchPose(targetRef.current, boxes);
+        selectedIndex = matchPose(targetRef.current, boxes, Math.abs(video.currentTime - lastTargetTimeRef.current) * 1000);
         if (selectedIndex === null) {
-          targetRef.current = null;
-          setTargetStatus('lost');
+          targetMissesRef.current += 1;
+          if (targetMissesRef.current >= 5 || Math.abs(video.currentTime - lastTargetTimeRef.current) > 0.8) {
+            targetRef.current = null;
+            setTargetStatus('lost');
+          } else {
+            setTargetStatus('searching');
+          }
         } else {
           targetRef.current = boxes[selectedIndex];
+          targetMissesRef.current = 0;
+          lastTargetTimeRef.current = video.currentTime;
           setTargetStatus('tracking');
         }
       }
@@ -148,6 +159,31 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       return null;
     }
   };
+  analyzeRef.current = analyzeFrame;
+
+  useEffect(() => {
+    if (!poseEnabled) return undefined;
+    const video = videoRef.current;
+    if (!video) return undefined;
+    let active = true;
+    let frameId;
+    let intervalId;
+    if (video.requestVideoFrameCallback) {
+      const tick = () => {
+        if (!active) return;
+        analyzeRef.current?.();
+        frameId = video.requestVideoFrameCallback(tick);
+      };
+      frameId = video.requestVideoFrameCallback(tick);
+    } else {
+      intervalId = window.setInterval(() => { if (!video.paused) analyzeRef.current?.(); }, 90);
+    }
+    return () => {
+      active = false;
+      if (frameId !== undefined) video.cancelVideoFrameCallback?.(frameId);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+    };
+  }, [poseEnabled, sourceUrl]);
 
   const togglePose = async () => {
     if (poseEnabled) {
@@ -155,6 +191,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       setPoseInfo(null);
       targetRef.current = null;
       candidatesRef.current = [];
+      targetMissesRef.current = 0;
       setTargetStatus('select');
       drawPose(poseCanvasRef.current, videoRef.current, null);
       return;
@@ -191,17 +228,21 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       return;
     }
     targetRef.current = boxes[index];
+    targetMissesRef.current = 0;
+    lastTargetTimeRef.current = videoRef.current.currentTime;
     setTargetStatus('tracking');
     const points = poses[index];
     drawPose(poseCanvasRef.current, videoRef.current, points, boxes, index);
     const seen = points.filter(point => (point.visibility ?? 1) >= 0.5).length;
     setPoseInfo({ metrics: seen >= 8 ? poseMetrics(points, draft.sport, poseSide, videoRef.current.videoWidth / videoRef.current.videoHeight) : null,
       seen, detected: boxes.filter(Boolean).length, selected: true, time: videoRef.current.currentTime });
+    if (videoRef.current.paused) videoRef.current.play().catch(() => {});
   };
 
   const resetPlayerOnSeek = () => {
     if (!poseEnabled) return;
     targetRef.current = null;
+    targetMissesRef.current = 0;
     setTargetStatus('lost');
     setPoseInfo(null);
     analyzeFrame(true);
@@ -360,7 +401,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               <span className="font-semibold">{draft.sport === 'football' ? (ar ? 'كرة قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')}</span>
             </div>
             {poseError && <p className="text-red-700" role="alert">{poseError}</p>}
-            {poseEnabled && <p>{targetStatus === 'lost' ? (ar ? 'فُقد اللاعب أو تغيّر موضعه؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.' : 'Player lost or moved; measurements paused. Pause and select again.') : !poseInfo?.selected ? (ar ? `اختر اللاعب بالضغط على إطاره في الفيديو. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Click the player's box. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع اللاعب المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected player · ${poseInfo.seen} visible landmarks`) : (ar ? 'اللاعب المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected player visibility is too low; no measurements shown.')}</p>}
+            {poseEnabled && <p>{targetStatus === 'lost' ? (ar ? 'فُقد اللاعب أو تغيّر موضعه؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.' : 'Player lost or moved; measurements paused. Pause and select again.') : targetStatus === 'searching' ? (ar ? 'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.' : 'Player temporarily obscured; measurements paused.') : !poseInfo?.selected ? (ar ? `اختر اللاعب بالضغط على إطاره في الفيديو. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Click the player's box. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع اللاعب المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected player · ${poseInfo.seen} visible landmarks`) : (ar ? 'اللاعب المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected player visibility is too low; no measurements shown.')}</p>}
             {poseEnabled && poseInfo?.selected && poseInfo?.seen >= 8 && <div className="flex flex-wrap gap-2">
               {Object.entries(poseInfo.metrics || {}).map(([key, value]) => Number.isFinite(value) && <span key={key} className="rounded-md bg-white px-2 py-1">
                 {key === 'knee_angle' ? (ar ? 'زاوية الركبة' : 'Knee angle') : key === 'elbow_angle' ? (ar ? 'زاوية المرفق' : 'Elbow angle') : key === 'hip_angle' ? (ar ? 'زاوية الورك' : 'Hip angle') : (ar ? 'ميل الجذع عن العمودي' : 'Trunk tilt from vertical')}: {value}°
