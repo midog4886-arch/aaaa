@@ -16,6 +16,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const [form, setForm] = useState(empty);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [editingTerms, setEditingTerms] = useState(false);
   const [termsDraft, setTermsDraft] = useState(null);
   const [shareLink, setShareLink] = useState('');
@@ -29,18 +30,20 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const [familyPhone, setFamilyPhone] = useState('');
   const statusChangeRef = useRef(onStatusChange);
   statusChangeRef.current = onStatusChange;
-  const refreshHistory = useCallback(() => {
+  const refreshHistory = useCallback((includeConsent = true) => {
     if (!invoice?.id) return;
     invoicesAPI.getRegistrationConsentLinks(invoice.id).then(r => setLinkHistory(r.data.links || [])).catch(() => {});
     invoicesAPI.getRegistrationConsentHistory(invoice.id).then(r => setVersions(r.data.versions || [])).catch(() => {});
-    invoicesAPI.getRegistrationConsent(invoice.id).then(r => {
+    if (includeConsent) invoicesAPI.getRegistrationConsent(invoice.id).then(r => {
       setData(r.data);
       statusChangeRef.current?.(invoice.id, r.data);
     }).catch(() => {});
   }, [invoice?.id]);
   useEffect(() => {
     if (!invoice || !open) return;
+    let active = true;
     setLoading(true);
+    setLoadError(false);
     setData(null);
     setEditingTerms(false);
     setShareLink('');
@@ -48,13 +51,21 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
     setFamilyLink('');
     setFamilySelected([invoice.id]);
     setFamilyCandidates([]);
-    invoicesAPI.getFamilyConsentCandidates(invoice.id).then(r => setFamilyCandidates(r.data.invoices || [])).catch(() => {});
     setForm({ ...empty, child_name: invoice.customer_name_ar || invoice.member_name || '' });
     ink.current = false;
-    invoicesAPI.getRegistrationConsent(invoice.id).then(r => { setData(r.data); setTermsDraft({ form_type: r.data.form_type, title: r.data.title, title_en: r.data.title_en, company_name: r.data.company_name, company_name_en: r.data.company_name_en, terms: r.data.terms.map(item => ({ ...item })), declaration: r.data.declaration, declaration_en: r.data.declaration_en }); }).catch(() => toast.error('تعذر تحميل الاستمارة')).finally(() => setLoading(false));
+    invoicesAPI.getRegistrationConsent(invoice.id).then(r => {
+      if (!active) return;
+      setData(r.data);
+      setTermsDraft({ form_type: r.data.form_type, title: r.data.title, title_en: r.data.title_en, company_name: r.data.company_name, company_name_en: r.data.company_name_en, terms: r.data.terms.map(item => ({ ...item })), declaration: r.data.declaration, declaration_en: r.data.declaration_en });
+    }).catch(() => { if (active) setLoadError(true); }).finally(() => {
+      if (!active) return;
+      setLoading(false);
+      refreshHistory(false);
+      invoicesAPI.getFamilyConsentCandidates(invoice.id).then(r => { if (active) setFamilyCandidates(r.data.invoices || []); }).catch(() => {});
+    });
     setLinkHistory([]);
     setVersions([]);
-    refreshHistory();
+    return () => { active = false; };
   }, [invoice?.id, open, refreshHistory]);
   useEffect(() => {
     if (!open || !data || (data.signed && !data.needs_resign)) return;
@@ -155,21 +166,30 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const markSent = linkId => invoicesAPI.markRegistrationConsentSent(invoice.id, linkId).then(refreshHistory).catch(() => toast.error('تعذر تحديث حالة الإرسال'));
   const linkStatus = { created: 'لم يُرسل', send_failed: 'تعذر تأكيد الإرسال', sent: 'الرابط مُرسل', opened: 'فُتح الرابط', signed: 'موقّع', expired: 'منتهي الصلاحية', invalid: 'الرابط غير صالح؛ أُنشئ إصدار جديد' };
   const dateTime = value => value ? new Date(value).toLocaleString('ar-SA') : '—';
-  const printSigned = async (version) => {
+  const printSigned = async (version, openForPrint = false) => {
+    const printWindow = openForPrint ? window.open('about:blank', '_blank') : null;
+    if (openForPrint && !printWindow) { toast.error('اسمح بفتح نافذة جديدة لطباعة الاستمارة'); return; }
+    if (printWindow) printWindow.document.body.textContent = 'جارٍ تجهيز الاستمارة للطباعة...';
     setBusy(true);
     try {
       const response = await invoicesAPI.downloadRegistrationConsentPdf(invoice.id, version);
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `استمارة_موقعة_${invoice.invoice_number || invoice.id}${version ? `_نسخة_${version}` : ''}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
-      toast.success('بدأ تنزيل نسخة PDF الموقّعة');
+      if (printWindow) {
+        printWindow.location.replace(url);
+        toast.success('فُتحت الاستمارة؛ استخدم زر الطباعة في عارض PDF');
+      } else {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `استمارة_موقعة_${invoice.invoice_number || invoice.id}${version ? `_نسخة_${version}` : ''}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        toast.success('بدأ تنزيل نسخة PDF الموقّعة');
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 300000);
     } catch (error) {
+      printWindow?.close();
       toast.error(error.response?.data?.detail || 'تعذر تنزيل PDF. حاول مرة أخرى.');
     } finally {
       setBusy(false);
@@ -180,6 +200,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const canSign = !signed || data?.needs_resign;
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto" dir="rtl">
     <DialogHeader><DialogTitle>{data?.family_signed ? 'استمارة عائلية موقّعة' : data?.title || 'استمارة تسجيل نشاط وإقرار ولي الأمر'} · فاتورة {invoice.invoice_number}</DialogTitle></DialogHeader>
+    {invoice.consent_signed && <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={() => printSigned(undefined, true)}>فتح الاستمارة الموقّعة للطباعة</Button><Button variant="outline" disabled={busy} onClick={() => printSigned()}>تنزيل PDF</Button></div>}
     {loading ? <p>جارٍ تحميل الاستمارة...</p> : data && <div className="space-y-4 text-sm">
       <div className="flex items-center gap-3 rounded-xl border border-violet-200 bg-gradient-to-l from-violet-50 to-white p-3"><img src={getAcademyLogoUrl()} alt="شعار الأكاديمية" className="h-16 w-16 rounded-lg bg-white object-contain p-1" /><p className="font-semibold text-violet-900">{data.company_name} <span dir="ltr" className="block text-xs font-normal">{data.company_name_en}</span></p></div>
       {data.invoice.commercial_reg && <p className="text-xs text-slate-600">السجل التجاري / Commercial Registration: {data.invoice.commercial_reg}</p>}
@@ -240,5 +261,6 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
       </>}
       <p className="text-xs text-muted-foreground">التوقيع لا يغيّر حالة دفع الفاتورة. يمكن تنزيل PDF من النسخة الموقّعة.</p>
     </div>}
+    {!loading && loadError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">تعذر تحميل تفاصيل الاستمارة. يمكنك طباعة النسخة الموقّعة من الزر أعلاه، أو إغلاق النافذة وإعادة فتحها.</div>}
   </DialogContent></Dialog>;
 }

@@ -84,6 +84,20 @@ def test_consent_is_immutable_and_requires_new_version_after_invoice_edit(monkey
     assert len(database.invoice_consents.rows) == 2
 
 
+def test_form_preview_omits_signature_image_but_keeps_signed_status(monkeypatch):
+    invoice, database, user = fixture_db(monkeypatch)
+    asyncio.run(route.sign_registration_consent('i1', payload(invoice), user))
+    original_find = database.invoice_consents.find_one
+    async def projected_find(query, projection=None, sort=None):
+        row = await original_find(query, projection, sort)
+        return {key: value for key, value in row.items() if key not in projection or projection[key] != 0} if row else None
+    database.invoice_consents.find_one = projected_find
+    state = asyncio.run(route.get_registration_consent('i1', user))
+    assert state['signed']['version'] == 1
+    assert 'signature_png' not in state['signed']
+    assert 'invoice_hash' in state['signed']
+
+
 def test_consent_rejects_other_branch_and_missing_medical_details(monkeypatch):
     invoice, database, user = fixture_db(monkeypatch)
     with pytest.raises(HTTPException) as forbidden:

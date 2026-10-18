@@ -96,7 +96,11 @@ async def family_candidates(invoice_id: str, user: dict = Depends(get_current_us
     phone = _phone(source.get("customer_phone"))
     if not phone:
         return {"invoices": []}
-    rows = await db.invoices.find({"branch_id": source.get("branch_id")}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    rows = await db.invoices.find({"branch_id": source.get("branch_id")}, {
+        "_id": 0, "id": 1, "invoice_number": 1, "customer_name_ar": 1,
+        "member_name": 1, "customer_phone": 1, "items.activity_name": 1,
+        "items.is_product": 1, "status": 1, "created_at": 1,
+    }).sort("created_at", -1).to_list(2000)
     return {"invoices": [{"id": row["id"], "invoice_number": row.get("invoice_number"),
                           "child_name": row.get("customer_name_ar") or row.get("member_name") or "",
                           "activity": "، ".join(item.get("activity_name") or "" for item in row.get("items", []) if not item.get("is_product"))}

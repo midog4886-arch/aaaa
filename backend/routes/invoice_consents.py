@@ -1,5 +1,6 @@
 """Signed activity registration forms derived from saved invoices."""
 import base64
+import asyncio
 import copy
 import hashlib
 import io
@@ -165,8 +166,8 @@ def snapshot_hash(snapshot):
     return hashlib.sha256(encoded).hexdigest()
 
 
-async def scoped_invoice(invoice_id, user):
-    invoice = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+async def scoped_invoice(invoice_id, user, projection=None):
+    invoice = await db.invoices.find_one({"id": invoice_id}, projection or {"_id": 0})
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     branch = require_branch_scope(user, invoice.get("branch_id"))
@@ -395,16 +396,24 @@ async def download_public_registration_consent_pdf(token: str):
 
 @router.get("/{invoice_id}/registration-consent")
 async def get_registration_consent(invoice_id: str, user: dict = Depends(get_current_user)):
-    invoice = await scoped_invoice(invoice_id, user)
-    settings = await current_terms(consent_form_type(invoice))
-    latest = await db.invoice_consents.find_one({"invoice_id": invoice_id}, {"_id": 0}, sort=[("version", -1)])
-    family = await db.family_consents.find_one({"invoice_ids": invoice_id}, {"_id": 0}, sort=[("signed_at", -1)])
+    invoice = await scoped_invoice(invoice_id, user, {key: 1 for key in (
+        "id", "invoice_number", "branch_id", "member_id", "member_code",
+        "customer_name_ar", "customer_phone", "member_name", "commercial_reg", "items",
+        "subtotal", "discount", "vat_amount", "total",
+    )})
+    settings, latest, family = await asyncio.gather(
+        current_terms(consent_form_type(invoice)),
+        db.invoice_consents.find_one({"invoice_id": invoice_id}, {"_id": 0, "signature_png": 0, "terms": 0, "declaration": 0, "declaration_en": 0, "fields": 0, "invoice_snapshot": 0}, sort=[("version", -1)]),
+        db.family_consents.find_one({"invoice_ids": invoice_id}, {"_id": 0, "signature_png": 0, "terms": 0, "declaration": 0, "declaration_en": 0, "fields": 0}, sort=[("signed_at", -1)]),
+    )
     if family and (not latest or family.get("signed_at", "") > latest.get("signed_at", "")):
         latest = family
     else:
         family = None
     snapshot = invoice_snapshot(invoice)
     family_current = bool(family and any(row.get("id") == invoice_id and snapshot_hash(row) == snapshot_hash(snapshot) for row in family.get("invoice_snapshots", [])) and family.get("terms_version") == (await current_terms(family.get("form_type", "swimming")))["version"])
+    if family:
+        latest = {key: value for key, value in latest.items() if key != "invoice_snapshots"}
     return {"invoice": snapshot, "invoice_hash": snapshot_hash(snapshot), "terms_version": settings["version"],
             "form_type": consent_form_type(invoice),
             "title": settings["title"], "title_en": settings["title_en"],
