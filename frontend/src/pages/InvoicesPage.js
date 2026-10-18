@@ -64,6 +64,9 @@ export const InvoicesPage = () => {
   const [loyaltySettings, setLoyaltySettings] = useState(null);
   const [loyaltyLevelSettings, setLoyaltyLevelSettings] = useState(null);
   const [loading, setLoading] = useState(true);
+  const loadSequenceRef = useRef(0);
+  const lastAutoRefreshRef = useRef(0);
+  const displayedBranchRef = useRef(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -85,27 +88,48 @@ export const InvoicesPage = () => {
   const [regFormsPasswordAction, setRegFormsPasswordAction] = useState('forms');
 
   const loadData = async () => {
+    const sequence = ++loadSequenceRef.current;
+    lastAutoRefreshRef.current = Date.now();
+    const branchKey = selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all';
+    if (displayedBranchRef.current !== branchKey) {
+      displayedBranchRef.current = branchKey;
+      setInvoices([]);
+      setLoading(true);
+    }
+    const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
     try {
-      const branchParams = selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {};
-      const [invRes, memRes, actRes, prodRes, brRes, rfRes, cnRes, lvRes, coachRes, loyPtsRes, loyLvlRes] = await Promise.all([
-        invoicesAPI.getAll(branchParams), membersAPI.getAll({ ...branchParams, exclude_photo: true }), activitiesAPI.getAll(branchParams), productsAPI.getAll(branchParams),
-        branchesAPI.getAll(), registrationFormsAPI.getAll(branchParams), creditNotesAPI.getAll(branchParams), levelsAPI.getAll(branchParams),
-        coachesAPI.getAll({ exclude_photo: true }).catch(() => ({ data: [] })),
-        fetch('/api/loyalty/settings/points').then(r => r.ok ? r.json() : null).catch(() => null),
-        fetch('/api/loyalty/settings/levels').then(r => r.ok ? r.json() : null).catch(() => null)
-      ]);
-      setInvoices(invRes.data || []); setMembers(memRes.data || []); setActivities(actRes.data || []);
-      setProducts(prodRes.data || []); setBranches(brRes.data || []); setRegistrationForms(rfRes.data || []);
-      setCreditNotes(cnRes.data || []); setLevels(lvRes.data || []); setCoaches(coachRes.data || []);
-      setLoyaltySettings(loyPtsRes); setLoyaltyLevelSettings(loyLvlRes);
-    } catch { toast.error(t('error')); } finally { setLoading(false); }
+      const invRes = await invoicesAPI.getAll(branchParams);
+      if (sequence === loadSequenceRef.current) setInvoices(invRes.data || []);
+    } catch {
+      if (sequence === loadSequenceRef.current) toast.error(t('error'));
+    } finally {
+      if (sequence === loadSequenceRef.current) setLoading(false);
+    }
+    // The invoice list is usable before form, member, and settings lookups finish.
+    const supplemental = [
+      [membersAPI.getAll({ ...branchParams, exclude_photo: true }), setMembers],
+      [activitiesAPI.getAll(branchParams), setActivities],
+      [productsAPI.getAll(branchParams), setProducts],
+      [branchesAPI.getAll(), setBranches],
+      [registrationFormsAPI.getAll(branchParams), setRegistrationForms],
+      [creditNotesAPI.getAll(branchParams), setCreditNotes],
+      [levelsAPI.getAll(branchParams), setLevels],
+      [coachesAPI.getAll({ exclude_photo: true }), setCoaches],
+      [fetch('/api/loyalty/settings/points').then(r => r.ok ? r.json() : null), setLoyaltySettings, null],
+      [fetch('/api/loyalty/settings/levels').then(r => r.ok ? r.json() : null), setLoyaltyLevelSettings, null],
+    ];
+    await Promise.allSettled(supplemental.map(async ([request, setter, fallback = []]) => {
+      const result = await request;
+      if (sequence === loadSequenceRef.current) setter(result?.data ?? result ?? fallback);
+    }));
   };
 
   useEffect(() => { loadData(); }, [selectedBranchId]);
 
   useEffect(() => {
     const refreshWhenReturning = () => {
-      if (document.visibilityState === 'visible') loadData();
+      if (document.visibilityState !== 'visible' || Date.now() - lastAutoRefreshRef.current < 60_000) return;
+      loadData();
     };
     window.addEventListener('focus', refreshWhenReturning);
     document.addEventListener('visibilitychange', refreshWhenReturning);

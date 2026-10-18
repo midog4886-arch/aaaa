@@ -301,7 +301,10 @@ async def get_invoices(
             if inv["id"] in latest_family and (not signed or latest_family[inv["id"]].get("signed_at", "") > signed.get("signed_at", "")):
                 family = latest_family[inv["id"]]
                 saved_snapshot = next((row for row in family.get("invoice_snapshots", []) if row.get("id") == inv["id"]), None)
-                family_terms = await current_terms(family.get("form_type", "swimming"))
+                family_form_type = family.get("form_type", "swimming")
+                if family_form_type not in terms_by_type:
+                    terms_by_type[family_form_type] = await current_terms(family_form_type)
+                family_terms = terms_by_type[family_form_type]
                 is_current = bool(saved_snapshot and snapshot_hash(saved_snapshot) == snapshot_hash(invoice_snapshot(inv)) and family.get("terms_version") == family_terms["version"])
                 inv["consent_signed"] = is_current
                 inv["consent_needs_resign"] = not is_current
