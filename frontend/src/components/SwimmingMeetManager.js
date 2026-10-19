@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { membersAPI } from '../services/api';
 const strokes = { freestyle: 'حرة', backstroke: 'ظهر', breaststroke: 'صدر', butterfly: 'فراشة', medley: 'متنوع' };
 const statuses = { pending: 'بانتظار النتيجة', finished: 'أكمل السباق', dns: 'لم يحضر', dnf: 'لم يكمل', dq: 'مستبعد' };
 const genders = { male: 'ذكور', female: 'إناث', mixed: 'مختلط' };
@@ -25,6 +26,9 @@ export function rankEntries(entries) {
 export default function SwimmingMeetManager({ tid, startOpen = false }) {
   const { selectedBranchId, user } = useAuth();
   const [open, setOpen] = useState(startOpen), [meet, setMeet] = useState(null), [tab,setTab] = useState(startOpen ? 'races' : 'settings'), [busy,setBusy] = useState(false), [error,setError] = useState(''), [dirty,setDirty] = useState(false), [bests,setBests] = useState({}), [conflicts,setConflicts] = useState([]);
+  const [showAdvanced, setShowAdvanced] = useState(!startOpen);
+  const [participantType, setParticipantType] = useState('member');
+  const [memberQuery, setMemberQuery] = useState(''), [memberMatches, setMemberMatches] = useState([]), [memberSearchBusy, setMemberSearchBusy] = useState(false);
   const generation = useRef(0);
   const [race,setRace] = useState({ distance: 50, stroke:'freestyle', min_age:0, max_age:120, gender:'mixed', start_time:'', heat_minutes:5 });
   const [swimmer,setSwimmer] = useState({ name:'', member_id:'', birth_date:'', gender:'male', team:'', external_reference:'' });
@@ -43,6 +47,26 @@ export default function SwimmingMeetManager({ tid, startOpen = false }) {
     return () => { active = false; };
   }, [tid, meet?.revision, dirty]);
   useEffect(() => {
+    if (!open || tab !== 'swimmers' || participantType !== 'member' || memberQuery.trim().length < 2) {
+      setMemberMatches([]);
+      setMemberSearchBusy(false);
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(async () => {
+      setMemberSearchBusy(true);
+      try {
+        const response = await membersAPI.getAll({
+          search: memberQuery.trim(), picker_only: true,
+          ...(selectedBranchId && selectedBranchId !== 'all' ? { branch_filter: selectedBranchId } : {}),
+        });
+        if (active) setMemberMatches((response.data || []).slice(0, 8));
+      } catch { if (active) setMemberMatches([]); }
+      finally { if (active) setMemberSearchBusy(false); }
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [open, tab, participantType, memberQuery, selectedBranchId]);
+  useEffect(() => {
     const warn = event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } };
     window.addEventListener('beforeunload',warn); return () => window.removeEventListener('beforeunload',warn);
   }, [dirty]);
@@ -57,9 +81,23 @@ export default function SwimmingMeetManager({ tid, startOpen = false }) {
     } catch (err) { if (request === generation.current) setError(typeof err.response?.data?.detail === 'string' ? err.response.data.detail : 'تعذر الحفظ؛ راجع الحقول والاتصال.'); }
     finally { if (request === generation.current) setBusy(false); }
   };
-  const raceLabel = r => `${r.distance}م ${strokes[r.stroke]} · ${r.min_age}–${r.max_age} سنة · ${genders[r.gender]}`;
+  const raceLabel = r => `${r.distance}م ${strokes[r.stroke]}${r.min_age || r.max_age !== 120 ? ` · ${r.min_age}–${r.max_age} سنة` : ''}${r.gender !== 'mixed' ? ` · ${genders[r.gender]}` : ''}`;
   const name = id => meet.swimmers.find(s => s.id === id)?.name || '—';
   const patchEntry = (id,data) => change({ entries:meet.entries.map(e => e.id === id ? { ...e,...data } : e) });
+  const chooseMember = async member => {
+    try {
+      const response = await membersAPI.getById(member.id);
+      const full = response.data || member;
+      setSwimmer(current => ({
+        ...current, member_id: member.id,
+        name: full.name_ar || full.name || member.name_ar || member.name || '',
+        birth_date: full.date_of_birth || full.birth_date || '',
+        gender: full.gender === 'female' || full.gender === 'أنثى' ? 'female' : 'male',
+      }));
+      setMemberQuery('');
+      setMemberMatches([]);
+    } catch { toast.error('تعذر تحميل بيانات العضو؛ حاول مرة أخرى.'); }
+  };
   const print = (kind, entry) => {
     if (dirty) { toast.error('احفظ التعديلات قبل الطباعة'); return; }
     if ((kind === 'results' || kind === 'certificate') && !meet.approved) { toast.error('اعتمد النتائج قبل طباعة النتائج أو الشهادات'); return; }
@@ -86,24 +124,34 @@ export default function SwimmingMeetManager({ tid, startOpen = false }) {
       {error && <p role="alert" className="text-red-700">{error}</p>}
       {busy && <p role="status">جارٍ التحميل أو الحفظ…</p>}
       {meet && <>
-        <div className="flex gap-2 flex-wrap"><span>{meet.swimmers.length} سباح · {meet.races.length} سباق · {meet.entries.length} مشاركة</span><strong>{dirty ? 'تعديلات غير محفوظة' : meet.approved ? 'نتائج معتمدة' : 'مسودة'}</strong><button disabled={busy} className="border rounded px-3 py-1" onClick={() => save()}>حفظ المسودة</button><button disabled={busy} className="bg-sky-700 text-white rounded px-3 py-1" onClick={() => { if(window.confirm('اعتماد جميع نتائج بطولة السباحة؟')) save(false,true); }}>اعتماد النتائج</button></div>
+        <div className="flex items-center gap-3 flex-wrap text-sm"><span>{meet.races.length} سباق · {meet.swimmers.length} مشارك</span><strong>{dirty ? 'تعديلات غير محفوظة' : meet.approved ? 'نتائج معتمدة' : 'مسودة'}</strong><button disabled={busy || !dirty} className="border rounded px-3 py-1.5 bg-white disabled:opacity-50" onClick={() => save()}>حفظ التغييرات</button></div>
         {conflicts.length > 0 && <p role="alert" className="text-amber-800">تعارض مواعيد للسباحين: {conflicts.join('، ')}. راجع مواعيد السباقات ومدة الأشواط.</p>}
-        <nav className="flex gap-2 flex-wrap">{[['settings','إعداد المسبح'],['races','السباقات'],['swimmers','المشاركون'],['heats','الأشواط والحارات'],['results','النتائج والتقدم']].map(([key,label]) => <button key={key} className={`border rounded px-3 py-2 ${tab === key ? 'bg-sky-100' : 'bg-white'}`} onClick={() => setTab(key)}>{label}</button>)}</nav>
+        <nav aria-label="خطوات بطولة السباحة" className="flex gap-2 flex-wrap">{[['races','١. السباقات'],['swimmers','٢. المشاركون'],['results','٣. النتائج']].map(([key,label]) => <button key={key} type="button" className={`border rounded-lg px-4 py-2 font-semibold ${tab === key ? 'bg-sky-700 text-white border-sky-700' : 'bg-white'}`} onClick={() => setTab(key)}>{label}</button>)}<button type="button" className="border rounded-lg px-3 py-2 bg-white text-slate-600" onClick={() => { if (showAdvanced && (tab === 'settings' || tab === 'heats')) setTab('races'); setShowAdvanced(value => !value); }}>{showAdvanced ? 'إخفاء التفاصيل' : 'إعدادات إضافية'}</button></nav>
+        {showAdvanced && <div className="flex gap-2 flex-wrap text-sm">{[['settings','إعداد المسبح'],['heats','الأشواط والحارات']].map(([key,label]) => <button key={key} type="button" className={`border rounded px-3 py-1.5 ${tab === key ? 'bg-sky-100' : 'bg-white'}`} onClick={() => setTab(key)}>{label}</button>)}</div>}
         <fieldset disabled={busy} className="space-y-3 min-w-0">
         {tab === 'settings' && <div className="grid sm:grid-cols-2 gap-4"><label>طول المسبح<select className={inputClass} value={meet.pool_length} onChange={e => change({pool_length:Number(e.target.value)})}><option value="25">25 متر</option><option value="50">50 متر</option></select></label><label>عدد الحارات<input className={inputClass} type="number" min="1" max="10" value={meet.lanes} onChange={e => change({lanes:Number(e.target.value)})} /></label><p className="text-sm text-muted-foreground">المكان والتاريخ من إعدادات البطولة الرئيسية. حدّد تاريخ البطولة قبل تسجيل المشاركين. الفئات تُحسب بالعمر في ذلك التاريخ. مدة الشوط تُستخدم للتنبيه عن تعارض المواعيد.</p></div>}
         {tab === 'races' && <>
-          <form className="grid sm:grid-cols-3 gap-3" onSubmit={e => { e.preventDefault(); change({races:editingRace?meet.races.map(r=>r.id===editingRace?{...race,id:editingRace}:r):[...meet.races,{...race,id:uid()}]});setEditingRace(null); }}>
+          <form className="grid sm:grid-cols-2 gap-3 rounded-xl border bg-white p-4" onSubmit={e => { e.preventDefault(); change({races:editingRace?meet.races.map(r=>r.id===editingRace?{...race,id:editingRace}:r):[...meet.races,{...race,id:uid()}]});setEditingRace(null); }}>
             <label>المسافة بالمتر<input required type="number" min="25" max="10000" className={inputClass} value={race.distance} onChange={e => setRace({...race,distance:Number(e.target.value)})} /></label>
             <label>نوع السباحة<select className={inputClass} value={race.stroke} onChange={e => setRace({...race,stroke:e.target.value})}>{Object.entries(strokes).map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-            <label>الفئة<select className={inputClass} value={race.gender} onChange={e => setRace({...race,gender:e.target.value})}>{Object.entries(genders).map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-            <label>العمر من<input type="number" min="0" max="120" className={inputClass} value={race.min_age} onChange={e => setRace({...race,min_age:Number(e.target.value)})} /></label><label>العمر إلى<input type="number" min="0" max="120" className={inputClass} value={race.max_age} onChange={e => setRace({...race,max_age:Number(e.target.value)})} /></label><label>وقت أول شوط<input type="time" className={inputClass} value={race.start_time} onChange={e => setRace({...race,start_time:e.target.value})} /></label><label>مدة الشوط بالدقائق<input type="number" min="1" max="120" className={inputClass} value={race.heat_minutes} onChange={e => setRace({...race,heat_minutes:Number(e.target.value)})} /></label><button className="border rounded p-2">{editingRace?'حفظ تعديل السباق':'إضافة السباق'}</button>
+            <details className="sm:col-span-2 text-sm"><summary className="cursor-pointer text-sky-700">الفئة والعمر والتوقيت (اختياري)</summary><div className="grid sm:grid-cols-3 gap-3 mt-3">
+              <label>الفئة<select className={inputClass} value={race.gender} onChange={e => setRace({...race,gender:e.target.value})}>{Object.entries(genders).map(([key,label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+              <label>العمر من<input type="number" min="0" max="120" className={inputClass} value={race.min_age} onChange={e => setRace({...race,min_age:Number(e.target.value)})} /></label><label>العمر إلى<input type="number" min="0" max="120" className={inputClass} value={race.max_age} onChange={e => setRace({...race,max_age:Number(e.target.value)})} /></label><label>وقت أول شوط<input type="time" className={inputClass} value={race.start_time} onChange={e => setRace({...race,start_time:e.target.value})} /></label><label>مدة الشوط بالدقائق<input type="number" min="1" max="120" className={inputClass} value={race.heat_minutes} onChange={e => setRace({...race,heat_minutes:Number(e.target.value)})} /></label>
+            </div></details><button className="sm:col-span-2 bg-sky-700 text-white rounded-lg p-2">{editingRace?'حفظ تعديل السباق':'إضافة السباق'}</button>
           </form>
+          {!meet.races.length && <p className="text-sm text-slate-600">ابدأ بإضافة سباق، مثل 50 متر حرة، ثم انتقل إلى المشاركين.</p>}
           {meet.races.map(r => <div key={r.id} className="border rounded p-3 space-y-2"><strong>{raceLabel(r)}</strong><div className="flex gap-2 flex-wrap"><label>بداية السباق<input type="time" className={inputClass} value={r.start_time} onChange={e => change({races:meet.races.map(x => x.id === r.id ? {...x,start_time:e.target.value} : x)})} /></label><button onClick={() => {setRace({...r});setEditingRace(r.id);}}>تعديل السباق</button><button onClick={() => {if(window.confirm('حذف السباق وجميع مشاركاته ونتائجه؟')) change({races:meet.races.filter(x=>x.id!==r.id),entries:meet.entries.filter(e=>e.race_id!==r.id)});}}>حذف السباق</button></div></div>)}
         </>}
         {tab === 'swimmers' && <>
-          <form className="grid sm:grid-cols-3 gap-3" onSubmit={e => {e.preventDefault(); if(!chosen.length){toast.error('اختر سباقًا واحدًا على الأقل');return;}const id=uid(); change({swimmers:[...meet.swimmers,{...swimmer,id,member_id:swimmer.member_id || null}],entries:[...meet.entries,...chosen.map(race_id=>({id:uid(),race_id,swimmer_id:id,seed_time:'',time:'',status:'pending',reason:'',heat:0,lane:0}))]});setSwimmer({name:'',member_id:'',birth_date:'',gender:'male',team:'',external_reference:''});setChosen([]);}}>
-            <label>اسم السباح<input required maxLength="150" className={inputClass} value={swimmer.name} onChange={e=>setSwimmer({...swimmer,name:e.target.value})}/></label><label>رقم العضوية (فارغ للمشارك الخارجي)<input className={inputClass} value={swimmer.member_id} onChange={e=>setSwimmer({...swimmer,member_id:e.target.value})}/></label><label>تاريخ الميلاد<input required type="date" className={inputClass} value={swimmer.birth_date} onChange={e=>setSwimmer({...swimmer,birth_date:e.target.value})}/></label><label>الجنس<select className={inputClass} value={swimmer.gender} onChange={e=>setSwimmer({...swimmer,gender:e.target.value})}><option value="male">ذكر</option><option value="female">أنثى</option></select></label><label>رقم السباح الخارجي الثابت (للمقارنة مستقبلًا)<input maxLength="100" className={inputClass} value={swimmer.external_reference || ''} onChange={e=>setSwimmer({...swimmer,external_reference:e.target.value})}/></label><label>الفريق / النادي<input maxLength="150" className={inputClass} value={swimmer.team} onChange={e=>setSwimmer({...swimmer,team:e.target.value})}/></label><div>{meet.races.map(r=><label key={r.id} className="block text-sm"><input type="checkbox" checked={chosen.includes(r.id)} onChange={e=>setChosen(e.target.checked?[...chosen,r.id]:chosen.filter(id=>id!==r.id))}/> {raceLabel(r)}</label>)}</div><button className="border rounded p-2">تسجيل السباح في السباقات</button>
-          </form>
+          {!meet.races.length ? <p className="rounded-lg border bg-white p-4 text-sm">أضف سباقًا أولًا، ثم سجل المشاركين فيه. <button type="button" className="text-sky-700 underline" onClick={()=>setTab('races')}>الذهاب إلى السباقات</button></p> :
+          <form className="space-y-4 rounded-xl border bg-white p-4" onSubmit={e => {e.preventDefault(); if(participantType === 'member' && !swimmer.member_id){toast.error('اختر عضوًا من نتائج البحث');return;} if(swimmer.member_id && meet.swimmers.some(s=>s.member_id===swimmer.member_id)){toast.error('هذا العضو مسجل بالفعل؛ اختر سباقاته من القائمة أدناه');return;} if(!chosen.length){toast.error('اختر سباقًا واحدًا على الأقل');return;}const id=uid(); change({swimmers:[...meet.swimmers,{...swimmer,id,member_id:participantType==='member'?swimmer.member_id:null}],entries:[...meet.entries,...chosen.map(race_id=>({id:uid(),race_id,swimmer_id:id,seed_time:'',time:'',status:'pending',reason:'',heat:0,lane:0}))]});setSwimmer({name:'',member_id:'',birth_date:'',gender:'male',team:'',external_reference:''});setMemberQuery('');setChosen([]);}}>
+            <div className="flex gap-2 flex-wrap"><button type="button" className={`rounded-lg border px-4 py-2 ${participantType==='member'?'bg-sky-700 text-white':'bg-white'}`} onClick={()=>{setParticipantType('member');setSwimmer({name:'',member_id:'',birth_date:'',gender:'male',team:'',external_reference:''});}}>عضو من النظام</button><button type="button" className={`rounded-lg border px-4 py-2 ${participantType==='external'?'bg-sky-700 text-white':'bg-white'}`} onClick={()=>{setParticipantType('external');setMemberQuery('');setSwimmer({name:'',member_id:'',birth_date:'',gender:'male',team:'',external_reference:''});}}>مشارك من خارج النظام</button></div>
+            {participantType==='member' ? <div className="space-y-2"><label className="block">ابحث عن العضو بالاسم أو رقم الجوال أو العضوية<input className={inputClass} value={memberQuery} onChange={e=>{setMemberQuery(e.target.value);setSwimmer(current=>({...current,member_id:''}));}} placeholder="اكتب حرفين على الأقل" /></label>{memberSearchBusy && <p className="text-xs text-slate-500">جارٍ البحث…</p>}{memberMatches.length>0 && <div className="max-h-48 overflow-auto rounded-lg border">{memberMatches.map(member=><button key={member.id} type="button" className="block w-full border-b px-3 py-2 text-right hover:bg-sky-50" onClick={()=>chooseMember(member)}>{member.name_ar || member.name} <span className="text-xs text-slate-500">{member.member_code || ''}</span></button>)}</div>}{swimmer.member_id && <p className="rounded-lg bg-emerald-50 p-2 text-sm text-emerald-800">تم اختيار: {swimmer.name}</p>}</div> : <label className="block">اسم المشارك<input required maxLength="150" className={inputClass} value={swimmer.name} onChange={e=>setSwimmer({...swimmer,name:e.target.value})}/></label>}
+            <div className="grid sm:grid-cols-2 gap-3"><label>تاريخ الميلاد<input required type="date" className={inputClass} value={swimmer.birth_date} onChange={e=>setSwimmer({...swimmer,birth_date:e.target.value})}/></label><label>الجنس<select className={inputClass} value={swimmer.gender} onChange={e=>setSwimmer({...swimmer,gender:e.target.value})}><option value="male">ذكر</option><option value="female">أنثى</option></select></label></div>
+            <div className="space-y-2"><strong className="text-sm">اختر السباقات</strong><div className="flex gap-2 flex-wrap">{meet.races.map(r=><label key={r.id} className={`cursor-pointer rounded-lg border px-3 py-2 text-sm ${chosen.includes(r.id)?'border-sky-600 bg-sky-50':''}`}><input className="ms-2" type="checkbox" checked={chosen.includes(r.id)} onChange={e=>setChosen(e.target.checked?[...chosen,r.id]:chosen.filter(id=>id!==r.id))}/> {raceLabel(r)}</label>)}</div></div>
+            <details className="text-sm"><summary className="cursor-pointer text-sky-700">بيانات إضافية (اختياري)</summary><div className="grid sm:grid-cols-2 gap-3 mt-3"><label>الفريق / النادي<input maxLength="150" className={inputClass} value={swimmer.team} onChange={e=>setSwimmer({...swimmer,team:e.target.value})}/></label>{participantType==='external' && <label>رقم خارجي ثابت للمقارنة مستقبلًا<input maxLength="100" className={inputClass} value={swimmer.external_reference || ''} onChange={e=>setSwimmer({...swimmer,external_reference:e.target.value})}/></label>}</div></details>
+            <button className="rounded-lg bg-sky-700 px-5 py-2 text-white">إضافة المشارك</button>
+          </form>}
           {meet.swimmers.map(s=><div key={s.id} className="border rounded p-3"><strong>{s.name} · {s.team} · {s.member_id?'عضو أكاديمية':'مشارك خارجي'}</strong><div className="flex gap-2 flex-wrap">{meet.races.map(r=><label key={r.id} className="text-sm"><input type="checkbox" checked={meet.entries.some(e=>e.swimmer_id===s.id&&e.race_id===r.id)} onChange={event=>{if(!event.target.checked&&!window.confirm('إلغاء المشاركة وحذف نتيجتها؟'))return; change({entries:event.target.checked?[...meet.entries,{id:uid(),race_id:r.id,swimmer_id:s.id,seed_time:'',time:'',status:'pending',reason:'',heat:0,lane:0}]:meet.entries.filter(e=>!(e.swimmer_id===s.id&&e.race_id===r.id))});}}/> {raceLabel(r)}</label>)}</div><button onClick={()=>{if(window.confirm('حذف السباح وجميع مشاركاته؟'))change({swimmers:meet.swimmers.filter(x=>x.id!==s.id),entries:meet.entries.filter(e=>e.swimmer_id!==s.id)});}}>حذف السباح</button></div>)}
           <button onClick={()=>print('participants')}>طباعة كشف المشاركين</button>
         </>}
@@ -114,6 +162,7 @@ export default function SwimmingMeetManager({ tid, startOpen = false }) {
             {tab==='heats'?<><label>الزمن السابق<input className={inputClass} placeholder="01:23.45" value={entry.seed_time} onChange={e=>patchEntry(entry.id,{seed_time:e.target.value})}/></label><label>الشوط<input type="number" min="0" className={inputClass} value={entry.heat} onChange={e=>patchEntry(entry.id,{heat:Number(e.target.value)})}/></label><label>الحارة<input type="number" min="0" max={meet.lanes} className={inputClass} value={entry.lane} onChange={e=>patchEntry(entry.id,{lane:Number(e.target.value)})}/></label></>:<><label>الحالة<select className={inputClass} value={entry.status} onChange={e=>patchEntry(entry.id,{status:e.target.value,time_cs:null})}>{Object.entries(statuses).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><label>الزمن<input disabled={entry.status!=='finished'} placeholder="01:23.45" className={inputClass} value={entry.time} onChange={e=>patchEntry(entry.id,{time:e.target.value,time_cs:null})}/></label><label>سبب الاستبعاد / ملاحظات<input className={inputClass} maxLength="500" value={entry.reason} onChange={e=>patchEntry(entry.id,{reason:e.target.value})}/></label><p className="text-sm">أفضل زمن سابق: {bests[entry.id]?.previous_best || 'احفظ لتحميل المقارنة'}{bests[entry.id]?.improvement_cs!=null?` · فرق الزمن: ${(bests[entry.id].improvement_cs/100).toFixed(2)} ثانية (الموجب تحسن)`:''}</p><button disabled={!meet.approved||dirty} onClick={()=>print('certificate',entry)}>شهادة المشاركة / المركز</button></>}
           </div>)}</div>)}
           <p className="text-sm">الترتيب بعد الحفظ حسب الزمن داخل كل سباق وفئة؛ التعادل يمنح المركز نفسه. الأزمنة بالدقيقة والثانية وأجزاء المئة. مقارنة الأداء للأعضاء المرتبطين أو للمشارك الخارجي بنفس رقمه الثابت والفريق وتاريخ الميلاد، من البطولات السابقة المعتمدة بنفس المسافة والنوع وطول المسبح.</p>
+          {tab === 'results' && <button disabled={busy || dirty || !meet.entries.length} className="bg-sky-700 text-white rounded px-4 py-2 disabled:opacity-50" onClick={() => { if(window.confirm('اعتماد جميع نتائج بطولة السباحة؟')) save(false,true); }}>اعتماد النتائج</button>}
           <button onClick={()=>print(tab==='heats'?'heats':'results')}>طباعة {tab==='heats'?'جدول الأشواط':'النتائج المعتمدة'} / حفظ PDF</button>
         </>}
         </fieldset>

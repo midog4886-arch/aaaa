@@ -1490,7 +1490,10 @@ const TournamentDetail = ({ tid, onBack }) => {
         {!isSwimmingTournament && <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />}
         <div className={isSwimmingTournament && showLevelManagement ? 'hidden' : ''}>
           <SwimmingMeetManager tid={tid} startOpen={isSwimmingTournament} />
-          {isSwimmingTournament && <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />}
+          {isSwimmingTournament && <details className="rounded-xl border bg-white p-4 print:hidden">
+            <summary className="cursor-pointer font-semibold text-slate-700">إدارة يوم البطولة والحضور (عند الحاجة)</summary>
+            <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />
+          </details>}
         </div>
         <div ref={printRef} className={`bg-white p-4 rounded-lg space-y-4 ${isSwimmingTournament && !showLevelManagement ? 'hidden print:block' : ''}`}>
           {/* Tournament header (print-only — screen uses LevelsPage-style header above) */}
