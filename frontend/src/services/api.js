@@ -159,6 +159,12 @@ export const levelsAPI = {
 
 // Tournaments API
 export const tournamentsAPI = {
+  operations: (id) => axios.get(`${API}/tournaments/${id}/operations`),
+  configureRegistration: (id, data) => axios.put(`${API}/tournaments/${id}/operations/registration`, data),
+  reviewRegistration: (id, requestId, action) => axios.post(`${API}/tournaments/${id}/operations/requests/${requestId}/${action}`),
+  checkIn: (id, memberId) => axios.post(`${API}/tournaments/${id}/operations/checkin`, { member_id: memberId }),
+  saveMatches: (id, data) => axios.put(`${API}/tournaments/${id}/operations/matches`, data),
+  approveResults: (id) => axios.post(`${API}/tournaments/${id}/operations/results/approve`),
   getAll: (params = {}) => axios.get(`${API}/tournaments`, { params }),
   get: (id) => axios.get(`${API}/tournaments/${id}`),
   getByMember: (memberId) => axios.get(`${API}/tournaments/by-member/${memberId}`),

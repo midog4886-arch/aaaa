@@ -155,6 +155,7 @@ from routes.coach_advances import router as coach_advances_router
 from routes.coach_salaries import router as coach_salaries_router
 from routes.whatsapp import router as whatsapp_router, set_database as set_whatsapp_db, start_scheduler as start_whatsapp_scheduler
 from routes.tournaments import router as tournaments_router
+from routes.tournament_ops import router as tournament_ops_router
 from routes.operation_passwords import router as operation_passwords_router
 from routes.social_publisher import router as social_publisher_router
 from routes.super_admin import router as super_admin_router
@@ -235,6 +236,7 @@ api_router.include_router(coach_advances_router)
 api_router.include_router(coach_salaries_router)
 api_router.include_router(whatsapp_router)
 api_router.include_router(tournaments_router)
+api_router.include_router(tournament_ops_router)
 from routes.swimming_meets import router as swimming_meets_router
 api_router.include_router(swimming_meets_router)
 api_router.include_router(operation_passwords_router)

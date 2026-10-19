@@ -711,6 +711,7 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
         "subcategories": sub_list,
         "subcategory_capacity": sub_capacity,
         "participants": [],
+        "results_approved": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -919,7 +920,7 @@ async def add_participant(tournament_id: str, participant: Participant, current_
 
     await db.tournaments.update_one(
         {"id": tournament_id},
-        {"$push": {"participants": new_part}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$push": {"participants": new_part}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat(), **({"results_approved": False} if new_part.get("position") else {})}}
     )
     await _log_activity("add_participant", current_user, {
         "tournament_id": tournament_id, "member_id": participant.member_id,
@@ -969,8 +970,7 @@ async def update_participant(
         raise HTTPException(status_code=404, detail="Participant not found")
 
     new_data = payload.model_dump(exclude_unset=True)
-    notify_member = bool(new_data.pop("notify", False))
-    prev_position = _norm_pos(target.get("position"))
+    new_data.pop("notify", None)  # Result messages are sent only on approval.
     if "position" in new_data:
         new_data["position"] = _norm_pos(new_data["position"])
 
@@ -1047,31 +1047,14 @@ async def update_participant(
     target.update(new_data)
     await db.tournaments.update_one(
         {"id": tournament_id},
-        {"$set": {"participants": parts, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {"participants": parts, "updated_at": datetime.now(timezone.utc).isoformat(), **({"results_approved": False} if "position" in new_data else {})}}
     )
     await _log_activity("update_participant", current_user, {
         "tournament_id": tournament_id, "member_id": member_id,
         "changes": new_data
     })
-    # Congratulate when a ranked position is freshly assigned/changed
-    notification_summary = None
-    if notify_member and "position" in new_data:
-        new_pos = new_data.get("position")
-        if new_pos in RANKED_POSITIONS and new_pos != prev_position:
-            notification_summary = await _notify_result(t, member_id, new_pos)
-            if notification_summary is not None:
-                await _record_notification_log(
-                    tournament_id=tournament_id,
-                    notif_type="result",
-                    summary=notification_summary,
-                    current_user=current_user,
-                    member_id=member_id,
-                    member_name=await _resolve_member_name(member_id),
-                )
-    out = {"message": "Participant updated"}
-    if notification_summary is not None:
-        out["notification_summary"] = notification_summary
-    return out
+    # Result announcements are sent only after explicit approval.
+    return {"message": "Participant updated", "results_approved": False if "position" in new_data else t.get("results_approved", True)}
 
 
 @router.delete("/{tournament_id}/participants/{member_id}")
@@ -1168,6 +1151,8 @@ async def resend_participant_notification(
         kind = "result" if pos in RANKED_POSITIONS else "registration"
 
     if kind == "result":
+        if not t.get("results_approved", True):
+            raise HTTPException(status_code=409, detail="اعتمد النتائج قبل إرسال التهنئة")
         if pos not in RANKED_POSITIONS:
             raise HTTPException(
                 status_code=400,
@@ -1434,6 +1419,8 @@ async def export_tournament(
 @router.get("/{tournament_id}/certificate/{member_id}")
 async def participant_certificate(tournament_id: str, member_id: str, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
+    if not t.get("results_approved", True):
+        raise HTTPException(status_code=409, detail="اعتمد النتائج قبل إصدار الشهادة")
     t = await _enrich_participants(t)
     p = next((x for x in (t.get("participants") or []) if x.get("member_id") == member_id), None)
     if not p:

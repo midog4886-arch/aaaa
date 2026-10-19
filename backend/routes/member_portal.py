@@ -934,7 +934,7 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
     tournaments = await db.tournaments.find(
         {"participants.member_id": {"$in": list(linked_ids_set)}},
         {"_id": 0, "id": 1, "name": 1, "date": 1, "place": 1,
-         "activity_name": 1, "status": 1, "participants": 1},
+         "activity_name": 1, "status": 1, "participants": 1, "results_approved": 1, "match_board": 1},
     ).sort("date", -1).to_list(200)
 
     # Collect level ids needed for label enrichment
@@ -955,10 +955,10 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
     results = []
     medals_count = {"1": 0, "2": 0, "3": 0}
     for t in tournaments:
-        my = next((p for p in (t.get("participants") or []) if p.get("member_id") == member["id"]), None)
+        my = next((p for p in (t.get("participants") or []) if p.get("member_id") in linked_ids_set), None)
         if not my:
             continue
-        pos = my.get("position")
+        pos = my.get("position") if t.get("results_approved", True) else None
         if pos in medals_count:
             medals_count[pos] += 1
         lvl = levels_map.get(my.get("level_id")) if my.get("level_id") else None
@@ -968,16 +968,19 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
             lvl_label = cn if cn else f"المستوى {lvl.get('level_number', '')}"
         results.append({
             "tournament_id": t.get("id"),
+            "member_id": my.get("member_id"),
             "tournament_name": t.get("name") or "",
             "date": t.get("date") or "",
             "place": t.get("place") or "",
             "activity_name": t.get("activity_name") or "",
             "status": t.get("status") or "",
+            "results_approved": t.get("results_approved", True),
+            "matches": (t.get("match_board") or {}).get("matches", []) if t.get("results_approved", True) else [],
             "position": pos,
             "position_label_ar": POSITION_LABEL_AR.get(pos or "", ""),
             "position_label_en": POSITION_LABEL_EN.get(pos or "", ""),
             "level_label": lvl_label,
-            "notes": my.get("notes") or "",
+            "notes": (my.get("notes") or "") if t.get("results_approved", True) else "",
         })
 
     return {

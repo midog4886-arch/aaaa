@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Trophy, Calendar, MapPin, Activity, Loader2 } from 'lucide-react';
 import MemberLayout, { memberAPI, getDarkMode, getLanguage } from './MemberLayout';
@@ -6,6 +8,9 @@ import MemberLayout, { memberAPI, getDarkMode, getLanguage } from './MemberLayou
 const MemberTournaments = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ tournaments: [], totals: {} });
+  const [openTournaments, setOpenTournaments] = useState([]);
+  const [subcategories, setSubcategories] = useState({});
+  const [registering, setRegistering] = useState(false);
   const darkMode = getDarkMode();
   const language = getLanguage();
 
@@ -14,7 +19,20 @@ const MemberTournaments = () => {
       .then(res => setData(res.data))
       .catch(() => setData({ tournaments: [], totals: {} }))
       .finally(() => setLoading(false));
+    memberAPI.get('/api/tournaments/member/open').then(res => setOpenTournaments(res.data || [])).catch(() => setOpenTournaments([]));
   }, []);
+
+  const requestPlace = async (tournament, member) => {
+    setRegistering(true);
+    try {
+      await memberAPI.post(`/api/tournaments/${tournament.id}/member/register`, { member_id: member.id, subcategory: subcategories[`${tournament.id}:${member.id}`] || null });
+      toast.success('تم إرسال الطلب للمراجعة');
+      const response = await memberAPI.get('/api/tournaments/member/open');
+      setOpenTournaments(response.data || []);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'تعذر إرسال الطلب');
+    } finally { setRegistering(false); }
+  };
 
   if (loading) {
     return (
@@ -45,6 +63,8 @@ const MemberTournaments = () => {
           <Trophy className="w-6 h-6 text-amber-500" />
           {language === 'ar' ? 'بطولاتي' : 'My Tournaments'}
         </h1>
+
+        {openTournaments.length > 0 && <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}><CardHeader><CardTitle className="text-lg">التسجيل في البطولات المفتوحة</CardTitle></CardHeader><CardContent className="space-y-3">{openTournaments.map(tournament => <div key={tournament.id} className="border rounded-xl p-3 space-y-2"><strong>{tournament.name}</strong><p className="text-xs">{tournament.date} · {tournament.place}</p>{tournament.members.map(member => <div key={member.id} className="flex flex-wrap items-center gap-2 text-sm"><span>{member.name}</span>{member.status ? <span className="text-green-700">{({pending:'بانتظار المراجعة',waitlisted:'قائمة الانتظار',registered:'مسجل',approved:'مسجل',rejected:'مرفوض'})[member.status] || member.status}</span> : <>{tournament.subcategories.length > 0 && <select className="border rounded p-2" value={subcategories[`${tournament.id}:${member.id}`] || ''} onChange={e => setSubcategories({ ...subcategories, [`${tournament.id}:${member.id}`]: e.target.value })}><option value="">اختر التصنيف</option>{tournament.subcategories.map(s => <option key={s} value={s}>{s}</option>)}</select>}<button disabled={registering || (tournament.subcategories.length > 0 && !subcategories[`${tournament.id}:${member.id}`])} className="bg-orange-500 text-white rounded px-3 py-1 disabled:opacity-50" onClick={() => requestPlace(tournament, member)}>طلب التسجيل</button></>}</div>)}</div>)}</CardContent></Card>}
 
         {tournaments.length === 0 ? (
           <Card className={darkMode ? 'bg-gray-800 border-gray-700' : ''}>
@@ -83,8 +103,10 @@ const MemberTournaments = () => {
               </CardHeader>
               <CardContent className="space-y-3">
                 {tournaments.map((tr, idx) => {
-                  const posLabel = (language === 'ar' ? tr.position_label_ar : tr.position_label_en)
-                    || (language === 'ar' ? 'مشاركة' : 'Participation');
+                  const posLabel = tr.results_approved === false
+                    ? (language === 'ar' ? 'النتائج قيد المراجعة' : 'Results under review')
+                    : ((language === 'ar' ? tr.position_label_ar : tr.position_label_en)
+                      || (language === 'ar' ? 'مشاركة' : 'Participation'));
                   return (
                     <div
                       key={`${tr.tournament_id}-${idx}`}
@@ -123,12 +145,14 @@ const MemberTournaments = () => {
                               </div>
                             )}
                           </div>
+                          {tr.member_id && <div className="mt-3 inline-flex flex-col items-center gap-1 rounded bg-white p-2 text-slate-700"><QRCodeSVG value={`TCI|${tr.tournament_id}|${tr.member_id}`} size={76} /><span className="text-[10px]">رمز حضور البطولة</span></div>}
                         </div>
                         <div className={`px-3 py-2 rounded-lg border-2 text-center min-w-[110px] ${posBadge(tr.position)}`}>
                           <div className="text-2xl leading-none">{medalEmoji(tr.position)}</div>
                           <div className="text-xs font-semibold mt-1">{posLabel}</div>
                         </div>
                       </div>
+                      {tr.matches?.length > 0 && <div className="mt-3 border-t pt-3 space-y-1 text-xs"><strong>نتائج المباريات المعتمدة</strong>{tr.matches.filter(m => m.status === 'finished').map(m => <p key={m.id}>{m.team_a} {m.score_a} : {m.score_b} {m.team_b}</p>)}</div>}
                     </div>
                   );
                 })}

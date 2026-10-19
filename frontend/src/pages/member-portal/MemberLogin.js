@@ -141,6 +141,11 @@ const SplashScreen = ({ onComplete, logo, academyName }) => {
 
 const MemberLogin = () => {
   const navigate = useNavigate();
+  const navigateAfterLogin = () => {
+    const next = sessionStorage.getItem('memberTournamentReturn') || '';
+    sessionStorage.removeItem('memberTournamentReturn');
+    navigate(/^\/my-tournaments\?join=[a-zA-Z0-9%_-]+$/.test(next) ? next : '/member-dashboard');
+  };
   const location = useLocation();
   const requestedTenant = (() => {
     const value = new URLSearchParams(location.search).get('tenant') || '';
@@ -209,7 +214,7 @@ const MemberLogin = () => {
     // Check if already logged in
     const token = localStorage.getItem('member_token');
     if (token && !requestedTenant) {
-      navigate('/member-dashboard');
+      navigateAfterLogin();
     }
   }, [navigate, requestedTenant]);
 
@@ -279,7 +284,7 @@ const MemberLogin = () => {
       }
 
       toast.success(`مرحباً ${response.data.member.name_ar}`);
-      navigate('/member-dashboard');
+      navigateAfterLogin();
       return true;
     } catch (error) {
       // A remembered phone can become invalid (member removed / phone changed).

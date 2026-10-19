@@ -26,6 +26,7 @@ import {
 } from '../services/api';
 import { toast } from 'sonner';
 import SwimmingMeetManager from '../components/SwimmingMeetManager';
+import TournamentOperations from '../components/TournamentOperations';
 import {
   Trophy, Plus, Edit, Trash2, Loader2, ArrowRight, Search, UserPlus,
   Calendar, MapPin, Activity, FileSpreadsheet, FileText, Award, Share2,
@@ -223,11 +224,12 @@ const TournamentsPage = () => {
     });
   }, [tournaments, searchTerm, filterActivity, filterBranch, filterFromDate, filterToDate]);
 
-  const openCreate = () => {
+  const openCreate = (kind) => {
+    const activity = typeof kind === 'string' ? activities.find(a => new RegExp(kind === 'swim' ? 'سباح|swim' : 'قدم|football|soccer', 'i').test(`${a.name_ar || ''} ${a.name || ''}`)) : null;
     setEditingTournament(null);
     setTournamentForm({
       name: '', date: new Date().toISOString().split('T')[0], place: '',
-      activity_ids: [], activity_names: [],
+      activity_ids: activity ? [activity.id] : [], activity_names: activity ? [activity.name_ar || activity.name] : [],
       branch_id: selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all',
       description: '', status: 'upcoming',
       subcategories: [], subcategory_capacity: 6,
@@ -362,7 +364,7 @@ const TournamentsPage = () => {
               </p>
             </div>
           </div>
-          <Button onClick={openCreate} className="bg-orange-500 hover:bg-orange-600 text-white">
+          <Button onClick={() => openCreate()} className="bg-orange-500 hover:bg-orange-600 text-white">
             <Plus className="w-4 h-4 ms-1" />
             {language === 'ar' ? 'بطولة جديدة' : 'New Tournament'}
           </Button>
@@ -448,9 +450,9 @@ const TournamentsPage = () => {
             <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
           </div>
         ) : filteredTournaments.length === 0 ? (
-          <Card><CardContent className="py-12 text-center text-muted-foreground">
-            <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            {language === 'ar' ? 'لا توجد بطولات بعد' : 'No tournaments yet'}
+          <Card><CardContent className="py-8 text-center space-y-4">
+            <Trophy className="w-11 h-11 mx-auto text-orange-400" />
+            {tournaments.length ? <><h2 className="font-bold">لا توجد بطولات مطابقة للبحث</h2><p className="text-sm text-muted-foreground">جرّب تغيير التاريخ أو النشاط أو الفرع.</p><Button variant="outline" onClick={() => { setSearchTerm(''); setFilterActivity('all'); setFilterBranch('all'); setFilterFromDate(''); setFilterToDate(''); }}>مسح الفلاتر</Button></> : <><h2 className="text-xl font-bold">ابدأ أول بطولة في الأكاديمية</h2><p className="text-sm text-muted-foreground">إعداد البطولة ← تسجيل المشاركين ← مراجعة النتائج واعتمادها</p><div className="flex justify-center flex-wrap gap-3"><Button onClick={() => openCreate('swim')} className="bg-sky-600 hover:bg-sky-700">إنشاء بطولة سباحة</Button><Button onClick={() => openCreate('football')} className="bg-green-600 hover:bg-green-700">إنشاء بطولة قدم</Button></div></>}
           </CardContent></Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -490,6 +492,11 @@ const TournamentsPage = () => {
                       </Button>
                     </div>
                   </div>
+                  {(tn.registration_open || (tn.registration_requests || []).some(r => r.status === 'pending') || tn.results_approved === false) && <div className="flex flex-wrap gap-1 pt-1 text-xs">
+                    {tn.registration_open && <span className="bg-green-50 text-green-700 rounded px-2 py-1">التسجيل مفتوح</span>}
+                    {(tn.registration_requests || []).filter(r => r.status === 'pending').length > 0 && <span className="bg-amber-50 text-amber-700 rounded px-2 py-1">{tn.registration_requests.filter(r => r.status === 'pending').length} طلب للمراجعة</span>}
+                    {tn.results_approved === false && ((tn.participants || []).some(p => p.position) || (tn.match_board?.matches || []).some(m => m.status === 'finished')) && <span className="bg-orange-50 text-orange-700 rounded px-2 py-1">نتائج تنتظر الاعتماد</span>}
+                  </div>}
                 </CardContent>
               </Card>
             ))}
@@ -1140,7 +1147,6 @@ const TournamentDetail = ({ tid, onBack }) => {
         weight: editForm.weight,
         notes: editForm.notes,
         position: editForm.position || null,
-        notify: !!editForm.notify,
       });
       toast.success(language === 'ar' ? 'تم التحديث' : 'Updated');
       const summary = res?.data?.notification_summary;
@@ -1200,9 +1206,13 @@ const TournamentDetail = ({ tid, onBack }) => {
   const handleExportPdf = () =>
     downloadFile(tournamentsAPI.exportUrl(tid, 'pdf'), `tournament_${tournament?.name || tid}.pdf`);
   const handleCertificate = (p) =>
-    downloadFile(tournamentsAPI.certificateUrl(tid, p.member_id), `certificate_${p.member_name || p.member_id}.pdf`);
+    tournament?.results_approved === false ? toast.warning('اعتمد النتائج قبل إصدار الشهادة') : downloadFile(tournamentsAPI.certificateUrl(tid, p.member_id), `certificate_${p.member_name || p.member_id}.pdf`);
 
   const handleWhatsAppShare = async () => {
+    if (tournament?.results_approved === false && ((tournament.participants || []).some(p => p.position) || (tournament.match_board?.matches || []).some(m => m.status === 'finished'))) {
+      toast.warning('اعتمد النتائج قبل مشاركة كشف المراكز');
+      return;
+    }
     if (!printRef.current) return;
     try {
       toast.info(language === 'ar' ? 'جاري إنشاء الصورة...' : 'Generating image...');
@@ -1435,6 +1445,7 @@ const TournamentDetail = ({ tid, onBack }) => {
         </div>
 
         {/* Printable area */}
+        <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />
         <SwimmingMeetManager tid={tid} />
         <div ref={printRef} className="bg-white p-4 rounded-lg space-y-4">
           {/* Tournament header (print-only — screen uses LevelsPage-style header above) */}
@@ -2255,20 +2266,7 @@ const TournamentDetail = ({ tid, onBack }) => {
               <Label>{language === 'ar' ? 'ملاحظات' : 'Notes'}</Label>
               <Textarea rows={2} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
             </div>
-            {['1', '2', '3'].includes(String(editForm.position || '')) && (
-              <div className="flex items-start gap-2 pt-3 border-t">
-                <Checkbox
-                  id="notify-edit-participant"
-                  checked={!!editForm.notify}
-                  onCheckedChange={(v) => setEditForm({ ...editForm, notify: !!v })}
-                />
-                <Label htmlFor="notify-edit-participant" className="cursor-pointer">
-                  {language === 'ar'
-                    ? 'إرسال إشعار تهنئة للعضو بفوزه'
-                    : 'Send a congratulations notification to the member'}
-                </Label>
-              </div>
-            )}
+            {['1', '2', '3'].includes(String(editForm.position || '')) && <p className="text-xs text-amber-700 border-t pt-3">سيُحفظ المركز كمسودة، وتُرسل التهنئة بعد اعتماد النتائج من مركز إدارة البطولة.</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingPart(null)}>

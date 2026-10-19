@@ -230,6 +230,9 @@ const MemberLayout = ({ children }) => {
   useEffect(() => {
     const memberData = getMemberData();
     if (!memberData) {
+      if (window.location.pathname === '/my-tournaments' && new URLSearchParams(window.location.search).has('join')) {
+        sessionStorage.setItem('memberTournamentReturn', window.location.pathname + window.location.search);
+      }
       navigate('/member-login');
       return;
     }
