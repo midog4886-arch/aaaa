@@ -137,8 +137,10 @@ const TournamentsPage = () => {
     activity_ids: [], activity_names: [],
     branch_id: 'all', description: '', status: 'upcoming',
     subcategories: [], subcategory_capacity: 6,
+    tournament_levels: [],
     notify: false
   });
+  const [levelDraft, setLevelDraft] = useState({ name: '', capacity: '6' });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -233,8 +235,10 @@ const TournamentsPage = () => {
       branch_id: selectedBranchId && selectedBranchId !== 'all' ? selectedBranchId : 'all',
       description: '', status: 'upcoming',
       subcategories: [], subcategory_capacity: 6,
+      tournament_levels: [],
       notify: false
     });
+    setLevelDraft({ name: '', capacity: '6' });
     setTournamentDialogOpen(true);
   };
 
@@ -251,8 +255,10 @@ const TournamentsPage = () => {
       status: tn.status || 'upcoming',
       subcategories: Array.isArray(tn.subcategories) ? tn.subcategories : [],
       subcategory_capacity: tn.subcategory_capacity || 6,
+      tournament_levels: Array.isArray(tn.tournament_levels) ? tn.tournament_levels : [],
       notify: false,
     });
+    setLevelDraft({ name: '', capacity: '6' });
     setTournamentDialogOpen(true);
   };
 
@@ -269,6 +275,24 @@ const TournamentsPage = () => {
         .filter(Boolean);
       return { ...prev, activity_ids: nextIds, activity_names: nextNames };
     });
+  };
+
+  const addTournamentLevel = () => {
+    const name = levelDraft.name.trim();
+    const capacity = Number(levelDraft.capacity);
+    if (!name || !Number.isInteger(capacity) || capacity < 1) {
+      toast.error(language === 'ar' ? 'أدخل اسم المستوى وسعة صحيحة' : 'Enter a level name and valid capacity');
+      return;
+    }
+    if ((tournamentForm.tournament_levels || []).some(l => l.name.trim().toLowerCase() === name.toLowerCase())) {
+      toast.error(language === 'ar' ? 'هذا المستوى مضاف بالفعل' : 'This level already exists');
+      return;
+    }
+    setTournamentForm(prev => ({ ...prev, tournament_levels: [
+      ...(prev.tournament_levels || []),
+      { id: crypto.randomUUID(), name, capacity },
+    ] }));
+    setLevelDraft({ name: '', capacity: '6' });
   };
 
   const saveTournament = async () => {
@@ -592,6 +616,22 @@ const TournamentsPage = () => {
                   ? 'اتركه فارغًا لجعل البطولة عامة (تقبل أي عضو من الفرع).'
                   : 'Leave empty for an open tournament (any branch member can join).'}
               </p>
+            </div>
+
+            <div className="border rounded-md p-3 space-y-2">
+              <Label className="text-sm font-semibold">{language === 'ar' ? 'مستويات البطولة' : 'Tournament levels'}</Label>
+              <p className="text-xs text-muted-foreground">{language === 'ar' ? 'أضف فقط المستويات التي تريدها في هذه البطولة. لن تظهر مستويات الأكاديمية تلقائيًا.' : 'Add only the levels you want in this tournament. Academy levels are not added automatically.'}</p>
+              {(tournamentForm.tournament_levels || []).map(level => (
+                <div key={level.id} className="flex items-center justify-between rounded border px-2 py-1 text-sm">
+                  <span>{level.name} · {level.capacity} {language === 'ar' ? 'لاعب' : 'players'}</span>
+                  <button type="button" className="text-red-600" onClick={() => setTournamentForm(prev => ({ ...prev, tournament_levels: prev.tournament_levels.filter(l => l.id !== level.id) }))}>{language === 'ar' ? 'حذف' : 'Remove'}</button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <Input value={levelDraft.name} onChange={e => setLevelDraft(prev => ({ ...prev, name: e.target.value }))} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTournamentLevel(); } }} placeholder={language === 'ar' ? 'اسم المستوى' : 'Level name'} />
+                <Input type="number" min="1" className="w-24" value={levelDraft.capacity} onChange={e => setLevelDraft(prev => ({ ...prev, capacity: e.target.value }))} aria-label={language === 'ar' ? 'سعة المستوى' : 'Level capacity'} />
+                <Button type="button" variant="outline" onClick={addTournamentLevel}>{language === 'ar' ? 'إضافة' : 'Add'}</Button>
+              </div>
             </div>
 
             {/* Subcategories (سباقات) — e.g. swimming strokes */}
@@ -934,31 +974,26 @@ const TournamentDetail = ({ tid, onBack }) => {
     return map;
   }, [tournamentActivityIds, tournamentActivityNames]);
 
-  // Levels for the participant-form: show ALL levels belonging to any of
-  // the tournament's activities (same behavior as LevelsPage — not filtered
-  // by the participant's specific activity).
+  // Tournament levels belong to this tournament, not to the academy-wide catalog.
+  // Legacy tournaments show only levels already used by their participants.
   const tournamentLevels = useMemo(() => {
     if (!tournament) return [];
+    if (Array.isArray(tournament.tournament_levels)) {
+      return tournament.tournament_levels.map((l, index) => ({
+        id: l.id, custom_name: l.name, level_number: index + 1,
+        max_capacity: l.capacity, activity_id: tournamentActivityIds[0] || '',
+      }));
+    }
+    const used = new Set((tournament.participants || []).map(p => p.level_id).filter(Boolean));
     return levels
-      .filter(l => {
-        if (tournamentActivityIds.length === 0) return true;
-        return tournamentActivityIds.includes(l.activity_id);
-      })
+      .filter(l => used.has(l.id))
       .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
   }, [tournament, levels, tournamentActivityIds]);
 
   // Levels available when EDITING a participant: show ALL levels belonging
   // to any of the tournament's activities (same behavior as LevelsPage —
   // not filtered by the participant's specific activity).
-  const editLevels = useMemo(() => {
-    if (!tournament) return [];
-    return levels
-      .filter(l => {
-        if (tournamentActivityIds.length === 0) return true;
-        return tournamentActivityIds.includes(l.activity_id);
-      })
-      .sort((a, b) => (a.level_number || 0) - (b.level_number || 0));
-  }, [tournament, levels, tournamentActivityIds]);
+  const editLevels = tournamentLevels;
 
   // Eligible members for the tournament's activities (or ALL members if no
   // activity restriction). When the user picks a specific activity in the
@@ -1024,7 +1059,7 @@ const TournamentDetail = ({ tid, onBack }) => {
 
   const getLevelLabel = (lid) => {
     if (!lid || lid === '__none__') return language === 'ar' ? 'بدون مستوى' : 'No level';
-    const l = levels.find(x => x.id === lid);
+    const l = tournamentLevels.find(x => x.id === lid) || levels.find(x => x.id === lid);
     if (!l) return language === 'ar' ? 'مستوى غير موجود' : 'Unknown level';
     const cn = (l.custom_name || '').trim();
     return cn || `${language === 'ar' ? 'المستوى' : 'Level'} ${l.level_number || ''}`;
@@ -1049,40 +1084,22 @@ const TournamentDetail = ({ tid, onBack }) => {
   };
 
   const handleCreateLevel = async () => {
-    if (tournamentActivityIds.length === 0) {
-      toast.error(language === 'ar' ? 'لا يوجد نشاط للبطولة' : 'Tournament has no activity');
-      return;
-    }
     setNewLevelSaving(true);
     try {
-      const aid = tournamentActivityIds[0];
-      const aname = activityNameById[aid] || tournamentActivityNames[0] || '';
-      // Next level number = max within this activity + 1.
-      const existing = levels.filter(l => l.activity_id === aid);
-      const nextNum = existing.length
-        ? Math.max(...existing.map(l => l.level_number || 0)) + 1
-        : 1;
-      const cap = parseInt(newLevelForm.capacity, 10) || subCapacity || 6;
-      if (!selectedBranchId || selectedBranchId === 'all') {
-        toast.error(language === 'ar' ? 'يرجى اختيار فرع محدد قبل إنشاء المستوى' : 'Please select a specific branch first');
-        setNewLevelSaving(false);
-        return;
-      }
-      const branchId = selectedBranchId;
-      await levelsAPI.create({
-        level_number: nextNum,
-        activity_name: aname,
-        activity_id: aid,
-        custom_name: newLevelForm.custom_name?.trim() || `${language === 'ar' ? 'المستوى' : 'Level'} ${nextNum}`,
-        capacity: cap,
-        branch_id: branchId,
-        members: [],
+      const name = newLevelForm.custom_name.trim();
+      const cap = Number(newLevelForm.capacity);
+      if (!name || !Number.isInteger(cap) || cap < 1) throw new Error(language === 'ar' ? 'أدخل اسم المستوى وسعة صحيحة' : 'Enter a level name and valid capacity');
+      const existing = tournament.tournament_levels || [];
+      if (existing.some(l => l.name.toLowerCase() === name.toLowerCase())) throw new Error(language === 'ar' ? 'هذا المستوى مضاف بالفعل' : 'This level already exists');
+      await tournamentsAPI.update(tid, {
+        ...tournament,
+        tournament_levels: [...existing, { id: crypto.randomUUID(), name, capacity: cap }],
       });
-      toast.success(language === 'ar' ? `تم إنشاء المستوى ${nextNum}` : `Level ${nextNum} created`);
+      toast.success(language === 'ar' ? 'تم إنشاء المستوى' : 'Level created');
       setNewLevelOpen(false);
-      await loadDetail();
+      await load();
     } catch (e) {
-      toast.error(e.response?.data?.detail || (language === 'ar' ? 'فشل إنشاء المستوى' : 'Failed to create level'));
+      toast.error(e.response?.data?.detail || e.message || (language === 'ar' ? 'فشل إنشاء المستوى' : 'Failed to create level'));
     } finally {
       setNewLevelSaving(false);
     }
@@ -1658,7 +1675,7 @@ const TournamentDetail = ({ tid, onBack }) => {
           })()}
 
           {/* Add-level button when subcategories aren't enabled */}
-          {!hasSubcategories && tournamentActivityIds.length > 0 && (
+          {!hasSubcategories && (
             <div className="flex justify-end print:hidden">
               <Button
                 onClick={openNewLevel}
@@ -1675,8 +1692,8 @@ const TournamentDetail = ({ tid, onBack }) => {
           {tournamentLevels.length === 0 && Object.keys(groupedParticipants).length === 0 ? (
             <Card><CardContent className="py-10 text-center text-muted-foreground">
               {language === 'ar'
-                ? 'لا توجد مستويات لهذا النشاط بعد. اضف مشاركين بدون مستوى أو أنشئ مستويات أولاً.'
-                : 'No levels exist for this activity yet. Add participants without a level or create levels first.'}
+                ? 'لا توجد مستويات لهذه البطولة بعد. أنشئ مستويات البطولة أولاً.'
+                : 'No tournament levels yet. Add levels to this tournament first.'}
             </CardContent></Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -2388,13 +2405,13 @@ const TournamentDetail = ({ tid, onBack }) => {
             <DialogTitle>{language === 'ar' ? 'إضافة مستوى جديد' : 'Add new level'}</DialogTitle>
             <DialogDescription>
               {language === 'ar'
-                ? `سيتم إنشاء مستوى جديد ضمن نشاط "${tournamentActivityNames[0] || ''}".`
-                : `Creates a new level under activity "${tournamentActivityNames[0] || ''}".`}
+                ? 'سيضاف هذا المستوى إلى البطولة فقط.'
+                : 'This level will be added to this tournament only.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>{language === 'ar' ? 'اسم المستوى (اختياري)' : 'Level name (optional)'}</Label>
+              <Label>{language === 'ar' ? 'اسم المستوى' : 'Level name'}</Label>
               <Input
                 value={newLevelForm.custom_name}
                 onChange={(e) => setNewLevelForm({ ...newLevelForm, custom_name: e.target.value })}

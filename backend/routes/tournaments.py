@@ -115,7 +115,29 @@ class TournamentCreate(BaseModel):
     # (subcategory, level_id).
     subcategories: Optional[List[str]] = None
     subcategory_capacity: Optional[int] = 6
+    tournament_levels: Optional[List[dict]] = None
     notify: Optional[bool] = False  # broadcast announcement to members on create
+
+
+def _tournament_levels(raw_levels):
+    result = []
+    seen = set()
+    for level in raw_levels or []:
+        name = str(level.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="اسم المستوى مطلوب")
+        key = name.casefold()
+        if key in seen:
+            raise HTTPException(status_code=400, detail="اسم المستوى مكرر في البطولة")
+        seen.add(key)
+        try:
+            capacity = int(level.get("capacity") or 6)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="سعة المستوى غير صحيحة")
+        if capacity < 1:
+            raise HTTPException(status_code=400, detail="سعة المستوى يجب أن تكون أكبر من صفر")
+        result.append({"id": str(level.get("id") or uuid.uuid4()), "name": name, "capacity": capacity})
+    return result
 
 
 class ParticipantUpdate(BaseModel):
@@ -214,6 +236,11 @@ async def _enrich_participants(tournament: dict) -> dict:
         {"_id": 0, "id": 1, "level_number": 1, "custom_name": 1, "activity_name": 1}
     ).to_list(len(level_ids) + 10) if level_ids else []
     levels_map = {l["id"]: l for l in levels}
+    for index, level in enumerate(tournament.get("tournament_levels") or []):
+        levels_map[level["id"]] = {
+            "id": level["id"], "custom_name": level.get("name", ""),
+            "level_number": index + 1,
+        }
 
     # Map participant.activity_id -> activity_name using the tournament's
     # own activity_ids/activity_names arrays so the UI can display which
@@ -695,6 +722,7 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
 
     sub_list = [s.strip() for s in (payload.subcategories or []) if s and s.strip()]
     sub_capacity = int(payload.subcategory_capacity) if payload.subcategory_capacity else 6
+    tournament_levels = _tournament_levels(payload.tournament_levels)
 
     doc = {
         "id": str(uuid.uuid4()),
@@ -710,6 +738,7 @@ async def create_tournament(payload: TournamentCreate, current_user: dict = Depe
         "status": payload.status or "upcoming",
         "subcategories": sub_list,
         "subcategory_capacity": sub_capacity,
+        "tournament_levels": tournament_levels,
         "participants": [],
         "results_approved": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -749,6 +778,7 @@ async def update_tournament(tournament_id: str, payload: TournamentCreate, curre
 
     sub_list = [s.strip() for s in (payload.subcategories or []) if s and s.strip()]
     sub_capacity = int(payload.subcategory_capacity) if payload.subcategory_capacity else 6
+    tournament_levels = _tournament_levels(payload.tournament_levels) if payload.tournament_levels is not None else None
 
     update = {
         "name": payload.name,
@@ -764,6 +794,8 @@ async def update_tournament(tournament_id: str, payload: TournamentCreate, curre
         "subcategory_capacity": sub_capacity,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if tournament_levels is not None:
+        update["tournament_levels"] = tournament_levels
     if current_user.get("is_admin", False) and payload.branch_id is not None:
         update["branch_id"] = payload.branch_id if payload.branch_id != "all" else None
 
@@ -815,6 +847,16 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     # subcategory, but only once when no subcategory is in play.
     if any(p.get("member_id") == participant.member_id and (p.get("subcategory") or None) == sub for p in existing):
         raise HTTPException(status_code=400, detail="العضو مضاف بالفعل في هذا التصنيف")
+
+    local_levels = t.get("tournament_levels")
+    if participant.level_id and isinstance(local_levels, list):
+        selected_level = next((l for l in local_levels if l.get("id") == participant.level_id), None)
+        if not selected_level:
+            raise HTTPException(status_code=400, detail="المستوى غير موجود في هذه البطولة")
+        if not t_subs:
+            used = sum(1 for p in existing if p.get("level_id") == participant.level_id)
+            if used >= int(selected_level.get("capacity") or 6):
+                raise HTTPException(status_code=400, detail="سعة هذا المستوى ممتلئة")
 
     # Capacity per (subcategory, level_id) when subcategories are defined.
     if t_subs and sub and participant.level_id:
