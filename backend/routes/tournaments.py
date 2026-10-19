@@ -79,7 +79,10 @@ def _register_arabic_font():
 # ============ MODELS ============
 
 class Participant(BaseModel):
-    member_id: str
+    member_id: Optional[str] = None
+    external_name: Optional[str] = None
+    external_phone: Optional[str] = None
+    external_club: Optional[str] = None
     # Which of the tournament's activities this participant competes in.
     # Optional: tournaments without any activities accept any participant.
     activity_id: Optional[str] = None
@@ -141,6 +144,9 @@ def _tournament_levels(raw_levels):
 
 
 class ParticipantUpdate(BaseModel):
+    external_name: Optional[str] = None
+    external_phone: Optional[str] = None
+    external_club: Optional[str] = None
     activity_id: Optional[str] = None
     level_id: Optional[str] = None
     subcategory: Optional[str] = None
@@ -223,7 +229,7 @@ async def _enrich_participants(tournament: dict) -> dict:
         tournament["participants"] = []
         return tournament
 
-    member_ids = list({p.get("member_id") for p in parts if p.get("member_id")})
+    member_ids = list({p.get("member_id") for p in parts if p.get("member_id") and not p.get("external_name")})
     members = await db.members.find(
         {"id": {"$in": member_ids}},
         {"_id": 0, "id": 1, "name_ar": 1, "name": 1, "phone": 1, "member_code": 1}
@@ -260,8 +266,8 @@ async def _enrich_participants(tournament: dict) -> dict:
             lvl_label = cn if cn else f"المستوى {l.get('level_number', '')}"
         enriched.append({
             **p,
-            "member_name": m.get("name_ar") or m.get("name") or "",
-            "phone": m.get("phone") or "",
+            "member_name": p.get("external_name") or m.get("name_ar") or m.get("name") or "",
+            "phone": p.get("external_phone") or m.get("phone") or "",
             "member_code": m.get("member_code") or "",
             "level_label": lvl_label,
             "level_number": l.get("level_number"),
@@ -832,6 +838,18 @@ async def delete_tournament(tournament_id: str, current_user: dict = Depends(req
 async def add_participant(tournament_id: str, participant: Participant, current_user: dict = Depends(require_tournaments_permission)):
     t = await _load_tournament_or_403(tournament_id, current_user)
 
+    external_name = (participant.external_name or "").strip()
+    is_external = bool(external_name)
+    if is_external and participant.member_id:
+        raise HTTPException(status_code=400, detail="اختر عضواً من النظام أو مشاركاً خارجياً")
+    if not is_external and not participant.member_id:
+        raise HTTPException(status_code=400, detail="اختر عضواً أو أدخل اسم المشارك الخارجي")
+    if is_external:
+        participant.member_id = f"external:{uuid.uuid4()}"
+        participant.external_name = external_name[:120]
+        participant.external_phone = (participant.external_phone or "").strip()[:30]
+        participant.external_club = (participant.external_club or "").strip()[:120]
+
     existing = t.get("participants") or []
     t_subs = [s for s in (t.get("subcategories") or []) if s]
     sub = (participant.subcategory or "").strip() or None
@@ -847,6 +865,11 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     # subcategory, but only once when no subcategory is in play.
     if any(p.get("member_id") == participant.member_id and (p.get("subcategory") or None) == sub for p in existing):
         raise HTTPException(status_code=400, detail="العضو مضاف بالفعل في هذا التصنيف")
+    if is_external and participant.external_phone and any(
+        p.get("external_phone") == participant.external_phone and (p.get("subcategory") or None) == sub
+        for p in existing
+    ):
+        raise HTTPException(status_code=400, detail="هذا المشارك الخارجي مسجل بالفعل في التصنيف")
 
     local_levels = t.get("tournament_levels")
     if participant.level_id and isinstance(local_levels, list):
@@ -874,13 +897,15 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     # Verify member exists; if tournament has an activity, prefer members
     # subscribed to that activity (soft warning – allow staff override only
     # when member belongs to the same branch as the tournament).
-    member = await db.members.find_one({"id": participant.member_id}, {"_id": 0})
-    if not member:
-        raise HTTPException(status_code=404, detail="العضو غير موجود")
-    t_branch = t.get("branch_id")
-    m_branch = member.get("branch_id")
-    if t_branch and m_branch and t_branch != m_branch:
-        raise HTTPException(status_code=400, detail="العضو ليس من نفس فرع البطولة")
+    member = None
+    if not is_external:
+        member = await db.members.find_one({"id": participant.member_id}, {"_id": 0})
+        if not member:
+            raise HTTPException(status_code=404, detail="العضو غير موجود")
+        t_branch = t.get("branch_id")
+        m_branch = member.get("branch_id")
+        if t_branch and m_branch and t_branch != m_branch:
+            raise HTTPException(status_code=400, detail="العضو ليس من نفس فرع البطولة")
 
     # If the tournament is bound to one or more activities, the member must
     # be currently enrolled in AT LEAST ONE of them (or, when the client
@@ -889,7 +914,7 @@ async def add_participant(tournament_id: str, participant: Participant, current_
     # paid/partial invoices (normal flow). A subscription counts as active
     # while its end_date is today or later.
     tournament_aids = _tournament_activity_ids(t)
-    if tournament_aids:
+    if tournament_aids and not is_external:
         from datetime import date as _date
         today_str = _date.today().isoformat()
 
@@ -945,7 +970,7 @@ async def add_participant(tournament_id: str, participant: Participant, current_
             )
 
     new_part = participant.model_dump()
-    notify_member = bool(new_part.pop("notify", False))
+    notify_member = bool(new_part.pop("notify", False)) and not is_external
     new_part["position"] = _norm_pos(new_part.get("position"))
 
     # If position is a ranked one (1/2/3), it must be unique per level inside this tournament.
@@ -1013,6 +1038,16 @@ async def update_participant(
 
     new_data = payload.model_dump(exclude_unset=True)
     new_data.pop("notify", None)  # Result messages are sent only on approval.
+    if any(key in new_data for key in ("external_name", "external_phone", "external_club")):
+        if not target.get("external_name"):
+            raise HTTPException(status_code=400, detail="بيانات المشارك الخارجي لا تنطبق على عضو النظام")
+        if "external_name" in new_data:
+            new_data["external_name"] = (new_data["external_name"] or "").strip()[:120]
+            if not new_data["external_name"]:
+                raise HTTPException(status_code=400, detail="اسم المشارك الخارجي مطلوب")
+        for key, limit in (("external_phone", 30), ("external_club", 120)):
+            if key in new_data:
+                new_data[key] = (new_data[key] or "").strip()[:limit]
     if "position" in new_data:
         new_data["position"] = _norm_pos(new_data["position"])
 
@@ -1187,6 +1222,8 @@ async def resend_participant_notification(
     target = next((p for p in parts if p.get("member_id") == member_id), None)
     if not target:
         raise HTTPException(status_code=404, detail="Participant not found")
+    if target.get("external_name"):
+        raise HTTPException(status_code=400, detail="المشارك الخارجي ليس له حساب لإرسال إشعار داخل النظام")
 
     pos = _norm_pos(target.get("position"))
     if kind == "auto":

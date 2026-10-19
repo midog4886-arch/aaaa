@@ -901,7 +901,8 @@ const TournamentDetail = ({ tid, onBack }) => {
   const [addOpen, setAddOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const [partForm, setPartForm] = useState({
-    member_id: '', activity_id: '', level_id: '', subcategory: '', age: '', weight: '', notes: '', notify: false
+    member_id: '', external: false, external_name: '', external_phone: '', external_club: '',
+    activity_id: '', level_id: '', subcategory: '', age: '', weight: '', notes: '', notify: false
   });
   const [saving, setSaving] = useState(false);
 
@@ -1073,7 +1074,7 @@ const TournamentDetail = ({ tid, onBack }) => {
     const defaultSub = hasSubcategories
       ? (selectedSubcategory || tournamentSubcategories[0] || '')
       : '';
-    setPartForm({ member_id: '', activity_id: defaultAid, level_id: '', subcategory: defaultSub, age: '', weight: '', notes: '', notify: false });
+    setPartForm({ member_id: '', external: false, external_name: '', external_phone: '', external_club: '', activity_id: defaultAid, level_id: '', subcategory: defaultSub, age: '', weight: '', notes: '', notify: false });
     setAddOpen(true);
   };
 
@@ -1106,8 +1107,8 @@ const TournamentDetail = ({ tid, onBack }) => {
   };
 
   const handleAddParticipant = async () => {
-    if (!partForm.member_id) {
-      toast.error(language === 'ar' ? 'اختر عضواً' : 'Select a member');
+    if (partForm.external ? !partForm.external_name.trim() : !partForm.member_id) {
+      toast.error(partForm.external ? (language === 'ar' ? 'أدخل اسم المشارك الخارجي' : 'Enter external participant name') : (language === 'ar' ? 'اختر عضواً' : 'Select a member'));
       return;
     }
     if (tournamentActivityIds.length > 1 && !partForm.activity_id) {
@@ -1117,7 +1118,10 @@ const TournamentDetail = ({ tid, onBack }) => {
     setSaving(true);
     try {
       const res = await tournamentsAPI.addParticipant(tid, {
-        member_id: partForm.member_id,
+        member_id: partForm.external ? null : partForm.member_id,
+        external_name: partForm.external ? partForm.external_name.trim() : null,
+        external_phone: partForm.external ? partForm.external_phone.trim() : null,
+        external_club: partForm.external ? partForm.external_club.trim() : null,
         activity_id: partForm.activity_id || null,
         level_id: partForm.level_id || null,
         subcategory: partForm.subcategory || null,
@@ -1125,7 +1129,7 @@ const TournamentDetail = ({ tid, onBack }) => {
         weight: partForm.weight || '',
         notes: partForm.notes || '',
         position: null,
-        notify: !!partForm.notify,
+        notify: !partForm.external && !!partForm.notify,
       });
       toast.success(language === 'ar' ? 'تمت إضافة المشارك' : 'Participant added');
       const summary = res?.data?.notification_summary;
@@ -1146,6 +1150,9 @@ const TournamentDetail = ({ tid, onBack }) => {
       age: p.age || '',
       weight: p.weight || '',
       notes: p.notes || '',
+      external_name: p.external_name || '',
+      external_phone: p.external_phone || '',
+      external_club: p.external_club || '',
       position: p.position ? String(p.position) : '',
       notify: false,
     });
@@ -1163,6 +1170,11 @@ const TournamentDetail = ({ tid, onBack }) => {
         age: editForm.age,
         weight: editForm.weight,
         notes: editForm.notes,
+        ...(editingPart.external_name ? {
+          external_name: editForm.external_name,
+          external_phone: editForm.external_phone,
+          external_club: editForm.external_club,
+        } : {}),
         position: editForm.position || null,
       });
       toast.success(language === 'ar' ? 'تم التحديث' : 'Updated');
@@ -2054,6 +2066,14 @@ const TournamentDetail = ({ tid, onBack }) => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="flex gap-2 border-b pb-3">
+              <Button type="button" variant={!partForm.external ? 'default' : 'outline'} onClick={() => setPartForm(prev => ({ ...prev, external: false, external_name: '', external_phone: '', external_club: '' }))}>
+                {language === 'ar' ? 'عضو من النظام' : 'Academy member'}
+              </Button>
+              <Button type="button" variant={partForm.external ? 'default' : 'outline'} onClick={() => setPartForm(prev => ({ ...prev, external: true, member_id: '', notify: false }))}>
+                {language === 'ar' ? 'مشارك خارجي' : 'External participant'}
+              </Button>
+            </div>
             {hasSubcategories && (
               <div>
                 <Label>
@@ -2106,7 +2126,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                 </p>
               </div>
             )}
-            <div>
+            {!partForm.external ? <><div>
               <Label>{language === 'ar' ? 'بحث عن عضو' : 'Search member'}</Label>
               <div className="relative">
                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -2138,7 +2158,14 @@ const TournamentDetail = ({ tid, onBack }) => {
                   </div>
                 </div>
               ))}
-            </div>
+            </div></> : <div className="space-y-2 rounded-md border p-3 bg-orange-50/40">
+              <p className="text-xs text-muted-foreground">{language === 'ar' ? 'يُسجّل في هذه البطولة فقط، دون إنشاء عضوية أو إرسال إشعار تلقائي.' : 'Registered for this tournament only; no academy account or automatic notification.'}</p>
+              <div><Label>{language === 'ar' ? 'اسم المشارك *' : 'Participant name *'}</Label><Input value={partForm.external_name} onChange={e => setPartForm({ ...partForm, external_name: e.target.value })} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label>{language === 'ar' ? 'الجوال (اختياري)' : 'Phone (optional)'}</Label><Input type="tel" value={partForm.external_phone} onChange={e => setPartForm({ ...partForm, external_phone: e.target.value })} /></div>
+                <div><Label>{language === 'ar' ? 'النادي أو الجهة (اختياري)' : 'Club or team (optional)'}</Label><Input value={partForm.external_club} onChange={e => setPartForm({ ...partForm, external_club: e.target.value })} /></div>
+              </div>
+            </div>}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label>{language === 'ar' ? 'المستوى' : 'Level'}</Label>
@@ -2170,7 +2197,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                 onChange={(e) => setPartForm({ ...partForm, notes: e.target.value })}
               />
             </div>
-            <div className="flex items-start gap-2 pt-3 border-t">
+            {!partForm.external && <div className="flex items-start gap-2 pt-3 border-t">
               <Checkbox
                 id="notify-add-participant"
                 checked={!!partForm.notify}
@@ -2181,7 +2208,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                   ? 'إرسال إشعار للعضو بتسجيله في البطولة'
                   : 'Notify the member of their registration'}
               </Label>
-            </div>
+            </div>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>
@@ -2257,6 +2284,13 @@ const TournamentDetail = ({ tid, onBack }) => {
                 </SelectContent>
               </Select>
             </div>
+            {editingPart?.external_name && <div className="space-y-2 rounded-md border p-3">
+              <div><Label>{language === 'ar' ? 'اسم المشارك الخارجي' : 'External participant name'}</Label><Input value={editForm.external_name} onChange={e => setEditForm({ ...editForm, external_name: e.target.value })} /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label>{language === 'ar' ? 'الجوال' : 'Phone'}</Label><Input value={editForm.external_phone} onChange={e => setEditForm({ ...editForm, external_phone: e.target.value })} /></div>
+                <div><Label>{language === 'ar' ? 'النادي أو الجهة' : 'Club or team'}</Label><Input value={editForm.external_club} onChange={e => setEditForm({ ...editForm, external_club: e.target.value })} /></div>
+              </div>
+            </div>}
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label>{language === 'ar' ? 'العمر' : 'Age'}</Label>
@@ -2493,6 +2527,7 @@ const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPosi
                     <td className="py-2 px-2 text-muted-foreground">{i + 1}</td>
                     <td className="py-2 px-2 font-medium">
                       {p.member_name}
+                      {p.external_name && <span className="ms-2 text-xs text-orange-700">{language === 'ar' ? 'خارجي' : 'External'}{p.external_club ? ` · ${p.external_club}` : ''}</span>}
                       {p.activity_name && (
                         <span className="ms-2 inline-flex items-center gap-1 text-[11px] font-normal text-orange-700 bg-orange-50 border border-orange-200 rounded px-1.5 py-0.5 align-middle">
                           <Activity className="w-3 h-3" />
@@ -2518,7 +2553,7 @@ const LevelGroup = ({ label, levelNumber, participants, onEdit, onRemove, onPosi
                     </td>
                     <td className="py-2 px-2 text-end print:hidden">
                       <div className="flex justify-end gap-1">
-                        {onResend && (
+                        {onResend && !p.external_name && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -2640,9 +2675,9 @@ const TournamentLevelCard = ({
                   {(p.member_name || '?').charAt(0)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{p.member_name}</p>
+                  <p className="font-medium text-sm truncate">{p.member_name}{p.external_name && <span className="ms-1 text-xs text-orange-700">{t('خارجي', 'External')}</span>}</p>
                   <p className="text-[10px] text-muted-foreground truncate">
-                    {p.phone || '—'}
+                    {p.external_club ? `${p.external_club} · ` : ''}{p.phone || '—'}
                     {p.age ? ` · ${p.age}${language === 'ar' ? ' سنة' : 'y'}` : ''}
                     {p.weight ? ` · ${p.weight}kg` : ''}
                   </p>
@@ -2660,7 +2695,7 @@ const TournamentLevelCard = ({
                   ))}
                 </select>
                 <div className="flex gap-0.5 shrink-0 print:hidden">
-                  {onResend && (
+                  {onResend && !p.external_name && (
                     <Button
                       size="icon" variant="ghost" className="h-7 w-7"
                       title={t('إعادة إرسال', 'Resend')}

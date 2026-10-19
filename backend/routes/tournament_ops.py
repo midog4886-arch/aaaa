@@ -231,7 +231,7 @@ async def approve_results(tid: str, user=Depends(require_tournaments_permission)
         raise HTTPException(409, "أُعتمدت النتائج من موظف آخر")
     for p in t.get("participants") or []:
         key = f"{p.get('member_id')}|{p.get('subcategory') or ''}"
-        if p.get("position") in ("1", "2", "3") and published.get(key) != p.get("position"):
+        if p.get("position") in ("1", "2", "3") and published.get(key) != p.get("position") and not p.get("external_name"):
             try:
                 delivery = await _notify_result(t, p["member_id"], p["position"])
                 if delivery:
