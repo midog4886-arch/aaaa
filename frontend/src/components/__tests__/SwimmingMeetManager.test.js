@@ -24,6 +24,11 @@ test('opens lazily, creates a race and saves a draft with revision',async()=>{
   fireEvent.click(screen.getByText('حفظ المسودة'));
   await waitFor(()=>expect(axios.put).toHaveBeenCalledWith('/api/tournaments/t/swimming',expect.objectContaining({revision:0,approved:false,races:[expect.objectContaining({id:'race-1',distance:50})]}),{params:{auto_seed:false}}));
 });
+test('shows the races workspace first for a swimming tournament',async()=>{
+  render(<SwimmingMeetManager tid="t" startOpen />);
+  await screen.findByText('إضافة السباق');
+  expect(axios.get).toHaveBeenCalledWith('/api/tournaments/t/swimming');
+});
 test('shows conflicting edit errors without claiming a save',async()=>{
   axios.put.mockRejectedValue({response:{data:{detail:'عدّل موظف آخر البطولة'}}});
   render(<SwimmingMeetManager tid="t"/>);

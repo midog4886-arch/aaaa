@@ -22,9 +22,9 @@ export function rankEntries(entries) {
     return { ...entry, place };
   });
 }
-export default function SwimmingMeetManager({ tid }) {
+export default function SwimmingMeetManager({ tid, startOpen = false }) {
   const { selectedBranchId, user } = useAuth();
-  const [open, setOpen] = useState(false), [meet, setMeet] = useState(null), [tab,setTab] = useState('settings'), [busy,setBusy] = useState(false), [error,setError] = useState(''), [dirty,setDirty] = useState(false), [bests,setBests] = useState({}), [conflicts,setConflicts] = useState([]);
+  const [open, setOpen] = useState(startOpen), [meet, setMeet] = useState(null), [tab,setTab] = useState(startOpen ? 'races' : 'settings'), [busy,setBusy] = useState(false), [error,setError] = useState(''), [dirty,setDirty] = useState(false), [bests,setBests] = useState({}), [conflicts,setConflicts] = useState([]);
   const generation = useRef(0);
   const [race,setRace] = useState({ distance: 50, stroke:'freestyle', min_age:0, max_age:120, gender:'mixed', start_time:'', heat_minutes:5 });
   const [swimmer,setSwimmer] = useState({ name:'', member_id:'', birth_date:'', gender:'male', team:'', external_reference:'' });

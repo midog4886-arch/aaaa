@@ -908,6 +908,7 @@ const TournamentDetail = ({ tid, onBack }) => {
 
   // Active subcategory tab. '' means "all" (or tournament has no subcategories).
   const [selectedSubcategory, setSelectedSubcategory] = useState('');
+  const [showLevelManagement, setShowLevelManagement] = useState(false);
 
   const [editingPart, setEditingPart] = useState(null);
   const [editForm, setEditForm] = useState({ activity_id: '', level_id: '', subcategory: '', age: '', weight: '', notes: '', position: '', notify: false });
@@ -958,6 +959,7 @@ const TournamentDetail = ({ tid, onBack }) => {
     if (Array.isArray(tournament.activity_names) && tournament.activity_names.length) return tournament.activity_names;
     return tournament.activity_name ? [tournament.activity_name] : [];
   }, [tournament]);
+  const isSwimmingTournament = tournamentActivityNames.some(name => /سباح|swim/i.test(name));
 
   // Sub-categories defined on this tournament (e.g. swimming strokes).
   const tournamentSubcategories = useMemo(() => {
@@ -1382,7 +1384,9 @@ const TournamentDetail = ({ tid, onBack }) => {
                   {hasSubcategories && selectedSubcategory ? selectedSubcategory : tournament.name}
                 </h1>
                 <p className="text-gray-500 text-sm mt-1">
-                  {language === 'ar' ? 'إدارة اللاعبين في كل مستوى' : 'Manage players in each level'}
+                  {isSwimmingTournament && !showLevelManagement
+                    ? (language === 'ar' ? 'إدارة السباقات والمشاركين والأشواط والنتائج' : 'Manage races, swimmers, heats and results')
+                    : (language === 'ar' ? 'إدارة اللاعبين في كل مستوى' : 'Manage players in each level')}
                 </p>
                 <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
                   {tournament.date && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {tournament.date}</span>}
@@ -1396,14 +1400,14 @@ const TournamentDetail = ({ tid, onBack }) => {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Button onClick={openAdd} className="bg-orange-500 hover:bg-orange-600 text-white gap-1">
+              {(!isSwimmingTournament || showLevelManagement) && <Button onClick={openAdd} className="bg-orange-500 hover:bg-orange-600 text-white gap-1">
                 <UserPlus className="w-4 h-4" />
                 {language === 'ar' ? 'إضافة مشارك' : 'Add participant'}
-              </Button>
-              <Button variant="outline" onClick={handlePrint} className="gap-1">
+              </Button>}
+              {(!isSwimmingTournament || showLevelManagement) && <Button variant="outline" onClick={handlePrint} className="gap-1">
                 <FileText className="w-4 h-4" />
                 {language === 'ar' ? 'طباعة' : 'Print'}
-              </Button>
+              </Button>}
               {user?.is_admin && (<>
               <Button variant="outline" onClick={handleExportPdf} className="gap-1">
                 <FileText className="w-4 h-4" />
@@ -1414,10 +1418,10 @@ const TournamentDetail = ({ tid, onBack }) => {
                 Excel
               </Button>
               </>)}
-              <Button variant="outline" onClick={handleWhatsAppShare} className="gap-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
+              {(!isSwimmingTournament || showLevelManagement) && <Button variant="outline" onClick={handleWhatsAppShare} className="gap-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
                 <Share2 className="w-4 h-4" />
                 {language === 'ar' ? 'واتساب' : 'WhatsApp'}
-              </Button>
+              </Button>}
               <Button
                 variant="outline"
                 onClick={handleResendAnnouncement}
@@ -1437,7 +1441,7 @@ const TournamentDetail = ({ tid, onBack }) => {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+          {(!isSwimmingTournament || showLevelManagement) && <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
               <CardContent className="p-4 text-center">
                 <Layers className="w-8 h-8 text-orange-600 mx-auto mb-2" />
@@ -1470,13 +1474,25 @@ const TournamentDetail = ({ tid, onBack }) => {
                 <div className="text-xs text-purple-600">{language === 'ar' ? 'نسبة الامتلاء' : 'Occupancy'}</div>
               </CardContent>
             </Card>
-          </div>
+          </div>}
         </div>
 
-        {/* Printable area */}
-        <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />
-        <SwimmingMeetManager tid={tid} />
-        <div ref={printRef} className="bg-white p-4 rounded-lg space-y-4">
+        {isSwimmingTournament && <nav aria-label={language === 'ar' ? 'أقسام البطولة' : 'Tournament sections'} className="flex gap-2 flex-wrap print:hidden">
+          <Button type="button" variant={!showLevelManagement ? 'default' : 'outline'} onClick={() => setShowLevelManagement(false)}>
+            {language === 'ar' ? 'السباقات والبطولة' : 'Races and meet'}
+          </Button>
+          <Button type="button" variant={showLevelManagement ? 'default' : 'outline'} onClick={() => setShowLevelManagement(true)}>
+            {language === 'ar' ? 'المستويات والمجموعات' : 'Levels and groups'}
+          </Button>
+        </nav>}
+
+        {/* The swimming meet is the primary workspace; levels remain available separately. */}
+        {!isSwimmingTournament && <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />}
+        <div className={isSwimmingTournament && showLevelManagement ? 'hidden' : ''}>
+          <SwimmingMeetManager tid={tid} startOpen={isSwimmingTournament} />
+          {isSwimmingTournament && <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />}
+        </div>
+        <div ref={printRef} className={`bg-white p-4 rounded-lg space-y-4 ${isSwimmingTournament && !showLevelManagement ? 'hidden print:block' : ''}`}>
           {/* Tournament header (print-only — screen uses LevelsPage-style header above) */}
           <Card className="border-2 border-orange-300 hidden print:block">
             <CardContent className="p-5">
