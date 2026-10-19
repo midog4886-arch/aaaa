@@ -908,7 +908,6 @@ const TournamentDetail = ({ tid, onBack }) => {
 
   // Active subcategory tab. '' means "all" (or tournament has no subcategories).
   const [selectedSubcategory, setSelectedSubcategory] = useState('');
-  const [showLevelManagement, setShowLevelManagement] = useState(false);
 
   const [editingPart, setEditingPart] = useState(null);
   const [editForm, setEditForm] = useState({ activity_id: '', level_id: '', subcategory: '', age: '', weight: '', notes: '', position: '', notify: false });
@@ -1384,7 +1383,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                   {hasSubcategories && selectedSubcategory ? selectedSubcategory : tournament.name}
                 </h1>
                 <p className="text-gray-500 text-sm mt-1">
-                  {isSwimmingTournament && !showLevelManagement
+                  {isSwimmingTournament
                     ? (language === 'ar' ? 'إدارة السباقات والمشاركين والأشواط والنتائج' : 'Manage races, swimmers, heats and results')
                     : (language === 'ar' ? 'إدارة اللاعبين في كل مستوى' : 'Manage players in each level')}
                 </p>
@@ -1400,15 +1399,15 @@ const TournamentDetail = ({ tid, onBack }) => {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              {(!isSwimmingTournament || showLevelManagement) && <Button onClick={openAdd} className="bg-orange-500 hover:bg-orange-600 text-white gap-1">
+              {!isSwimmingTournament && <Button onClick={openAdd} className="bg-orange-500 hover:bg-orange-600 text-white gap-1">
                 <UserPlus className="w-4 h-4" />
                 {language === 'ar' ? 'إضافة مشارك' : 'Add participant'}
               </Button>}
-              {(!isSwimmingTournament || showLevelManagement) && <Button variant="outline" onClick={handlePrint} className="gap-1">
+              {!isSwimmingTournament && <Button variant="outline" onClick={handlePrint} className="gap-1">
                 <FileText className="w-4 h-4" />
                 {language === 'ar' ? 'طباعة' : 'Print'}
               </Button>}
-              {user?.is_admin && (<>
+              {user?.is_admin && !isSwimmingTournament && (<>
               <Button variant="outline" onClick={handleExportPdf} className="gap-1">
                 <FileText className="w-4 h-4" />
                 PDF
@@ -1418,7 +1417,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                 Excel
               </Button>
               </>)}
-              {(!isSwimmingTournament || showLevelManagement) && <Button variant="outline" onClick={handleWhatsAppShare} className="gap-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
+              {!isSwimmingTournament && <Button variant="outline" onClick={handleWhatsAppShare} className="gap-1 bg-green-50 hover:bg-green-100 text-green-700 border-green-300">
                 <Share2 className="w-4 h-4" />
                 {language === 'ar' ? 'واتساب' : 'WhatsApp'}
               </Button>}
@@ -1441,7 +1440,7 @@ const TournamentDetail = ({ tid, onBack }) => {
           </div>
 
           {/* Stats Cards */}
-          {(!isSwimmingTournament || showLevelManagement) && <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+          {!isSwimmingTournament && <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
             <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
               <CardContent className="p-4 text-center">
                 <Layers className="w-8 h-8 text-orange-600 mx-auto mb-2" />
@@ -1477,25 +1476,16 @@ const TournamentDetail = ({ tid, onBack }) => {
           </div>}
         </div>
 
-        {isSwimmingTournament && <nav aria-label={language === 'ar' ? 'أقسام البطولة' : 'Tournament sections'} className="flex gap-2 flex-wrap print:hidden">
-          <Button type="button" variant={!showLevelManagement ? 'default' : 'outline'} onClick={() => setShowLevelManagement(false)}>
-            {language === 'ar' ? 'السباقات والبطولة' : 'Races and meet'}
-          </Button>
-          <Button type="button" variant={showLevelManagement ? 'default' : 'outline'} onClick={() => setShowLevelManagement(true)}>
-            {language === 'ar' ? 'المستويات والمجموعات' : 'Levels and groups'}
-          </Button>
-        </nav>}
-
-        {/* The swimming meet is the primary workspace; levels remain available separately. */}
+        {/* Swimming tournaments use the races workspace; levels belong to other tournament types. */}
         {!isSwimmingTournament && <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />}
-        <div className={isSwimmingTournament && showLevelManagement ? 'hidden' : ''}>
+        <div>
           <SwimmingMeetManager tid={tid} startOpen={isSwimmingTournament} />
           {isSwimmingTournament && <details className="rounded-xl border bg-white p-4 print:hidden">
             <summary className="cursor-pointer font-semibold text-slate-700">إدارة يوم البطولة والحضور (عند الحاجة)</summary>
             <TournamentOperations tid={tid} tournament={tournament} onTournamentChanged={load} />
           </details>}
         </div>
-        <div ref={printRef} className={`bg-white p-4 rounded-lg space-y-4 ${isSwimmingTournament && !showLevelManagement ? 'hidden print:block' : ''}`}>
+        {!isSwimmingTournament && <div ref={printRef} className="bg-white p-4 rounded-lg space-y-4">
           {/* Tournament header (print-only — screen uses LevelsPage-style header above) */}
           <Card className="border-2 border-orange-300 hidden print:block">
             <CardContent className="p-5">
@@ -1789,7 +1779,7 @@ const TournamentDetail = ({ tid, onBack }) => {
                 })}
             </div>
           )}
-        </div>
+        </div>}
         </>)}
 
         {/* ───── FULL-PAGE MANAGE MEMBERS VIEW (replaces dialog) ───── */}

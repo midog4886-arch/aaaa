@@ -129,3 +129,20 @@ def test_member_portal_hides_draft_result_and_notes(monkeypatch):
     assert result['tournaments'][0]['position'] is None
     assert result['tournaments'][0]['notes'] == ''
     assert result['tournaments'][0]['results_approved'] is False
+
+
+def test_member_portal_shows_linked_swimming_participant(monkeypatch):
+    tournament = {
+        'id': 'swim', 'name': 'Swimming Cup', 'participants': [],
+        'swimming_meet': {'approved': False, 'swimmers': [
+            {'id': 'swimmer-1', 'member_id': 'athlete', 'name': 'Athlete'},
+        ]},
+    }
+    cursor = SimpleNamespace(sort=lambda *args: SimpleNamespace(to_list=AsyncMock(return_value=[tournament])))
+    find = lambda *args: cursor
+    monkeypatch.setattr(member_portal, 'db', SimpleNamespace(tournaments=SimpleNamespace(find=find)))
+    result = asyncio.run(member_portal.get_my_tournaments({'id': 'athlete'}))
+    assert result['totals']['participations'] == 1
+    assert result['tournaments'][0]['tournament_name'] == 'Swimming Cup'
+    assert result['tournaments'][0]['results_approved'] is False
+    assert result['tournaments'][0]['position'] is None

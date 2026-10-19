@@ -932,9 +932,13 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
 
     linked_ids_set = set(member.get("_linked_member_ids", [member["id"]]))
     tournaments = await db.tournaments.find(
-        {"participants.member_id": {"$in": list(linked_ids_set)}},
+        {"$or": [
+            {"participants.member_id": {"$in": list(linked_ids_set)}},
+            {"swimming_meet.swimmers.member_id": {"$in": list(linked_ids_set)}},
+        ]},
         {"_id": 0, "id": 1, "name": 1, "date": 1, "place": 1,
-         "activity_name": 1, "status": 1, "participants": 1, "results_approved": 1, "match_board": 1},
+         "activity_name": 1, "status": 1, "participants": 1, "results_approved": 1,
+         "match_board": 1, "swimming_meet": 1},
     ).sort("date", -1).to_list(200)
 
     # Collect level ids needed for label enrichment
@@ -956,9 +960,17 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
     medals_count = {"1": 0, "2": 0, "3": 0}
     for t in tournaments:
         my = next((p for p in (t.get("participants") or []) if p.get("member_id") in linked_ids_set), None)
+        swimming_meet = t.get("swimming_meet") or {}
+        swimming_entry = False
+        if not my:
+            swimmer = next((s for s in swimming_meet.get("swimmers", []) if s.get("member_id") in linked_ids_set), None)
+            if swimmer:
+                my = {"member_id": swimmer["member_id"]}
+                swimming_entry = True
         if not my:
             continue
-        pos = my.get("position") if t.get("results_approved", True) else None
+        results_approved = bool(swimming_meet.get("approved")) if swimming_entry else t.get("results_approved", True)
+        pos = my.get("position") if results_approved else None
         if pos in medals_count:
             medals_count[pos] += 1
         lvl = levels_map.get(my.get("level_id")) if my.get("level_id") else None
@@ -974,13 +986,13 @@ async def get_my_tournaments(member: dict = Depends(get_current_member)):
             "place": t.get("place") or "",
             "activity_name": t.get("activity_name") or "",
             "status": t.get("status") or "",
-            "results_approved": t.get("results_approved", True),
-            "matches": (t.get("match_board") or {}).get("matches", []) if t.get("results_approved", True) else [],
+            "results_approved": results_approved,
+            "matches": (t.get("match_board") or {}).get("matches", []) if results_approved and not swimming_entry else [],
             "position": pos,
             "position_label_ar": POSITION_LABEL_AR.get(pos or "", ""),
             "position_label_en": POSITION_LABEL_EN.get(pos or "", ""),
             "level_label": lvl_label,
-            "notes": (my.get("notes") or "") if t.get("results_approved", True) else "",
+            "notes": (my.get("notes") or "") if results_approved else "",
         })
 
     return {

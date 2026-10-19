@@ -427,6 +427,7 @@ const MemberDashboard = () => {
     { to: '/subscriptions',   icon: CreditCard, label: language === 'ar' ? 'اشتراكاتي'       : 'My Subs',   color: 'bg-gray-900',  bgStyle: null },
     { to: '/member-schedule', icon: Calendar,   label: language === 'ar' ? 'جدول التدريبات'  : 'Schedule',  color: primary ? '' : 'bg-amber-600',  bgStyle: primary ? { backgroundColor: primary } : null },
     { to: '/card',            icon: QrCode,     label: language === 'ar' ? 'بطاقة العضوية'   : 'My Card',   color: primary ? '' : 'bg-yellow-600', bgStyle: primary ? { backgroundColor: primary } : null },
+    { to: '/my-tournaments',  icon: Trophy,     label: language === 'ar' ? 'البطولات'        : 'Tournaments', color: 'bg-violet-600', bgStyle: null },
   ];
 
   // last attendance from recent list
@@ -926,7 +927,7 @@ const MemberDashboard = () => {
 
           {/* ── Quick Links ── */}
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {quickLinks.map((link) => (
                 <Link key={link.to} to={link.to}>
                   <Card className={`hover:shadow-lg transition-shadow cursor-pointer h-full ${darkMode ? 'bg-gray-800 border-gray-700' : ''}`}>

@@ -142,7 +142,6 @@ const MemberLayout = ({ children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState({ unread_count: 0 });
   const [msgUnreadCount, setMsgUnreadCount] = useState(0);
-  const [tournamentsCount, setTournamentsCount] = useState(0);
   const [darkMode, setDarkModeState] = useState(getDarkMode());
   const [language, setLanguageState] = useState(getLanguage());
   const [tenantLogo, setTenantLogo] = useState(_resolveAcademyLogo());
@@ -239,7 +238,6 @@ const MemberLayout = ({ children }) => {
     setMember(memberData);
     fetchNotifications();
     fetchMsgUnread();
-    fetchTournamentsCount();
 
     // Refresh the cached member (incl. avatar) when other parts of the
     // portal update it — e.g. after the profile page saves a new photo.
@@ -400,16 +398,6 @@ const MemberLayout = ({ children }) => {
     }
   };
 
-  const fetchTournamentsCount = async () => {
-    try {
-      const res = await memberAPI.get('/api/member-portal/my-tournaments');
-      const list = Array.isArray(res.data?.tournaments) ? res.data.tournaments : [];
-      setTournamentsCount(list.length);
-    } catch (error) {
-      setTournamentsCount(0);
-    }
-  };
-
   const handleLogout = () => {
     memberLogout();
     navigate('/member-login');
@@ -423,9 +411,7 @@ const MemberLayout = ({ children }) => {
     { to: '/subscriptions', icon: CreditCard, labelKey: 'subscriptions' },
     { to: '/member-schedule', icon: Calendar, labelKey: 'schedule' },
     { to: '/loyalty-points', icon: Trophy, labelKey: 'loyalty' },
-    ...(tournamentsCount > 0
-      ? [{ to: '/my-tournaments', icon: Trophy, labelKey: 'tournaments' }]
-      : []),
+    { to: '/my-tournaments', icon: Trophy, labelKey: 'tournaments' },
     { to: '/card', icon: QrCode, labelKey: 'memberCard' },
     { to: '/member-certificates', icon: Award, labelKey: 'certificates' },
     { to: '/rate-coach', icon: Star, labelKey: 'rateCoaches' },
