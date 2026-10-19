@@ -936,22 +936,44 @@ def _pending_item_sort():
     ]
 
 
-async def _oldest_branch_item(branch_id):
-    # Include claimed/dispatching heads in the peek.  A second worker must
-    # not skip an in-flight head and claim a later pending item for the same
-    # branch.
-    # Migration-held items are deliberately inert until reviewed. They must
-    # not become a permanent FIFO head blocking newly authorized campaigns.
-    cursor = _db["whatsapp_campaign_job_items"].find({
-        "branch_id": branch_id,
-        "status": {"$nin": list(TERMINAL_ITEM_STATUSES | {"migration_hold"})},
-    }).sort(_pending_item_sort())
+async def _first_branch_item(query):
+    cursor = _db["whatsapp_campaign_job_items"].find(query).sort(_pending_item_sort())
     if hasattr(cursor, "to_list"):
         rows = await cursor.to_list(length=1)
         return rows[0] if rows else None
     async for row in cursor:
         return row
     return None
+
+
+async def _oldest_branch_item(branch_id, now=None):
+    # A provider call already in progress owns the branch, regardless of its
+    # source. Never let a closure notice overtake an in-flight send.
+    busy = await _first_branch_item({
+        "branch_id": branch_id,
+        "status": {"$in": ["claimed", "quota_reserving", "dispatching"]},
+    })
+    if busy:
+        return busy
+
+    # Closure notices have their own priority within the branch. A scheduled
+    # marketing campaign can be deferred until tomorrow without delaying a
+    # newly authorized closure notice. Both still use the same branch gate and
+    # provider quota, so priority never bypasses pacing or account limits.
+    closure = await _first_branch_item({
+        "branch_id": branch_id, "source": "closure_notice", "status": "pending",
+    })
+    if closure:
+        deferred_until = _utc_datetime(closure.get("next_attempt_at"))
+        if now is None or deferred_until is None or deferred_until <= now:
+            return closure
+
+    # A deferred closure should not stop otherwise runnable ordinary work.
+    # Migration-held items remain inert until reviewed.
+    return await _first_branch_item({
+        "branch_id": branch_id, "source": {"$ne": "closure_notice"},
+        "status": {"$nin": list(TERMINAL_ITEM_STATUSES | {"migration_hold"})},
+    }) or closure
 
 
 async def _pending_branch_ids():
@@ -999,7 +1021,7 @@ async def _claim_next_for_branch(branch_id, now):
     item, violating FIFO.  The second query prevents two workers from owning
     the same head after the read.
     """
-    candidate = await _oldest_branch_item(branch_id)
+    candidate = await _oldest_branch_item(branch_id, now)
     if not candidate or candidate.get("status") != "pending":
         return None
     next_attempt_at = _utc_datetime(candidate.get("next_attempt_at"))
@@ -1029,7 +1051,7 @@ async def _tick_branch_ids(now, limit=None):
     """
     selected = []
     for branch_id in await _pending_branch_ids():
-        item = await _oldest_branch_item(branch_id)
+        item = await _oldest_branch_item(branch_id, now)
         if not item or item.get("status") != "pending":
             continue
         next_attempt_at = _utc_datetime(item.get("next_attempt_at"))

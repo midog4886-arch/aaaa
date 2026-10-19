@@ -751,6 +751,41 @@ def test_future_deferred_head_preserves_branch_fifo_and_pacing(queue):
     assert [entry[3] for entry in sent] == [items[0]["id"], items[1]["id"]]
 
 
+def test_closure_notice_bypasses_deferred_campaign_but_keeps_branch_pacing(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "deferred-campaign-key"))
+    campaign = db["whatsapp_campaign_job_items"].rows[0]
+    campaign["next_attempt_at"] = Clock.now() + timedelta(hours=2)
+    run(jobs.enqueue("a", "meta_cloud", recipients(2), "closure-notice-key",
+                     source="closure_notice"))
+    closure = db["whatsapp_campaign_job_items"].rows[1:]
+
+    assert run(jobs._tick_branch_ids(Clock.now())) == ["a"]
+    assert run(jobs.process_one()) is True
+    assert [entry[3] for entry in sent] == [closure[0]["id"]]
+    assert campaign["status"] == "pending"
+    Clock.set(Clock.now() + timedelta(seconds=29))
+    assert run(jobs.process_one()) is False
+    Clock.set(Clock.now() + timedelta(seconds=1))
+    assert run(jobs.process_one()) is True
+    assert [entry[3] for entry in sent] == [item["id"] for item in closure]
+    assert campaign["status"] == "pending"
+
+
+def test_deferred_closure_does_not_block_ready_campaign(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "deferred-closure-key",
+                     source="closure_notice"))
+    closure = db["whatsapp_campaign_job_items"].rows[0]
+    closure["next_attempt_at"] = Clock.now() + timedelta(minutes=5)
+    run(jobs.enqueue("a", "meta_cloud", recipients(), "ready-campaign-key"))
+    campaign = db["whatsapp_campaign_job_items"].rows[1]
+
+    assert run(jobs.process_one()) is True
+    assert [entry[3] for entry in sent] == [campaign["id"]]
+    assert closure["status"] == "pending"
+
+
 def test_migration_held_head_does_not_block_new_authorized_job(queue):
     db, sent, *_ = queue
     run(jobs.enqueue("a", "meta_cloud", recipients(), "held-migration-key-123"))
