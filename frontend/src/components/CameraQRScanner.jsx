@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
@@ -10,9 +11,13 @@ import {
   Loader2, Calendar, Phone, SwitchCamera, AlertTriangle
 } from 'lucide-react';
 import { attendanceAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
   const t = (ar, en) => language === 'ar' ? ar : en;
+  const navigate = useNavigate();
+  const { user, isAdmin } = useAuth();
+  const canOpenMemberProfile = isAdmin || (user?.permissions || []).includes('members');
 
   const [scanning, setScanning] = useState(false);
   const [memberData, setMemberData] = useState(null);
@@ -238,6 +243,13 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     onClose();
   }, [stopScanner, onClose]);
 
+  const handleOpenMemberProfile = () => {
+    if (!canOpenMemberProfile || !memberData?.id) return;
+    const memberId = memberData.id;
+    handleClose();
+    navigate(`/admin/members?focus=${encodeURIComponent(memberId)}`);
+  };
+
   const handleSwitchCamera = useCallback(() => {
     setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
     stopScanner().then(() => {
@@ -393,7 +405,19 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
         {memberData && !memberData.error && !memberData.isCoach && (
           <div className="space-y-4">
             {/* Member Info */}
-            <div className="text-center border-b pb-4">
+            <div
+              role={canOpenMemberProfile && memberData.id ? 'button' : undefined}
+              tabIndex={canOpenMemberProfile && memberData.id ? 0 : undefined}
+              onClick={canOpenMemberProfile ? handleOpenMemberProfile : undefined}
+              onKeyDown={canOpenMemberProfile ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleOpenMemberProfile();
+                }
+              } : undefined}
+              className={`w-full text-center border-b pb-4 rounded-lg transition-colors ${canOpenMemberProfile && memberData.id ? 'cursor-pointer hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500' : ''}`}
+              aria-label={canOpenMemberProfile ? t('فتح ملف العضو', 'Open member profile') : undefined}
+            >
               <div className="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center mb-3">
                 <User className="w-8 h-8 text-white" />
               </div>
@@ -410,6 +434,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
                   </span>
                 )}
               </div>
+              {canOpenMemberProfile && <span className="mt-2 inline-block text-xs font-semibold text-blue-700">{t('اضغط لفتح ملف العضو', 'Tap to open member profile')}</span>}
             </div>
 
             {/* Member notes (admin-only) — shown in red as an alert */}
