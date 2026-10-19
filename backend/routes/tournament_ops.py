@@ -103,19 +103,40 @@ async def open_for_member(member=Depends(get_current_member)):
     linked = set(member.get("_linked_member_ids") or [member["id"]])
     members = await db.members.find({"id": {"$in": list(linked)}}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "branch_id": 1}).to_list(50)
     branches = {m.get("branch_id") for m in members if m.get("branch_id")}
-    query = {"registration_open": True, "status": {"$ne": "completed"}}
+    query = {"$and": [
+        {"status": {"$ne": "completed"}},
+        {"$or": [
+            {"registration_open": True},
+            {"registration_requests": {"$elemMatch": {
+                "member_id": {"$in": list(linked)},
+                "status": {"$in": ["pending", "waitlisted"]},
+            }}},
+        ]},
+    ]}
     if branches:
-        query["$or"] = [{"branch_id": {"$in": list(branches)}}, {"branch_id": None}]
+        query["$and"].append({"$or": [{"branch_id": {"$in": list(branches)}}, {"branch_id": None}]})
     else:
-        query["branch_id"] = None
-    tournaments = await db.tournaments.find(query, {"_id": 0, "id": 1, "name": 1, "date": 1, "place": 1, "activity_name": 1, "branch_id": 1, "subcategories": 1, "registration_requests": 1, "participants": 1}).sort("date", 1).to_list(100)
+        query["$and"].append({"branch_id": None})
+    tournaments = await db.tournaments.find(query, {"_id": 0, "id": 1, "name": 1, "date": 1, "place": 1, "activity_name": 1, "branch_id": 1, "registration_open": 1, "subcategories": 1, "registration_requests": 1, "participants": 1}).sort("date", 1).to_list(100)
     result = []
     for t in tournaments:
+        member_rows = []
+        for m in members:
+            if t.get("branch_id") and m.get("branch_id") != t["branch_id"]:
+                continue
+            registered = any(p.get("member_id") == m["id"] for p in t.get("participants") or [])
+            request = next((r for r in reversed(t.get("registration_requests") or []) if r.get("member_id") == m["id"]), None)
+            status = "registered" if registered else request.get("status") if request else None
+            if t.get("registration_open") or status in ("pending", "waitlisted"):
+                member_rows.append({"id": m["id"], "name": m.get("name_ar") or m.get("name") or "", "status": status})
+        if not member_rows:
+            continue
         result.append({
             "id": t["id"], "name": t.get("name"), "date": t.get("date"),
             "place": t.get("place"), "activity_name": t.get("activity_name"),
+            "registration_open": bool(t.get("registration_open")),
             "subcategories": t.get("subcategories") or [],
-            "members": [{"id": m["id"], "name": m.get("name_ar") or m.get("name") or "", "status": next((r.get("status") for r in t.get("registration_requests") or [] if r.get("member_id") == m["id"]), "registered" if any(p.get("member_id") == m["id"] for p in t.get("participants") or []) else None)} for m in members if not t.get("branch_id") or m.get("branch_id") == t.get("branch_id")],
+            "members": member_rows,
         })
     return result
 

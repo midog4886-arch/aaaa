@@ -52,6 +52,32 @@ def test_full_tournament_puts_member_on_waitlist(monkeypatch):
     assert collection.update_one.call_args.args[1]['$push']['registration_requests']['status'] == 'waitlisted'
 
 
+def test_closed_registration_keeps_linked_pending_requests_visible(monkeypatch):
+    tournaments = [{
+        'id': 'test-cup', 'name': 'Test Cup', 'branch_id': 'b', 'registration_open': False,
+        'registration_requests': [
+            {'member_id': 'amjad', 'status': 'pending'},
+            {'member_id': 'mohammed', 'status': 'pending'},
+        ],
+    }]
+    cursor = SimpleNamespace(sort=lambda *args: SimpleNamespace(to_list=AsyncMock(return_value=tournaments)))
+    find_tournaments = lambda *args: cursor
+    members_cursor = SimpleNamespace(to_list=AsyncMock(return_value=[
+        {'id': 'amjad', 'name': 'Amjad', 'branch_id': 'b'},
+        {'id': 'mohammed', 'name': 'Mohammed', 'branch_id': 'b'},
+        {'id': 'other', 'name': 'Other', 'branch_id': 'b'},
+    ]))
+    monkeypatch.setattr(api, 'db', SimpleNamespace(
+        tournaments=SimpleNamespace(find=find_tournaments),
+        members=SimpleNamespace(find=lambda *args: members_cursor),
+    ))
+    result = asyncio.run(api.open_for_member({'id': 'amjad', '_linked_member_ids': ['amjad', 'mohammed']}))
+    assert result[0]['registration_open'] is False
+    assert [(m['id'], m['status']) for m in result[0]['members']] == [
+        ('amjad', 'pending'), ('mohammed', 'pending'),
+    ]
+
+
 def test_checkin_rejects_unregistered_member(monkeypatch):
     monkeypatch.setattr(api, '_load_tournament_or_403', AsyncMock(return_value={'participants': [{'member_id': 'registered'}]}))
     with pytest.raises(HTTPException) as error:
