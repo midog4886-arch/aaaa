@@ -4,7 +4,6 @@ import { ArrowRight, Search } from 'lucide-react';
 import Layout from '../components/Layout';
 import MemberAvatar from '../components/MemberAvatar';
 import PerformanceStudio from '../components/member-profile/PerformanceStudio';
-import GuestPerformanceStudio from '../components/member-profile/GuestPerformanceStudio';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { useAuth } from '../contexts/AuthContext';
@@ -79,7 +78,7 @@ export default function MemberPerformancePage() {
           </div>}
         </div>}
       </div>
-      {guest && <GuestPerformanceStudio language={language} />}
+      {guest && <div className="rounded-xl border bg-white p-3 shadow-sm sm:p-6"><PerformanceStudio member={{ id: 'guest', name_ar: 'زائر' }} language={language} canEdit guestMode /></div>}
       {loading && <div className="rounded-xl border bg-white p-8 text-center text-slate-600">{ar ? 'جارٍ فتح ملف العضو…' : 'Loading member…'}</div>}
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-800">{error}</div>}
       {!memberId && !guest && <div className="rounded-xl border bg-white p-8 text-center text-slate-600">{ar ? 'ابحث عن عضو لفتح استوديو تحليل الأداء، أو اختر تحليل زائر.' : 'Search for a member or choose guest analysis.'}</div>}

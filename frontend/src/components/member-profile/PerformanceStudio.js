@@ -4,6 +4,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { memberVideoReviewsAPI } from '../../services/api';
+import { createGuestPerformanceReviews } from '../../utils/guestPerformanceReviews';
 import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } from '../../utils/poseAnalysis';
 import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
 import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
@@ -17,9 +18,13 @@ const timeLabel = (seconds) => {
 const errorText = (error) => error?.response?.data?.detail || 'تعذرت العملية. حاول مرة أخرى.';
 const JOINT_LABELS = ['الكتف', 'المرفق', 'الرسغ', 'الورك', 'الركبة', 'الكاحل'];
 
-export default function PerformanceStudio({ member, language = 'ar', canEdit = false }) {
+export default function PerformanceStudio({ member, language = 'ar', canEdit = false, guestMode = false }) {
   const ar = language === 'ar';
+  const guestReviewsRef = useRef(null);
+  if (!guestReviewsRef.current) guestReviewsRef.current = createGuestPerformanceReviews();
+  const reviewAPI = guestMode ? guestReviewsRef.current : memberVideoReviewsAPI;
   const [reviews, setReviews] = useState([]);
+  const [guestName, setGuestName] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [compareId, setCompareId] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
@@ -79,13 +84,13 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
 
   const refresh = useCallback(async () => {
     try {
-      const response = await memberVideoReviewsAPI.list(member.id);
+      const response = await reviewAPI.list(member.id);
       setReviews(response.data || []);
       setSelectedId(current => current && response.data.some(row => row.id === current) ? current : (response.data[0]?.id || ''));
     } catch (error) {
       toast.error(errorText(error));
     }
-  }, [member.id]);
+  }, [member.id, reviewAPI]);
 
   useEffect(() => {
     setReviews([]);
@@ -134,7 +139,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (selected?.video_mode === 'local') {
       setSourceUrl(localVideosRef.current.get(selectedId) || '');
     } else {
-      memberVideoReviewsAPI.playTicket(selectedId).then(response => {
+      reviewAPI.playTicket(selectedId).then(response => {
         if (active) setSourceUrl(response.data.url);
       }).catch(error => { if (active) toast.error(errorText(error)); });
     }
@@ -148,7 +153,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (reviews.find(row => row.id === compareId)?.video_mode === 'local') {
       setCompareUrl(localVideosRef.current.get(compareId) || '');
     } else {
-      memberVideoReviewsAPI.playTicket(compareId).then(response => {
+      reviewAPI.playTicket(compareId).then(response => {
         if (active) setCompareUrl(response.data.url);
       }).catch(error => { if (active) toast.error(errorText(error)); });
     }
@@ -342,7 +347,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     }
     setUploading(true);
     try {
-      const response = await memberVideoReviewsAPI.upload(member.id, file, uploadSport, uploadSkill);
+      const response = await reviewAPI.upload(member.id, file, uploadSport, uploadSkill);
       await refresh();
       setSelectedId(response.data.id);
       toast.success(ar ? 'تم رفع الفيديو كمسودة خاصة' : 'Video uploaded as a private draft');
@@ -357,8 +362,8 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.mp4') || (file.type && file.type !== 'video/mp4')) {
-      toast.error(ar ? 'اختر فيديو MP4 من جهازك' : 'Choose an MP4 video');
+    if (!(guestMode ? file.type.startsWith('video/') : file.name.toLowerCase().endsWith('.mp4') && (!file.type || file.type === 'video/mp4'))) {
+      toast.error(guestMode ? (ar ? 'اختر ملف فيديو يمكن للمتصفح تشغيله' : 'Choose a browser-playable video') : (ar ? 'اختر فيديو MP4 من جهازك' : 'Choose an MP4 video'));
       return;
     }
     if (reviewId) {
@@ -369,7 +374,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     }
     setUploading(true);
     try {
-      const response = await memberVideoReviewsAPI.createLocal(member.id, {
+      const response = await reviewAPI.createLocal(member.id, {
         title: file.name.replace(/\.mp4$/i, '').slice(0, 120) || 'تحليل أداء',
         sport: uploadSport, skill: uploadSkill,
       });
@@ -446,10 +451,10 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (!selected || !draft) return;
     setBusy(true);
     try {
-      const response = await memberVideoReviewsAPI.update(selected.id, { ...draft, samples: [...samplesRef.current.values()].sort((a, b) => a.time - b.time) });
+      const response = await reviewAPI.update(selected.id, { ...draft, samples: [...samplesRef.current.values()].sort((a, b) => a.time - b.time) });
       setReviews(current => current.map(row => row.id === selected.id ? response.data : row));
       setDirty(false);
-      toast.success(ar ? 'تم حفظ تحليل المدرب' : 'Coach review saved');
+      toast.success(guestMode ? (ar ? 'حُفظت المسودة مؤقتًا في هذه الصفحة؛ نزّل التقرير قبل إغلاقها.' : 'Draft saved for this page session. Download before leaving.') : (ar ? 'تم حفظ تحليل المدرب' : 'Coach review saved'));
     } catch (error) {
       toast.error(errorText(error));
     } finally {
@@ -457,11 +462,45 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     }
   };
 
+  const downloadGuestReport = () => {
+    if (!guestMode || !draft) return;
+    const lines = [ar ? 'تقرير تحليل أداء زائر' : 'Guest performance review',
+      `${ar ? 'الاسم' : 'Name'}: ${guestName.trim() || (ar ? 'غير محدد' : 'Unnamed')}`,
+      `${ar ? 'العنوان' : 'Title'}: ${draft.title}`,
+      `${ar ? 'المهارة' : 'Skill'}: ${skillLabel(draft.skill)}`,
+      `${ar ? 'ملاحظات المدرب' : 'Coach notes'}: ${draft.coach_summary || '—'}`,
+      `${ar ? 'ملخص التقرير' : 'Report summary'}: ${draft.parent_summary || '—'}`, ''];
+    for (const marker of draft.markers) {
+      lines.push(`${timeLabel(marker.time)} · ${marker.label}`);
+      if (marker.note) lines.push(marker.note);
+      Object.entries(marker.pose_metrics || {}).filter(([, value]) => Number.isFinite(value))
+        .forEach(([key, value]) => lines.push(`${metricLabel(key)}: ${value}°`));
+      if (Object.keys(marker.corrected_points || {}).length) lines.push(ar ? 'مفاصل مصححة يدويًا' : 'Coach-corrected joints');
+      lines.push('');
+    }
+    if (draft.comparison && baseline) {
+      lines.push(ar ? 'مقارنة قبل/بعد' : 'Before/after comparison');
+      lines.push(`${ar ? 'الفيديو السابق' : 'Baseline'}: ${baseline.title} (${timeLabel(draft.comparison.baseline_event_time)})`);
+      lines.push(`${ar ? 'الفيديو الحالي' : 'Current'}: ${draft.title} (${timeLabel(draft.comparison.current_event_time)})`);
+      if (report?.usable) Object.entries(report.deltas).forEach(([key, value]) => lines.push(`${metricLabel(key)}: ${value > 0 ? '+' : ''}${value}°`));
+      else lines.push(ar ? 'القياسات غير كافية لمقارنة رقمية موثوقة.' : 'Not enough reliable samples for numeric comparison.');
+      lines.push(`${ar ? 'استنتاج المدرب' : 'Coach finding'}: ${draft.comparison.coach_finding || '—'}`);
+      lines.push(`${ar ? 'التمرين التالي' : 'Next exercise'}: ${draft.comparison.next_exercise || '—'}`, '');
+    }
+    lines.push(ar ? 'قياسات تقريبية من كاميرا واحدة؛ اختلاف الزوايا ليس حكمًا تلقائيًا بتحسن الأداء.' : 'Single-camera estimates; angle changes alone do not prove improvement.');
+    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'guest-performance-report.txt';
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const setStatus = async (status) => {
     if (!selected || dirty) return;
     setBusy(true);
     try {
-      const response = await memberVideoReviewsAPI.setStatus(selected.id, status);
+      const response = await reviewAPI.setStatus(selected.id, status);
       setReviews(current => current.map(row => row.id === selected.id ? response.data : row));
       toast.success(status === 'approved' ? (ar ? 'أصبح التقرير ظاهرًا لولي الأمر' : 'Report shared with parent') : (ar ? 'عاد التقرير إلى مسودة خاصة' : 'Report returned to draft'));
     } catch (error) {
@@ -475,7 +514,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (!selected || !window.confirm(ar ? 'حذف الفيديو وتحليله نهائيًا؟' : 'Delete this video and its review permanently?')) return;
     setBusy(true);
     try {
-      await memberVideoReviewsAPI.delete(selected.id);
+      await reviewAPI.delete(selected.id);
       setCompareId(current => current === selected.id ? '' : current);
       await refresh();
       toast.success(ar ? 'تم حذف الفيديو' : 'Video deleted');
@@ -523,8 +562,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   return <div className="space-y-4" dir={ar ? 'rtl' : 'ltr'}>
     <div className="rounded-xl border bg-blue-50 p-4 text-sm text-blue-900">
       <strong>{ar ? 'استوديو تحليل الأداء' : 'Performance review studio'}</strong>
-      <p className="mt-1">{ar ? 'افتح الفيديو محليًا للتحليل داخل المتصفح؛ يُحفظ التقرير فقط. الفيديوهات المرفوعة سابقًا تظل متاحة. لا يرى ولي الأمر سوى التقرير بعد اعتماده.' : 'Analyze video locally in the browser and save only the report. Existing uploaded videos remain available. Parents see approved reports only.'}</p>
+      <p className="mt-1">{guestMode ? (ar ? 'نفس أدوات تحليل العضو، لكن دون عضوية أو رفع فيديو. تبقى المسودة في الصفحة الحالية فقط؛ نزّل التقرير قبل إغلاقها.' : 'The same analysis tools without membership or upload. The draft lasts only for this page session; download before leaving.') : (ar ? 'افتح الفيديو محليًا للتحليل داخل المتصفح؛ يُحفظ التقرير فقط. الفيديوهات المرفوعة سابقًا تظل متاحة. لا يرى ولي الأمر سوى التقرير بعد اعتماده.' : 'Analyze video locally in the browser and save only the report. Existing uploaded videos remain available. Parents see approved reports only.')}</p>
     </div>
+    {guestMode && <label className="block max-w-lg text-sm">{ar ? 'اسم الزائر (اختياري)' : 'Guest name (optional)'}<Input value={guestName} onChange={event => setGuestName(event.target.value)} className="mt-1" maxLength={120} /></label>}
     <div className="flex flex-wrap items-center gap-2">
       {canEdit && <select aria-label={ar ? 'رياضة الفيديو الجديد' : 'Sport for new video'} value={uploadSport} onChange={event => { const sport = event.target.value; setUploadSport(sport); setUploadSkill(SKILLS[sport][0][0]); }} className="rounded-md border bg-white p-2 text-sm">
         <option value="swimming">{ar ? 'سباحة' : 'Swimming'}</option>
@@ -535,15 +575,15 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       </select>}
       {canEdit && <label className="inline-flex cursor-pointer items-center rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white">
         {uploading ? (ar ? 'جارٍ إنشاء التقرير...' : 'Creating report...') : (ar ? 'فتح فيديو محلي وتحليل الأداء' : 'Open local video and analyze')}
-        <input type="file" accept="video/mp4,.mp4" className="hidden" disabled={uploading} onChange={openLocal} />
+        <input type="file" accept={guestMode ? 'video/*' : 'video/mp4,.mp4'} className="hidden" disabled={uploading} onChange={openLocal} />
       </label>}
-      {canEdit && <details className="text-xs text-slate-600"><summary className="cursor-pointer">{ar ? 'خيار رفع الفيديو ومشاركته' : 'Option to upload and share video'}</summary><label className="mt-2 inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm">
+      {canEdit && !guestMode && <details className="text-xs text-slate-600"><summary className="cursor-pointer">{ar ? 'خيار رفع الفيديو ومشاركته' : 'Option to upload and share video'}</summary><label className="mt-2 inline-flex cursor-pointer items-center rounded-md border px-3 py-2 text-sm">
         {uploading ? (ar ? 'جارٍ الرفع...' : 'Uploading...') : (ar ? 'رفع فيديو MP4 للخادم' : 'Upload MP4 to server')}
         <input type="file" accept="video/mp4,.mp4" className="hidden" disabled={uploading} onChange={upload} />
       </label></details>}
       <select aria-label={ar ? 'الفيديو الحالي' : 'Current video'} value={selectedId} onChange={event => setSelectedId(event.target.value)} className="min-w-[220px] rounded-md border bg-white p-2 text-sm">
         <option value="">{ar ? 'اختر فيديو' : 'Choose video'}</option>
-        {reviews.map(row => <option key={row.id} value={row.id}>{row.title} · {row.sport === 'football' ? (ar ? 'قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')} · {row.status === 'approved' ? (ar ? 'معتمد' : 'Approved') : (ar ? 'مسودة' : 'Draft')}</option>)}
+        {reviews.map(row => <option key={row.id} value={row.id}>{row.title} · {row.sport === 'football' ? (ar ? 'قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')} · {guestMode ? (ar ? 'محلي' : 'Local') : row.status === 'approved' ? (ar ? 'معتمد' : 'Approved') : (ar ? 'مسودة' : 'Draft')}</option>)}
       </select>
       {selected && <select aria-label={ar ? 'فيديو المقارنة' : 'Comparison video'} value={compareId} disabled={!canEdit || selected.status !== 'draft'} onChange={event => {
         const id = event.target.value;
@@ -558,13 +598,13 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           .map(row => <option key={row.id} value={row.id}>{row.title} · {row.created_at?.slice(0, 10)}</option>)}
       </select>}
     </div>
-    {!selected && <p className="rounded-lg border p-8 text-center text-muted-foreground">{ar ? 'لا توجد تقارير أداء لهذا العضو بعد.' : 'No performance reports yet.'}</p>}
+    {!selected && <p className="rounded-lg border p-8 text-center text-muted-foreground">{guestMode ? (ar ? 'افتح فيديو الزائر من جهازك لبدء التحليل.' : 'Open a guest video from your device to begin.') : (ar ? 'لا توجد تقارير أداء لهذا العضو بعد.' : 'No performance reports yet.')}</p>}
     {selected && draft && <>
       {selected.video_mode === 'local' && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-        {ar ? 'الفيديو على جهازك فقط ولا يُحفظ في النظام. بعد إغلاق الصفحة، أعد اختيار نفس الفيديو لمراجعة التوقيت واللقطات؛ التقرير والقياسات المحفوظة ستبقى.' : 'The video stays on your device. Reopen the same file to revisit moments; saved results remain.'}
+        {guestMode ? (ar ? 'الفيديو والمسودة على جهازك في هذه الصفحة فقط. نزّل التقرير قبل إغلاقها.' : 'The video and draft stay in this page only. Download the report before leaving.') : (ar ? 'الفيديو على جهازك فقط ولا يُحفظ في النظام. بعد إغلاق الصفحة، أعد اختيار نفس الفيديو لمراجعة التوقيت واللقطات؛ التقرير والقياسات المحفوظة ستبقى.' : 'The video stays on your device. Reopen the same file to revisit moments; saved results remain.')}
         <label className="ms-3 inline-flex cursor-pointer rounded-md border border-amber-400 bg-white px-3 py-1">
           {ar ? (sourceUrl ? 'تغيير الفيديو المحلي' : 'فتح الفيديو المحلي لهذا التقرير') : (sourceUrl ? 'Change local video' : 'Open local video for this report')}
-          <input type="file" accept="video/mp4,.mp4" className="hidden" onChange={event => openLocal(event, selected.id)} />
+        <input type="file" accept={guestMode ? 'video/*' : 'video/mp4,.mp4'} className="hidden" onChange={event => openLocal(event, selected.id)} />
         </label>
       </div>}
       {compareId && compareUrl && <div className="flex flex-wrap items-center gap-3 rounded-lg border p-2 text-sm">
@@ -637,7 +677,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           </div>
         </div>
         {compareId && !overlayComparison && <div className="space-y-2">
-          {baseline?.video_mode === 'local' && !compareUrl && <label className="inline-flex cursor-pointer rounded-md border px-3 py-2 text-sm">{ar ? 'افتح فيديو «قبل» من جهازك' : 'Open baseline video locally'}<input type="file" accept="video/mp4,.mp4" className="hidden" onChange={event => openLocal(event, compareId)} /></label>}
+          {baseline?.video_mode === 'local' && !compareUrl && <label className="inline-flex cursor-pointer rounded-md border px-3 py-2 text-sm">{ar ? 'افتح فيديو «قبل» من جهازك' : 'Open baseline video locally'}<input type="file" accept={guestMode ? 'video/*' : 'video/mp4,.mp4'} className="hidden" onChange={event => openLocal(event, compareId)} /></label>}
           {compareUrl && <video ref={comparisonRef} src={compareUrl} controls playsInline muted preload="metadata" className="aspect-video w-full rounded-lg bg-black" />}
           <Button type="button" variant="outline" size="sm" onClick={() => syncComparison(true)}>{ar ? 'اذهب للحظة الحركة في الفيديوين' : 'Jump to matched event'}</Button>
         </div>}
@@ -676,7 +716,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               <div className={`rounded-lg border p-3 ${report.before.usable ? 'bg-emerald-50' : 'bg-amber-50'}`}>{ar ? 'وضوح التتبّع قبل' : 'Baseline tracking coverage'}: {Math.round(report.before.coverage * 100)}% · {report.before.validSamples} {ar ? 'عينات صالحة' : 'valid samples'}</div>
               <div className={`rounded-lg border p-3 ${report.after.usable ? 'bg-emerald-50' : 'bg-amber-50'}`}>{ar ? 'وضوح التتبّع بعد' : 'Current tracking coverage'}: {Math.round(report.after.coverage * 100)}% · {report.after.validSamples} {ar ? 'عينات صالحة' : 'valid samples'}</div>
             </div>
-            {!report.usable && <p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-900">{ar ? 'المقارنة الرقمية غير صالحة للمشاركة: يحتاج كل فيديو إلى تتبّع واضح حول لحظة الحركة. لن نملأ الفجوات بقيم تخمينية.' : 'Not enough reliable tracking around both events. Missing values are not estimated.'}</p>}
+            {!report.usable && <p className="rounded-lg bg-amber-100 p-3 text-sm text-amber-900">{ar ? (guestMode ? 'المقارنة الرقمية تحتاج إلى تتبّع واضح في الفيديوين حول لحظة الحركة. لن نملأ الفجوات بقيم تخمينية.' : 'المقارنة الرقمية غير صالحة للمشاركة: يحتاج كل فيديو إلى تتبّع واضح حول لحظة الحركة. لن نملأ الفجوات بقيم تخمينية.') : 'Not enough reliable tracking around both events. Missing values are not estimated.'}</p>}
             <div className="overflow-x-auto rounded-lg border bg-white">
               <table className="w-full text-sm"><thead><tr className="bg-slate-50"><th className="p-2 text-start">{ar ? 'القياس' : 'Metric'}</th><th className="p-2">{ar ? 'قبل' : 'Before'}</th><th className="p-2">{ar ? 'بعد' : 'After'}</th><th className="p-2">{ar ? 'الفرق' : 'Change'}</th></tr></thead><tbody>
                 {(draft.sport === 'football' ? ['knee_angle', 'hip_angle', 'body_tilt'] : ['elbow_angle', 'hip_angle', 'body_tilt']).map(key => <tr key={key} className="border-t"><td className="p-2">{metricLabel(key)}</td><td className="p-2 text-center">{report.before.values[key] == null ? '—' : `${report.before.values[key]}°`}</td><td className="p-2 text-center">{report.after.values[key] == null ? '—' : `${report.after.values[key]}°`}</td><td className="p-2 text-center">{report.deltas[key] == null ? '—' : `${report.deltas[key] > 0 ? '+' : ''}${report.deltas[key]}°`}</td></tr>)}
@@ -698,8 +738,8 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
             <p className="mt-1"><strong>{ar ? 'التمرين التالي:' : 'Next exercise:'}</strong> {draft.comparison.next_exercise || '—'}</p>
             <p className="mt-2 text-xs text-slate-600">{ar ? 'فرق الزوايا وصف للحركة، وليس حكمًا تلقائيًا بالتحسن. يعتمد المدرب الخلاصة بعد مراجعة الفيديو والقياسات.' : 'Angle changes describe motion, not automatic improvement. The coach approves the interpretation.'}</p>
           </div>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.comparison.share_with_parent} disabled={!canEdit || selected.status !== 'draft' || !report?.usable || baseline.status !== 'approved'} onChange={event => updateComparison({ share_with_parent: event.target.checked })} />{ar ? 'أظهر المقارنة المعتمدة لولي الأمر' : 'Share approved comparison with parent'}</label>
-          {baseline.status !== 'approved' && <p className="text-xs text-amber-700">{ar ? 'اعتمد تقرير الفيديو السابق أولًا قبل مشاركة المقارنة.' : 'Approve the baseline report before sharing the comparison.'}</p>}
+          {!guestMode && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.comparison.share_with_parent} disabled={!canEdit || selected.status !== 'draft' || !report?.usable || baseline.status !== 'approved'} onChange={event => updateComparison({ share_with_parent: event.target.checked })} />{ar ? 'أظهر المقارنة المعتمدة لولي الأمر' : 'Share approved comparison with parent'}</label>}
+          {!guestMode && baseline.status !== 'approved' && <p className="text-xs text-amber-700">{ar ? 'اعتمد تقرير الفيديو السابق أولًا قبل مشاركة المقارنة.' : 'Approve the baseline report before sharing the comparison.'}</p>}
         </>}
       </section>
       <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
@@ -708,7 +748,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           {draft.markers.length === 0 && <p className="text-sm text-muted-foreground">{ar ? 'أوقف الفيديو عند لحظة مهمة ثم اضغط «حدد لقطة».' : 'Pause at an important moment and mark it.'}</p>}
           {draft.markers.map(marker => <button type="button" key={marker.id} onClick={() => { setActiveMarkerId(marker.id); setCorrectionMode(false); seek(marker.time); }} className={`block w-full rounded-md border p-2 text-start text-sm ${activeMarkerId === marker.id ? 'border-blue-500 bg-blue-50' : ''}`}>
             <span className="font-mono" dir="ltr">{timeLabel(marker.time)}</span> · {marker.label}
-            {marker.share_with_parent && <span className="ms-2 text-green-700">{ar ? 'للأهل' : 'Parent'}</span>}
+            {!guestMode && marker.share_with_parent && <span className="ms-2 text-green-700">{ar ? 'للأهل' : 'Parent'}</span>}
           </button>)}
         </div>
         <div className="space-y-3 rounded-lg border p-3">
@@ -730,7 +770,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           <Input value={draft.title} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ title: event.target.value })} maxLength={120} />
           <label className="block text-sm font-medium">{ar ? 'ملاحظات خاصة للمدربين' : 'Private coach notes'}</label>
           <Textarea value={draft.coach_summary} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ coach_summary: event.target.value })} maxLength={2000} />
-          <label className="block text-sm font-medium">{ar ? 'ملخص سيظهر لولي الأمر بعد الاعتماد' : 'Parent summary after approval'}</label>
+          <label className="block text-sm font-medium">{guestMode ? (ar ? 'ملخص تقرير الزائر' : 'Guest report summary') : (ar ? 'ملخص سيظهر لولي الأمر بعد الاعتماد' : 'Parent summary after approval')}</label>
           <Textarea value={draft.parent_summary} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ parent_summary: event.target.value })} maxLength={2000} />
           {activeMarker && <div className="space-y-2 rounded-md bg-slate-50 p-3">
             <strong className="text-sm">{ar ? 'تعليق على اللقطة' : 'Moment annotation'} · {timeLabel(activeMarker.time)}</strong>
@@ -747,19 +787,20 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
                 setSampleCount(samplesRef.current.size);
                 setCorrectionMode(false);
               }}>{ar ? 'إلغاء التصحيحات اليدوية' : 'Clear manual corrections'}</Button>}
-              <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={activeMarker.share_with_parent} onChange={event => updateMarker(activeMarker.id, { share_with_parent: event.target.checked })} />{ar ? 'أظهر هذه اللقطة لولي الأمر' : 'Share this moment with parent'}</label>
+              {!guestMode && <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={activeMarker.share_with_parent} onChange={event => updateMarker(activeMarker.id, { share_with_parent: event.target.checked })} />{ar ? 'أظهر هذه اللقطة لولي الأمر' : 'Share this moment with parent'}</label>}
               <Button type="button" variant="destructive" size="sm" onClick={() => { change({ markers: draft.markers.filter(row => row.id !== activeMarker.id) }); setActiveMarkerId(''); }}>{ar ? 'حذف اللقطة' : 'Remove moment'}</Button>
             </div>}
           </div>}
         </div>
       </div>
       {canEdit && <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-        {selected.status === 'draft' && <Button type="button" onClick={save} disabled={busy || !dirty}>{ar ? 'حفظ التحليل' : 'Save review'}</Button>}
-        {selected.status === 'draft' && <Button type="button" variant="outline" onClick={() => setStatus('approved')} disabled={busy || dirty || !draft.parent_summary.trim()}>{selected.video_mode === 'local' ? (ar ? 'اعتماد التقرير لولي الأمر' : 'Approve report for parent') : (ar ? 'اعتماد ومشاركة الفيديو مع ولي الأمر' : 'Approve and share video with parent')}</Button>}
+        {selected.status === 'draft' && <Button type="button" onClick={save} disabled={busy || !dirty}>{guestMode ? (ar ? 'حفظ المسودة في الصفحة' : 'Save page draft') : (ar ? 'حفظ التحليل' : 'Save review')}</Button>}
+        {guestMode && <Button type="button" variant="outline" onClick={downloadGuestReport}>{ar ? 'تنزيل تقرير الزائر' : 'Download guest report'}</Button>}
+        {!guestMode && selected.status === 'draft' && <Button type="button" variant="outline" onClick={() => setStatus('approved')} disabled={busy || dirty || !draft.parent_summary.trim()}>{selected.video_mode === 'local' ? (ar ? 'اعتماد التقرير لولي الأمر' : 'Approve report for parent') : (ar ? 'اعتماد ومشاركة الفيديو مع ولي الأمر' : 'Approve and share video with parent')}</Button>}
         {selected.status === 'approved' && <Button type="button" variant="outline" onClick={() => setStatus('draft')} disabled={busy}>{ar ? 'إلغاء المشاركة وإعادة المسودة' : 'Unshare and return to draft'}</Button>}
         <Button type="button" variant="destructive" onClick={remove} disabled={busy}>{selected.video_mode === 'local' ? (ar ? 'حذف التقرير' : 'Delete report') : (ar ? 'حذف الفيديو' : 'Delete video')}</Button>
         {dirty && <span className="text-sm text-amber-700">{ar ? 'احفظ التعديلات قبل الاعتماد' : 'Save changes before approval'}</span>}
-        {selected.status === 'draft' && <p className="w-full text-xs text-muted-foreground">{selected.video_mode === 'local' ? (ar ? 'الاعتماد يعرض الملخص والقياسات التي اخترت مشاركتها فقط؛ لا يُرسل الفيديو.' : 'Approval shares only the chosen summary and metrics, never the local video.') : (ar ? 'الاعتماد يتيح لولي الأمر مشاهدة الفيديو كاملًا واللقطات التي اخترت إظهارها فقط.' : 'Approval lets the parent view the full video and only the moments you marked for sharing.')}</p>}
+        {selected.status === 'draft' && <p className="w-full text-xs text-muted-foreground">{guestMode ? (ar ? 'نزّل التقرير قبل إغلاق الصفحة. لن يُرسل الفيديو أو التقرير إلى نظام الأعضاء.' : 'Download before leaving. Neither video nor report is sent to the member system.') : selected.video_mode === 'local' ? (ar ? 'الاعتماد يعرض الملخص والقياسات التي اخترت مشاركتها فقط؛ لا يُرسل الفيديو.' : 'Approval shares only the chosen summary and metrics, never the local video.') : (ar ? 'الاعتماد يتيح لولي الأمر مشاهدة الفيديو كاملًا واللقطات التي اخترت إظهارها فقط.' : 'Approval lets the parent view the full video and only the moments you marked for sharing.')}</p>}
       </div>}
     </>}
   </div>;
