@@ -9,7 +9,7 @@ import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } fro
 import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
 import { stabilizePose } from '../../utils/poseStabilization';
 import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
-import { automaticPerformanceReport, movementCandidates, qualitySegments, qualitySummary, sportTiming } from '../../utils/performanceInsights';
+import { assessmentEvidence, automaticPerformanceReport, movementCandidates, qualitySegments, qualitySummary, sportTiming, swimmerAssessmentSummary } from '../../utils/performanceInsights';
 import ComparisonChart from './ComparisonChart';
 
 const timeLabel = (seconds) => {
@@ -113,6 +113,8 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const currentSamples = [...samplesRef.current.values()].sort((a, b) => a.time - b.time);
   const quality = qualitySummary(currentSamples);
   const automaticReport = automaticPerformanceReport(currentSamples, draft?.sport, videoDuration, language);
+  const evidence = assessmentEvidence(currentSamples);
+  const assessmentSummary = draft?.sport === 'swimming' ? swimmerAssessmentSummary(draft.assessment, currentSamples, language) : '';
   const timeline = qualitySegments(currentSamples, videoDuration);
   const timing = draft ? sportTiming(draft.markers, draft.sport, draft.skill, MOMENT_LABELS[draft.skill] || MOMENT_LABELS.general) : null;
   const candidates = draft ? movementCandidates(currentSamples, draft.sport) : [];
@@ -126,6 +128,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       skill: selected.skill || 'general',
       coach_summary: selected.coach_summary || '',
       parent_summary: selected.parent_summary || '',
+      assessment: selected.assessment || { strengths: '', priorities: [] },
       markers: (selected.markers || []).map(marker => ({ ...marker })),
       comparison: selected.comparison || null,
     } : null);
@@ -183,6 +186,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const updateMarker = (id, patch) => {
     change({ markers: draft.markers.map(marker => marker.id === id ? { ...marker, ...patch } : marker) });
   };
+
+  const updatePriority = (index, patch) => change({ assessment: { ...draft.assessment,
+    priorities: draft.assessment.priorities.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row) } });
 
   const analyzeFrame = (force = false) => {
     const video = videoRef.current;
@@ -482,7 +488,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setBusy(true);
     try {
       const response = await reviewAPI.update(selected.id, { ...draft,
-        parent_summary: draft.parent_summary.trim() || (automaticReport.ready ? automaticReport.lines.join('\n') : ''),
+        parent_summary: draft.parent_summary.trim() || (draft.sport === 'swimming' ? assessmentSummary : (automaticReport.ready ? automaticReport.lines.join('\n') : '')),
         samples: [...samplesRef.current.values()].sort((a, b) => a.time - b.time) });
       setReviews(current => current.map(row => row.id === selected.id ? response.data : row));
       setDirty(false);
@@ -503,6 +509,12 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       `${ar ? 'ملاحظات المدرب' : 'Coach notes'}: ${draft.coach_summary || '—'}`,
       `${ar ? 'ملخص التقرير' : 'Report summary'}: ${draft.parent_summary || '—'}`, ''];
     lines.push(ar ? 'التقرير الآلي' : 'Automatic report', ...automaticReport.lines, '');
+    if (draft.sport === 'swimming') lines.push(ar ? 'تقييم السباح وخطة التحسين · مراجعة المدرب' : 'Swimmer assessment · coach review', assessmentSummary || '—', '');
+    if (draft.sport === 'swimming' && draft.assessment?.priorities?.length) {
+      lines.push(ar ? 'الأداء المرصود | الهدف المعتمد | أولوية التصحيح | الإجراء التدريبي | اللقطة الداعمة' : 'Observed | Target | Priority | Training action | Supporting moment');
+      draft.assessment.priorities.forEach(row => lines.push([row.observed || '—', row.target || '—', row.priority, row.exercise || '—', Number.isFinite(row.marker_time) ? timeLabel(row.marker_time) : '—'].join(' | ')));
+      lines.push('');
+    }
     for (const marker of draft.markers) {
       lines.push(`${timeLabel(marker.time)} · ${marker.label}`);
       if (marker.note) lines.push(marker.note);
@@ -872,12 +884,37 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           <Input value={draft.title} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ title: event.target.value })} maxLength={120} />
           <label className="block text-sm font-medium">{ar ? 'ملاحظات خاصة للمدربين' : 'Private coach notes'}</label>
           <Textarea value={draft.coach_summary} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ coach_summary: event.target.value })} maxLength={2000} />
+          {draft.sport === 'swimming' && <section className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/40 p-3 text-sm" aria-label={ar ? 'تقييم السباح وخطة التحسين' : 'Swimmer assessment and improvement plan'}>
+            <h3 className="font-semibold">{ar ? 'تقييم السباح وخطة التحسين' : 'Swimmer assessment and improvement plan'}</h3>
+            <p className={evidence.adequate ? 'text-emerald-800' : 'text-amber-800'}>{evidence.adequate
+              ? (ar ? 'التتبع كافٍ لعرض ملاحظات آلية للمراجعة؛ يظل اعتماد التقييم للمدرب.' : 'Tracking supports reviewable observations; the coach approves the assessment.')
+              : (ar ? 'جودة التصوير أو التتبع غير كافية لحكم آلي نهائي. اكتب فقط ما تحققت منه بصريًا.' : 'Insufficient tracking for an automatic conclusion. Enter only observations you verified visually.')}</p>
+            <div className="rounded-md border bg-white p-2"><strong>{ar ? 'ملاحظات آلية تحتاج مراجعة' : 'Automatic observations to review'}</strong>
+              <p className="mt-1 text-xs">{automaticReport.lines[0]}</p>
+            </div>
+            <label className="block font-medium">{ar ? 'نقاط القوة المعتمدة من المدرب' : 'Coach-approved strengths'}</label>
+            <Textarea value={draft.assessment?.strengths || ''} disabled={!canEdit || selected.status !== 'draft'} maxLength={1000} onChange={event => change({ assessment: { ...draft.assessment, strengths: event.target.value } })} placeholder={ar ? 'اكتب فقط نقاط القوة التي راجعتها في الفيديو' : 'Enter strengths verified in the video'} />
+            <div className="flex items-center justify-between gap-2"><strong>{ar ? 'أولويات التحسين (حتى 3)' : 'Improvement priorities (up to 3)'}</strong>
+              {canEdit && selected.status === 'draft' && draft.assessment.priorities.length < 3 && <Button type="button" variant="outline" size="sm" onClick={() => change({ assessment: { ...draft.assessment, priorities: [...draft.assessment.priorities, { observed: '', target: '', priority: 'medium', exercise: '', marker_time: null }] } })}>{ar ? 'إضافة أولوية' : 'Add priority'}</Button>}</div>
+            {draft.assessment.priorities.map((row, index) => <div key={index} className="grid gap-2 rounded-md border bg-white p-2 sm:grid-cols-2">
+              <label>{ar ? 'الأداء المرصود' : 'Observed performance'}<Input value={row.observed} disabled={!canEdit || selected.status !== 'draft'} maxLength={300} onChange={event => updatePriority(index, { observed: event.target.value })} /></label>
+              <label>{ar ? 'الهدف المعتمد من المدرب' : 'Coach-approved target'}<Input value={row.target} disabled={!canEdit || selected.status !== 'draft'} maxLength={300} onChange={event => updatePriority(index, { target: event.target.value })} /></label>
+              <label>{ar ? 'أولوية التصحيح' : 'Correction priority'}<select value={row.priority} disabled={!canEdit || selected.status !== 'draft'} onChange={event => updatePriority(index, { priority: event.target.value })} className="w-full rounded-md border bg-white p-2"><option value="high">{ar ? 'عالية' : 'High'}</option><option value="medium">{ar ? 'متوسطة' : 'Medium'}</option><option value="low">{ar ? 'منخفضة' : 'Low'}</option></select></label>
+              <label>{ar ? 'الإجراء التدريبي' : 'Training action'}<Input value={row.exercise} disabled={!canEdit || selected.status !== 'draft'} maxLength={300} onChange={event => updatePriority(index, { exercise: event.target.value })} /></label>
+              <label>{ar ? 'اللقطة الداعمة' : 'Supporting moment'}<select value={row.marker_time ?? ''} disabled={!canEdit || selected.status !== 'draft'} onChange={event => updatePriority(index, { marker_time: event.target.value === '' ? null : Number(event.target.value) })} className="w-full rounded-md border bg-white p-2"><option value="">{ar ? 'لم تُحدد لقطة' : 'No moment selected'}</option>{draft.markers.map(marker => <option key={marker.id} value={marker.time}>{timeLabel(marker.time)} · {marker.label}</option>)}</select></label>
+              {canEdit && selected.status === 'draft' && <Button type="button" variant="outline" size="sm" onClick={() => change({ assessment: { ...draft.assessment, priorities: draft.assessment.priorities.filter((_, rowIndex) => rowIndex !== index) } })}>{ar ? 'حذف الأولوية' : 'Remove priority'}</Button>}
+            </div>)}
+            {draft.assessment.priorities.length > 0 && <p className="text-xs text-slate-600">{ar ? 'أكمل الأداء المرصود والهدف والتمرين واللقطة الداعمة لكل أولوية قبل اعتماد التقرير.' : 'Complete observation, target, exercise, and supporting moment for each priority before approval.'}</p>}
+            {assessmentSummary && <p className="whitespace-pre-wrap rounded-md bg-white p-2">{assessmentSummary}</p>}
+            <p className="text-xs text-slate-600">{ar ? 'المرجع المرئي والتقييم السابق متاحان في مقارنة قبل/بعد أعلاه إذا تطابقت المهارة وزاوية التصوير. الزوايا التفصيلية أدناه.' : 'Use the before/after comparison above for a visual reference and prior assessment when skill and camera angle match. Detailed angles are below.'}</p>
+          </section>}
           <label className="block text-sm font-medium">{guestMode ? (ar ? 'ملخص تقرير الزائر' : 'Guest report summary') : (ar ? 'ملخص سيظهر لولي الأمر بعد الاعتماد' : 'Parent summary after approval')}</label>
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm" aria-label={ar ? 'التقرير الآلي' : 'Automatic report'}>
+          <details className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm" aria-label={ar ? 'التفاصيل الفنية الآلية' : 'Automatic technical details'}>
+            <summary className="cursor-pointer font-semibold">{ar ? 'التفاصيل الفنية: التتبع والزوايا' : 'Technical details: tracking and angles'}</summary>
             <strong>{ar ? 'التقرير الآلي من الفيديو' : 'Automatic video report'}</strong>
             {automaticReport.lines.map((line, index) => <p key={index} className="mt-1">{line}</p>)}
             {automaticReport.ready && <p className="mt-2 text-xs text-slate-600">{ar ? 'يتجدد مع القياسات أثناء التشغيل. عند حفظ التحليل، يُستخدم كملخص إذا تركت حقل الملخص فارغًا. راجعه قبل مشاركته.' : 'Updates as measurements arrive. Saving uses it as the summary when the summary field is empty. Review it before sharing.'}</p>}
-          </div>
+          </details>
           <Textarea value={draft.parent_summary} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ parent_summary: event.target.value })} maxLength={2000} />
           {activeMarker && <div className="space-y-2 rounded-md bg-slate-50 p-3">
             <strong className="text-sm">{ar ? 'تعليق على اللقطة' : 'Moment annotation'} · {timeLabel(activeMarker.time)}</strong>

@@ -81,6 +81,19 @@ class Comparison(BaseModel):
     share_with_parent: bool = False
 
 
+class ImprovementPriority(BaseModel):
+    observed: str = Field(default="", max_length=300)
+    target: str = Field(default="", max_length=300)
+    priority: Literal["high", "medium", "low"] = "medium"
+    exercise: str = Field(default="", max_length=300)
+    marker_time: float | None = Field(default=None, ge=0, le=36000)
+
+
+class CoachAssessment(BaseModel):
+    strengths: str = Field(default="", max_length=1000)
+    priorities: list[ImprovementPriority] = Field(default_factory=list, max_length=3)
+
+
 class ReviewUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     sport: Literal["football", "swimming"] = "swimming"
@@ -90,6 +103,7 @@ class ReviewUpdate(BaseModel):
     markers: list[Marker] = Field(default_factory=list, max_length=100)
     samples: list[AnalysisSample] = Field(default_factory=list, max_length=3000)
     comparison: Comparison | None = None
+    assessment: CoachAssessment = Field(default_factory=CoachAssessment)
 
     @model_validator(mode="after")
     def skill_matches_sport(self):
@@ -156,7 +170,7 @@ async def create_local_review(member_id: str, payload: LocalReviewCreate, user: 
         "branch_id": member.get("branch_id"), "tenant_slug": get_current_tenant_slug(),
         "video_mode": "local", "title": payload.title, "sport": payload.sport, "skill": payload.skill,
         "coach_summary": "", "parent_summary": "", "markers": [], "samples": [],
-        "comparison": None, "status": "draft", "created_at": now, "updated_at": now,
+        "comparison": None, "assessment": {"strengths": "", "priorities": []}, "status": "draft", "created_at": now, "updated_at": now,
         "created_by": user.get("user_id"), "approved_at": None,
     }
     await db.member_video_reviews.insert_one(doc)
@@ -199,7 +213,7 @@ async def upload_member_review(member_id: str, file: UploadFile = File(...), spo
             "tenant_slug": tenant, "storage_name": storage_name, "size": total, "video_mode": "stored",
             "title": Path(file.filename).stem[:120] or "تحليل أداء", "sport": sport, "skill": skill,
             "coach_summary": "", "parent_summary": "",
-            "markers": [], "samples": [], "comparison": None,
+            "markers": [], "samples": [], "comparison": None, "assessment": {"strengths": "", "priorities": []},
             "status": "draft", "created_at": now, "updated_at": now,
             "created_by": user.get("user_id"), "approved_at": None,
         }
@@ -235,6 +249,12 @@ async def set_review_status(review_id: str, payload: ReviewStatus, user: dict = 
     doc = await _staff_review(review_id, user, edit=True)
     if payload.status == "approved" and not doc.get("parent_summary", "").strip():
         raise HTTPException(status_code=400, detail="اكتب ملخص ولي الأمر قبل الاعتماد")
+    assessment = doc.get("assessment") or {}
+    if payload.status == "approved" and doc.get("sport") == "swimming" and assessment.get("priorities"):
+        if any(not row.get("observed", "").strip() or not row.get("target", "").strip()
+               or not row.get("exercise", "").strip() or row.get("marker_time") is None
+               for row in assessment["priorities"]):
+            raise HTTPException(status_code=400, detail="أكمل الأداء المرصود والهدف والتمرين واللقطة الداعمة لكل أولوية قبل الاعتماد")
     comparison = doc.get("comparison")
     if payload.status == "approved" and comparison and comparison.get("share_with_parent"):
         baseline = await db.member_video_reviews.find_one({"id": comparison["baseline_review_id"],
@@ -274,6 +294,7 @@ async def portal_reviews(member: dict = Depends(get_current_member)):
         item = {
             "id": doc["id"], "member_id": doc["member_id"], "member_name": doc.get("member_name", ""),
             "title": doc.get("title", ""), "parent_summary": doc.get("parent_summary", ""),
+            "assessment": doc.get("assessment", {"strengths": "", "priorities": []}),
             "sport": doc.get("sport", "swimming"), "skill": doc.get("skill", "general"),
             "has_video": bool(doc.get("storage_name")),
             "approved_at": doc.get("approved_at"),

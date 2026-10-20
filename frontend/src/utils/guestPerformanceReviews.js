@@ -11,6 +11,7 @@ export const createGuestPerformanceReviews = () => {
         title: input.title, sport: input.sport, skill: input.skill,
         video_mode: 'local', status: 'draft', created_at: new Date().toISOString(),
         coach_summary: '', parent_summary: '', markers: [], samples: [], comparison: null,
+        assessment: { strengths: '', priorities: [] },
       };
       reviews = [review, ...reviews];
       return response(review);

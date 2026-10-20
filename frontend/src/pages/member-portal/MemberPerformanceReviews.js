@@ -83,6 +83,13 @@ export default function MemberPerformanceReviews() {
         {!selected.has_video && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">الفيديو محفوظ على جهاز المدرب فقط؛ هذا التقرير يعرض النتائج التي اعتمدها المدرب.</p>}
         {baselineUrl && <button type="button" onClick={() => syncVideos(true)} className="mt-2 rounded-md border px-3 py-2 text-sm">اعرض لحظة الحركة نفسها في الفيديوين</button>}
         <p className="my-4 whitespace-pre-wrap rounded-lg bg-blue-50 p-3 text-sm text-blue-950">{selected.parent_summary}</p>
+        {selected.sport === 'swimming' && (selected.assessment?.strengths || selected.assessment?.priorities?.length > 0) && <section className="mb-4 rounded-xl border p-3 text-sm">
+          <h4 className="font-bold">تقييم السباح وخطة التحسين · معتمد من المدرب</h4>
+          {selected.assessment.strengths && <p className="mt-2 whitespace-pre-wrap"><strong>نقاط القوة:</strong> {selected.assessment.strengths}</p>}
+          {selected.assessment.priorities?.length > 0 && <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[650px] border-collapse"><thead><tr className="bg-slate-50"><th className="p-2 text-right">الأداء المرصود</th><th>الهدف المعتمد</th><th>الأولوية</th><th>الإجراء التدريبي</th><th>اللقطة</th></tr></thead><tbody>
+            {selected.assessment.priorities.map((row, index) => <tr key={index} className="border-t"><td className="p-2">{row.observed || '—'}</td><td className="p-2">{row.target || '—'}</td><td className="p-2">{{ high: 'عالية', medium: 'متوسطة', low: 'منخفضة' }[row.priority] || '—'}</td><td className="p-2">{row.exercise || '—'}</td><td className="p-2">{Number.isFinite(row.marker_time) ? timeLabel(row.marker_time) : '—'}</td></tr>)}
+          </tbody></table></div>}
+        </section>}
         {selected.comparison && <section className="mb-4 space-y-3 rounded-xl border border-blue-200 bg-blue-50/50 p-3 text-sm">
           <h4 className="font-bold">نتيجة المقارنة قبل / بعد</h4>
           <p>وضوح التتبّع: قبل {Math.round(selected.comparison.summary.before.coverage * 100)}% · بعد {Math.round(selected.comparison.summary.after.coverage * 100)}%</p>

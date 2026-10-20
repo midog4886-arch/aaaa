@@ -1,4 +1,4 @@
-import { automaticPerformanceReport, movementCandidates, qualitySegments, qualitySummary, sportTiming } from './performanceInsights';
+import { assessmentEvidence, automaticPerformanceReport, movementCandidates, qualitySegments, qualitySummary, sportTiming, swimmerAssessmentSummary } from './performanceInsights';
 
 test('quality map exposes unscanned and lost intervals without hiding uncertainty', () => {
   const samples = [{ time: 1, quality: 'valid' }, { time: 1.1, quality: 'lost' }, { time: 5, quality: 'unreliable' }];
@@ -43,4 +43,14 @@ test('automatic report uses valid observed angles and discloses tracking gaps', 
   expect(report.lines.join(' ')).not.toContain('5°');
   expect(report.lines.join(' ')).toContain('فُقد فيها التتبّع');
   expect(automaticPerformanceReport([], 'football', 2).ready).toBe(false);
+});
+
+test('swimmer assessment never turns weak tracking into an automatic verdict', () => {
+  const assessment = { strengths: 'ثبات وضع الرأس', priorities: [{ observed: 'دخول اليد مبكرًا', target: 'دخول اليد أمام الكتف', priority: 'high', exercise: 'تمرين ذراع واحدة', marker_time: 2.5 }] };
+  const samples = [{ time: 2.5, quality: 'valid', metrics: { elbow_angle: 120 } }];
+  expect(assessmentEvidence(samples).adequate).toBe(false);
+  const summary = swimmerAssessmentSummary(assessment, samples);
+  expect(summary).toContain('لا تكفي لحكم آلي نهائي');
+  expect(summary).toContain('تمرين ذراع واحدة');
+  expect(swimmerAssessmentSummary({ strengths: '', priorities: [] }, samples)).toBe('');
 });

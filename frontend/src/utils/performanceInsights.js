@@ -96,3 +96,22 @@ export const automaticPerformanceReport = (samples, sport, duration, language = 
     : 'These are approximate single-camera observations, not a technique assessment or diagnosis. Review unclear frames before approval.');
   return { ready: true, lines, quality, coverage };
 };
+
+export const assessmentEvidence = samples => {
+  const quality = qualitySummary(samples);
+  return { quality, adequate: quality.total >= 20 && quality.valid >= 10 && quality.percentage >= 60 };
+};
+
+export const swimmerAssessmentSummary = (assessment, samples, language = 'ar') => {
+  const ar = language === 'ar';
+  const { adequate } = assessmentEvidence(samples);
+  const strengths = assessment?.strengths?.trim();
+  const priorities = (assessment?.priorities || []).filter(row => row.observed?.trim() || row.target?.trim() || row.exercise?.trim());
+  if (!strengths && !priorities.length) return '';
+  const lines = [ar ? 'تقييم السباح وخطة التحسين' : 'Swimmer assessment and improvement plan'];
+  if (!adequate) lines.push(ar ? 'جودة التصوير أو التتبع لا تكفي لحكم آلي نهائي؛ البنود التالية من مراجعة المدرب فقط.'
+    : 'Tracking or filming quality is insufficient for an automatic conclusion. The following items are coach reviewed only.');
+  if (strengths) lines.push(`${ar ? 'نقاط القوة المعتمدة من المدرب' : 'Coach-approved strengths'}: ${strengths}`);
+  priorities.slice(0, 3).forEach((row, index) => lines.push(`${index + 1}. ${row.observed || '—'} → ${row.target || '—'} · ${row.exercise || '—'}${Number.isFinite(row.marker_time) ? ` · ${Math.floor(row.marker_time / 60)}:${String(Math.floor(row.marker_time % 60)).padStart(2, '0')}` : ''}`));
+  return lines.join('\n');
+};
