@@ -5,6 +5,49 @@ const MIN_VISIBILITY = 0.5;
 export const OCCLUSION_GRACE_SECONDS = 2;
 
 const visible = point => point && (point.visibility ?? 1) >= MIN_VISIBILITY && (point.presence ?? 1) >= MIN_VISIBILITY;
+const hide = point => point ? { ...point, visibility: 0, presence: 0 } : point;
+
+// A multi-person pose can contain a limb from a neighbour even when its torso
+// matches the selected swimmer. Check each chain independently before drawing
+// it or allowing its joints into an angle calculation.
+export const sanitizeSelectedPose = (points, selectedBox, otherBoxes = []) => {
+  if (!Array.isArray(points) || !selectedBox) return { points: null, unreliable: true };
+  const clean = points.map(point => visible(point) ? point : hide(point));
+  const center = selectedBox.center;
+  const torso = Math.max(0.08, Math.hypot((points[11]?.x ?? center.x) - (points[23]?.x ?? center.x),
+    (points[11]?.y ?? center.y) - (points[23]?.y ?? center.y)),
+  Math.hypot((points[12]?.x ?? center.x) - (points[24]?.x ?? center.x),
+    (points[12]?.y ?? center.y) - (points[24]?.y ?? center.y)));
+  let rejected = 0;
+  const reject = index => { if (visible(clean[index])) { clean[index] = hide(clean[index]); rejected += 1; } };
+  for (const index of BODY_POINTS) {
+    const point = clean[index];
+    if (!visible(point)) continue;
+    const ownDistance = Math.hypot(point.x - center.x, point.y - center.y);
+    if (otherBoxes.some(box => box &&
+      Math.hypot(point.x - box.center.x, point.y - box.center.y) + torso * 0.15 < ownDistance &&
+      Math.hypot(point.x - box.center.x, point.y - box.center.y) < Math.max(box.width, box.height, torso))) reject(index);
+  }
+  const chains = [[11, 13, 15], [12, 14, 16], [23, 25, 27, 31], [24, 26, 28, 32]];
+  for (const chain of chains) {
+    for (let position = 1; position < chain.length; position += 1) {
+      const index = chain[position], parent = clean[chain[position - 1]], point = clean[index];
+      if (!visible(point)) continue;
+      if (!visible(parent) || Math.hypot(point.x - parent.x, point.y - parent.y) > torso * 1.65) {
+        reject(index);
+        continue;
+      }
+      const ownDistance = Math.hypot(point.x - center.x, point.y - center.y);
+      if (otherBoxes.some(box => box &&
+        Math.hypot(point.x - box.center.x, point.y - box.center.y) + torso * 0.15 < ownDistance &&
+        Math.hypot(point.x - box.center.x, point.y - box.center.y) < Math.max(box.width, box.height, torso))) {
+        reject(index);
+      }
+    }
+  }
+  const torsoUnreliable = ![11, 12].some(index => visible(clean[index])) || ![23, 24].some(index => visible(clean[index]));
+  return { points: torsoUnreliable ? null : clean, unreliable: rejected > 0 || torsoUnreliable, rejected };
+};
 
 export const poseBox = points => {
   if (!Array.isArray(points)) return null;

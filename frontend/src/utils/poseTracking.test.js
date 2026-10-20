@@ -1,4 +1,4 @@
-import { ambiguousPose, matchPose, pickPose, poseBox, videoPoint } from './poseTracking';
+import { ambiguousPose, matchPose, pickPose, poseBox, sanitizeSelectedPose, videoPoint } from './poseTracking';
 
 const pose = (x, y, scale = 1) => {
   const points = Array.from({ length: 33 }, () => ({ x, y, visibility: 0 }));
@@ -56,4 +56,25 @@ test('a swimmer remains detectable with one shoulder and one hip visible', () =>
   expect(poseBox(partlySubmerged)).not.toBeNull();
   partlySubmerged[23].visibility = 0;
   expect(poseBox(partlySubmerged)).toBeNull();
+});
+
+test('a limb assigned to a neighbouring swimmer is hidden without borrowing its joints', () => {
+  const target = pose(0.3, 0.5);
+  target[14] = { x: 0.34, y: 0.48, visibility: 1, presence: 1 };
+  target[16] = { x: 0.76, y: 0.5, visibility: 1, presence: 1 };
+  const selected = poseBox(target);
+  const neighbour = poseBox(pose(0.76, 0.5));
+  const result = sanitizeSelectedPose(target, selected, [neighbour]);
+  expect(result.unreliable).toBe(true);
+  expect(result.points[16].visibility).toBe(0);
+  expect(result.points[14].visibility).toBe(1);
+});
+
+test('low-confidence joints remain hidden even when the torso is tracked', () => {
+  const target = pose(0.3, 0.5);
+  target[14] = { x: 0.34, y: 0.48, visibility: 0.2, presence: 1 };
+  target[16] = { x: 0.37, y: 0.46, visibility: 1, presence: 1 };
+  const result = sanitizeSelectedPose(target, poseBox(target));
+  expect(result.points[14].visibility).toBe(0);
+  expect(result.points[16].visibility).toBe(0);
 });

@@ -6,7 +6,7 @@ import { Textarea } from '../ui/textarea';
 import { memberVideoReviewsAPI } from '../../services/api';
 import { createGuestPerformanceReviews } from '../../utils/guestPerformanceReviews';
 import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } from '../../utils/poseAnalysis';
-import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
+import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, sanitizeSelectedPose, videoPoint } from '../../utils/poseTracking';
 import { stabilizePose } from '../../utils/poseStabilization';
 import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
 import { assessmentEvidence, automaticPerformanceReport, movementCandidates, qualitySegments, qualitySummary, sportTiming, swimmerAssessmentSummary } from '../../utils/performanceInsights';
@@ -232,11 +232,20 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           setTargetStatus('tracking');
         }
       }
-      const rawPoints = selectedIndex === null ? null : stabilizePose(previousPointsRef.current, poses[selectedIndex],
+      const checked = selectedIndex === null ? { points: null, unreliable: false } : sanitizeSelectedPose(
+        poses[selectedIndex], boxes[selectedIndex], boxes.filter((_, index) => index !== selectedIndex));
+      if (selectedIndex !== null && !checked.points) {
+        selectedIndex = null;
+        targetRef.current = null;
+        previousPointsRef.current = null;
+        setTargetStatus('lost');
+      }
+      const rawPoints = selectedIndex === null ? null : stabilizePose(previousPointsRef.current, checked.points,
         Math.abs(video.currentTime - previousPointsTimeRef.current));
       if (selectedIndex !== null) {
         previousPointsRef.current = rawPoints;
         previousPointsTimeRef.current = video.currentTime;
+        if (checked.unreliable) setTargetStatus('partial');
       }
       selectedPointsRef.current = rawPoints;
       selectedIndexRef.current = selectedIndex;
@@ -247,15 +256,15 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
         marker ? Object.keys(marker.corrected_points || {}).map(Number) : []);
       const seen = points?.filter(point => (point.visibility ?? 1) >= 0.5).length || 0;
       const metrics = seen >= 8 ? poseMetrics(points, draft.sport, poseSide, video.videoWidth / video.videoHeight) : null;
-      const result = { metrics, seen, time: video.currentTime, detected: boxes.filter(Boolean).length, selected: selectedIndex !== null };
+      const result = { metrics, seen, time: video.currentTime, detected: boxes.filter(Boolean).length, selected: selectedIndex !== null, unreliable: checked.unreliable };
       if (canEdit && selected?.status === 'draft' && Number.isFinite(video.currentTime)) {
         const bucket = Math.round(video.currentTime * 4);
         if (bucket >= 0 && bucket <= 36000 * 4 && samplesRef.current.size < 3000) {
           const primary = draft.sport === 'football' ? ['knee_angle', 'hip_angle'] : ['elbow_angle', 'hip_angle'];
           const quality = selectedIndex === null ? 'lost'
-            : primary.every(key => Number.isFinite(metrics?.[key])) ? 'valid' : 'unreliable';
+            : !checked.unreliable && primary.every(key => Number.isFinite(metrics?.[key])) ? 'valid' : 'unreliable';
           const sample = { time: Math.round(video.currentTime * 4) / 4, quality, seen, source: marker?.corrected_points && Object.keys(marker.corrected_points).length ? 'coach' : 'ai', model: poseModel,
-            metrics: Object.fromEntries(Object.entries(metrics || {}).filter(([, value]) => Number.isFinite(value))) };
+            metrics: quality === 'valid' ? Object.fromEntries(Object.entries(metrics || {}).filter(([, value]) => Number.isFinite(value))) : {} };
           const previous = samplesRef.current.get(bucket);
           if ((!previous || previous.quality !== sample.quality || previous.seen !== sample.seen) && previous?.source !== 'coach') {
             samplesRef.current.set(bucket, sample);
@@ -351,18 +360,24 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     targetMissesRef.current = 0;
     lastTargetTimeRef.current = videoRef.current.currentTime;
     setTargetStatus('tracking');
-    const rawPoints = poses[index];
+    const checked = sanitizeSelectedPose(poses[index], boxes[index], boxes.filter((_, candidate) => candidate !== index));
+    const rawPoints = checked.points;
+    if (!rawPoints) {
+      targetRef.current = null;
+      setTargetStatus('lost');
+    }
     selectedPointsRef.current = rawPoints;
-    selectedIndexRef.current = index;
+    selectedIndexRef.current = rawPoints ? index : null;
     boxesRef.current = boxes;
     const marker = activeMarker && Math.abs(activeMarker.time - videoRef.current.currentTime) < 0.15 ? activeMarker : null;
     const points = marker ? applyPoseCorrections(rawPoints, marker.corrected_points) : rawPoints;
-    drawPose(poseCanvasRef.current, videoRef.current, points, boxes, index,
+    drawPose(poseCanvasRef.current, videoRef.current, points, boxes, rawPoints ? index : null,
       marker ? Object.keys(marker.corrected_points || {}).map(Number) : []);
-    const seen = points.filter(point => (point.visibility ?? 1) >= 0.5).length;
+    const seen = points?.filter(point => (point.visibility ?? 1) >= 0.5).length || 0;
     setPoseInfo({ metrics: seen >= 8 ? poseMetrics(points, draft.sport, poseSide, videoRef.current.videoWidth / videoRef.current.videoHeight) : null,
-      seen, detected: boxes.filter(Boolean).length, selected: true, time: videoRef.current.currentTime });
-    if (videoRef.current.paused && !marker) videoRef.current.play().catch(() => {});
+      seen, detected: boxes.filter(Boolean).length, selected: !!rawPoints, unreliable: checked.unreliable, time: videoRef.current.currentTime });
+    if (checked.unreliable && rawPoints) setTargetStatus('partial');
+    if (rawPoints && videoRef.current.paused && !marker) videoRef.current.play().catch(() => {});
   };
 
   const resetPlayerOnSeek = () => {
@@ -373,6 +388,17 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setTargetStatus('lost');
     setPoseInfo(null);
     selectedPointsRef.current = null;
+    analyzeFrame(true);
+  };
+
+  const requestReselection = () => {
+    videoRef.current?.pause();
+    targetRef.current = null;
+    previousPointsRef.current = null;
+    selectedPointsRef.current = null;
+    selectedIndexRef.current = null;
+    setPoseInfo(null);
+    setTargetStatus('select');
     analyzeFrame(true);
   };
 
@@ -781,7 +807,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               <span className="font-semibold">{draft.sport === 'football' ? (ar ? 'كرة قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')}</span>
             </div>
             {poseError && <p className="text-red-700" role="alert">{poseError}</p>}
-            {poseEnabled && <p>{targetStatus === 'lost' ? (ar ? 'تداخل اللاعب مع شخص آخر أو فُقد مساره؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.' : 'Player overlap or lost track; measurements paused. Pause and reselect.') : targetStatus === 'searching' ? (ar ? 'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.' : 'Player temporarily obscured; measurements paused.') : !poseInfo?.selected ? (ar ? `اختر اللاعب بالضغط على إطاره في الفيديو. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Click the player's box. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع اللاعب المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected player · ${poseInfo.seen} visible landmarks`) : (ar ? 'اللاعب المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected player visibility is too low; no measurements shown.')}</p>}
+            {poseEnabled && <div className="flex flex-wrap items-center gap-2"><p role="status">{targetStatus === 'lost' ? (ar ? 'فُقد السباح المحدد أو تداخل مع شخص آخر؛ توقفت القياسات. أعد تحديده.' : 'Selected swimmer lost or overlapping; measurements paused. Reselect.') : targetStatus === 'searching' ? (ar ? 'السباح محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.' : 'Swimmer temporarily obscured; measurements paused.') : targetStatus === 'partial' ? (ar ? 'بعض المفاصل غير موثوقة فأُخفيت؛ قياسات الأجزاء المتأثرة متوقفة.' : 'Some joints are unreliable and hidden; affected measurements are paused.') : !poseInfo?.selected ? (ar ? `أوقف الفيديو واختر السباح بالضغط على إطاره قبل التحليل. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Pause and select the swimmer's box before analysis. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع السباح المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected swimmer · ${poseInfo.seen} visible landmarks`) : (ar ? 'السباح المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected swimmer is not clear enough; unreliable measurements are hidden.')}</p><Button type="button" variant="outline" size="sm" onClick={requestReselection}>{ar ? 'إعادة تحديد السباح' : 'Reselect swimmer'}</Button></div>}
             {correctionMode && <p className="rounded-md bg-blue-100 p-2 text-blue-900">{ar ? 'أوقف الفيديو على اللقطة المحددة، ثم اسحب النقطة البرتقالية للمفصل إلى مكانها الصحيح. تظهر النقطة المصححة بالأزرق. احفظ التقرير بعد المراجعة.' : 'Pause on the marked moment, then drag the joint point. Corrected points appear blue. Save after review.'}</p>}
             {poseEnabled && poseInfo?.selected && poseInfo?.seen >= 8 && <div className="flex flex-wrap gap-2">
               {Object.entries(poseInfo.metrics || {}).map(([key, value]) => Number.isFinite(value) && <span key={key} className="rounded-md bg-white px-2 py-1">
