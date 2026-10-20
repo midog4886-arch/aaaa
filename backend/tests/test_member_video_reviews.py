@@ -42,6 +42,41 @@ def test_portal_returns_only_approved_annotations(monkeypatch):
     assert result[0]["markers"][0]["pose_metrics"] == {"elbow_angle": 90}
     assert "coach_summary" not in result[0]
     assert "storage_name" not in result[0]
+    assert result[0]["has_video"] is True
+
+
+def test_local_review_stores_only_report_metadata(monkeypatch):
+    inserted = []
+
+    async def staff_member(*_args, **_kwargs):
+        return {"id": "child-1", "name": "Athlete", "branch_id": "branch-1"}
+
+    class Collection:
+        async def count_documents(self, *_args):
+            return 0
+
+        async def insert_one(self, doc):
+            inserted.append(dict(doc))
+
+    monkeypatch.setattr(reviews, "_staff_member", staff_member)
+    monkeypatch.setattr(reviews, "get_current_tenant_slug", lambda: "test")
+    monkeypatch.setattr(reviews, "db", SimpleNamespace(member_video_reviews=Collection()))
+    result = asyncio.run(reviews.create_local_review(
+        "child-1", reviews.LocalReviewCreate(title="Local clip", sport="swimming", skill="swimming_freestyle"),
+        {"user_id": "coach"}))
+    assert result["video_mode"] == "local"
+    assert "storage_name" not in inserted[0]
+    assert "file" not in inserted[0]
+
+
+def test_local_review_has_no_play_ticket(monkeypatch):
+    async def staff_review(*_args, **_kwargs):
+        return {"id": "local-1", "video_mode": "local"}
+
+    monkeypatch.setattr(reviews, "_staff_review", staff_review)
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(reviews.play_ticket("local-1", {"user_id": "coach"}))
+    assert error.value.status_code == 404
 
 
 def test_drawing_coordinates_are_bounded():

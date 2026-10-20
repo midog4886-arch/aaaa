@@ -87,6 +87,18 @@ class ReviewStatus(BaseModel):
     status: Literal["draft", "approved"]
 
 
+class LocalReviewCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    sport: Literal["football", "swimming"] = "swimming"
+    skill: Skill = "general"
+
+    @model_validator(mode="after")
+    def skill_matches_sport(self):
+        if self.skill != "general" and not self.skill.startswith(f"{self.sport}_"):
+            raise ValueError("المهارة لا تتبع الرياضة المختارة")
+        return self
+
+
 def _public_doc(doc: dict) -> dict:
     return {key: value for key, value in doc.items() if key not in {"_id", "storage_name"}}
 
@@ -114,6 +126,26 @@ async def list_member_reviews(member_id: str, user: dict = Depends(get_current_u
     await _staff_member(member_id, user)
     docs = await db.member_video_reviews.find({"member_id": member_id}, {"_id": 0, "storage_name": 0}).sort("created_at", -1).to_list(MAX_MEMBER_VIDEOS)
     return docs
+
+
+@router.post("/member/{member_id}/local")
+async def create_local_review(member_id: str, payload: LocalReviewCreate, user: dict = Depends(get_current_user)):
+    """Store coach-authored results only; the source video never reaches this endpoint."""
+    member = await _staff_member(member_id, user, edit=True)
+    if await db.member_video_reviews.count_documents({"member_id": member_id}) >= MAX_MEMBER_VIDEOS:
+        raise HTTPException(status_code=409, detail="وصل العضو إلى حد 20 تقريرًا؛ احذف تقريرًا قديمًا أولًا")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "id": uuid.uuid4().hex, "member_id": member_id,
+        "member_name": member.get("name_ar") or member.get("name") or "",
+        "branch_id": member.get("branch_id"), "tenant_slug": get_current_tenant_slug(),
+        "video_mode": "local", "title": payload.title, "sport": payload.sport, "skill": payload.skill,
+        "coach_summary": "", "parent_summary": "", "markers": [], "samples": [],
+        "comparison": None, "status": "draft", "created_at": now, "updated_at": now,
+        "created_by": user.get("user_id"), "approved_at": None,
+    }
+    await db.member_video_reviews.insert_one(doc)
+    return _public_doc(doc)
 
 
 @router.post("/member/{member_id}/upload")
@@ -149,7 +181,7 @@ async def upload_member_review(member_id: str, file: UploadFile = File(...), spo
         doc = {
             "id": uuid.uuid4().hex, "member_id": member_id, "member_name": member.get("name_ar") or member.get("name") or "",
             "branch_id": member.get("branch_id"),
-            "tenant_slug": tenant, "storage_name": storage_name, "size": total,
+            "tenant_slug": tenant, "storage_name": storage_name, "size": total, "video_mode": "stored",
             "title": Path(file.filename).stem[:120] or "تحليل أداء", "sport": sport, "skill": skill,
             "coach_summary": "", "parent_summary": "",
             "markers": [], "samples": [], "comparison": None,
@@ -211,7 +243,8 @@ async def set_review_status(review_id: str, payload: ReviewStatus, user: dict = 
 async def delete_review(review_id: str, user: dict = Depends(get_current_user)):
     doc = await _staff_review(review_id, user, edit=True)
     await db.member_video_reviews.delete_one({"id": review_id})
-    (STORAGE_ROOT / doc["tenant_slug"] / doc["storage_name"]).unlink(missing_ok=True)
+    if doc.get("storage_name"):
+        (STORAGE_ROOT / doc["tenant_slug"] / doc["storage_name"]).unlink(missing_ok=True)
     return {"deleted": True}
 
 
@@ -227,6 +260,7 @@ async def portal_reviews(member: dict = Depends(get_current_member)):
             "id": doc["id"], "member_id": doc["member_id"], "member_name": doc.get("member_name", ""),
             "title": doc.get("title", ""), "parent_summary": doc.get("parent_summary", ""),
             "sport": doc.get("sport", "swimming"), "skill": doc.get("skill", "general"),
+            "has_video": bool(doc.get("storage_name")),
             "approved_at": doc.get("approved_at"),
             "markers": [marker for marker in doc.get("markers", []) if marker.get("share_with_parent")],
         }
@@ -242,6 +276,7 @@ async def portal_reviews(member: dict = Depends(get_current_member)):
             summary = comparison_summary(doc, baseline, comparison)
             if summary["usable"]:
                 item["comparison"] = {"baseline_review_id": baseline["id"],
+                                      "baseline_has_video": bool(baseline.get("storage_name")),
                                       "coach_finding": comparison.get("coach_finding", ""),
                                       "next_exercise": comparison.get("next_exercise", ""),
                                       "current_event_time": comparison["current_event_time"],
@@ -254,6 +289,8 @@ async def portal_reviews(member: dict = Depends(get_current_member)):
 @router.get("/{review_id}/play-ticket")
 async def play_ticket(review_id: str, user: dict = Depends(get_current_user)):
     doc = await _staff_review(review_id, user)
+    if not doc.get("storage_name"):
+        raise HTTPException(status_code=404, detail="الفيديو محفوظ على جهاز المدرب فقط")
     token = jwt.encode({"review_id": doc["id"], "tenant_slug": get_current_tenant_slug(), "scope": "staff",
                         "aud": "member-video-review", "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
                        JWT_SECRET, algorithm=JWT_ALGORITHM)
@@ -266,6 +303,8 @@ async def portal_play_ticket(review_id: str, member: dict = Depends(get_current_
                                                    "member_id": {"$in": member.get("_linked_member_ids", [member["id"]])}}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="الفيديو غير متاح")
+    if not doc.get("storage_name"):
+        raise HTTPException(status_code=404, detail="التقرير لا يتضمن فيديو منشورًا")
     token = jwt.encode({"review_id": doc["id"], "tenant_slug": get_current_tenant_slug(), "scope": "parent",
                         "aud": "member-video-review", "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
                        JWT_SECRET, algorithm=JWT_ALGORITHM)

@@ -11,6 +11,7 @@ export const askSystemAPI = {
 
 export const memberVideoReviewsAPI = {
   list: (memberId) => axios.get(`${API}/member-video-reviews/member/${encodeURIComponent(memberId)}`),
+  createLocal: (memberId, data) => axios.post(`${API}/member-video-reviews/member/${encodeURIComponent(memberId)}/local`, data),
   upload: (memberId, file, sport, skill) => {
     const data = new FormData();
     data.append('file', file);
