@@ -8,6 +8,7 @@ import { createGuestPerformanceReviews } from '../../utils/guestPerformanceRevie
 import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } from '../../utils/poseAnalysis';
 import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
 import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
+import { qualitySegments, qualitySummary, sportTiming } from '../../utils/performanceInsights';
 import ComparisonChart from './ComparisonChart';
 
 const timeLabel = (seconds) => {
@@ -41,6 +42,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const [uploadSport, setUploadSport] = useState('swimming');
   const [uploadSkill, setUploadSkill] = useState('swimming_freestyle');
   const [sampleCount, setSampleCount] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
   const [chartMetric, setChartMetric] = useState('elbow_angle');
   const [poseEnabled, setPoseEnabled] = useState(false);
   const [poseLoading, setPoseLoading] = useState(false);
@@ -104,6 +106,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const baseline = reviews.find(row => row.id === compareId);
   const activeMarker = draft?.markers?.find(row => row.id === activeMarkerId);
   const currentSamples = [...samplesRef.current.values()].sort((a, b) => a.time - b.time);
+  const quality = qualitySummary(currentSamples);
+  const timeline = qualitySegments(currentSamples, videoDuration);
+  const timing = draft ? sportTiming(draft.markers, draft.sport, draft.skill, MOMENT_LABELS[draft.skill] || MOMENT_LABELS.general) : null;
   const report = draft?.comparison && baseline
     ? comparisonReport(currentSamples, baseline.samples || [], draft.comparison, draft.sport) : null;
 
@@ -130,6 +135,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setPoseEnabled(false);
     setCorrectionMode(false);
     setPoseError('');
+    setVideoDuration(0);
     targetRef.current = null;
     candidatesRef.current = [];
     targetMissesRef.current = 0;
@@ -478,6 +484,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       if (Object.keys(marker.corrected_points || {}).length) lines.push(ar ? 'مفاصل مصححة يدويًا' : 'Coach-corrected joints');
       lines.push('');
     }
+    lines.push(`${ar ? 'جودة التتبع' : 'Tracking quality'}: ${quality.percentage}% (${quality.valid}/${quality.total})`);
+    for (const phase of timing?.phases || []) lines.push(`${phase.label}: ${Number.isFinite(phase.seconds) ? `${phase.seconds.toFixed(2)} s` : phase.count}`);
+    lines.push('');
     if (draft.comparison && baseline) {
       lines.push(ar ? 'مقارنة قبل/بعد' : 'Before/after comparison');
       lines.push(`${ar ? 'الفيديو السابق' : 'Baseline'}: ${baseline.title} (${timeLabel(draft.comparison.baseline_event_time)})`);
@@ -493,6 +502,19 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     link.href = url;
     link.download = 'guest-performance-report.txt';
     link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const downloadAudit = () => {
+    if (!draft) return;
+    const rows = [['time_seconds', 'tracking_quality', 'visible_joints', 'source', 'elbow_angle', 'knee_angle', 'hip_angle', 'body_tilt', 'coach_marker']];
+    for (const sample of currentSamples) {
+      const labels = draft.markers.filter(marker => Math.abs(marker.time - sample.time) <= 0.125).map(marker => marker.label).join(' | ');
+      rows.push([sample.time, sample.quality, sample.seen ?? '', sample.source || '', ...['elbow_angle', 'knee_angle', 'hip_angle', 'body_tilt'].map(key => sample.metrics?.[key] ?? ''), labels]);
+    }
+    const csv = '\uFEFF' + rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'performance-tracking-audit.csv'; link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
@@ -551,6 +573,19 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const updateComparison = patch => {
     if (!draft?.comparison) return;
     change({ comparison: { ...draft.comparison, ...patch } });
+  };
+
+  const alignMatchingMoment = () => {
+    if (!baseline || !draft?.comparison) return;
+    const matching = draft.markers.find(current => (baseline.markers || []).some(previous => previous.label === current.label));
+    const previous = (baseline.markers || []).find(marker => marker.label === matching?.label);
+    if (!matching || !previous) {
+      toast.info(ar ? 'حدّد نفس مرحلة الحركة في الفيديوين أولًا.' : 'Mark the same movement phase in both videos first.');
+      return;
+    }
+    updateComparison({ current_event_time: matching.time, baseline_event_time: previous.time });
+    if (videoRef.current) videoRef.current.currentTime = matching.time;
+    if (comparisonRef.current) comparisonRef.current.currentTime = previous.time;
   };
 
   const pointInOverlay = (event) => {
@@ -617,6 +652,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
         <div className="space-y-2">
           <div className="relative overflow-hidden rounded-lg bg-black">
             {sourceUrl && <video ref={videoRef} src={sourceUrl} controls playsInline preload="metadata" className="aspect-video w-full object-contain"
+              onLoadedMetadata={event => setVideoDuration(event.currentTarget.duration || 0)}
               onPlay={() => { if (comparisonRef.current && draft?.comparison) { comparisonRef.current.playbackRate = videoRef.current.playbackRate; syncComparison(); comparisonRef.current.play().catch(() => {}); } }}
               onPause={() => comparisonRef.current?.pause()}
               onTimeUpdate={() => { if (poseEnabled) analyzeFrame(); if (draft?.comparison) syncComparison(); }} onSeeked={resetPlayerOnSeek} />}
@@ -637,6 +673,14 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); drawStartRef.current = pointInOverlay(event); }}
               onPointerUp={event => { if (!drawStartRef.current) return; const end = pointInOverlay(event); updateMarker(activeMarker.id, { drawing: { x1: drawStartRef.current.x, y1: drawStartRef.current.y, x2: end.x, y2: end.y } }); drawStartRef.current = null; setDrawing(false); }} />}
           </div>
+          {timeline.length > 0 && <div className="space-y-1 rounded-lg border bg-white p-2 text-xs" aria-label={ar ? 'خريطة جودة التتبع' : 'Tracking quality timeline'}>
+            <div className="flex items-center justify-between gap-2"><strong>{ar ? 'جودة التتبع على الفيديو' : 'Tracking quality across the video'}</strong><span>{quality.total ? `${quality.percentage}% ${ar ? 'من العينات صالحة' : 'valid samples'}` : (ar ? 'شغّل التتبع لرؤية الجودة' : 'Run tracking to see quality')}</span></div>
+            <div className="flex h-4 overflow-hidden rounded" role="group" aria-label={ar ? 'اضغط على موضع للانتقال إليه' : 'Click a segment to seek'}>
+              {timeline.map(segment => <button key={segment.index} type="button" title={`${timeLabel(segment.time)} · ${segment.quality}`} aria-label={`${timeLabel(segment.time)} ${segment.quality}`} onClick={() => seek(segment.time)}
+                className={`h-full min-w-0 flex-1 border-e border-white/50 ${segment.quality === 'valid' ? 'bg-emerald-500' : segment.quality === 'lost' ? 'bg-red-500' : segment.quality === 'unreliable' ? 'bg-amber-400' : 'bg-slate-200'}`} />)}
+            </div>
+            <p className="text-slate-600">{ar ? 'أخضر: صالح · أصفر: مفاصل غير واضحة · أحمر: اللاعب مفقود/متداخل · رمادي: لم يُفحص. اضغط للانتقال.' : 'Green: valid · yellow: unclear joints · red: lost/overlap · gray: not scanned. Click to seek.'}</p>
+          </div>}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => step(-1)}>{ar ? 'إطار للخلف' : 'Previous frame'}</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => step(1)}>{ar ? 'إطار للأمام' : 'Next frame'}</Button>
@@ -654,6 +698,12 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           {canEdit && selected.status === 'draft' && sourceUrl && <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
             <span>{ar ? 'علّم لحظة:' : 'Tag moment:'}</span>
             {(MOMENT_LABELS[draft.skill] || MOMENT_LABELS.general).map(label => <Button type="button" key={label} variant="outline" size="sm" onClick={() => addMarker(label)}>{label}</Button>)}
+          </div>}
+          {timing?.eventCount > 0 && <div className="rounded-lg border bg-white p-3 text-sm">
+            <strong>{ar ? 'توقيت مراحل الحركة' : 'Movement phase timing'}</strong>
+            {timing.phases.length ? <div className="mt-2 flex flex-wrap gap-2">{timing.phases.map(phase => <span key={phase.label} className="rounded bg-blue-50 px-2 py-1">{phase.label}: {Number.isFinite(phase.seconds) ? `${phase.seconds.toFixed(2)} ${ar ? 'ث' : 's'}` : phase.count}</span>)}</div>
+              : <p className="mt-1 text-xs text-slate-600">{ar ? 'حدّد مرحلتين على الأقل من الأزرار أعلاه لحساب الزمن بينهما، أو كرر بداية دورة السباحة لحساب معدل الدورات.' : 'Mark at least two phases, or repeat a swimming cycle start to calculate cycle rate.'}</p>}
+            <p className="mt-1 text-xs text-slate-600">{ar ? 'الأزمنة مبنية على العلامات التي راجعها المدرب، وليست كشفًا آليًا لملامسة الكرة أو حركة تحت الماء.' : 'Timing uses coach-reviewed markers, not automatic ball-contact or underwater motion detection.'}</p>
           </div>}
           <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
@@ -685,10 +735,12 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       <section className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-semibold">{ar ? `تقرير ${skillLabel(draft.skill)} قبل / بعد` : `Before / after: ${skillLabel(draft.skill)}`}</h3>
-          <span className="text-xs text-slate-600">{ar ? `عينات الحركة المحفوظة: ${sampleCount}` : `Recorded motion samples: ${sampleCount}`}</span>
+          <div className="flex items-center gap-2"><span className="text-xs text-slate-600">{ar ? `عينات الحركة المحفوظة: ${sampleCount}` : `Recorded motion samples: ${sampleCount}`}</span>
+            {sampleCount > 0 && <Button type="button" variant="outline" size="sm" onClick={downloadAudit}>{ar ? 'تنزيل بيانات فحص الدقة CSV' : 'Download accuracy audit CSV'}</Button>}</div>
         </div>
         <p className="text-xs text-slate-600">{ar ? 'اختر فيديوين لنفس العضو والرياضة والمهارة. شغّل تتبّع اللاعب في كل فيديو واحفظ العينات، ثم حدد لحظة الحركة نفسها في الاثنين.' : 'Compare the same member, sport, and skill. Track and save both videos, then mark the matching movement event.'}</p>
         {draft.comparison && baseline && <>
+          <Button type="button" variant="outline" size="sm" onClick={alignMatchingMoment}>{ar ? 'طابق مرحلة مشتركة من العلامات' : 'Align a matching marked phase'}</Button>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="rounded-lg border bg-white p-3 text-sm">
               <strong>{ar ? 'قبل · الفيديو السابق' : 'Before · baseline'}</strong>
