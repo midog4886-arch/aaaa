@@ -7,8 +7,9 @@ import { memberVideoReviewsAPI } from '../../services/api';
 import { createGuestPerformanceReviews } from '../../utils/guestPerformanceReviews';
 import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } from '../../utils/poseAnalysis';
 import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
+import { stabilizePose } from '../../utils/poseStabilization';
 import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
-import { qualitySegments, qualitySummary, sportTiming } from '../../utils/performanceInsights';
+import { movementCandidates, qualitySegments, qualitySummary, sportTiming } from '../../utils/performanceInsights';
 import ComparisonChart from './ComparisonChart';
 
 const timeLabel = (seconds) => {
@@ -45,6 +46,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const [videoDuration, setVideoDuration] = useState(0);
   const [chartMetric, setChartMetric] = useState('elbow_angle');
   const [poseEnabled, setPoseEnabled] = useState(false);
+  const [poseModel, setPoseModel] = useState('lite');
   const [poseLoading, setPoseLoading] = useState(false);
   const [poseError, setPoseError] = useState('');
   const [poseSide, setPoseSide] = useState('right');
@@ -55,6 +57,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const videoRef = useRef(null);
   const poseCanvasRef = useRef(null);
   const poseModelRef = useRef(null);
+  const loadedPoseModelRef = useRef('');
+  const previousPointsRef = useRef(null);
+  const previousPointsTimeRef = useRef(0);
   const targetRef = useRef(null);
   const candidatesRef = useRef([]);
   const samplesRef = useRef(new Map());
@@ -109,6 +114,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const quality = qualitySummary(currentSamples);
   const timeline = qualitySegments(currentSamples, videoDuration);
   const timing = draft ? sportTiming(draft.markers, draft.sport, draft.skill, MOMENT_LABELS[draft.skill] || MOMENT_LABELS.general) : null;
+  const candidates = draft ? movementCandidates(currentSamples, draft.sport) : [];
   const report = draft?.comparison && baseline
     ? comparisonReport(currentSamples, baseline.samples || [], draft.comparison, draft.sport) : null;
 
@@ -124,6 +130,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     } : null);
     samplesRef.current = new Map((selected?.samples || []).map(sample => [Math.round(sample.time * 4), sample]));
     setSampleCount(samplesRef.current.size);
+    setPoseModel((selected?.samples || []).find(sample => sample.source === 'ai')?.model || 'lite');
     setCompareId(selected?.comparison?.baseline_review_id || '');
     setOverlayComparison(false);
     setChartMetric(selected?.sport === 'football' ? 'knee_angle' : 'elbow_angle');
@@ -137,6 +144,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setPoseError('');
     setVideoDuration(0);
     targetRef.current = null;
+    previousPointsRef.current = null;
     candidatesRef.current = [];
     targetMissesRef.current = 0;
     setTargetStatus('select');
@@ -195,12 +203,14 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
         selectedIndex = ambiguous ? null : matchPose(targetRef.current, boxes, elapsed);
         if (ambiguous) {
           targetRef.current = null;
+          previousPointsRef.current = null;
           targetMissesRef.current = 0;
           setTargetStatus('lost');
         } else if (selectedIndex === null) {
           targetMissesRef.current += 1;
           if (Math.abs(video.currentTime - lastTargetTimeRef.current) > OCCLUSION_GRACE_SECONDS) {
             targetRef.current = null;
+            previousPointsRef.current = null;
             setTargetStatus('lost');
           } else {
             setTargetStatus('searching');
@@ -212,7 +222,12 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           setTargetStatus('tracking');
         }
       }
-      const rawPoints = selectedIndex === null ? null : poses[selectedIndex];
+      const rawPoints = selectedIndex === null ? null : stabilizePose(previousPointsRef.current, poses[selectedIndex],
+        Math.abs(video.currentTime - previousPointsTimeRef.current));
+      if (selectedIndex !== null) {
+        previousPointsRef.current = rawPoints;
+        previousPointsTimeRef.current = video.currentTime;
+      }
       selectedPointsRef.current = rawPoints;
       selectedIndexRef.current = selectedIndex;
       boxesRef.current = boxes;
@@ -229,7 +244,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           const primary = draft.sport === 'football' ? ['knee_angle', 'hip_angle'] : ['elbow_angle', 'hip_angle'];
           const quality = selectedIndex === null ? 'lost'
             : primary.every(key => Number.isFinite(metrics?.[key])) ? 'valid' : 'unreliable';
-          const sample = { time: Math.round(video.currentTime * 4) / 4, quality, seen, source: marker?.corrected_points && Object.keys(marker.corrected_points).length ? 'coach' : 'ai',
+          const sample = { time: Math.round(video.currentTime * 4) / 4, quality, seen, source: marker?.corrected_points && Object.keys(marker.corrected_points).length ? 'coach' : 'ai', model: poseModel,
             metrics: Object.fromEntries(Object.entries(metrics || {}).filter(([, value]) => Number.isFinite(value))) };
           const previous = samplesRef.current.get(bucket);
           if ((!previous || previous.quality !== sample.quality || previous.seen !== sample.seen) && previous?.source !== 'coach') {
@@ -278,6 +293,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       setPoseInfo(null);
       setCorrectionMode(false);
       targetRef.current = null;
+      previousPointsRef.current = null;
       candidatesRef.current = [];
       targetMissesRef.current = 0;
       setTargetStatus('select');
@@ -287,14 +303,19 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setPoseError('');
     setPoseLoading(true);
     try {
+      if (poseModelRef.current && loadedPoseModelRef.current !== poseModel) {
+        poseModelRef.current.close();
+        poseModelRef.current = null;
+      }
       if (!poseModelRef.current) {
         const { FilesetResolver, PoseLandmarker } = await import('@mediapipe/tasks-vision');
         const vision = await FilesetResolver.forVisionTasks('/mediapipe/wasm');
         poseModelRef.current = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: '/mediapipe/models/pose_landmarker_lite.task', delegate: 'CPU' },
+          baseOptions: { modelAssetPath: `/mediapipe/models/pose_landmarker_${poseModel}.task`, delegate: 'CPU' },
           runningMode: 'VIDEO', numPoses: 6,
           minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
         });
+        loadedPoseModelRef.current = poseModel;
       }
       setPoseEnabled(true);
       analyzeFrame(true);
@@ -316,6 +337,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       return;
     }
     targetRef.current = boxes[index];
+    previousPointsRef.current = null;
     targetMissesRef.current = 0;
     lastTargetTimeRef.current = videoRef.current.currentTime;
     setTargetStatus('tracking');
@@ -336,6 +358,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const resetPlayerOnSeek = () => {
     if (!poseEnabled) return;
     targetRef.current = null;
+    previousPointsRef.current = null;
     targetMissesRef.current = 0;
     setTargetStatus('lost');
     setPoseInfo(null);
@@ -446,7 +469,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     updateMarker(activeMarker.id, { corrected_points: corrections, pose_metrics: savedMetrics, pose_side: poseSide });
     const bucket = Math.round(activeMarker.time * 4);
     samplesRef.current.set(bucket, { time: bucket / 4, quality: Object.keys(savedMetrics).length >= 2 ? 'valid' : 'unreliable',
-      seen: points.filter(point => (point?.visibility ?? 0) >= 0.5).length, metrics: savedMetrics, source: 'coach' });
+      seen: points.filter(point => (point?.visibility ?? 0) >= 0.5).length, metrics: savedMetrics, source: 'coach', model: poseModel });
     setSampleCount(samplesRef.current.size);
     setPoseInfo(current => current ? { ...current, metrics } : current);
     drawPose(poseCanvasRef.current, videoRef.current, points, boxesRef.current, selectedIndexRef.current,
@@ -507,10 +530,10 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
 
   const downloadAudit = () => {
     if (!draft) return;
-    const rows = [['time_seconds', 'tracking_quality', 'visible_joints', 'source', 'elbow_angle', 'knee_angle', 'hip_angle', 'body_tilt', 'coach_marker']];
+    const rows = [['time_seconds', 'tracking_quality', 'visible_joints', 'source', 'model', 'elbow_angle', 'knee_angle', 'hip_angle', 'body_tilt', 'coach_marker']];
     for (const sample of currentSamples) {
       const labels = draft.markers.filter(marker => Math.abs(marker.time - sample.time) <= 0.125).map(marker => marker.label).join(' | ');
-      rows.push([sample.time, sample.quality, sample.seen ?? '', sample.source || '', ...['elbow_angle', 'knee_angle', 'hip_angle', 'body_tilt'].map(key => sample.metrics?.[key] ?? ''), labels]);
+      rows.push([sample.time, sample.quality, sample.seen ?? '', sample.source || '', sample.model || 'lite', ...['elbow_angle', 'knee_angle', 'hip_angle', 'body_tilt'].map(key => sample.metrics?.[key] ?? ''), labels]);
     }
     const csv = '\uFEFF' + rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -598,6 +621,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     <div className="rounded-xl border bg-blue-50 p-4 text-sm text-blue-900">
       <strong>{ar ? 'استوديو تحليل الأداء' : 'Performance review studio'}</strong>
       <p className="mt-1">{guestMode ? (ar ? 'نفس أدوات تحليل العضو، لكن دون عضوية أو رفع فيديو. تبقى المسودة في الصفحة الحالية فقط؛ نزّل التقرير قبل إغلاقها.' : 'The same analysis tools without membership or upload. The draft lasts only for this page session; download before leaving.') : (ar ? 'افتح الفيديو محليًا للتحليل داخل المتصفح؛ يُحفظ التقرير فقط. الفيديوهات المرفوعة سابقًا تظل متاحة. لا يرى ولي الأمر سوى التقرير بعد اعتماده.' : 'Analyze video locally in the browser and save only the report. Existing uploaded videos remain available. Parents see approved reports only.')}</p>
+      <details className="mt-2"><summary className="cursor-pointer font-medium">{ar ? 'كيف أصوّر فيديو صالحًا للتحليل؟' : 'How to capture analyzable footage?'}</summary>
+        <p className="mt-1">{ar ? 'ثبّت الكاميرا وأظهر اللاعب كاملًا. للقدم صوّر من الجانب مع ظهور الكرة والقدم. للسباحة صوّر جانب الجسم والذراع خارج الماء؛ لا تعتمد زاوية مفصل مغمور. لقياسات الأطراف تحت الماء تحتاج كاميرا تحت الماء أو تصويرًا ثانيًا متزامنًا.' : 'Keep the camera fixed and athlete fully visible. For football, show the ball and planting foot from the side. For swimming, show the torso and arm above water. Submerged joints need underwater or synchronized second-camera footage.'}</p>
+      </details>
     </div>
     {guestMode && <label className="block max-w-lg text-sm">{ar ? 'اسم الزائر (اختياري)' : 'Guest name (optional)'}<Input value={guestName} onChange={event => setGuestName(event.target.value)} className="mt-1" maxLength={120} /></label>}
     <div className="flex flex-wrap items-center gap-2">
@@ -705,11 +731,31 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               : <p className="mt-1 text-xs text-slate-600">{ar ? 'حدّد مرحلتين على الأقل من الأزرار أعلاه لحساب الزمن بينهما، أو كرر بداية دورة السباحة لحساب معدل الدورات.' : 'Mark at least two phases, or repeat a swimming cycle start to calculate cycle rate.'}</p>}
             <p className="mt-1 text-xs text-slate-600">{ar ? 'الأزمنة مبنية على العلامات التي راجعها المدرب، وليست كشفًا آليًا لملامسة الكرة أو حركة تحت الماء.' : 'Timing uses coach-reviewed markers, not automatic ball-contact or underwater motion detection.'}</p>
           </div>}
+          {candidates.length > 0 && <div className="rounded-lg border bg-white p-3 text-sm">
+            <strong>{ar ? 'لحظات مرشحة للمراجعة' : 'Moments suggested for review'}</strong>
+            <p className="mt-1 text-xs text-slate-600">{ar ? 'رُصد انخفاض واضح في زاوية المفصل. اضغط وقتًا لمراجعة الفيديو، ثم اختر علامة الحركة الصحيحة بنفسك؛ هذه ليست لحظة ملامسة كرة أو سحبة مؤكدة.' : 'A clear joint-angle minimum was found. Jump to review, then mark the actual phase yourself; this is not verified ball contact or stroke timing.'}</p>
+            <div className="mt-2 flex flex-wrap gap-1">{candidates.map(candidate => <Button key={candidate.time} type="button" variant="outline" size="sm" onClick={() => seek(candidate.time)}>{timeLabel(candidate.time)} · {candidate.angle}°</Button>)}</div>
+          </div>}
           <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={togglePose} disabled={poseLoading || !sourceUrl}>
                 {poseLoading ? (ar ? 'تحميل نموذج الحركة…' : 'Loading pose model…') : poseEnabled ? (ar ? 'إيقاف تتبّع المفاصل' : 'Stop pose tracking') : (ar ? 'تشغيل تحليل الحركة AI' : 'Start AI pose tracking')}
               </Button>
+              <select aria-label={ar ? 'دقة نموذج تتبع المفاصل' : 'Pose model accuracy'} value={poseModel} disabled={poseEnabled || poseLoading || !canEdit || selected.status !== 'draft'}
+                onChange={event => {
+                  const next = event.target.value;
+                  if (next === poseModel) return;
+                  if (samplesRef.current.size && !window.confirm(ar ? 'تغيير النموذج سيزيل عينات AI القديمة لهذا التقرير حتى لا تختلط القياسات. ستبقى تصحيحات المدرب. هل تريد المتابعة؟' : 'Changing the model clears previous AI samples in this report to avoid mixing measurements. Coach corrections remain. Continue?')) return;
+                  samplesRef.current = new Map([...samplesRef.current].filter(([, sample]) => sample.source === 'coach'));
+                  setSampleCount(samplesRef.current.size); setPoseModel(next);
+                  change({ markers: draft.markers.map(marker => Object.keys(marker.corrected_points || {}).length
+                    ? marker : { ...marker, pose_metrics: {}, pose_side: null }) });
+                  targetRef.current = null; previousPointsRef.current = null; setTargetStatus('select');
+                }} className="rounded-md border bg-white p-2">
+                <option value="lite">{ar ? 'سريع · Lite' : 'Fast · Lite'}</option>
+                <option value="full">{ar ? 'متوازن · Full' : 'Balanced · Full'}</option>
+                <option value="heavy">{ar ? 'دقيق · Heavy' : 'Detailed · Heavy'}</option>
+              </select>
               <select aria-label={ar ? 'جانب الجسم للتحليل' : 'Body side to analyze'} value={poseSide} onChange={event => { setPoseSide(event.target.value); setPoseInfo(null); setCorrectionJoint('auto'); }} className="rounded-md border bg-white p-2">
                 <option value="right">{ar ? 'الجانب الأيمن' : 'Right side'}</option><option value="left">{ar ? 'الجانب الأيسر' : 'Left side'}</option>
               </select>
@@ -723,7 +769,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
                 {key === 'knee_angle' ? (ar ? 'زاوية الركبة' : 'Knee angle') : key === 'elbow_angle' ? (ar ? 'زاوية المرفق' : 'Elbow angle') : key === 'hip_angle' ? (ar ? 'زاوية الورك' : 'Hip angle') : (ar ? 'ميل الجذع عن العمودي' : 'Trunk tilt from vertical')}: {value}°
               </span>)}
             </div>}
-            <p className="text-xs text-slate-600">{ar ? 'قياسات تقريبية من زاوية التصوير الحالية. يراجعها المدرب قبل حفظ اللقطة أو مشاركتها، وقد تخطئ عند حجب الجسم أو تحت الماء.' : 'Approximate single-view measurements. The coach reviews each moment before sharing; occlusion and underwater footage reduce reliability.'}</p>
+            <p className="text-xs text-slate-600">{ar ? 'يمكن تجربة Full أو Heavy على الفيديو نفسه ثم مقارنة العينات الصالحة وسرعة التشغيل؛ النموذج الأكبر لا يعالج اختفاء الجسم تحت الماء. القياسات تقريبية ويجب أن يراجعها المدرب.' : 'Try Full or Heavy on the same clip and compare usable samples and speed. Larger models cannot recover a submerged body. Measurements remain estimates for coach review.'}</p>
           </div>
         </div>
         {compareId && !overlayComparison && <div className="space-y-2">

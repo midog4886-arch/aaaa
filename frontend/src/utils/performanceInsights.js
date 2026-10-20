@@ -47,3 +47,20 @@ export const sportTiming = (markers, sport, skill, labels) => {
   }
   return { phases, eventCount: starts.length + middles.length + ends.length, skill };
 };
+
+// Candidates are only navigation aids. A minimum joint angle is not proof of
+// ball contact, a swimming stroke phase, or good technique.
+export const movementCandidates = (samples, sport, minimumGap = 0.65) => {
+  const key = sport === 'football' ? 'knee_angle' : 'elbow_angle';
+  const valid = (samples || []).filter(sample => sample.quality === 'valid' && finite(sample.metrics?.[key]))
+    .sort((a, b) => a.time - b.time);
+  const candidates = [];
+  for (let index = 1; index < valid.length - 1; index += 1) {
+    const before = valid[index - 1], current = valid[index], after = valid[index + 1];
+    if (current.time - before.time > 0.4 || after.time - current.time > 0.4) continue;
+    if (current.metrics[key] > before.metrics[key] - 8 || current.metrics[key] > after.metrics[key] - 8) continue;
+    if (candidates.length && current.time - candidates[candidates.length - 1].time < minimumGap) continue;
+    candidates.push({ time: current.time, angle: current.metrics[key], metric: key });
+  }
+  return candidates.slice(0, 12);
+};

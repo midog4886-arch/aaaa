@@ -1,4 +1,4 @@
-import { qualitySegments, qualitySummary, sportTiming } from './performanceInsights';
+import { movementCandidates, qualitySegments, qualitySummary, sportTiming } from './performanceInsights';
 
 test('quality map exposes unscanned and lost intervals without hiding uncertainty', () => {
   const samples = [{ time: 1, quality: 'valid' }, { time: 1.1, quality: 'lost' }, { time: 5, quality: 'unreliable' }];
@@ -21,4 +21,11 @@ test('football timing reports no invented ball contact', () => {
   const labels = ['الاقتراب', 'ملامسة الكرة', 'متابعة القدم'];
   expect(sportTiming([{ time: 1, label: labels[0] }], 'football', 'football_shot', labels).phases).toEqual([]);
   expect(sportTiming([{ time: 1, label: labels[0] }, { time: 1.4, label: labels[1] }], 'football', 'football_shot', labels).phases[0].seconds).toBeCloseTo(0.4);
+});
+
+test('movement suggestions require a real local angle minimum across contiguous valid samples', () => {
+  const samples = [140, 105, 139].map((angle, index) => ({ time: index * 0.25, quality: 'valid', metrics: { elbow_angle: angle } }));
+  expect(movementCandidates(samples, 'swimming')).toEqual([{ time: 0.25, angle: 105, metric: 'elbow_angle' }]);
+  samples[1].quality = 'lost';
+  expect(movementCandidates(samples, 'swimming')).toEqual([]);
 });

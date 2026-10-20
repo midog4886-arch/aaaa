@@ -69,6 +69,7 @@ class AnalysisSample(BaseModel):
     seen: int = Field(ge=0, le=33)
     metrics: dict[str, float] = Field(default_factory=dict, max_length=3)
     source: Literal["ai", "coach"] = "ai"
+    model: Literal["lite", "full", "heavy"] = "lite"
 
 
 class Comparison(BaseModel):
