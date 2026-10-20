@@ -3171,11 +3171,11 @@ export const MembersPage = () => {
             }
           }
         }}>
-          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[calc(100vw-2rem)] max-w-5xl max-h-[90vh] min-w-0 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-3">
+              <DialogTitle className="flex min-w-0 flex-wrap items-center gap-2 pr-8 leading-normal">
                 <MemberAvatar photo={selectedMember?.photo} name={language === 'ar' ? (selectedMember?.name_ar || selectedMember?.name) : (selectedMember?.name || selectedMember?.name_ar)} size="md" className="w-10 h-10" />
-                <span className="flex-1">{language === 'ar' ? selectedMember?.name_ar : selectedMember?.name}</span>
+                <span className="min-w-0 flex-[1_1_12rem] break-words">{language === 'ar' ? selectedMember?.name_ar : selectedMember?.name}</span>
                 {selectedMember && (
                   <>
                     {isAdmin && (
@@ -3224,7 +3224,7 @@ export const MembersPage = () => {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="gap-1 me-6"
+                        className="gap-1"
                         onClick={() => { setIsViewDialogOpen(false); openTransferDialog('single', selectedMember); }}
                         title={language === 'ar' ? 'نقل لفرع آخر' : 'Transfer to branch'}
                       >
@@ -3238,9 +3238,9 @@ export const MembersPage = () => {
             </DialogHeader>
             
             {selectedMember && (
-              <div className="space-y-6">
+              <div className="min-w-0 space-y-6">
                 {/* Tabs */}
-                <div className="flex gap-2 overflow-x-auto border-b pb-px [-webkit-overflow-scrolling:touch]">
+                <div className="flex min-w-0 max-w-full gap-2 overflow-x-auto whitespace-nowrap border-b pb-px [-webkit-overflow-scrolling:touch] [&>button]:shrink-0">
                   <button onClick={() => setViewTab('overview')} className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
                     <Eye className="w-4 h-4 inline me-1" />{language === 'ar' ? 'نظرة عامة' : 'Overview'}
                   </button>
