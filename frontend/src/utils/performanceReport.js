@@ -9,6 +9,20 @@ export const SKILLS = {
   ],
 };
 
+export const MOMENT_LABELS = {
+  swimming_freestyle: ['بداية السحبة', 'خروج الذراع', 'الدفع بالرجل'],
+  swimming_backstroke: ['دخول اليد', 'السحبة', 'الدفع بالرجل'],
+  swimming_breaststroke: ['فتح الذراعين', 'ضم الرجلين', 'الانزلاق'],
+  swimming_butterfly: ['دخول الذراعين', 'السحبة', 'ركلة الدولفين'],
+  football_shot: ['الاقتراب', 'ملامسة الكرة', 'متابعة القدم'],
+  football_pass: ['الاستعداد', 'ملامسة الكرة', 'المتابعة'],
+  football_dribble: ['لمسة الكرة', 'تغيير الاتجاه', 'التسارع'],
+  football_run: ['ملامسة الأرض', 'دفع القدم', 'مرحلة الطيران'],
+  general: ['البداية', 'لحظة الحركة', 'النهاية'],
+};
+
+export const skillLabel = skill => Object.values(SKILLS).flat().find(([key]) => key === skill)?.[1] || 'مهارة عامة';
+
 export const metricLabel = key => ({
   elbow_angle: 'زاوية المرفق', knee_angle: 'زاوية الركبة',
   hip_angle: 'زاوية الورك', body_tilt: 'ميل الجذع',

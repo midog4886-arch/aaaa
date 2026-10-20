@@ -4,9 +4,9 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { memberVideoReviewsAPI } from '../../services/api';
-import { drawPose, poseMetrics } from '../../utils/poseAnalysis';
+import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } from '../../utils/poseAnalysis';
 import { ambiguousPose, matchPose, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
-import { comparisonReport, metricLabel, SKILLS } from '../../utils/performanceReport';
+import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
 import ComparisonChart from './ComparisonChart';
 
 const timeLabel = (seconds) => {
@@ -15,6 +15,7 @@ const timeLabel = (seconds) => {
 };
 
 const errorText = (error) => error?.response?.data?.detail || 'تعذرت العملية. حاول مرة أخرى.';
+const JOINT_LABELS = ['الكتف', 'المرفق', 'الرسغ', 'الورك', 'الركبة', 'الكاحل'];
 
 export default function PerformanceStudio({ member, language = 'ar', canEdit = false }) {
   const ar = language === 'ar';
@@ -23,6 +24,8 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const [compareId, setCompareId] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
   const [compareUrl, setCompareUrl] = useState('');
+  const [overlayComparison, setOverlayComparison] = useState(false);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.5);
   const localVideosRef = useRef(new Map());
   const [draft, setDraft] = useState(null);
   const [activeMarkerId, setActiveMarkerId] = useState('');
@@ -40,6 +43,8 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const [poseSide, setPoseSide] = useState('right');
   const [poseInfo, setPoseInfo] = useState(null);
   const [targetStatus, setTargetStatus] = useState('select');
+  const [correctionMode, setCorrectionMode] = useState(false);
+  const [correctionJoint, setCorrectionJoint] = useState('auto');
   const videoRef = useRef(null);
   const poseCanvasRef = useRef(null);
   const poseModelRef = useRef(null);
@@ -53,6 +58,10 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const lastModelTimestampRef = useRef(0);
   const comparisonRef = useRef(null);
   const drawStartRef = useRef(null);
+  const correctionJointRef = useRef(null);
+  const selectedPointsRef = useRef(null);
+  const selectedIndexRef = useRef(null);
+  const boxesRef = useRef([]);
 
   useEffect(() => () => { poseModelRef.current?.close(); poseModelRef.current = null; }, []);
   useEffect(() => () => {
@@ -106,6 +115,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     samplesRef.current = new Map((selected?.samples || []).map(sample => [Math.round(sample.time * 4), sample]));
     setSampleCount(samplesRef.current.size);
     setCompareId(selected?.comparison?.baseline_review_id || '');
+    setOverlayComparison(false);
     setChartMetric(selected?.sport === 'football' ? 'knee_angle' : 'elbow_angle');
     setActiveMarkerId('');
     setDirty(false);
@@ -113,6 +123,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     setSourceUrl('');
     setPoseInfo(null);
     setPoseEnabled(false);
+    setCorrectionMode(false);
     setPoseError('');
     targetRef.current = null;
     candidatesRef.current = [];
@@ -190,8 +201,14 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           setTargetStatus('tracking');
         }
       }
-      const points = selectedIndex === null ? null : poses[selectedIndex];
-      drawPose(poseCanvasRef.current, video, points, boxes, selectedIndex);
+      const rawPoints = selectedIndex === null ? null : poses[selectedIndex];
+      selectedPointsRef.current = rawPoints;
+      selectedIndexRef.current = selectedIndex;
+      boxesRef.current = boxes;
+      const marker = video.paused && draft.markers.find(row => row.id === activeMarkerId && Math.abs(row.time - video.currentTime) < 0.15);
+      const points = marker ? applyPoseCorrections(rawPoints, marker.corrected_points) : rawPoints;
+      drawPose(poseCanvasRef.current, video, points, boxes, selectedIndex,
+        marker ? Object.keys(marker.corrected_points || {}).map(Number) : []);
       const seen = points?.filter(point => (point.visibility ?? 1) >= 0.5).length || 0;
       const metrics = seen >= 8 ? poseMetrics(points, draft.sport, poseSide, video.videoWidth / video.videoHeight) : null;
       const result = { metrics, seen, time: video.currentTime, detected: boxes.filter(Boolean).length, selected: selectedIndex !== null };
@@ -201,10 +218,10 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           const primary = draft.sport === 'football' ? ['knee_angle', 'hip_angle'] : ['elbow_angle', 'hip_angle'];
           const quality = selectedIndex === null ? 'lost'
             : primary.every(key => Number.isFinite(metrics?.[key])) ? 'valid' : 'unreliable';
-          const sample = { time: Math.round(video.currentTime * 4) / 4, quality, seen,
+          const sample = { time: Math.round(video.currentTime * 4) / 4, quality, seen, source: marker?.corrected_points && Object.keys(marker.corrected_points).length ? 'coach' : 'ai',
             metrics: Object.fromEntries(Object.entries(metrics || {}).filter(([, value]) => Number.isFinite(value))) };
           const previous = samplesRef.current.get(bucket);
-          if (!previous || previous.quality !== sample.quality || previous.seen !== sample.seen) {
+          if ((!previous || previous.quality !== sample.quality || previous.seen !== sample.seen) && previous?.source !== 'coach') {
             samplesRef.current.set(bucket, sample);
             setSampleCount(samplesRef.current.size);
             setDirty(true);
@@ -248,6 +265,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (poseEnabled) {
       setPoseEnabled(false);
       setPoseInfo(null);
+      setCorrectionMode(false);
       targetRef.current = null;
       candidatesRef.current = [];
       targetMissesRef.current = 0;
@@ -290,12 +308,18 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     targetMissesRef.current = 0;
     lastTargetTimeRef.current = videoRef.current.currentTime;
     setTargetStatus('tracking');
-    const points = poses[index];
-    drawPose(poseCanvasRef.current, videoRef.current, points, boxes, index);
+    const rawPoints = poses[index];
+    selectedPointsRef.current = rawPoints;
+    selectedIndexRef.current = index;
+    boxesRef.current = boxes;
+    const marker = activeMarker && Math.abs(activeMarker.time - videoRef.current.currentTime) < 0.15 ? activeMarker : null;
+    const points = marker ? applyPoseCorrections(rawPoints, marker.corrected_points) : rawPoints;
+    drawPose(poseCanvasRef.current, videoRef.current, points, boxes, index,
+      marker ? Object.keys(marker.corrected_points || {}).map(Number) : []);
     const seen = points.filter(point => (point.visibility ?? 1) >= 0.5).length;
     setPoseInfo({ metrics: seen >= 8 ? poseMetrics(points, draft.sport, poseSide, videoRef.current.videoWidth / videoRef.current.videoHeight) : null,
       seen, detected: boxes.filter(Boolean).length, selected: true, time: videoRef.current.currentTime });
-    if (videoRef.current.paused) videoRef.current.play().catch(() => {});
+    if (videoRef.current.paused && !marker) videoRef.current.play().catch(() => {});
   };
 
   const resetPlayerOnSeek = () => {
@@ -304,6 +328,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     targetMissesRef.current = 0;
     setTargetStatus('lost');
     setPoseInfo(null);
+    selectedPointsRef.current = null;
     analyzeFrame(true);
   };
 
@@ -359,18 +384,62 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     }
   };
 
-  const addMarker = () => {
+  const addMarker = (label) => {
     if (!videoRef.current || !draft) return;
     videoRef.current.pause();
     const sample = poseEnabled ? analyzeFrame(true) : null;
     const marker = {
       id: `moment-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, time: Number(videoRef.current.currentTime.toFixed(2)),
-      label: ar ? 'لقطة جديدة' : 'New moment', note: '', share_with_parent: false, drawing: null,
+      label: label || (ar ? 'لقطة جديدة' : 'New moment'), note: '', share_with_parent: false, drawing: null,
       pose_metrics: Object.fromEntries(Object.entries(sample?.metrics || {}).filter(([, value]) => Number.isFinite(value))),
       pose_side: sample?.metrics ? poseSide : null,
+      corrected_points: {},
     };
     change({ markers: [...draft.markers, marker].sort((a, b) => a.time - b.time) });
     setActiveMarkerId(marker.id);
+    setCorrectionMode(false);
+  };
+
+  const correctionStart = event => {
+    if (!activeMarker || !videoRef.current?.paused || !selectedPointsRef.current ||
+        Math.abs(videoRef.current.currentTime - activeMarker.time) > 0.15) return;
+    const position = videoPoint(event, videoRef.current, poseCanvasRef.current);
+    const points = applyPoseCorrections(selectedPointsRef.current, activeMarker.corrected_points);
+    const index = correctionJoint === 'auto' ? nearestEditableJoint(points, position, poseSide) : Number(correctionJoint);
+    if (index === null) return;
+    correctionJointRef.current = index;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const correctionMove = event => {
+    const index = correctionJointRef.current;
+    if (index === null || !activeMarker || !selectedPointsRef.current) return;
+    const position = videoPoint(event, videoRef.current, poseCanvasRef.current);
+    if (!position) return;
+    const corrections = { ...(activeMarker.corrected_points || {}), [String(index)]: position };
+    const points = applyPoseCorrections(selectedPointsRef.current, corrections);
+    drawPose(poseCanvasRef.current, videoRef.current, points, boxesRef.current, selectedIndexRef.current,
+      Object.keys(corrections).map(Number));
+  };
+
+  const correctionEnd = event => {
+    const index = correctionJointRef.current;
+    correctionJointRef.current = null;
+    if (index === null || !activeMarker || !selectedPointsRef.current) return;
+    const position = videoPoint(event, videoRef.current, poseCanvasRef.current);
+    if (!position) return;
+    const corrections = { ...(activeMarker.corrected_points || {}), [String(index)]: position };
+    const points = applyPoseCorrections(selectedPointsRef.current, corrections);
+    const metrics = poseMetrics(points, draft.sport, poseSide, videoRef.current.videoWidth / videoRef.current.videoHeight);
+    const savedMetrics = Object.fromEntries(Object.entries(metrics || {}).filter(([, value]) => Number.isFinite(value)));
+    updateMarker(activeMarker.id, { corrected_points: corrections, pose_metrics: savedMetrics, pose_side: poseSide });
+    const bucket = Math.round(activeMarker.time * 4);
+    samplesRef.current.set(bucket, { time: bucket / 4, quality: Object.keys(savedMetrics).length >= 2 ? 'valid' : 'unreliable',
+      seen: points.filter(point => (point?.visibility ?? 0) >= 0.5).length, metrics: savedMetrics, source: 'coach' });
+    setSampleCount(samplesRef.current.size);
+    setPoseInfo(current => current ? { ...current, metrics } : current);
+    drawPose(poseCanvasRef.current, videoRef.current, points, boxesRef.current, selectedIndexRef.current,
+      Object.keys(corrections).map(Number));
   };
 
   const save = async () => {
@@ -498,16 +567,28 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           <input type="file" accept="video/mp4,.mp4" className="hidden" onChange={event => openLocal(event, selected.id)} />
         </label>
       </div>}
-      <div className={`grid gap-3 ${compareId ? 'lg:grid-cols-2' : ''}`}>
+      {compareId && compareUrl && <div className="flex flex-wrap items-center gap-3 rounded-lg border p-2 text-sm">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={overlayComparison} onChange={event => setOverlayComparison(event.target.checked)} />{ar ? 'تراكب فيديو قبل/بعد' : 'Overlay before/after videos'}</label>
+        {overlayComparison && <label className="flex items-center gap-2">{ar ? 'شفافية فيديو قبل' : 'Baseline opacity'}<input type="range" min="0.2" max="0.8" step="0.1" value={overlayOpacity} onChange={event => setOverlayOpacity(Number(event.target.value))} /></label>}
+        {overlayComparison && <Button type="button" variant="outline" size="sm" onClick={() => syncComparison(true)}>{ar ? 'زامن لحظة الحركة' : 'Sync movement event'}</Button>}
+        {overlayComparison && <span className="text-xs text-amber-700">{ar ? 'المقارنة البصرية أنسب عند تشابه زاوية التصوير وحجم اللاعب.' : 'Overlay works best with matching camera angles and athlete scale.'}</span>}
+      </div>}
+      <div className={`grid gap-3 ${compareId && !overlayComparison ? 'lg:grid-cols-2' : ''}`}>
         <div className="space-y-2">
           <div className="relative overflow-hidden rounded-lg bg-black">
             {sourceUrl && <video ref={videoRef} src={sourceUrl} controls playsInline preload="metadata" className="aspect-video w-full object-contain"
               onPlay={() => { if (comparisonRef.current && draft?.comparison) { comparisonRef.current.playbackRate = videoRef.current.playbackRate; syncComparison(); comparisonRef.current.play().catch(() => {}); } }}
               onPause={() => comparisonRef.current?.pause()}
               onTimeUpdate={() => { if (poseEnabled) analyzeFrame(); if (draft?.comparison) syncComparison(); }} onSeeked={resetPlayerOnSeek} />}
+            {overlayComparison && compareUrl && <video ref={comparisonRef} src={compareUrl} playsInline muted preload="metadata" aria-label={ar ? 'فيديو قبل متراكب' : 'Overlaid baseline video'}
+              className="pointer-events-none absolute inset-0 h-full w-full object-contain" style={{ opacity: overlayOpacity }} />}
             <canvas ref={poseCanvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true" />
-            {poseEnabled && !drawing && <div className="absolute inset-x-0 top-0 bottom-12 cursor-crosshair" onClick={selectPlayer} role="button" tabIndex={0}
+            {poseEnabled && !drawing && !correctionMode && <div className="absolute inset-x-0 top-0 bottom-12 cursor-crosshair" onClick={selectPlayer} role="button" tabIndex={0}
               aria-label={ar ? 'اضغط على إطار اللاعب لاختياره' : 'Click a person box to select them'} />}
+            {correctionMode && <div className="absolute inset-x-0 top-0 bottom-12 cursor-crosshair touch-none" role="button" tabIndex={0}
+              aria-label={ar ? 'اسحب نقطة المفصل لتصحيح موضعها' : 'Drag a joint point to correct its position'}
+              onPointerDown={correctionStart} onPointerMove={correctionMove} onPointerUp={correctionEnd}
+              onPointerCancel={() => { correctionJointRef.current = null; }} />}
             {activeMarker?.drawing && <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               <line x1={activeMarker.drawing.x1 * 100} y1={activeMarker.drawing.y1 * 100} x2={activeMarker.drawing.x2 * 100} y2={activeMarker.drawing.y2 * 100} stroke="#f97316" strokeWidth="0.8" />
               <circle cx={activeMarker.drawing.x2 * 100} cy={activeMarker.drawing.y2 * 100} r="1.2" fill="#f97316" />
@@ -520,20 +601,33 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
             <Button type="button" variant="outline" size="sm" onClick={() => step(-1)}>{ar ? 'إطار للخلف' : 'Previous frame'}</Button>
             <Button type="button" variant="outline" size="sm" onClick={() => step(1)}>{ar ? 'إطار للأمام' : 'Next frame'}</Button>
             {[0.25, 0.5, 1].map(rate => <Button type="button" key={rate} variant="outline" size="sm" onClick={() => { if (videoRef.current) videoRef.current.playbackRate = rate; if (comparisonRef.current) comparisonRef.current.playbackRate = rate; }}>{rate}×</Button>)}
-            {canEdit && selected.status === 'draft' && <Button type="button" size="sm" onClick={addMarker}>{ar ? 'حدد لقطة' : 'Mark moment'}</Button>}
+            {canEdit && selected.status === 'draft' && <Button type="button" size="sm" onClick={() => addMarker()}>{ar ? 'حدد لقطة' : 'Mark moment'}</Button>}
+            {canEdit && selected.status === 'draft' && activeMarker && poseEnabled && <Button type="button" variant={correctionMode ? 'default' : 'outline'} size="sm" disabled={!poseInfo?.selected && !correctionMode} onClick={() => {
+              videoRef.current?.pause();
+              setCorrectionMode(value => !value);
+            }}>{correctionMode ? (ar ? 'إنهاء تصحيح المفاصل' : 'Finish joint correction') : (ar ? 'تصحيح مفصل يدويًا' : 'Correct a joint')}</Button>}
+            {correctionMode && <select aria-label={ar ? 'المفصل المطلوب تصحيحه' : 'Joint to correct'} value={correctionJoint} onChange={event => setCorrectionJoint(event.target.value)} className="rounded-md border bg-white px-2 py-1 text-xs">
+              <option value="auto">{ar ? 'اختر أقرب نقطة' : 'Nearest joint'}</option>
+              {(poseSide === 'left' ? [11, 13, 15, 23, 25, 27] : [12, 14, 16, 24, 26, 28]).map((index, position) => <option key={index} value={index}>{JOINT_LABELS[position]}</option>)}
+            </select>}
           </div>
+          {canEdit && selected.status === 'draft' && sourceUrl && <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
+            <span>{ar ? 'علّم لحظة:' : 'Tag moment:'}</span>
+            {(MOMENT_LABELS[draft.skill] || MOMENT_LABELS.general).map(label => <Button type="button" key={label} variant="outline" size="sm" onClick={() => addMarker(label)}>{label}</Button>)}
+          </div>}
           <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={togglePose} disabled={poseLoading || !sourceUrl}>
                 {poseLoading ? (ar ? 'تحميل نموذج الحركة…' : 'Loading pose model…') : poseEnabled ? (ar ? 'إيقاف تتبّع المفاصل' : 'Stop pose tracking') : (ar ? 'تشغيل تحليل الحركة AI' : 'Start AI pose tracking')}
               </Button>
-              <select aria-label={ar ? 'جانب الجسم للتحليل' : 'Body side to analyze'} value={poseSide} onChange={event => { setPoseSide(event.target.value); setPoseInfo(null); }} className="rounded-md border bg-white p-2">
+              <select aria-label={ar ? 'جانب الجسم للتحليل' : 'Body side to analyze'} value={poseSide} onChange={event => { setPoseSide(event.target.value); setPoseInfo(null); setCorrectionJoint('auto'); }} className="rounded-md border bg-white p-2">
                 <option value="right">{ar ? 'الجانب الأيمن' : 'Right side'}</option><option value="left">{ar ? 'الجانب الأيسر' : 'Left side'}</option>
               </select>
               <span className="font-semibold">{draft.sport === 'football' ? (ar ? 'كرة قدم' : 'Football') : (ar ? 'سباحة' : 'Swimming')}</span>
             </div>
             {poseError && <p className="text-red-700" role="alert">{poseError}</p>}
             {poseEnabled && <p>{targetStatus === 'lost' ? (ar ? 'تداخل اللاعب مع شخص آخر أو فُقد مساره؛ توقفت القياسات. أوقف الفيديو وحدده مجددًا.' : 'Player overlap or lost track; measurements paused. Pause and reselect.') : targetStatus === 'searching' ? (ar ? 'اللاعب محجوب مؤقتًا؛ القياسات متوقفة حتى يظهر بوضوح.' : 'Player temporarily obscured; measurements paused.') : !poseInfo?.selected ? (ar ? `اختر اللاعب بالضغط على إطاره في الفيديو. الأشخاص المكتشفون: ${poseInfo?.detected || 0}` : `Click the player's box. Detected people: ${poseInfo?.detected || 0}`) : poseInfo.seen >= 8 ? (ar ? `تتبّع اللاعب المحدد · نقاط ظاهرة: ${poseInfo.seen} من 33` : `Tracking selected player · ${poseInfo.seen} visible landmarks`) : (ar ? 'اللاعب المحدد غير واضح بما يكفي؛ لن تُعرض قياسات غير موثوقة.' : 'Selected player visibility is too low; no measurements shown.')}</p>}
+            {correctionMode && <p className="rounded-md bg-blue-100 p-2 text-blue-900">{ar ? 'أوقف الفيديو على اللقطة المحددة، ثم اسحب النقطة البرتقالية للمفصل إلى مكانها الصحيح. تظهر النقطة المصححة بالأزرق. احفظ التقرير بعد المراجعة.' : 'Pause on the marked moment, then drag the joint point. Corrected points appear blue. Save after review.'}</p>}
             {poseEnabled && poseInfo?.selected && poseInfo?.seen >= 8 && <div className="flex flex-wrap gap-2">
               {Object.entries(poseInfo.metrics || {}).map(([key, value]) => Number.isFinite(value) && <span key={key} className="rounded-md bg-white px-2 py-1">
                 {key === 'knee_angle' ? (ar ? 'زاوية الركبة' : 'Knee angle') : key === 'elbow_angle' ? (ar ? 'زاوية المرفق' : 'Elbow angle') : key === 'hip_angle' ? (ar ? 'زاوية الورك' : 'Hip angle') : (ar ? 'ميل الجذع عن العمودي' : 'Trunk tilt from vertical')}: {value}°
@@ -542,15 +636,15 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
             <p className="text-xs text-slate-600">{ar ? 'قياسات تقريبية من زاوية التصوير الحالية. يراجعها المدرب قبل حفظ اللقطة أو مشاركتها، وقد تخطئ عند حجب الجسم أو تحت الماء.' : 'Approximate single-view measurements. The coach reviews each moment before sharing; occlusion and underwater footage reduce reliability.'}</p>
           </div>
         </div>
-        {compareId && <div className="space-y-2">
+        {compareId && !overlayComparison && <div className="space-y-2">
           {baseline?.video_mode === 'local' && !compareUrl && <label className="inline-flex cursor-pointer rounded-md border px-3 py-2 text-sm">{ar ? 'افتح فيديو «قبل» من جهازك' : 'Open baseline video locally'}<input type="file" accept="video/mp4,.mp4" className="hidden" onChange={event => openLocal(event, compareId)} /></label>}
-          {compareUrl && <video ref={comparisonRef} src={compareUrl} controls playsInline preload="metadata" className="aspect-video w-full rounded-lg bg-black" />}
+          {compareUrl && <video ref={comparisonRef} src={compareUrl} controls playsInline muted preload="metadata" className="aspect-video w-full rounded-lg bg-black" />}
           <Button type="button" variant="outline" size="sm" onClick={() => syncComparison(true)}>{ar ? 'اذهب للحظة الحركة في الفيديوين' : 'Jump to matched event'}</Button>
         </div>}
       </div>
       <section className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-semibold">{ar ? 'تقرير الأداء قبل / بعد' : 'Before / after performance report'}</h3>
+          <h3 className="font-semibold">{ar ? `تقرير ${skillLabel(draft.skill)} قبل / بعد` : `Before / after: ${skillLabel(draft.skill)}`}</h3>
           <span className="text-xs text-slate-600">{ar ? `عينات الحركة المحفوظة: ${sampleCount}` : `Recorded motion samples: ${sampleCount}`}</span>
         </div>
         <p className="text-xs text-slate-600">{ar ? 'اختر فيديوين لنفس العضو والرياضة والمهارة. شغّل تتبّع اللاعب في كل فيديو واحفظ العينات، ثم حدد لحظة الحركة نفسها في الاثنين.' : 'Compare the same member, sport, and skill. Track and save both videos, then mark the matching movement event.'}</p>
@@ -561,12 +655,20 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
               <p className="text-xs text-slate-600">{baseline.title}</p>
               <p className="mt-1">{ar ? 'لحظة الحركة:' : 'Event:'} {timeLabel(draft.comparison.baseline_event_time)}</p>
               {canEdit && selected.status === 'draft' && <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => updateComparison({ baseline_event_time: Number((comparisonRef.current?.currentTime || 0).toFixed(2)) })}>{ar ? 'احفظ هذه اللحظة من الفيديو السابق' : 'Mark baseline event'}</Button>}
+              {canEdit && selected.status === 'draft' && baseline.markers?.length > 0 && <select aria-label={ar ? 'اختر لحظة من الفيديو السابق' : 'Choose baseline moment'} value={String(draft.comparison.baseline_event_time)} onChange={event => updateComparison({ baseline_event_time: Number(event.target.value) })} className="mt-2 w-full rounded-md border bg-white p-2 text-xs">
+                {!baseline.markers.some(marker => Number(marker.time) === Number(draft.comparison.baseline_event_time)) && <option value={draft.comparison.baseline_event_time}>{ar ? 'الوقت الحالي' : 'Current time'}</option>}
+                {baseline.markers.map(marker => <option key={marker.id} value={marker.time}>{marker.label} · {timeLabel(marker.time)}</option>)}
+              </select>}
             </div>
             <div className="rounded-lg border bg-white p-3 text-sm">
               <strong>{ar ? 'بعد · الفيديو الحالي' : 'After · current'}</strong>
               <p className="text-xs text-slate-600">{selected.title}</p>
               <p className="mt-1">{ar ? 'لحظة الحركة:' : 'Event:'} {timeLabel(draft.comparison.current_event_time)}</p>
               {canEdit && selected.status === 'draft' && <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => updateComparison({ current_event_time: Number((videoRef.current?.currentTime || 0).toFixed(2)) })}>{ar ? 'احفظ هذه اللحظة من الفيديو الحالي' : 'Mark current event'}</Button>}
+              {canEdit && selected.status === 'draft' && draft.markers.length > 0 && <select aria-label={ar ? 'اختر لحظة من الفيديو الحالي' : 'Choose current moment'} value={String(draft.comparison.current_event_time)} onChange={event => updateComparison({ current_event_time: Number(event.target.value) })} className="mt-2 w-full rounded-md border bg-white p-2 text-xs">
+                {!draft.markers.some(marker => Number(marker.time) === Number(draft.comparison.current_event_time)) && <option value={draft.comparison.current_event_time}>{ar ? 'الوقت الحالي' : 'Current time'}</option>}
+                {draft.markers.map(marker => <option key={marker.id} value={marker.time}>{marker.label} · {timeLabel(marker.time)}</option>)}
+              </select>}
             </div>
           </div>
           {report && <>
@@ -589,6 +691,13 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           <Textarea value={draft.comparison.coach_finding} disabled={!canEdit || selected.status !== 'draft'} maxLength={1000} onChange={event => updateComparison({ coach_finding: event.target.value })} placeholder={ar ? 'ما تغيّر في الحركة؟ لا تصف فرق الزاوية تلقائيًا بأنه تحسن.' : 'What changed in the movement?'} />
           <label className="block text-sm font-medium">{ar ? 'التمرين التالي المقترح' : 'Next training exercise'}</label>
           <Textarea value={draft.comparison.next_exercise} disabled={!canEdit || selected.status !== 'draft'} maxLength={500} onChange={event => updateComparison({ next_exercise: event.target.value })} />
+          <div className="rounded-lg border bg-white p-3 text-sm" aria-label={ar ? 'معاينة خلاصة التقرير' : 'Report summary preview'}>
+            <strong>{ar ? `خلاصة ${skillLabel(draft.skill)}` : `${skillLabel(draft.skill)} summary`}</strong>
+            <p className="mt-1 text-xs text-slate-600">{ar ? `قبل ${timeLabel(draft.comparison.baseline_event_time)} · بعد ${timeLabel(draft.comparison.current_event_time)} · ${report?.usable ? 'القياسات قابلة للمراجعة' : 'القياسات غير كافية للمقارنة'}` : `Before ${timeLabel(draft.comparison.baseline_event_time)} · after ${timeLabel(draft.comparison.current_event_time)} · ${report?.usable ? 'measurements reviewable' : 'insufficient measurements'}`}</p>
+            <p className="mt-2"><strong>{ar ? 'استنتاج المدرب:' : 'Coach finding:'}</strong> {draft.comparison.coach_finding || '—'}</p>
+            <p className="mt-1"><strong>{ar ? 'التمرين التالي:' : 'Next exercise:'}</strong> {draft.comparison.next_exercise || '—'}</p>
+            <p className="mt-2 text-xs text-slate-600">{ar ? 'فرق الزوايا وصف للحركة، وليس حكمًا تلقائيًا بالتحسن. يعتمد المدرب الخلاصة بعد مراجعة الفيديو والقياسات.' : 'Angle changes describe motion, not automatic improvement. The coach approves the interpretation.'}</p>
+          </div>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.comparison.share_with_parent} disabled={!canEdit || selected.status !== 'draft' || !report?.usable || baseline.status !== 'approved'} onChange={event => updateComparison({ share_with_parent: event.target.checked })} />{ar ? 'أظهر المقارنة المعتمدة لولي الأمر' : 'Share approved comparison with parent'}</label>
           {baseline.status !== 'approved' && <p className="text-xs text-amber-700">{ar ? 'اعتمد تقرير الفيديو السابق أولًا قبل مشاركة المقارنة.' : 'Approve the baseline report before sharing the comparison.'}</p>}
         </>}
@@ -597,7 +706,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
         <div className="space-y-2 rounded-lg border p-3">
           <h3 className="font-semibold">{ar ? 'اللقطات المحددة' : 'Marked moments'}</h3>
           {draft.markers.length === 0 && <p className="text-sm text-muted-foreground">{ar ? 'أوقف الفيديو عند لحظة مهمة ثم اضغط «حدد لقطة».' : 'Pause at an important moment and mark it.'}</p>}
-          {draft.markers.map(marker => <button type="button" key={marker.id} onClick={() => { setActiveMarkerId(marker.id); seek(marker.time); }} className={`block w-full rounded-md border p-2 text-start text-sm ${activeMarkerId === marker.id ? 'border-blue-500 bg-blue-50' : ''}`}>
+          {draft.markers.map(marker => <button type="button" key={marker.id} onClick={() => { setActiveMarkerId(marker.id); setCorrectionMode(false); seek(marker.time); }} className={`block w-full rounded-md border p-2 text-start text-sm ${activeMarkerId === marker.id ? 'border-blue-500 bg-blue-50' : ''}`}>
             <span className="font-mono" dir="ltr">{timeLabel(marker.time)}</span> · {marker.label}
             {marker.share_with_parent && <span className="ms-2 text-green-700">{ar ? 'للأهل' : 'Parent'}</span>}
           </button>)}
@@ -626,11 +735,18 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           {activeMarker && <div className="space-y-2 rounded-md bg-slate-50 p-3">
             <strong className="text-sm">{ar ? 'تعليق على اللقطة' : 'Moment annotation'} · {timeLabel(activeMarker.time)}</strong>
             {Object.entries(activeMarker.pose_metrics || {}).length > 0 && <p className="text-xs text-emerald-800">{ar ? 'قياسات محفوظة للمراجعة: ' : 'Saved measurements: '}{Object.entries(activeMarker.pose_metrics).map(([key, value]) => `${key}: ${value}°`).join(' · ')}</p>}
+            {Object.keys(activeMarker.corrected_points || {}).length > 0 && <p className="text-xs text-blue-800">{ar ? `صحّح المدرب ${Object.keys(activeMarker.corrected_points).length} من نقاط المفاصل يدويًا في هذه اللقطة.` : `${Object.keys(activeMarker.corrected_points).length} joint points corrected by coach in this moment.`}</p>}
             <Input value={activeMarker.label} disabled={!canEdit || selected.status !== 'draft'} maxLength={100} onChange={event => updateMarker(activeMarker.id, { label: event.target.value })} />
             <Textarea value={activeMarker.note} disabled={!canEdit || selected.status !== 'draft'} maxLength={1000} placeholder={ar ? 'ملاحظة على الأداء' : 'Performance note'} onChange={event => updateMarker(activeMarker.id, { note: event.target.value })} />
             {canEdit && selected.status === 'draft' && <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => { seek(activeMarker.time); setDrawing(true); }}>{ar ? 'ارسم خطًا على اللقطة' : 'Draw a line'}</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => { seek(activeMarker.time); setCorrectionMode(false); setDrawing(true); }}>{ar ? 'ارسم خطًا على اللقطة' : 'Draw a line'}</Button>
               {activeMarker.drawing && <Button type="button" variant="outline" size="sm" onClick={() => updateMarker(activeMarker.id, { drawing: null })}>{ar ? 'امسح الرسم' : 'Clear drawing'}</Button>}
+              {Object.keys(activeMarker.corrected_points || {}).length > 0 && <Button type="button" variant="outline" size="sm" onClick={() => {
+                updateMarker(activeMarker.id, { corrected_points: {}, pose_metrics: {} });
+                samplesRef.current.delete(Math.round(activeMarker.time * 4));
+                setSampleCount(samplesRef.current.size);
+                setCorrectionMode(false);
+              }}>{ar ? 'إلغاء التصحيحات اليدوية' : 'Clear manual corrections'}</Button>}
               <label className="inline-flex items-center gap-1 text-sm"><input type="checkbox" checked={activeMarker.share_with_parent} onChange={event => updateMarker(activeMarker.id, { share_with_parent: event.target.checked })} />{ar ? 'أظهر هذه اللقطة لولي الأمر' : 'Share this moment with parent'}</label>
               <Button type="button" variant="destructive" size="sm" onClick={() => { change({ markers: draft.markers.filter(row => row.id !== activeMarker.id) }); setActiveMarkerId(''); }}>{ar ? 'حذف اللقطة' : 'Remove moment'}</Button>
             </div>}

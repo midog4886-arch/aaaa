@@ -36,7 +36,26 @@ export const poseMetrics = (points, sport, side = 'right', aspect = 1) => {
   return metrics;
 };
 
-export const drawPose = (canvas, video, points, boxes = [], selectedIndex = null) => {
+export const editableJointIndices = side => side === 'left'
+  ? [11, 13, 15, 23, 25, 27] : [12, 14, 16, 24, 26, 28];
+
+export const applyPoseCorrections = (points, corrections = {}) => {
+  if (!Array.isArray(points)) return null;
+  return points.map((point, index) => corrections[String(index)]
+    ? { ...point, ...corrections[String(index)], visibility: 1, presence: 1 }
+    : point);
+};
+
+export const nearestEditableJoint = (points, position, side, maxDistance = 0.05) => {
+  if (!Array.isArray(points) || !position) return null;
+  const candidates = editableJointIndices(side).map(index => ({
+    index, distance: Math.hypot(points[index]?.x - position.x, points[index]?.y - position.y),
+  })).filter(item => Number.isFinite(item.distance) && item.distance <= maxDistance)
+    .sort((a, b) => a.distance - b.distance);
+  return candidates[0]?.index ?? null;
+};
+
+export const drawPose = (canvas, video, points, boxes = [], selectedIndex = null, correctedIndices = []) => {
   if (!canvas || !video) return;
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
@@ -78,10 +97,11 @@ export const drawPose = (canvas, video, points, boxes = [], selectedIndex = null
     context.stroke();
   }
   context.fillStyle = '#ffb347';
-  for (const point of points) {
+  for (const [index, point] of points.entries()) {
     if (!visible(point)) continue;
+    context.fillStyle = correctedIndices.includes(index) ? '#3b82f6' : '#ffb347';
     context.beginPath();
-    context.arc(...at(point), 3.5, 0, Math.PI * 2);
+    context.arc(...at(point), correctedIndices.includes(index) ? 6 : 3.5, 0, Math.PI * 2);
     context.fill();
   }
 };

@@ -35,6 +35,11 @@ class Drawing(BaseModel):
     y2: float = Field(ge=0, le=1)
 
 
+class CorrectedPoint(BaseModel):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
 class Marker(BaseModel):
     id: str = Field(max_length=80)
     time: float = Field(ge=0, le=36000)
@@ -44,6 +49,14 @@ class Marker(BaseModel):
     share_with_parent: bool = False
     pose_metrics: dict[str, float] = Field(default_factory=dict, max_length=3)
     pose_side: Literal["left", "right"] | None = None
+    corrected_points: dict[str, CorrectedPoint] = Field(default_factory=dict, max_length=12)
+
+    @model_validator(mode="after")
+    def valid_corrected_joints(self):
+        if any(key not in {"11", "12", "13", "14", "15", "16", "23", "24", "25", "26", "27", "28"}
+               for key in self.corrected_points):
+            raise ValueError("تصحيح مفصل غير مدعوم")
+        return self
 
 
 Skill = Literal["general", "swimming_freestyle", "swimming_backstroke", "swimming_breaststroke",
@@ -55,6 +68,7 @@ class AnalysisSample(BaseModel):
     quality: Literal["valid", "unreliable", "lost"]
     seen: int = Field(ge=0, le=33)
     metrics: dict[str, float] = Field(default_factory=dict, max_length=3)
+    source: Literal["ai", "coach"] = "ai"
 
 
 class Comparison(BaseModel):
@@ -262,7 +276,9 @@ async def portal_reviews(member: dict = Depends(get_current_member)):
             "sport": doc.get("sport", "swimming"), "skill": doc.get("skill", "general"),
             "has_video": bool(doc.get("storage_name")),
             "approved_at": doc.get("approved_at"),
-            "markers": [marker for marker in doc.get("markers", []) if marker.get("share_with_parent")],
+            "markers": [{**{key: value for key, value in marker.items() if key != "corrected_points"},
+                         "coach_corrected": bool(marker.get("corrected_points"))}
+                        for marker in doc.get("markers", []) if marker.get("share_with_parent")],
         }
         comparison = doc.get("comparison")
         baseline = approved_by_id.get(comparison.get("baseline_review_id")) if comparison else None

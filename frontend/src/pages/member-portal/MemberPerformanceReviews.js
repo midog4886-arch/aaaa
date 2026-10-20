@@ -97,6 +97,7 @@ export default function MemberPerformanceReviews() {
           <span className="font-mono" dir="ltr">{timeLabel(marker.time)}</span> · <strong>{marker.label}</strong>
           {marker.note && <span className="mt-1 block text-slate-600">{marker.note}</span>}
           {Object.entries(marker.pose_metrics || {}).length > 0 && <span className="mt-1 block text-xs text-emerald-800">{Object.entries(marker.pose_metrics).map(([key, value]) => `${key === 'knee_angle' ? 'الركبة' : key === 'elbow_angle' ? 'المرفق' : key === 'hip_angle' ? 'الورك' : 'ميل الجذع'} ${value}°`).join(' · ')}</span>}
+          {marker.coach_corrected && <span className="mt-1 block text-xs text-blue-700">راجع المدرب موضع المفصل يدويًا في هذه اللقطة.</span>}
         </button>)}
       </div>
     </div>}

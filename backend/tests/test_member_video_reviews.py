@@ -22,7 +22,8 @@ class _Cursor:
         return [{
             "id": "review-1", "member_id": "child-1", "status": "approved",
             "parent_summary": "تحسن في الانطلاق", "coach_summary": "خاص بالمدرب", "storage_name": "secret.mp4", "markers": [
-                {"id": "public", "share_with_parent": True, "note": "ملاحظة منشورة", "pose_metrics": {"elbow_angle": 90}},
+                {"id": "public", "share_with_parent": True, "note": "ملاحظة منشورة", "pose_metrics": {"elbow_angle": 90},
+                 "corrected_points": {"14": {"x": 0.5, "y": 0.5}}},
                 {"id": "private", "share_with_parent": False, "note": "ملاحظة خاصة", "pose_metrics": {"knee_angle": 85}},
             ],
         }]
@@ -40,6 +41,8 @@ def test_portal_returns_only_approved_annotations(monkeypatch):
     result = asyncio.run(reviews.portal_reviews({"id": "child-1", "_linked_member_ids": ["child-1"]}))
     assert [item["id"] for item in result[0]["markers"]] == ["public"]
     assert result[0]["markers"][0]["pose_metrics"] == {"elbow_angle": 90}
+    assert result[0]["markers"][0]["coach_corrected"] is True
+    assert "corrected_points" not in result[0]["markers"][0]
     assert "coach_summary" not in result[0]
     assert "storage_name" not in result[0]
     assert result[0]["has_video"] is True
@@ -94,6 +97,10 @@ def test_sport_and_pose_metrics_are_validated_before_saving():
         reviews.ReviewUpdate(title="تسديدة", sport="basketball")
     with pytest.raises(ValidationError):
         reviews.ReviewUpdate(title="تسديدة", sport="football", skill="swimming_freestyle")
+    with pytest.raises(ValidationError):
+        reviews.Marker(id="frame-2", time=1, label="لقطة", corrected_points={"99": {"x": 0.5, "y": 0.5}})
+    with pytest.raises(ValidationError):
+        reviews.Marker(id="frame-2", time=1, label="لقطة", corrected_points={"14": {"x": 1.1, "y": 0.5}})
 
 
 def test_approval_rejects_comparison_with_insufficient_tracking(monkeypatch):
