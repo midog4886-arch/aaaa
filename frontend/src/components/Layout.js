@@ -183,6 +183,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
       icon: Users,
       items: [
         { to: '/admin/members', icon: Users, label: 'members', permission: 'members', feature: 'members' },
+        { to: '/admin/performance', icon: MonitorPlay, label_ar: 'تحليل الأداء', label_en: 'Performance Analysis', permission: 'members', feature: 'members' },
         { to: '/admin/registration-requests', icon: Inbox, label: 'registration_requests', permission: 'invoices' },
         { to: '/admin/marketers', icon: Megaphone, label: 'marketers', permission: 'marketers' },
         { to: '/admin/renewals', icon: RefreshCcw, label: 'renewals', permission: 'renewals', feature: 'renewals' },

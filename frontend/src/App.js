@@ -54,6 +54,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const DailyTasksPage = lazy(() => import('./pages/DailyTasksPage'));
 const MembersPage = lazy(() => import('./pages/MembersPage'));
+const MemberPerformancePage = lazy(() => import('./pages/MemberPerformancePage'));
 const ActivitiesPage = lazy(() => import('./pages/ActivitiesPage'));
 const PublicRegistrationPage = lazy(() => import('./pages/PublicRegistrationPage'));
 const RegistrationRequestsPage = lazy(() => import('./pages/RegistrationRequestsPage'));
@@ -378,6 +379,8 @@ function AppRoutes() {
           </ProtectedRoute>
         } 
       />
+      <Route path="/admin/performance" element={<ProtectedRoute permission="members"><MemberPerformancePage /></ProtectedRoute>} />
+      <Route path="/admin/performance/:memberId" element={<ProtectedRoute permission="members"><MemberPerformancePage /></ProtectedRoute>} />
       <Route 
         path="/admin/activities" 
         element={

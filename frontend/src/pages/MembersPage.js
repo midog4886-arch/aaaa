@@ -14,7 +14,6 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import ProfileOverview from '../components/member-profile/ProfileOverview';
 import ProfileFeed from '../components/member-profile/ProfileFeed';
-import PerformanceStudio from '../components/member-profile/PerformanceStudio';
 import MemberEditHistoryDialog from '../components/members/MemberEditHistoryDialog';
 import SessionTransferDialog from '../components/members/SessionTransferDialog';
 import ScheduleChangeReviewDialog from '../components/members/ScheduleChangeReviewDialog';
@@ -3391,8 +3390,8 @@ export const MembersPage = () => {
                   <button onClick={() => setViewTab('timeline')} className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'timeline' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
                     <Clock className="w-4 h-4 inline me-1" />{language === 'ar' ? 'الخط الزمني' : 'Timeline'}
                   </button>
-                  <button onClick={() => setViewTab('performance')} className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'performance' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-                    <PlayCircle className="w-4 h-4 inline me-1" />{language === 'ar' ? 'تحليل الأداء' : 'Performance review'}
+                  <button onClick={() => { setIsViewDialogOpen(false); navigate(`/admin/performance/${encodeURIComponent(selectedMember.id)}`); }} className="shrink-0 px-4 py-2 text-sm font-medium border-b-2 border-transparent text-muted-foreground transition-colors hover:text-foreground">
+                    <PlayCircle className="w-4 h-4 inline me-1" />{language === 'ar' ? 'تحليل الأداء ↗' : 'Performance review ↗'}
                   </button>
                   {canViewProfileMessages && <button onClick={() => setViewTab('messages')} className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'messages' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
                     <Bell className="w-4 h-4 inline me-1" />{language === 'ar' ? 'رسائل وطلبات' : 'Messages & requests'}
@@ -3400,7 +3399,6 @@ export const MembersPage = () => {
                 </div>
 
                 {viewTab === 'overview' && <ProfileOverview key={`overview-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} member={selectedMember} attendance={memberAttendance} canViewFinancial={canViewOverviewFinancials} canViewAttendance={canViewOverviewAttendance} language={language} onTab={setViewTab} scopeKey={`${selectedBranchId}-${user?.id || ''}`} />}
-                {viewTab === 'performance' && <PerformanceStudio key={`performance-${selectedMember.id}-${selectedBranchId}`} member={selectedMember} language={language} canEdit={isAdmin || (user?.permissions || []).includes('members-edit') || (user?.permissions || []).includes('coach-notes')} />}
                 {viewTab === 'timeline' && <ProfileFeed key={`history-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} memberId={selectedMember.id} kind="history" language={language} scopeKey={`${selectedBranchId}-${user?.id || ''}`} onTab={setViewTab} />}
                 {viewTab === 'messages' && canViewProfileMessages && <div className="space-y-4">
                   <ProfileFeed key={`messages-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} memberId={selectedMember.id} kind="messages" language={language} scopeKey={`${selectedBranchId}-${user?.id || ''}`} />
