@@ -9,7 +9,7 @@ import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } fro
 import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
 import { stabilizePose } from '../../utils/poseStabilization';
 import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
-import { movementCandidates, qualitySegments, qualitySummary, sportTiming } from '../../utils/performanceInsights';
+import { automaticPerformanceReport, movementCandidates, qualitySegments, qualitySummary, sportTiming } from '../../utils/performanceInsights';
 import ComparisonChart from './ComparisonChart';
 
 const timeLabel = (seconds) => {
@@ -112,6 +112,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
   const activeMarker = draft?.markers?.find(row => row.id === activeMarkerId);
   const currentSamples = [...samplesRef.current.values()].sort((a, b) => a.time - b.time);
   const quality = qualitySummary(currentSamples);
+  const automaticReport = automaticPerformanceReport(currentSamples, draft?.sport, videoDuration, language);
   const timeline = qualitySegments(currentSamples, videoDuration);
   const timing = draft ? sportTiming(draft.markers, draft.sport, draft.skill, MOMENT_LABELS[draft.skill] || MOMENT_LABELS.general) : null;
   const candidates = draft ? movementCandidates(currentSamples, draft.sport) : [];
@@ -480,7 +481,9 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
     if (!selected || !draft) return;
     setBusy(true);
     try {
-      const response = await reviewAPI.update(selected.id, { ...draft, samples: [...samplesRef.current.values()].sort((a, b) => a.time - b.time) });
+      const response = await reviewAPI.update(selected.id, { ...draft,
+        parent_summary: draft.parent_summary.trim() || (automaticReport.ready ? automaticReport.lines.join('\n') : ''),
+        samples: [...samplesRef.current.values()].sort((a, b) => a.time - b.time) });
       setReviews(current => current.map(row => row.id === selected.id ? response.data : row));
       setDirty(false);
       toast.success(guestMode ? (ar ? 'حُفظت المسودة مؤقتًا في هذه الصفحة؛ نزّل التقرير قبل إغلاقها.' : 'Draft saved for this page session. Download before leaving.') : (ar ? 'تم حفظ تحليل المدرب' : 'Coach review saved'));
@@ -499,6 +502,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
       `${ar ? 'المهارة' : 'Skill'}: ${skillLabel(draft.skill)}`,
       `${ar ? 'ملاحظات المدرب' : 'Coach notes'}: ${draft.coach_summary || '—'}`,
       `${ar ? 'ملخص التقرير' : 'Report summary'}: ${draft.parent_summary || '—'}`, ''];
+    lines.push(ar ? 'التقرير الآلي' : 'Automatic report', ...automaticReport.lines, '');
     for (const marker of draft.markers) {
       lines.push(`${timeLabel(marker.time)} · ${marker.label}`);
       if (marker.note) lines.push(marker.note);
@@ -869,6 +873,11 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           <label className="block text-sm font-medium">{ar ? 'ملاحظات خاصة للمدربين' : 'Private coach notes'}</label>
           <Textarea value={draft.coach_summary} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ coach_summary: event.target.value })} maxLength={2000} />
           <label className="block text-sm font-medium">{guestMode ? (ar ? 'ملخص تقرير الزائر' : 'Guest report summary') : (ar ? 'ملخص سيظهر لولي الأمر بعد الاعتماد' : 'Parent summary after approval')}</label>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm" aria-label={ar ? 'التقرير الآلي' : 'Automatic report'}>
+            <strong>{ar ? 'التقرير الآلي من الفيديو' : 'Automatic video report'}</strong>
+            {automaticReport.lines.map((line, index) => <p key={index} className="mt-1">{line}</p>)}
+            {automaticReport.ready && <p className="mt-2 text-xs text-slate-600">{ar ? 'يتجدد مع القياسات أثناء التشغيل. عند حفظ التحليل، يُستخدم كملخص إذا تركت حقل الملخص فارغًا. راجعه قبل مشاركته.' : 'Updates as measurements arrive. Saving uses it as the summary when the summary field is empty. Review it before sharing.'}</p>}
+          </div>
           <Textarea value={draft.parent_summary} disabled={!canEdit || selected.status !== 'draft'} onChange={event => change({ parent_summary: event.target.value })} maxLength={2000} />
           {activeMarker && <div className="space-y-2 rounded-md bg-slate-50 p-3">
             <strong className="text-sm">{ar ? 'تعليق على اللقطة' : 'Moment annotation'} · {timeLabel(activeMarker.time)}</strong>

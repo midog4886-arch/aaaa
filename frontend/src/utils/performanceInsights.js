@@ -64,3 +64,35 @@ export const movementCandidates = (samples, sport, minimumGap = 0.65) => {
   }
   return candidates.slice(0, 12);
 };
+
+// A descriptive report from observed frames only. No technique score or diagnosis is inferred.
+export const automaticPerformanceReport = (samples, sport, duration, language = 'ar') => {
+  const ar = language === 'ar';
+  const ordered = (samples || []).filter(sample => finite(sample.time)).sort((a, b) => a.time - b.time);
+  const quality = qualitySummary(ordered);
+  const valid = ordered.filter(sample => sample.quality === 'valid');
+  const scannedSeconds = ordered.length > 1 ? Math.max(0, ordered[ordered.length - 1].time - ordered[0].time) : 0;
+  const coverage = finite(duration) && duration > 0 ? Math.min(100, Math.round(scannedSeconds / duration * 100)) : null;
+  const keys = sport === 'football' ? ['knee_angle', 'hip_angle', 'body_tilt'] : ['elbow_angle', 'hip_angle', 'body_tilt'];
+  const names = ar ? { knee_angle: 'الركبة', elbow_angle: 'المرفق', hip_angle: 'الورك', body_tilt: 'ميل الجذع' }
+    : { knee_angle: 'Knee', elbow_angle: 'Elbow', hip_angle: 'Hip', body_tilt: 'Trunk tilt' };
+  const lines = [];
+  if (!quality.total) return { ready: false, lines: [ar ? 'لم يبدأ تحليل الفيديو بعد؛ شغّل تتبّع المفاصل وشاهد المقطع.' : 'No frames analyzed yet. Start pose tracking and play the video.'], quality, coverage };
+  lines.push(ar ? `فُحصت ${quality.total} لقطة؛ ${quality.valid} صالحة (${quality.percentage}%)، ${quality.unreliable} غير واضحة، و${quality.lost} فُقد فيها التتبّع.`
+    : `${quality.total} frames analyzed: ${quality.valid} valid (${quality.percentage}%), ${quality.unreliable} unclear, ${quality.lost} lost.`);
+  if (coverage !== null) lines.push(ar ? `امتدت العينات عبر نحو ${coverage}% من مدة الفيديو؛ هذا ليس دليلًا على فحص كل إطار بينهما.`
+    : `Samples span about ${coverage}% of the video duration; intervening frames may be unscanned.`);
+  for (const key of keys) {
+    const values = valid.map(sample => sample.metrics?.[key]).filter(finite);
+    if (values.length < 3) continue;
+    const min = Math.round(Math.min(...values));
+    const max = Math.round(Math.max(...values));
+    lines.push(ar ? `${names[key]}: تراوحت الزاوية بين ${min}° و${max}° في ${values.length} قياسات صالحة.`
+      : `${names[key]} angle ranged from ${min}° to ${max}° across ${values.length} valid measurements.`);
+  }
+  if (valid.length < 3) lines.push(ar ? 'القياسات الصالحة غير كافية لاستخراج نطاق زوايا موثوق؛ أعد التصوير بوضوح أكبر.'
+    : 'Too few valid measurements for a reliable angle range. Record a clearer view.');
+  lines.push(ar ? 'هذه ملاحظات آلية تقريبية من كاميرا واحدة، وليست تقييمًا فنيًا أو تشخيصًا. راجع اللقطات غير الواضحة قبل اعتماد التقرير.'
+    : 'These are approximate single-camera observations, not a technique assessment or diagnosis. Review unclear frames before approval.');
+  return { ready: true, lines, quality, coverage };
+};

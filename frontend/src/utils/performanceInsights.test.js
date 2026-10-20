@@ -1,4 +1,4 @@
-import { movementCandidates, qualitySegments, qualitySummary, sportTiming } from './performanceInsights';
+import { automaticPerformanceReport, movementCandidates, qualitySegments, qualitySummary, sportTiming } from './performanceInsights';
 
 test('quality map exposes unscanned and lost intervals without hiding uncertainty', () => {
   const samples = [{ time: 1, quality: 'valid' }, { time: 1.1, quality: 'lost' }, { time: 5, quality: 'unreliable' }];
@@ -28,4 +28,19 @@ test('movement suggestions require a real local angle minimum across contiguous 
   expect(movementCandidates(samples, 'swimming')).toEqual([{ time: 0.25, angle: 105, metric: 'elbow_angle' }]);
   samples[1].quality = 'lost';
   expect(movementCandidates(samples, 'swimming')).toEqual([]);
+});
+
+test('automatic report uses valid observed angles and discloses tracking gaps', () => {
+  const samples = [
+    { time: 0, quality: 'valid', metrics: { elbow_angle: 100 } },
+    { time: 0.25, quality: 'lost', metrics: { elbow_angle: 5 } },
+    { time: 0.5, quality: 'valid', metrics: { elbow_angle: 120 } },
+    { time: 0.75, quality: 'valid', metrics: { elbow_angle: 110 } },
+  ];
+  const report = automaticPerformanceReport(samples, 'swimming', 2);
+  expect(report.ready).toBe(true);
+  expect(report.lines.join(' ')).toContain('100° و120°');
+  expect(report.lines.join(' ')).not.toContain('5°');
+  expect(report.lines.join(' ')).toContain('فُقد فيها التتبّع');
+  expect(automaticPerformanceReport([], 'football', 2).ready).toBe(false);
 });
