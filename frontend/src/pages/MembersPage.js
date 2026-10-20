@@ -3171,7 +3171,7 @@ export const MembersPage = () => {
             }
           }
         }}>
-          <DialogContent className="w-[calc(100vw-2rem)] max-w-5xl max-h-[90vh] min-w-0 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+          <DialogContent className="h-[96dvh] max-h-[96dvh] w-[98vw] max-w-[1600px] min-w-0 content-start overflow-x-hidden overflow-y-auto p-3 sm:w-[96vw] sm:p-5">
             <DialogHeader>
               <DialogTitle className="flex min-w-0 flex-wrap items-center gap-2 pr-8 leading-normal">
                 <MemberAvatar photo={selectedMember?.photo} name={language === 'ar' ? (selectedMember?.name_ar || selectedMember?.name) : (selectedMember?.name || selectedMember?.name_ar)} size="md" className="w-10 h-10" />
