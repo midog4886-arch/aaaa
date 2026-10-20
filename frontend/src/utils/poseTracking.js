@@ -2,24 +2,33 @@
 // substitute another detection when the selected person becomes ambiguous.
 const BODY_POINTS = [11, 12, 23, 24];
 const MIN_VISIBILITY = 0.5;
+export const OCCLUSION_GRACE_SECONDS = 2;
 
 const visible = point => point && (point.visibility ?? 1) >= MIN_VISIBILITY && (point.presence ?? 1) >= MIN_VISIBILITY;
 
 export const poseBox = points => {
   if (!Array.isArray(points)) return null;
   const body = BODY_POINTS.map(index => points[index]).filter(visible);
-  if (body.length < 3) return null;
+  // Swimming often hides one shoulder or hip below the waterline. One
+  // shoulder and one hip still anchor the torso without using floating hands.
+  const shoulders = [points[11], points[12]].filter(visible);
+  const hips = [points[23], points[24]].filter(visible);
+  if (body.length < 2 || !shoulders.length || !hips.length) return null;
   const all = points.filter(visible);
   const xs = all.map(point => point.x);
   const ys = all.map(point => point.y);
-  const left = Math.max(0, Math.min(...xs));
-  const right = Math.min(1, Math.max(...xs));
+  let left = Math.max(0, Math.min(...xs));
+  let right = Math.min(1, Math.max(...xs));
   const top = Math.max(0, Math.min(...ys));
   const bottom = Math.min(1, Math.max(...ys));
   const center = {
     x: body.reduce((sum, point) => sum + point.x, 0) / body.length,
     y: body.reduce((sum, point) => sum + point.y, 0) / body.length,
   };
+  if (body.length === 2 && right - left < 0.06) {
+    left = Math.max(0, center.x - 0.03);
+    right = Math.min(1, center.x + 0.03);
+  }
   if (right - left < 0.025 || bottom - top < 0.04) return null;
   return { left, right, top, bottom, center, width: right - left, height: bottom - top };
 };

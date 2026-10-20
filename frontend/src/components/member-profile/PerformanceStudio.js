@@ -5,7 +5,7 @@ import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { memberVideoReviewsAPI } from '../../services/api';
 import { applyPoseCorrections, drawPose, nearestEditableJoint, poseMetrics } from '../../utils/poseAnalysis';
-import { ambiguousPose, matchPose, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
+import { ambiguousPose, matchPose, OCCLUSION_GRACE_SECONDS, pickPose, poseBox, videoPoint } from '../../utils/poseTracking';
 import { comparisonReport, metricLabel, MOMENT_LABELS, skillLabel, SKILLS } from '../../utils/performanceReport';
 import ComparisonChart from './ComparisonChart';
 
@@ -188,7 +188,7 @@ export default function PerformanceStudio({ member, language = 'ar', canEdit = f
           setTargetStatus('lost');
         } else if (selectedIndex === null) {
           targetMissesRef.current += 1;
-          if (targetMissesRef.current >= 5 || Math.abs(video.currentTime - lastTargetTimeRef.current) > 0.8) {
+          if (Math.abs(video.currentTime - lastTargetTimeRef.current) > OCCLUSION_GRACE_SECONDS) {
             targetRef.current = null;
             setTargetStatus('lost');
           } else {

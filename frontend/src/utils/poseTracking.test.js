@@ -48,3 +48,12 @@ test('click mapping accounts for video letterboxing', () => {
   expect(videoPoint({ clientX: 300, clientY: 200 }, video, canvas)).toEqual({ x: 0.5, y: 0.5 });
   expect(videoPoint({ clientX: 300, clientY: 70 }, video, canvas)).toBeNull();
 });
+
+test('a swimmer remains detectable with one shoulder and one hip visible', () => {
+  const partlySubmerged = pose(0.5, 0.5);
+  partlySubmerged[12].visibility = 0;
+  partlySubmerged[24].visibility = 0;
+  expect(poseBox(partlySubmerged)).not.toBeNull();
+  partlySubmerged[23].visibility = 0;
+  expect(poseBox(partlySubmerged)).toBeNull();
+});
