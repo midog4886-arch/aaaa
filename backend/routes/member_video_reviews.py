@@ -252,9 +252,9 @@ async def set_review_status(review_id: str, payload: ReviewStatus, user: dict = 
     assessment = doc.get("assessment") or {}
     if payload.status == "approved" and doc.get("sport") == "swimming" and assessment.get("priorities"):
         if any(not row.get("observed", "").strip() or not row.get("target", "").strip()
-               or not row.get("exercise", "").strip() or row.get("marker_time") is None
+               or not row.get("exercise", "").strip()
                for row in assessment["priorities"]):
-            raise HTTPException(status_code=400, detail="أكمل الأداء المرصود والهدف والتمرين واللقطة الداعمة لكل أولوية قبل الاعتماد")
+            raise HTTPException(status_code=400, detail="أكمل الملاحظة والهدف والتمرين لكل تحسين قبل الاعتماد")
     comparison = doc.get("comparison")
     if payload.status == "approved" and comparison and comparison.get("share_with_parent"):
         baseline = await db.member_video_reviews.find_one({"id": comparison["baseline_review_id"],
