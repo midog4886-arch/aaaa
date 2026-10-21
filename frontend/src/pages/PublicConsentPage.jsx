@@ -12,6 +12,8 @@ export default function PublicConsentPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [logo, setLogo] = useState('/images/academy-logo.png');
+  const [memberPhoto, setMemberPhoto] = useState('');
+  const [photoWarning, setPhotoWarning] = useState('');
   const [form, setForm] = useState({ child_name: '', birth_date: '', guardian_name: '', relationship: '', guardian_identity: '', has_medical_condition: false, medical_details: '', signer_name: '', accepted: false });
   const request = async (method = 'GET', payload) => {
     const response = await fetch(`/api/invoices/public/registration-consent/${encodeURIComponent(token)}`, {
@@ -57,6 +59,31 @@ export default function PublicConsentPage() {
   const start = event => { drawing.current = true; event.currentTarget.setPointerCapture(event.pointerId); const ctx = canvas.current.getContext('2d'); ctx.beginPath(); ctx.moveTo(...point(event)); };
   const move = event => { if (!drawing.current) return; const ctx = canvas.current.getContext('2d'); ctx.lineTo(...point(event)); ctx.stroke(); ink.current = true; };
   const clear = () => { const el = canvas.current; el.getContext('2d').clearRect(0, 0, el.width, el.height); ink.current = false; };
+  const choosePhoto = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) {
+      setError('اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 8 ميجابايت.');
+      event.target.value = '';
+      return;
+    }
+    try {
+      const image = await createImageBitmap(file);
+      if (image.width * image.height > 25000000) {
+        image.close();
+        throw new Error('Image too large');
+      }
+      const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+      const resized = document.createElement('canvas');
+      resized.width = Math.max(1, Math.round(image.width * scale));
+      resized.height = Math.max(1, Math.round(image.height * scale));
+      resized.getContext('2d').drawImage(image, 0, 0, resized.width, resized.height);
+      image.close();
+      setMemberPhoto(resized.toDataURL('image/jpeg', 0.82));
+      setError('');
+    } catch (_) { setError('تعذر قراءة الصورة. اختر صورة أخرى.'); }
+    event.target.value = '';
+  };
   const submit = async () => {
     if (!form.child_name.trim() || !form.guardian_name.trim() || !form.relationship.trim() || !form.guardian_identity.trim() || !form.signer_name.trim() || !form.accepted || !ink.current) {
       setError('أكمل بيانات ولي الأمر، وافق على البنود، ثم وقّع داخل المربع.'); return;
@@ -64,7 +91,8 @@ export default function PublicConsentPage() {
     if (form.has_medical_condition && !form.medical_details.trim()) { setError('أدخل تفاصيل الحالة الصحية.'); return; }
     setBusy(true); setError('');
     try {
-      await request('POST', { ...form, expected_invoice_hash: data.invoice_hash, expected_terms_version: data.terms_version, signature_png: canvas.current.toDataURL('image/png') });
+      const result = await request('POST', { ...form, member_photo: data.can_upload_photo ? memberPhoto || null : null, expected_invoice_hash: data.invoice_hash, expected_terms_version: data.terms_version, signature_png: canvas.current.toDataURL('image/png') });
+      if (memberPhoto && !result.photo_saved) setPhotoWarning('تم اعتماد الاستمارة، لكن تعذر حفظ الصورة في ملف العضو. يمكن إضافتها من ملفه لاحقًا.');
       setData(previous => ({ ...previous, status: 'signed' }));
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -101,10 +129,11 @@ export default function PublicConsentPage() {
       <div className="space-y-5 p-5 sm:p-7">
         {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {!data && !error && <p>جارٍ تحميل الاستمارة…</p>}
-        {data?.status === 'signed' && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center"><div className="text-4xl text-emerald-600">✓</div><h2 className="mt-2 text-lg font-bold">تم اعتماد الاستمارة</h2><p className="text-sm text-slate-600">حُفظ توقيعك بنجاح، ويمكنك تنزيل نسختك الموقّعة الآن.</p><button type="button" disabled={busy} onClick={downloadCopy} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy ? 'جارٍ تجهيز النسخة…' : 'تنزيل نسختي PDF'}</button></div>}
+        {data?.status === 'signed' && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center"><div className="text-4xl text-emerald-600">✓</div><h2 className="mt-2 text-lg font-bold">تم اعتماد الاستمارة</h2><p className="text-sm text-slate-600">حُفظ توقيعك بنجاح، ويمكنك تنزيل نسختك الموقّعة الآن.</p>{photoWarning && <p role="alert" className="mt-3 text-sm text-amber-800">{photoWarning}</p>}<button type="button" disabled={busy} onClick={downloadCopy} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy ? 'جارٍ تجهيز النسخة…' : 'تنزيل نسختي PDF'}</button></div>}
         {data?.status === 'pending' && <>
           <div className="rounded-2xl bg-violet-50 p-4"><h2 className="font-bold text-violet-900">بيانات الفاتورة / Invoice details</h2><p>الطفل: {data.invoice.customer_name_ar || data.invoice.member_name}</p><p>فاتورة رقم: {data.invoice.invoice_number}</p><p>النشاط: {(data.invoice.items || []).map(item => item.activity_name).join('، ')}</p><p>المبلغ: {data.invoice.total} ر.س</p><p className="mt-2 text-xs text-slate-500">الرابط صالح حتى {new Date(data.expires_at).toLocaleString('ar-SA')}</p></div>
           <div className="grid gap-3 sm:grid-cols-2">{[['child_name', 'اسم الطفل الرباعي / Child name'], ['birth_date', 'تاريخ الميلاد / Birth date'], ['guardian_name', 'اسم ولي الأمر / Guardian name'], ['relationship', 'صلة القرابة / Relationship'], ['guardian_identity', 'رقم الهوية أو الإقامة / ID']].map(([key, label]) => <label key={key} className="block text-sm font-medium"><span>{label}</span><input type={key === 'birth_date' ? 'date' : 'text'} value={form[key]} onChange={e => change(key, e.target.value)} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white p-3 outline-none focus:border-violet-500" /></label>)}</div>
+          {data.can_upload_photo && <div className="rounded-xl border border-slate-200 p-3 text-sm"><label className="font-medium" htmlFor="member-photo">صورة المشترك (اختيارية) / Member photo</label><p className="mt-1 text-xs text-slate-500">تُضاف إلى ملف العضو بعد اعتماد الاستمارة. يمكنك إكمال التسجيل دون صورة.</p><input id="member-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} className="mt-2 block w-full text-sm" />{memberPhoto && <div className="mt-2 flex items-center gap-3"><img src={memberPhoto} alt="معاينة صورة المشترك" className="h-16 w-16 rounded-full object-cover" /><button type="button" onClick={() => setMemberPhoto('')} className="text-violet-700">إزالة الصورة</button></div>}</div>}
           <div className="rounded-xl border p-3 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={form.has_medical_condition} onChange={e => change('has_medical_condition', e.target.checked)} /> توجد حالة صحية أو حساسية أو إصابة سابقة</label>{form.has_medical_condition && <textarea value={form.medical_details} onChange={e => change('medical_details', e.target.value)} placeholder="تفاصيل الحالة الصحية" className="mt-3 w-full rounded-xl border p-3" />}</div>
           <section><h2 className="mb-2 font-bold text-violet-900">الشروط والإقرار / Terms and acknowledgment</h2><ol className="list-decimal space-y-3 pr-5 text-sm">{data.terms.map((term, index) => <li key={index}>{term.text}<p dir="ltr" className="mt-1 text-left text-slate-600">{term.text_en}</p></li>)}</ol><p className="mt-4 font-semibold">{data.declaration}</p><p dir="ltr" className="mt-1 text-left text-sm text-slate-600">{data.declaration_en}</p></section>
           <label className="block text-sm font-medium">اسم الموقّع / Signer name<input value={form.signer_name} onChange={e => change('signer_name', e.target.value)} className="mt-1 block w-full rounded-xl border border-slate-200 p-3" /></label>

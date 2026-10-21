@@ -26,6 +26,7 @@ from utils.tenant import get_current_tenant
 from utils.tenant import get_current_tenant_slug
 from utils.phone import normalize_phone
 from services.invoice_whatsapp import public_base_url
+from utils.member_photos import compress_photo_data_url, store_member_photo
 
 router = APIRouter(prefix="/invoices", tags=["invoice-consents"])
 logger = logging.getLogger(__name__)
@@ -101,6 +102,7 @@ class ConsentInput(BaseModel):
     signer_name: str = Field(min_length=2, max_length=160)
     accepted: bool
     signature_png: str = Field(min_length=50, max_length=350000)
+    member_photo: Optional[str] = Field(default=None, max_length=1500000)
 
 
 class TermsItem(BaseModel):
@@ -355,15 +357,19 @@ async def get_public_registration_consent(token: str):
             "opened_at": datetime.now(timezone.utc).isoformat()}})
     snapshot = invoice_snapshot(invoice)
     guardian_name = (invoice.get("guardian_name_ar") or invoice.get("guardian_name") or "").strip()
-    if not guardian_name and invoice.get("member_id"):
+    linked_member = None
+    if invoice.get("member_id"):
         member = await db.members.find_one(
-            {"id": invoice["member_id"]},
-            {"guardian_name_ar": 1, "guardian_name": 1, "_id": 0},
+            {"id": invoice["member_id"], "branch_id": invoice.get("branch_id")},
+            {"guardian_name_ar": 1, "guardian_name": 1, "photo": 1, "_id": 0},
         )
         if member:
-            guardian_name = (member.get("guardian_name_ar") or member.get("guardian_name") or "").strip()
+            linked_member = member
+            if not guardian_name:
+                guardian_name = (member.get("guardian_name_ar") or member.get("guardian_name") or "").strip()
     return {"status": "signed" if signed else "pending", "invoice": snapshot,
             "guardian_name": guardian_name,
+            "can_upload_photo": bool(linked_member and not linked_member.get("photo") and not signed),
             "invoice_hash": link["invoice_hash"], "terms_version": link["terms_version"],
             "title": settings["title"], "title_en": settings["title_en"],
             "company_name": settings["company_name"], "company_name_en": settings["company_name_en"],
@@ -379,7 +385,8 @@ async def sign_public_registration_consent(token: str, payload: ConsentInput):
     if payload.expected_invoice_hash != link["invoice_hash"] or payload.expected_terms_version != link["terms_version"]:
         raise HTTPException(status_code=409, detail="تغيّرت الاستمارة؛ أعد فتح الرابط")
     result = await sign_registration_consent(invoice["id"], payload, {"is_admin": True, "username": "ولي الأمر عبر الرابط"})
-    return {"status": "signed", "signed_at": result["signed_at"], "version": result["version"]}
+    return {"status": "signed", "signed_at": result["signed_at"], "version": result["version"],
+            "photo_saved": result["photo_saved"]}
 
 
 @router.get("/public/registration-consent/{token}/pdf")
@@ -470,6 +477,20 @@ async def sign_registration_consent(invoice_id: str, payload: ConsentInput, user
         raise HTTPException(status_code=422, detail="Terms must be accepted")
     if payload.has_medical_condition and not payload.medical_details.strip():
         raise HTTPException(status_code=422, detail="Medical details are required")
+    photo_to_store = None
+    if payload.member_photo:
+        if not invoice.get("member_id"):
+            raise HTTPException(status_code=422, detail="لا يمكن حفظ الصورة دون عضو مرتبط بالفاتورة")
+        linked_member = await db.members.find_one(
+            {"id": invoice["member_id"], "branch_id": invoice.get("branch_id")},
+            {"photo": 1, "_id": 0},
+        )
+        if not linked_member:
+            raise HTTPException(status_code=422, detail="العضو المرتبط بالفاتورة غير موجود")
+        if not linked_member.get("photo"):
+            photo_to_store = compress_photo_data_url(payload.member_photo)
+            if not photo_to_store:
+                raise HTTPException(status_code=422, detail="صورة المشترك غير صالحة")
     match = re.fullmatch(r"data:image/png;base64,([A-Za-z0-9+/=]+)", payload.signature_png)
     if not match:
         raise HTTPException(status_code=422, detail="Invalid signature format")
@@ -499,12 +520,25 @@ async def sign_registration_consent(invoice_id: str, payload: ConsentInput, user
            "version": version, "invoice_snapshot": copy.deepcopy(snapshot),
            "invoice_hash": snapshot_hash(snapshot), "terms_version": settings["version"], "title": settings["title"], "title_en": settings["title_en"],
            "company_name": settings["company_name"], "company_name_en": settings["company_name_en"], "terms": copy.deepcopy(settings["terms"]),
-           "declaration": settings["declaration"], "declaration_en": settings["declaration_en"], "fields": payload.model_dump(exclude={"signature_png", "accepted", "expected_invoice_hash", "expected_terms_version"}),
+           "declaration": settings["declaration"], "declaration_en": settings["declaration_en"], "fields": payload.model_dump(exclude={"signature_png", "member_photo", "accepted", "expected_invoice_hash", "expected_terms_version"}),
            "signer_name": payload.signer_name, "signature_png": payload.signature_png,
            "signed_at": datetime.now(timezone.utc).isoformat(), "recorded_by": user.get("username", "")}
     try:
         await db.invoice_consents.insert_one(doc)
     except DuplicateKeyError:
         raise HTTPException(status_code=409, detail="Form was signed concurrently; reload it")
+    photo_saved = False
+    if photo_to_store:
+        try:
+            photo_url = await store_member_photo(db, get_current_tenant_slug() or "default", invoice["member_id"], photo_to_store)
+            if photo_url:
+                update_result = await db.members.update_one(
+                    {"id": invoice["member_id"], "branch_id": invoice.get("branch_id"), "$or": [{"photo": {"$exists": False}}, {"photo": None}, {"photo": ""}]},
+                    {"$set": {"photo": photo_url}},
+                )
+                photo_saved = bool(getattr(update_result, "modified_count", 0))
+        except Exception:
+            logger.exception("Could not save optional member photo for invoice %s", invoice_id)
     doc.pop("_id", None)
+    doc["photo_saved"] = photo_saved
     return doc
