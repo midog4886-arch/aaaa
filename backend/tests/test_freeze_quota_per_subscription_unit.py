@@ -11,6 +11,7 @@ Covers backend/routes/freezes.py:
 import asyncio
 import os
 import sys
+from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
@@ -100,7 +101,10 @@ class _Coll:
         self.inserted.append(doc)
 
     async def update_one(self, q, u):
-        pass
+        for doc in self.docs:
+            if _match(doc, q):
+                doc.update(u.get("$set", {}))
+                return
 
 
 class _DB:
@@ -190,3 +194,35 @@ def test_stats_scoped_to_current_period(monkeypatch):
         assert stats["remaining_days"] == 27
     else:
         assert stats["total_days_frozen"] == 10
+
+
+def test_replacement_sessions_start_after_freeze_not_inside_it():
+    dates = fz.replacement_training_dates(
+        "Monday - Wednesday", datetime(2026, 10, 7),
+        datetime(2026, 10, 14), 2,
+    )
+    assert dates == ["2026-10-19", "2026-10-21"]
+
+
+def test_freeze_only_extends_overlapping_periods_and_records_makeup_dates():
+    db = _DB([{"id": "m1", "activities": [
+        {"activity_id": "swim", "start_date": "2026-09-14", "end_date": "2026-10-14",
+         "schedule": "Monday - Wednesday", "status": "active"},
+        {"activity_id": "swim", "start_date": "2026-10-09", "end_date": "2026-11-02",
+         "schedule": "Monday - Wednesday", "status": "active"},
+    ]}], [])
+    orig = fz.db
+    fz.db = db
+    try:
+        freeze = run(fz.create_freeze(
+            FreezeCreate(member_id="m1", activity_id="swim", start_date="2026-10-12",
+                         end_date="2026-10-14", reason="personal"), current_user=USER))
+    finally:
+        fz.db = orig
+    assert len(freeze["extension_records"]) == 1
+    record = freeze["extension_records"][0]
+    assert record["period_start_date"] == "2026-10-09"
+    assert record["replacement_dates"] == ["2026-11-04", "2026-11-09"]
+    assert record["new_end_date"] == "2026-11-09"
+    assert db.members.docs[0]["activities"][0]["end_date"] == "2026-10-14"
+    assert db.members.docs[0]["activities"][1]["end_date"] == "2026-11-09"

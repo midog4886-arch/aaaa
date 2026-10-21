@@ -4,7 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 import { getMemberQRValue } from '../utils/memberQR';
-import { attendanceForPeriod, periodIsReadOnly, canRecordToday, sortAttendancePeriods } from '../utils/attendancePeriods';
+import { attendanceForPeriod, attendanceRecordsForPeriod, periodIsReadOnly, canRecordToday, sortAttendancePeriods } from '../utils/attendancePeriods';
 import { NationalitySelect } from '../components/NationalitySelect';
 import MemberAvatar from '../components/MemberAvatar';
 import ScheduleDaysTimeEditor, { buildMemberSchedule } from '../components/ScheduleDaysTimeEditor';
@@ -1199,6 +1199,7 @@ export const MembersPage = () => {
   const computeTransferInfo = (q, member, closures, freezes) => {
     const transferred = new Set();
     const transferredMeta = {};
+    const replacementDates = new Set();
     if (!q.schedule_days?.length) {
       return { transferredSet: transferred, transferredMeta, replacementDates: [] };
     }
@@ -1235,6 +1236,27 @@ export const MembersPage = () => {
       for (const fz of freezes) {
         if (fz.status === 'cancelled') continue;
         if (!fz.start_date || !fz.end_date) continue;
+        const records = Array.isArray(fz.extension_records) ? fz.extension_records : [];
+        const matchingRecords = records.filter(rec => {
+          if (rec.activity_id && rec.activity_id !== q.activity_id) return false;
+          if (rec.period_start_date) {
+            if (rec.period_start_date !== q.start_date) return false;
+            if (rec.source_period_key && q.source_period_key && rec.source_period_key !== q.source_period_key) return false;
+            if (rec.source_id && q.source_id && rec.source_id !== q.source_id) return false;
+            return true;
+          }
+          // Older records have no period identity. Only use an exact deadline
+          // match so overlapping renewals cannot inherit each other's freeze.
+          return rec.new_end_date === q.end_date;
+        });
+        if (records.length && !matchingRecords.length) continue;
+        for (const rec of matchingRecords) {
+          const dates = Array.isArray(rec.replacement_dates) && rec.replacement_dates.length
+            ? rec.replacement_dates
+            : generateScheduleDates(q.start_date, q.end_date, q.schedule_days)
+              .filter(date => date > rec.old_end_date && date <= rec.new_end_date && date > fz.end_date);
+          dates.forEach(date => replacementDates.add(date));
+        }
         const [fsy, fsm, fsd] = fz.start_date.split('-').map(Number);
         const [fey, fem, fed] = fz.end_date.split('-').map(Number);
         const fe = new Date(fey, fem - 1, fed);
@@ -1253,15 +1275,9 @@ export const MembersPage = () => {
         }
       }
     }
-    // Make-up ("بديل") dates are intentionally NOT generated: a closure/freeze
-    // already extends the subscription end_date to cover the lost training days,
-    // so appending extra make-up dates after the (already extended) deadline would
-    // double-compensate (real case: deadline extended 05-27→06-08 AND 3 make-up
-    // dates added after 06-08 = 11 attendable days for an 8-session sub). The
-    // transferred ("مُرحَّل") markers are still shown so the closure days stay
-    // visible inside the window.
-    const replacementDates = [];
-    return { transferredSet: transferred, transferredMeta, replacementDates };
+    // Replacement dates are already inside the extended subscription window.
+    // Label those existing dates without appending another set of sessions.
+    return { transferredSet: transferred, transferredMeta, replacementDates: [...replacementDates] };
   };
 
   const refreshMemberAttendance = async (memberId) => {
@@ -4208,7 +4224,7 @@ export const MembersPage = () => {
                             const sharesEarlierInvoice = q.source_id && periods.slice(0, idx).some(period => period.source_id === q.source_id);
                             const baseDates = generateScheduleDates(q.start_date, q.end_date, q.schedule_days);
                             const transferInfo = computeTransferInfo(q, selectedMember, appliedClosures, memberFreezes);
-                            const scheduleDates = [...baseDates, ...transferInfo.replacementDates]
+                            const scheduleDates = [...new Set([...baseDates, ...transferInfo.replacementDates])]
                               .filter(date => !q.attendance_before || date < q.attendance_before);
                             const replacementSet = new Set(transferInfo.replacementDates);
                             const attendedRecords = attendanceForPeriod(memberAttendance?.records || [], q);
@@ -4506,63 +4522,28 @@ export const MembersPage = () => {
 
                     {memberAttendance ? (
                       <div className="space-y-4">
-                        {/* Summary Cards */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                          <div className="bg-blue-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-blue-600">
-                              {memberAttendance.summary?.total_records || 0}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              {language === 'ar' ? 'إجمالي السجلات' : 'Total Records'}
-                            </div>
-                          </div>
-                          <div className="bg-green-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-green-600">
-                              {memberAttendance.summary?.present_count || 0}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              {language === 'ar' ? 'حضور' : 'Present'}
-                            </div>
-                          </div>
-                          <div className="bg-red-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-red-600">
-                              {memberAttendance.summary?.absent_count || 0}
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              {language === 'ar' ? 'غياب' : 'Absent'}
-                            </div>
-                          </div>
-                          <div className="bg-purple-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-bold text-purple-600">
-                              {memberAttendance.summary?.attendance_rate || 0}%
-                            </div>
-                            <div className="text-xs text-gray-600">
-                              {language === 'ar' ? 'نسبة الحضور' : 'Rate'}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Attendance Records grouped per subscription (activity) */}
-                        {memberAttendance.records?.length > 0 ? (
+                        {/* Each purchased period owns its own attendance summary and records. */}
+                        {memberSessionQuota.length > 0 ? (
                           <div className="space-y-3">
-                            {Object.entries(
-                              memberAttendance.records.reduce((groups, record) => {
-                                const key = record.activity_name || (language === 'ar' ? 'بدون نشاط' : 'No activity');
-                                (groups[key] = groups[key] || []).push(record);
-                                return groups;
-                              }, {})
-                            ).map(([activityName, records]) => {
+                            {sortAttendancePeriods(memberSessionQuota, localDateStr(new Date())).map((period, periodIndex) => {
+                              const records = attendanceRecordsForPeriod(memberAttendance.records || [], period);
                               const presentCount = records.filter(r => r.status === 'present' || !r.status).length;
                               const absentCount = records.length - presentCount;
                               return (
-                                <div key={activityName} className="border rounded-lg overflow-hidden">
+                                <div key={`${period.source_period_key || period.source_id || period.activity_id}-${period.start_date}-${periodIndex}`} className="border rounded-lg overflow-hidden">
                                   <div className="bg-gray-100 px-4 py-2 font-semibold text-sm flex items-center justify-between gap-2">
-                                    <span className="truncate">{activityName}</span>
+                                    <span className="truncate">{period.activity_name} · {period.start_date} — {period.end_date}{period.invoice_number ? ` · #${period.invoice_number}` : ''}</span>
                                     <span className="text-xs font-normal text-gray-500 whitespace-nowrap">
                                       {language === 'ar'
                                         ? `${records.length} سجل · ${presentCount} حضور · ${absentCount} غياب`
                                         : `${records.length} records · ${presentCount} present · ${absentCount} absent`}
                                     </span>
+                                  </div>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 text-center text-xs">
+                                    <div className="rounded bg-blue-50 p-2"><strong className="block text-lg text-blue-700">{records.length}</strong>{language === 'ar' ? 'إجمالي السجلات' : 'Total records'}</div>
+                                    <div className="rounded bg-green-50 p-2"><strong className="block text-lg text-green-700">{presentCount}</strong>{language === 'ar' ? 'حضور' : 'Present'}</div>
+                                    <div className="rounded bg-red-50 p-2"><strong className="block text-lg text-red-700">{absentCount}</strong>{language === 'ar' ? 'غياب' : 'Absent'}</div>
+                                    <div className="rounded bg-purple-50 p-2"><strong className="block text-lg text-purple-700">{records.length ? Math.round(presentCount * 100 / records.length) : 0}%</strong>{language === 'ar' ? 'من السجلات' : 'Of records'}</div>
                                   </div>
                                   <div className="max-h-[300px] overflow-y-auto">
                                     {records.slice(0, 20).map((record, idx) => (
@@ -4619,7 +4600,7 @@ export const MembersPage = () => {
                           </div>
                         ) : (
                           <div className="text-center py-6 text-muted-foreground bg-gray-50 rounded-lg">
-                            {language === 'ar' ? 'لا توجد سجلات حضور' : 'No attendance records'}
+                            {language === 'ar' ? 'لا توجد فترة اشتراك لعرض حضورها' : 'No subscription period to show attendance for'}
                           </div>
                         )}
                       </div>

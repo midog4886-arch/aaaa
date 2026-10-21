@@ -8,6 +8,15 @@ export const attendanceForPeriod = (records, period) => records.filter(record =>
     && (date <= period.end_date || record.off_schedule);
 });
 
+export const attendanceRecordsForPeriod = (records, period) => records.filter(record => {
+  const ids = period.count_activity_ids || [period.activity_id];
+  const date = (record.date || '').slice(0, 10);
+  return ids.includes(record.activity_id)
+    && date >= period.start_date
+    && (!period.attendance_before || date < period.attendance_before)
+    && (date <= period.end_date || record.off_schedule);
+});
+
 export const periodIsReadOnly = (period, today) =>
   Boolean(period.read_only || period.expired || period.upcoming || period.start_date > today
     || (period.attendance_before && today >= period.attendance_before));

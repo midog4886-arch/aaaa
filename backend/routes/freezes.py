@@ -82,6 +82,28 @@ def extend_end_by_training_days(schedule_text: str, end_dt: datetime, n: int) ->
     return cur
 
 
+def replacement_training_dates(schedule_text: str, old_end: datetime,
+                               freeze_end: datetime, count: int) -> list[str]:
+    """Choose actual replacement sessions after both the old deadline and freeze.
+
+    If a subscription ends during a freeze, simply walking forward from its
+    old deadline can count still-frozen dates as make-up sessions.
+    """
+    if count <= 0:
+        return []
+    days = parse_schedule_days(schedule_text or "")
+    target = {WEEKDAY_INDEX[d] for d in days if d in WEEKDAY_INDEX}
+    cursor = max(old_end, freeze_end)
+    replacements = []
+    for _ in range(3660):
+        cursor += timedelta(days=1)
+        if not target or cursor.weekday() in target:
+            replacements.append(cursor.strftime("%Y-%m-%d"))
+            if len(replacements) == count:
+                return replacements
+    raise ValueError("Could not find replacement sessions for freeze")
+
+
 def _current_period_window(member: dict, ref_date: str):
     """(start, next_start) of the subscription period covering ref_date.
 
@@ -185,6 +207,8 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     for i, act in enumerate(activities):
         if selected_activity_id and act.get("activity_id") != selected_activity_id:
             continue
+        if act.get("status", "active") not in ("active", "expired"):
+            continue
         act_end = act.get("end_date", "")
         if not act_end:
             continue
@@ -192,19 +216,41 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
             act_end_dt = datetime.strptime(act_end, "%Y-%m-%d")
         except ValueError:
             continue
-        ext_days = compute_activity_extension(act, freeze.start_date, freeze.end_date, duration_days)
+        act_start = str(act.get("start_date") or freeze.start_date)[:10]
+        overlap_start = max(act_start, freeze.start_date)
+        overlap_end = min(str(act_end)[:10], freeze.end_date)
+        # A paid renewal can begin before the older row's (possibly extended)
+        # deadline. From that start onward the newer period owns the sessions.
+        next_starts = [str(other.get("start_date"))[:10] for j, other in enumerate(activities)
+                       if j != i and other.get("activity_id") == act.get("activity_id")
+                       and str(other.get("start_date") or "")[:10] > act_start]
+        if next_starts:
+            next_start_dt = datetime.strptime(min(next_starts), "%Y-%m-%d")
+            overlap_end = min(overlap_end, (next_start_dt - timedelta(days=1)).strftime("%Y-%m-%d"))
+        if overlap_start > overlap_end:
+            continue
+        try:
+            overlap_days = (datetime.strptime(overlap_end, "%Y-%m-%d") - datetime.strptime(overlap_start, "%Y-%m-%d")).days + 1
+        except ValueError:
+            continue
+        ext_days = compute_activity_extension(act, overlap_start, overlap_end, overlap_days)
         if ext_days <= 0:
             continue
         schedule_text = act.get("schedule", "")
-        new_end_dt = extend_end_by_training_days(schedule_text, act_end_dt, ext_days)
+        replacement_dates = replacement_training_dates(schedule_text, act_end_dt, end_dt, ext_days)
+        new_end_dt = datetime.strptime(replacement_dates[-1], "%Y-%m-%d")
         activities[i]["end_date"] = new_end_dt.strftime("%Y-%m-%d")
         extension_records.append({
             "index": i,
             "activity_id": act.get("activity_id") or act.get("id") or "",
+            "period_start_date": act_start,
+            "source_id": act.get("source_id") or "",
+            "source_period_key": act.get("source_period_key") or "",
             "schedule": schedule_text,
             "days": ext_days,
             "old_end_date": act_end,
             "new_end_date": new_end_dt.strftime("%Y-%m-%d"),
+            "replacement_dates": replacement_dates,
         })
 
     if selected_activity_id and not extension_records:
@@ -348,16 +394,16 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
             target_idx = None
             preferred_idx = rec.get("index")
             rec_aid = rec.get("activity_id") or ""
+            def matches_period(candidate):
+                return ((not rec_aid or (candidate.get("activity_id") or candidate.get("id") or "") == rec_aid)
+                        and (not rec.get("period_start_date") or str(candidate.get("start_date") or "")[:10] == rec["period_start_date"])
+                        and (not rec.get("source_period_key") or candidate.get("source_period_key") == rec["source_period_key"]))
             # Prefer the original position if it still points at the same activity.
             if (
                 isinstance(preferred_idx, int)
                 and 0 <= preferred_idx < len(activities)
                 and preferred_idx not in used_indices
-                and (not rec_aid or (
-                    activities[preferred_idx].get("activity_id")
-                    or activities[preferred_idx].get("id")
-                    or ""
-                ) == rec_aid)
+                and matches_period(activities[preferred_idx])
             ):
                 target_idx = preferred_idx
             # Fall back to the first unused activity matching activity_id.
@@ -365,7 +411,7 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
                 for j, a in enumerate(activities):
                     if j in used_indices:
                         continue
-                    if (a.get("activity_id") or a.get("id") or "") == rec_aid:
+                    if matches_period(a):
                         target_idx = j
                         break
             if target_idx is None:
@@ -416,7 +462,14 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
                 # picked up after the freeze (renewals, closures, ...).
                 consumed = max(applied - restore, 0)
                 schedule_for_calc = rec.get("schedule") or act.get("schedule", "")
-                target_dt = extend_end_by_training_days(schedule_for_calc, old_dt, consumed)
+                if rec.get("replacement_dates"):
+                    # New freezes place every kept make-up after the freeze.
+                    # Recalculate with the same anchor when cancelling early.
+                    freeze_end_dt = datetime.strptime(freeze_doc["end_date"], "%Y-%m-%d")
+                    kept_dates = replacement_training_dates(schedule_for_calc, old_dt, freeze_end_dt, consumed)
+                    target_dt = datetime.strptime(kept_dates[-1], "%Y-%m-%d") if kept_dates else old_dt
+                else:
+                    target_dt = extend_end_by_training_days(schedule_for_calc, old_dt, consumed)
                 new_end_dt = target_dt + (act_end_dt - new_dt)
             else:
                 # Legacy records (calendar-day extension): reverse the same way.

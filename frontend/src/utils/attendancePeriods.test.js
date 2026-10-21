@@ -1,4 +1,4 @@
-import { attendanceForPeriod, periodIsReadOnly, canRecordToday, sortAttendancePeriods } from './attendancePeriods';
+import { attendanceForPeriod, attendanceRecordsForPeriod, periodIsReadOnly, canRecordToday, sortAttendancePeriods } from './attendancePeriods';
 
 const period = {
   activity_id: 'swim', count_activity_ids: ['swim', 'legacy'],
@@ -26,6 +26,8 @@ test('a renewed period owns attendance from its start even when the old end over
   const records = [{ id: 'old', activity_id: 'swim', date: '2026-09-21' },
     { id: 'renewal', activity_id: 'swim', date: '2026-09-28' }];
   expect(attendanceForPeriod(records, old).map(r => r.id)).toEqual(['old']);
+  expect(attendanceRecordsForPeriod([...records, { id: 'absence', activity_id: 'swim', date: '2026-09-22', status: 'absent' }], old).map(r => r.id)).toEqual(['old', 'absence']);
+  expect(attendanceRecordsForPeriod(records, { ...period, start_date: '2026-09-28' }).map(r => r.id)).toEqual(['renewal']);
 });
 
 test('today action allows a current purchased period while retaining historical read-only rules', () => {
