@@ -11744,6 +11744,16 @@ STATIC_DIR = ROOT_DIR / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR / "static")), name="static_assets")
 
+    @app.get("/mediapipe/{asset_path:path}")
+    async def serve_mediapipe_asset(asset_path: str):
+        """Cache the large, version-pinned pose model and WASM on the client."""
+        asset = (STATIC_DIR / "mediapipe" / asset_path).resolve()
+        root = (STATIC_DIR / "mediapipe").resolve()
+        if (not asset.is_relative_to(root) or not asset.is_file()
+                or asset.suffix not in {".task", ".wasm", ".js"}):
+            raise HTTPException(status_code=404, detail="Asset not found")
+        return FileResponse(asset, headers={"Cache-Control": "public, max-age=604800"})
+
     @app.get("/api/download-apk")
     async def download_android_project():
         # Try latest version first, then fall back to older files

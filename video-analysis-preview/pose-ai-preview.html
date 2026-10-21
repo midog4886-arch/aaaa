@@ -63,6 +63,7 @@ const button = document.getElementById('start');
 const selectArea = document.getElementById('selectArea');
 const edges = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
 let model = null, enabled = false, last = 0, lastStamp = 0, selectedBox = null, candidates = [], boxes = [], targetLost = false;
+let modelPromise = null;
 let missedFrames = 0, lastTargetTime = 0, frameRequest = null, timer = null;
 let currentSamples=new Map(), before=null, afterAnchor=0, afterSource=video.src;
 const beforeVideo=document.getElementById('beforeVideo'),afterVideo=document.getElementById('afterVideo');
@@ -109,6 +110,32 @@ function ambiguous(previous,list,elapsedMs=180) {
   }
   return false;
 }
+function checkedPose(points,box,others=[]) {
+  if(!points||!box) return {points:null,rejected:0};
+  const clean=points.map(point=>visible(point)?point:{...point,visibility:0,presence:0});
+  const center=box.center;
+  const torso=Math.max(.06,
+    Math.hypot((points[11]?.x??center.x)-(points[23]?.x??center.x),(points[11]?.y??center.y)-(points[23]?.y??center.y)),
+    Math.hypot((points[12]?.x??center.x)-(points[24]?.x??center.x),(points[12]?.y??center.y)-(points[24]?.y??center.y)));
+  let rejected=0;
+  const hide=index=>{if(visible(clean[index])){clean[index]={...clean[index],visibility:0,presence:0};rejected++;}};
+  const closerToOther=point=>others.some(other=>other&&
+    Math.hypot(point.x-other.center.x,point.y-other.center.y)+torso*.15<Math.hypot(point.x-center.x,point.y-center.y)&&
+    Math.hypot(point.x-other.center.x,point.y-other.center.y)<Math.max(other.width,other.height,torso));
+  for(const index of [11,12,23,24]) if(visible(clean[index])&&closerToOther(clean[index])) hide(index);
+  for(const chain of [[11,13,15],[12,14,16],[23,25,27],[24,26,28]]) {
+    for(let position=1;position<chain.length;position++) {
+      const index=chain[position],parent=clean[chain[position-1]],point=clean[index];
+      if(!visible(point)) continue;
+      if(!visible(parent)||Math.hypot(point.x-parent.x,point.y-parent.y)>torso*1.65||closerToOther(point)) hide(index);
+    }
+  }
+  const shoulders=[11,12].filter(index=>visible(clean[index])).length;
+  const hips=[23,24].filter(index=>visible(clean[index])).length;
+  const seen=clean.filter(visible).length;
+  if(!shoulders||!hips||seen<8||rejected>=3) return {points:null,rejected};
+  return {points:clean,rejected};
+}
 function angle(a,b,c,ratio) {
   if (![a,b,c].every(visible)) return null;
   const x=(a.x-b.x)*ratio,y=a.y-b.y,u=(c.x-b.x)*ratio,v=c.y-b.y,d=Math.hypot(x,y)*Math.hypot(u,v);
@@ -128,9 +155,9 @@ function draw(points, selectedIndex) {
     context.lineWidth=index===selectedIndex?4:2;
     context.strokeRect(x,y,box.width*w,box.height*h);
     context.fillStyle=index===selectedIndex?'#096b50':'#9a5700';
-    context.fillRect(x,Math.max(0,y-22),85,22);
+    context.fillRect(x,Math.max(0,y-22),110,22);
     context.fillStyle='white';context.font='bold 13px Arial';
-    context.fillText(index===selectedIndex?'اللاعب المحدد':String(index+1),x+5,Math.max(15,y-6));
+    context.fillText(index===selectedIndex?'السباح المحدد':`مرشح ${index+1}`,x+5,Math.max(15,y-6));
   });
   if (!points) return;
   context.strokeStyle='#2ef2b3';context.lineWidth=3;
@@ -231,8 +258,13 @@ function frame(force=false) {
         if (missedFrames>=5 || Math.abs(video.currentTime-lastTargetTime)>.8) {selectedBox=null;targetLost=true;}
       } else {selectedBox=boxes[index];missedFrames=0;lastTargetTime=video.currentTime;}
     }
-    draw(index===null?null:candidates[index],index);
-    if (index!==null) showMeasurements(candidates[index]);
+    const checked=index===null?{points:null,rejected:0}:checkedPose(candidates[index],boxes[index],boxes.filter((_,candidate)=>candidate!==index));
+    draw(checked.points,checked.points?index:null);
+    if (index!==null&&checked.points&&checked.rejected===0) showMeasurements(checked.points);
+    else if(index!==null) {
+      recordSample(false);metrics.replaceChildren();
+      status.textContent=checked.points?'بعض المفاصل غير موثوقة؛ أُخفيت وتوقفت القياسات لهذه اللقطة.':'مواضع المفاصل غير موثوقة في هذه اللقطة؛ أُخفي الهيكل وتوقفت القياسات. اختر لقطة أوضح.';
+    }
     else {
       if (selectedBox) recordSample(false);
       metrics.replaceChildren();
@@ -256,20 +288,34 @@ selectArea.onclick=event=>{
     position.x>=box.left && position.x<=box.right && position.y>=box.top && position.y<=box.bottom);
   if (hits.length!==1) {status.textContent='حدد لاعبًا واحدًا داخل إطار واضح؛ الإطارات المتداخلة غير مؤكدة.';return;}
   const index=hits[0].index;
+  const checked=checkedPose(candidates[index],boxes[index],boxes.filter((_,candidate)=>candidate!==index));
+  if(!checked.points||checked.rejected){status.textContent='مواضع المفاصل غير موثوقة هنا؛ أوقف الفيديو عند لقطة أوضح ثم حدد السباح.';return;}
   selectedBox=boxes[index];targetLost=false;missedFrames=0;lastTargetTime=video.currentTime;
-  draw(candidates[index],index);showMeasurements(candidates[index]);
+  draw(checked.points,index);showMeasurements(checked.points);
   if (video.paused) video.play().catch(()=>{status.textContent='تم اختيار اللاعب؛ اضغط تشغيل الفيديو للمتابعة.';});
 };
+function loadModel(){
+  if(model) return Promise.resolve(model);
+  if(!modelPromise) modelPromise=(async()=>{
+    const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm');
+    model=await PoseLandmarker.createFromOptions(vision,{baseOptions:{
+      modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',delegate:'CPU'
+    },runningMode:'VIDEO',numPoses:6});
+    return model;
+  })().catch(error=>{modelPromise=null;throw error;});
+  return modelPromise;
+}
+function warmModel(){
+  if(model||modelPromise) return;
+  status.textContent='جارٍ تجهيز نموذج الحركة في الخلفية؛ يمكنك مشاهدة الفيديو الآن.';
+  loadModel().then(()=>{if(!enabled)status.textContent='نموذج الحركة جاهز؛ اضغط تشغيل التتبع ثم اختر السباح.';})
+    .catch(()=>{if(!enabled)status.textContent='تعذر تجهيز النموذج مسبقًا. اضغط تشغيل التتبع لإعادة المحاولة.';});
+}
 button.onclick=async()=>{
   if (enabled) {enabled=false;selectedBox=null;targetLost=false;missedFrames=0;candidates=[];boxes=[];selectArea.style.display='none';button.textContent='تشغيل تتبّع المفاصل AI';draw(null,null);metrics.replaceChildren();status.textContent='التتبّع متوقف.';return;}
   button.disabled=true;status.textContent='جارٍ تحميل نموذج الحركة…';
   try {
-    if (!model) {
-      const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm');
-      model=await PoseLandmarker.createFromOptions(vision,{baseOptions:{
-        modelAssetPath:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',delegate:'CPU'
-      },runningMode:'VIDEO',numPoses:6});
-    }
+    await loadModel();
     enabled=true;selectArea.style.display='block';button.textContent='إيقاف التتبّع';
     status.textContent='النموذج جاهز؛ اضغط على إطار اللاعب المطلوب.';frame(true);
   } catch(error) {status.textContent='تعذر تحميل النموذج: '+(error?.message||error);}
@@ -278,7 +324,8 @@ button.onclick=async()=>{
 video.onplay=()=>{if (!enabled && !button.disabled) button.click();};
 video.ontimeupdate=()=>frame();
 video.onseeked=()=>{if (selectedBox) {selectedBox=null;targetLost=true;missedFrames=0;}frame(true);};
-video.onloadeddata=()=>frame(true);
+video.onloadeddata=()=>{warmModel();frame(true);};
+if(video.readyState>=2) warmModel();
 if (video.requestVideoFrameCallback) {
   const tick=()=>{frame();frameRequest=video.requestVideoFrameCallback(tick);};
   frameRequest=video.requestVideoFrameCallback(tick);
