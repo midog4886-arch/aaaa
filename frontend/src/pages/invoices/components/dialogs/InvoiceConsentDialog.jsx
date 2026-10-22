@@ -5,6 +5,7 @@ import { Input } from '../../../../components/ui/input';
 import { invoicesAPI } from '../../../../services/api';
 import { toast } from 'sonner';
 import { getAcademyLogoUrl } from '../../../../services/branding';
+import MemberAvatar from '../../../../components/MemberAvatar';
 
 const empty = { child_name: '', birth_date: '', guardian_name: '', relationship: '', guardian_identity: '', has_medical_condition: false, medical_details: '', signer_name: '', accepted: false };
 
@@ -14,6 +15,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const ink = useRef(false);
   const [data, setData] = useState(null);
   const [form, setForm] = useState(empty);
+  const [memberPhoto, setMemberPhoto] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -52,6 +54,7 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
     setFamilySelected([invoice.id]);
     setFamilyCandidates([]);
     setForm({ ...empty, child_name: invoice.customer_name_ar || invoice.member_name || '' });
+    setMemberPhoto('');
     ink.current = false;
     invoicesAPI.getRegistrationConsent(invoice.id).then(r => {
       if (!active) return;
@@ -102,6 +105,26 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
   const start = event => { drawing.current = true; event.currentTarget.setPointerCapture(event.pointerId); const p = point(event); const ctx = canvas.current.getContext('2d'); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
   const move = event => { if (!drawing.current) return; const p = point(event); const ctx = canvas.current.getContext('2d'); ctx.lineTo(p.x, p.y); ctx.stroke(); ink.current = true; };
   const clear = () => { const el = canvas.current; el?.getContext('2d').clearRect(0, 0, el.width, el.height); ink.current = false; };
+  const choosePhoto = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 8 * 1024 * 1024) {
+      toast.error('اختر صورة JPG أو PNG أو WebP بحجم لا يتجاوز 8 ميجابايت');
+      return;
+    }
+    try {
+      const image = await createImageBitmap(file);
+      if (image.width * image.height > 25000000) { image.close(); throw new Error('Image too large'); }
+      const scale = Math.min(1, 512 / Math.max(image.width, image.height));
+      const resized = document.createElement('canvas');
+      resized.width = Math.max(1, Math.round(image.width * scale));
+      resized.height = Math.max(1, Math.round(image.height * scale));
+      resized.getContext('2d').drawImage(image, 0, 0, resized.width, resized.height);
+      image.close();
+      setMemberPhoto(resized.toDataURL('image/jpeg', 0.82));
+    } catch (_) { toast.error('تعذر قراءة الصورة. اختر صورة أخرى'); }
+  };
   const submit = async () => {
     if (!ink.current || !form.accepted || !form.child_name.trim() || !form.guardian_name.trim() || !form.relationship.trim() || !form.guardian_identity.trim() || !form.signer_name.trim()) {
       toast.error('أكمل بيانات وليّ الأمر والموافقة والتوقيع'); return;
@@ -109,11 +132,12 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
     if (form.has_medical_condition && !form.medical_details.trim()) { toast.error('أدخل التفاصيل الصحية'); return; }
     setBusy(true);
     try {
-      const signed = await invoicesAPI.signRegistrationConsent(invoice.id, { ...form, expected_invoice_hash: data.invoice_hash, expected_terms_version: data.terms_version, signature_png: canvas.current.toDataURL('image/png') });
+      const signed = await invoicesAPI.signRegistrationConsent(invoice.id, { ...form, member_photo: data.can_upload_photo ? memberPhoto || null : null, expected_invoice_hash: data.invoice_hash, expected_terms_version: data.terms_version, signature_png: canvas.current.toDataURL('image/png') });
       setData(previous => ({ ...previous, signed: signed.data, needs_resign: false }));
       statusChangeRef.current?.(invoice.id, { signed: signed.data, needs_resign: false });
       refreshHistory();
       toast.success('حُفظت الاستمارة الموقّعة');
+      if (memberPhoto && !signed.data.photo_saved) toast.warning('حُفظ التوقيع، لكن تعذر حفظ الصورة. يمكن إضافتها من ملف العضو');
     } catch (error) { toast.error(error.response?.data?.detail || 'تعذر حفظ التوقيع'); }
     finally { setBusy(false); }
   };
@@ -252,6 +276,8 @@ export function InvoiceConsentDialog({ invoice, open, onOpenChange, onStatusChan
           ['child_name', 'اسم الطفل الرباعي'], ['birth_date', 'تاريخ الميلاد'], ['guardian_name', 'اسم ولي الأمر الرباعي'],
           ['relationship', 'صلة القرابة'], ['guardian_identity', 'رقم الهوية / الإقامة'],
         ].map(([key, label]) => <label key={key} className="space-y-1"><span>{label}</span><Input type={key === 'birth_date' ? 'date' : 'text'} value={form[key]} onChange={e => update(key, e.target.value)} /></label>)}</div>
+        {data.member_photo && <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><MemberAvatar photo={data.member_photo} name={data.invoice.customer_name_ar || data.invoice.member_name} size="lg" /><span>صورة المشترك محفوظة بالفعل في ملفه.</span></div>}
+        {data.can_upload_photo && <div className="rounded-xl border border-violet-200 bg-violet-50 p-3"><label className="font-medium" htmlFor="admin-consent-member-photo">صورة المشترك (اختيارية)</label><p className="mt-1 text-xs text-slate-600">تُحفظ في ملف العضو عند اعتماد الاستمارة. يمكنك المتابعة دون صورة.</p><input id="admin-consent-member-photo" type="file" accept="image/jpeg,image/png,image/webp" onChange={choosePhoto} className="mt-2 block w-full text-sm" />{memberPhoto && <div className="mt-2 flex items-center gap-3"><img src={memberPhoto} alt="معاينة صورة المشترك" className="h-16 w-16 rounded-full object-cover" /><Button variant="outline" size="sm" onClick={() => setMemberPhoto('')}>إزالة الصورة</Button></div>}</div>}
         <div className="rounded-xl border p-3"><label className="flex gap-2"><input type="checkbox" checked={form.has_medical_condition} onChange={e => update('has_medical_condition', e.target.checked)} /> توجد حالة صحية أو حساسية أو إصابة سابقة</label>{form.has_medical_condition && <Input className="mt-2" placeholder="التفاصيل الصحية" value={form.medical_details} onChange={e => update('medical_details', e.target.value)} />}</div>
         <div className="max-h-60 overflow-y-auto rounded-xl border p-4"><h3 className="font-bold">الشروط والإقرار / Terms and acknowledgment</h3><ol className="list-decimal space-y-2 pr-5">{data.terms.map((term, i) => <li key={i}><strong>{term.section}: </strong>{term.text}<p dir="ltr" className="text-left text-slate-600">{term.section_en}: {term.text_en}</p></li>)}</ol><p className="mt-3 font-medium">{data.declaration}</p><p dir="ltr" className="text-left text-slate-600">{data.declaration_en}</p></div>
         <label className="block space-y-1">اسم الموقّع<Input value={form.signer_name} onChange={e => update('signer_name', e.target.value)} /></label>

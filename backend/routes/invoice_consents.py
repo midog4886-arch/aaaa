@@ -421,13 +421,22 @@ async def get_registration_consent(invoice_id: str, user: dict = Depends(get_cur
     family_current = bool(family and any(row.get("id") == invoice_id and snapshot_hash(row) == snapshot_hash(snapshot) for row in family.get("invoice_snapshots", [])) and family.get("terms_version") == (await current_terms(family.get("form_type", "swimming")))["version"])
     if family:
         latest = {key: value for key, value in latest.items() if key != "invoice_snapshots"}
+    linked_member = None
+    if invoice.get("member_id"):
+        linked_member = await db.members.find_one(
+            {"id": invoice["member_id"], "branch_id": invoice.get("branch_id")},
+            {"photo": 1, "_id": 0},
+        )
+    needs_resign = bool(latest and (not family_current if family else (latest.get("invoice_hash") != snapshot_hash(snapshot) or latest.get("terms_version") != settings["version"])))
     return {"invoice": snapshot, "invoice_hash": snapshot_hash(snapshot), "terms_version": settings["version"],
+            "can_upload_photo": bool(linked_member and not linked_member.get("photo") and (not latest or needs_resign)),
+            "member_photo": (linked_member or {}).get("photo") or "",
             "form_type": consent_form_type(invoice),
             "title": settings["title"], "title_en": settings["title_en"],
             "company_name": settings["company_name"], "company_name_en": settings["company_name_en"],
             "terms": settings["terms"], "declaration": settings["declaration"], "declaration_en": settings["declaration_en"], "signed": latest,
             "family_signed": bool(family),
-            "needs_resign": bool(latest and (not family_current if family else (latest.get("invoice_hash") != snapshot_hash(snapshot) or latest.get("terms_version") != settings["version"])))}
+            "needs_resign": needs_resign}
 
 
 @router.get("/{invoice_id}/registration-consent/pdf")

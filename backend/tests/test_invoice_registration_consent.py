@@ -98,6 +98,18 @@ def test_form_preview_omits_signature_image_but_keeps_signed_status(monkeypatch)
     assert 'invoice_hash' in state['signed']
 
 
+def test_admin_consent_offers_photo_only_for_member_without_one(monkeypatch):
+    invoice, database, user = fixture_db(monkeypatch)
+    invoice['member_id'] = 'm1'
+    database.members.rows.append({'id': 'm1', 'branch_id': 'b1', 'photo': ''})
+    state = asyncio.run(route.get_registration_consent('i1', user))
+    assert state['can_upload_photo'] is True
+    database.members.rows[0]['photo'] = '/members/m1.jpg'
+    state = asyncio.run(route.get_registration_consent('i1', user))
+    assert state['can_upload_photo'] is False
+    assert state['member_photo'] == '/members/m1.jpg'
+
+
 def test_consent_rejects_other_branch_and_missing_medical_details(monkeypatch):
     invoice, database, user = fixture_db(monkeypatch)
     with pytest.raises(HTTPException) as forbidden:
