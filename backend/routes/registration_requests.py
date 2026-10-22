@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime, timezone, timedelta
+import logging
 import re
 import uuid
 import hashlib
@@ -30,8 +31,10 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from utils.auth import get_current_user, require_branch_scope, resolve_branch_filter
 from utils.tenant import get_current_tenant
+from utils.phone import normalize_phone
 
 router = APIRouter(tags=["RegistrationRequests"])
+logger = logging.getLogger(__name__)
 
 STAFF_CONTACT_FOLLOWUP_REASONS = {"contacted", "staff_contacted"}
 # A registration request is considered converted when it has a real invoice
@@ -668,9 +671,59 @@ async def public_get_registration_branch(branch_id: str):
     }
 
 
+async def _queue_branch_registration_alert(branch: dict, request: dict) -> None:
+    """Notify the branch about a public-link request without delaying its receipt."""
+    from services import whatsapp_bulk_jobs
+
+    branch_id = branch["id"]
+    recipient = (normalize_phone(branch.get("support_whatsapp"))
+                 or normalize_phone(branch.get("phone")))
+    if not recipient:
+        logger.info("Registration alert skipped: no WhatsApp number for branch %s", branch_id)
+        return
+    config = await db.whatsapp_branch_configs.find_one(
+        {"branch_id": branch_id}, {"_id": 0}
+    )
+    provider = (config or {}).get("provider") or "meta_cloud"
+    if provider not in {"waha", "whatsflow", "meta_cloud"} or not (config or {}).get("enabled"):
+        logger.info("Registration alert skipped: WhatsApp is not enabled for branch %s", branch_id)
+        return
+    if provider == "meta_cloud" and not (
+        config.get("message_template_name")
+        and config.get("single_variable_template_confirmed")
+    ):
+        logger.info("Registration alert skipped: Meta template is not approved for branch %s", branch_id)
+        return
+    def one_line(value) -> str:
+        return " ".join(str(value or "").split())[:120] or "-"
+
+    message = (
+        "طلب تسجيل جديد من رابط الفرع\n"
+        f"الفرع: {one_line(branch.get('name_ar') or branch.get('name'))}\n"
+        f"الاسم: {one_line(request['customer_name'])}\n"
+        f"الجوال: {one_line(request['customer_phone'])}\n"
+        f"النشاط: {one_line(request.get('activity_name') or 'غير محدد')}\n"
+        f"تاريخ البداية المتوقع: {request['expected_start_date']}\n"
+        f"رقم الطلب: {request['id'][:8].upper()}\n"
+        "راجع الطلب في لوحة التحكم ← طلبات التسجيل."
+    )
+    await whatsapp_bulk_jobs.enqueue(
+        branch_id, provider,
+        [{"phone": recipient, "message": message,
+          "communication_kind": "branch_registration_alert",
+          "source": "branch_registration_alert",
+          "source_metadata": {"request_id": request["id"]}}],
+        f"branch-registration-alert-{request['id']}",
+        kind="branch_registration_alert", source="branch_registration_alert",
+    )
+
+
 async def _create_registration_request(branch_id: str, payload: PublicRegistrationCreate, *, staff_user_id: str = ""):
     """Both entry points create the same pending request; no member is created."""
-    branch = await db.branches.find_one({"id": branch_id}, {"_id": 0, "id": 1})
+    branch = await db.branches.find_one(
+        {"id": branch_id},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "phone": 1, "support_whatsapp": 1},
+    )
     if not branch:
         raise HTTPException(status_code=404, detail="Branch not found")
 
@@ -722,6 +775,7 @@ async def _create_registration_request(branch_id: str, payload: PublicRegistrati
         "preferred_time": (payload.preferred_time or "").strip(),
         "notes": (payload.notes or "").strip(),
         "branch_id": branch_id,
+        "expected_start_date": payload.expected_start_date,
         "status": "pending",
         # Track where the request came from. "social_ad" = the all-branches
         # link shared in social-media ads; anything else falls back to the
@@ -780,6 +834,17 @@ async def _create_registration_request(branch_id: str, payload: PublicRegistrati
             await send_push_to_admins(push_payload, branch_id=branch_id)
         except Exception:
             pass
+
+        # The ad's all-branches form and staff entry have separate workflows;
+        # only the branch's own public link alerts its WhatsApp number.
+        if doc["source"] == "public_link":
+            try:
+                await _queue_branch_registration_alert(branch, doc)
+            except Exception as exc:
+                logger.warning(
+                    "Could not queue registration alert for branch %s request %s: %s",
+                    branch_id, doc["id"], type(exc).__name__,
+                )
 
     return {"success": True, "message": "تم استلام طلب التسجيل بنجاح", "request_number": doc["id"][:8].upper(), "request_id": doc["id"]}
 

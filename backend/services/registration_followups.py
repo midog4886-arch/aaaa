@@ -511,6 +511,10 @@ async def _set_group(branch_id, phone, status, reason=None, sent_count=None):
 async def authorize_dispatch(item: dict):
     """Called while the branch pacing lease is held."""
     kind = item.get("communication_kind") or "marketing"
+    # This is an operational notification to the branch itself, not a
+    # customer follow-up. Do not apply the per-customer daily contact cap.
+    if kind == "branch_registration_alert":
+        return {"action": "send"}
     phone = normalize_phone(item.get("phone"))
     if kind == 'marketing' and await _db['registration_followup_stops'].find_one(
             {'phone':phone, '$or':[{'reason':'opted_out'},{'persistent':True}]}):

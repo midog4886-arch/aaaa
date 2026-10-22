@@ -128,6 +128,62 @@ def request_doc(**changes):
     return row
 
 
+def test_branch_registration_alert_queues_once_to_branch_whatsapp(database, monkeypatch):
+    from services import whatsapp_bulk_jobs
+
+    database.whatsapp_branch_configs.rows.append({
+        "branch_id": "b1", "provider": "waha", "enabled": True,
+    })
+    enqueue = AsyncMock(return_value=({"status": "pending"}, True))
+    monkeypatch.setattr(whatsapp_bulk_jobs, "enqueue", enqueue)
+    branch = {"id": "b1", "name_ar": "الفرع الأول", "phone": "0501111111",
+              "support_whatsapp": "0502222222"}
+    request = {"id": "request-123", "customer_name": "سارة", "customer_phone": "0501234567",
+               "activity_name": "السباحة", "expected_start_date": "2026-10-25"}
+
+    run(routes._queue_branch_registration_alert(branch, request))
+    args, kwargs = enqueue.call_args
+    assert args[0:2] == ("b1", "waha")
+    assert args[2][0]["phone"] == "966502222222"
+    assert "سارة" in args[2][0]["message"]
+    assert "0501234567" in args[2][0]["message"]
+    assert args[3] == "branch-registration-alert-request-123"
+    assert kwargs["kind"] == "branch_registration_alert"
+
+
+def test_branch_registration_alert_does_not_use_customer_contact_cap(database):
+    database.whatsapp_contact_days.rows.append({
+        "phone": "966502222222", "day": "2026-10-22", "kind": "marketing",
+    })
+    decision = run(followups.authorize_dispatch({
+        "branch_id": "b1", "phone": "966502222222",
+        "communication_kind": "branch_registration_alert",
+    }))
+    assert decision == {"action": "send"}
+
+
+def test_public_registration_alert_only_for_branch_link(database, monkeypatch):
+    database.branches.rows.append({"id": "b1", "name_ar": "الفرع الأول", "phone": "0502222222"})
+    alert = AsyncMock()
+    monkeypatch.setattr(routes, "_queue_branch_registration_alert", alert)
+    payload = routes.PublicRegistrationCreate(
+        customer_name="سارة", customer_phone="0501234567", age=8,
+        expected_start_date="2026-10-25", nationality="سعودية",
+    )
+    run(routes._create_registration_request("b1", payload))
+    assert alert.await_count == 1
+    assert database.registration_requests.rows[0]["expected_start_date"] == "2026-10-25"
+
+    alert.reset_mock()
+    payload.source = "social_ad"
+    run(routes._create_registration_request("b1", payload))
+    alert.assert_not_awaited()
+
+    payload.source = ""
+    run(routes._create_registration_request("b1", payload, staff_user_id="staff-1"))
+    alert.assert_not_awaited()
+
+
 def test_new_enrollment_is_explicit_but_old_document_remains_unenrolled(database):
     old = {"id": "legacy", "created_at": "2025-01-01T00:00:00+00:00"}
     database.registration_requests.rows.append(old)
