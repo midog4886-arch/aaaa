@@ -2264,8 +2264,8 @@ async def _renewed_expiry_keys(members: list[dict], db=None) -> set[tuple[str, s
 
     A paid renewal may still be waiting on the invoice rather than appearing in
     member.activities. Family invoice items use their own member id. Never let
-    a different activity, unpaid invoice, or the original invoice suppress a
-    reminder.
+    a different activity, unpaid period, or the original paid item suppress a
+    reminder. Renewals may be separate items on the same invoice.
     """
     from utils.effective_periods import effective_period_map, operational_window
     db = db if db is not None else _db
@@ -2326,8 +2326,7 @@ async def _renewed_expiry_keys(members: list[dict], db=None) -> set[tuple[str, s
         )
         later_paid = any(
             start > (old_start or old_end) and end >= start
-            and invoice_id != activity.get("source_id")
-            for start, end, invoice_id in paid_periods.get((member_id, activity_id), [])
+            for start, end, _invoice_id in paid_periods.get((member_id, activity_id), [])
         )
         if later_on_card or later_paid:
             renewed.add((member_id, activity_id, old_end))

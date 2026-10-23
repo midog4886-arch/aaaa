@@ -69,7 +69,7 @@ def test_freeze_moves_paid_renewals_and_cancel_restores_them():
     third = db.subscription_effective_periods.rows[
         source_key(invoices[2], invoices[2]['items'][0], 0)]
     assert (second['effective_start_date'], second['effective_end_date']) == (
-        '2026-11-01', '2026-11-24')
+        '2026-11-01', '2026-11-28')
     assert third['effective_start_date'] == '2026-11-29'
     assert asyncio.run(reconcile_member_period_overlap(db, member, activity)) == []
 
@@ -98,3 +98,23 @@ def test_other_member_or_unpaid_invoice_cannot_shift_period():
                 'start_date': '2026-09-27', 'end_date': '2026-10-27'}
     assert len(asyncio.run(reconcile_member_period_overlap(
         db, {'id': 'm1', 'branch_id': 'b1'}, activity))) == 1
+
+
+def test_two_paid_periods_on_one_invoice_shift_independently():
+    invoice = {'id': 'bundle', 'status': 'paid', 'member_id': 'm1',
+               'branch_id': 'b1', 'items': [
+                   {'activity_id': 'swim', 'schedule': 'الجمعة والسبت',
+                    'start_date': '2026-09-27', 'end_date': '2026-10-20'},
+                   {'activity_id': 'swim', 'schedule': 'الجمعة والسبت',
+                    'start_date': '2026-10-25', 'end_date': '2026-11-17'},
+               ]}
+    db = DB([invoice])
+    activity = {'activity_id': 'swim', 'source_id': 'bundle',
+                'start_date': '2026-09-27', 'end_date': '2026-10-25',
+                'schedule': 'الجمعة والسبت'}
+    asyncio.run(reconcile_member_period_overlap(
+        db, {'id': 'm1', 'branch_id': 'b1'}, activity))
+    later = db.subscription_effective_periods.rows[
+        source_key(invoice, invoice['items'][1], 1)]
+    assert later['effective_start_date'] == '2026-10-30'
+    assert later['effective_end_date'] == '2026-11-22'

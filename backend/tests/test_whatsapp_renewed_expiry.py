@@ -65,3 +65,20 @@ def test_paid_renewal_suppresses_old_expiry_even_when_freeze_overlaps_it():
     result = asyncio.run(mod._renewed_expiry_keys(
         members, SimpleNamespace(invoices=Invoices(invoices))))
     assert result == {("m1", "swim", "2026-10-27")}
+
+
+def test_later_paid_item_on_same_invoice_suppresses_old_expiry():
+    members = [{"id": "m1", "branch_id": "b1", "activities": [{
+        "activity_id": "swim", "status": "active", "source_id": "bundle",
+        "start_date": "2026-09-27", "end_date": "2026-10-25",
+    }]}]
+    invoices = [{"id": "bundle", "status": "paid", "branch_id": "b1",
+                 "member_id": "m1", "items": [
+                     {"activity_id": "swim", "start_date": "2026-09-27",
+                      "end_date": "2026-10-20"},
+                     {"activity_id": "swim", "start_date": "2026-10-25",
+                      "end_date": "2026-11-17"},
+                 ]}]
+    result = asyncio.run(mod._renewed_expiry_keys(
+        members, SimpleNamespace(invoices=Invoices(invoices))))
+    assert result == {("m1", "swim", "2026-10-25")}

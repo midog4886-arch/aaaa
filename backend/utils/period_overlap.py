@@ -35,7 +35,7 @@ def _weekdays(item: dict, fallback: dict) -> set[int]:
 
 def _shift_window_after(anchor_end: str, base_start: str, base_end: str,
                         weekdays: set[int]) -> tuple[str, str]:
-    """Move a paid window after its predecessor without losing its sessions."""
+    """Move a paid window after its predecessor without shortening its span."""
     start, end, anchor = (date.fromisoformat(value) for value in
                           (base_start, base_end, anchor_end))
     if end < start:
@@ -44,12 +44,6 @@ def _shift_window_after(anchor_end: str, base_start: str, base_end: str,
         # Legacy items without a readable schedule keep their exact day span.
         shifted_start = anchor + timedelta(days=1)
         return shifted_start.isoformat(), (shifted_start + (end - start)).isoformat()
-    sessions = sum(
-        (start + timedelta(days=offset)).weekday() in weekdays
-        for offset in range((end - start).days + 1)
-    )
-    if sessions <= 0:
-        raise ValueError("Paid period has no scheduled sessions")
     cursor = anchor
     for _ in range(3660):
         cursor += timedelta(days=1)
@@ -58,13 +52,7 @@ def _shift_window_after(anchor_end: str, base_start: str, base_end: str,
             break
     else:
         raise ValueError("Could not locate next training day")
-    for _ in range(3660):
-        if cursor.weekday() in weekdays:
-            sessions -= 1
-            if sessions == 0:
-                return shifted_start.isoformat(), cursor.isoformat()
-        cursor += timedelta(days=1)
-    raise ValueError("Could not preserve paid session quota")
+    return shifted_start.isoformat(), (shifted_start + (end - start)).isoformat()
 
 
 async def reconcile_member_period_overlap(db, member: dict, activity: dict,
