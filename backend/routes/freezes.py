@@ -256,6 +256,20 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     if selected_activity_id and not extension_records:
         raise HTTPException(status_code=400, detail="لا توجد حصص مجدولة لهذا النشاط خلال فترة التجميد")
 
+    # Validate successor periods before changing the member. A replacement
+    # session may extend this period into an already paid renewal; that renewal
+    # must keep its full purchased quota and start after the replacement.
+    from utils.period_overlap import reconcile_member_period_overlap
+    affected_indices = sorted({record["index"] for record in extension_records})
+    shifted_member = {**member, "activities": activities}
+    try:
+        for index in affected_indices:
+            await reconcile_member_period_overlap(
+                db, shifted_member, activities[index], persist=False
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=f"تعذّر ترحيل الفترة التالية: {exc}")
+
     await db.members.update_one(
         {"id": freeze.member_id},
         {"$set": {"activities": activities}}
@@ -282,6 +296,11 @@ async def create_freeze(freeze: FreezeCreate, current_user: dict = Depends(get_c
     }
 
     await db.member_freezes.insert_one(freeze_doc)
+    for index in affected_indices:
+        try:
+            await reconcile_member_period_overlap(db, shifted_member, activities[index])
+        except Exception as exc:
+            logger.exception("Freeze %s needs paid-period reconciliation: %s", freeze_id, exc)
     from utils.cache import invalidate_dashboard_caches
     invalidate_dashboard_caches()
     try:
@@ -479,6 +498,12 @@ async def cancel_freeze(freeze_id: str, current_user: dict = Depends(get_current
             {"id": freeze_doc["member_id"]},
             {"$set": {"activities": activities}}
         )
+        from utils.period_overlap import reconcile_member_period_overlap
+        for index in used_indices:
+            try:
+                await reconcile_member_period_overlap(db, member, activities[index])
+            except Exception as exc:
+                logger.exception("Cancelled freeze %s needs period reconciliation: %s", freeze_id, exc)
     elif member:
         # Legacy calendar-day behavior for old freezes.
         restore_days = _legacy_restore_days(freeze_doc, today_str)

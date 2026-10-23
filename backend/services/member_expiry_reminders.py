@@ -28,6 +28,21 @@ async def send_member_expiry_reminders(db, today=None):
         reminder_stage(activity.get('end_date'), today) is not None
         for activity in member.get('activities') or []
     )]
+    # Older freezes can leave a paid renewal overlapping the carried session.
+    # Repair its operational window before any expiry notification is created.
+    from utils.period_overlap import reconcile_member_period_overlap
+    for member in candidates:
+        for activity in member.get('activities') or []:
+            if reminder_stage(activity.get('end_date'), today) is None:
+                continue
+            if not (activity.get('source_id') and activity.get('activity_id')):
+                continue
+            try:
+                await reconcile_member_period_overlap(db, member, activity)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    'Paid period reconciliation failed for member %s', member.get('id')
+                )
     renewed = await _renewed_expiry_keys(candidates, db)
     for member in members:
         for activity in member.get('activities') or []:

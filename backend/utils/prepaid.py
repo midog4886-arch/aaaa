@@ -42,6 +42,13 @@ async def roll_forward_member_prepaid(db, member, today=None):
     if not acts:
         return []
 
+    # Repair older overlapping paid renewals before deciding whether a prepaid
+    # period has arrived. Otherwise s <= cur_end hides it forever.
+    from utils.period_overlap import reconcile_member_period_overlap
+    for act in acts:
+        if act.get("activity_id") and act.get("source_id"):
+            await reconcile_member_period_overlap(db, member, act)
+
     invoices = await db.invoices.find(
         {
             "$or": [

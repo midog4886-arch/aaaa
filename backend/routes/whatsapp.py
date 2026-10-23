@@ -2313,16 +2313,20 @@ async def _renewed_expiry_keys(members: list[dict], db=None) -> set[tuple[str, s
     renewed = set()
     for member, activity, activity_id, old_end in candidates:
         member_id = member["id"]
+        old_start = str(activity.get("start_date") or "")[:10]
         later_on_card = any(
             next_activity is not activity
             and next_activity.get("activity_id") == activity_id
             and next_activity.get("status") not in {"cancelled", "refunded", "inactive"}
-            and str(next_activity.get("start_date") or "")[:10] > old_end
+            and str(next_activity.get("start_date") or "")[:10] > (old_start or old_end)
+            and (not activity.get("source_id")
+                 or next_activity.get("source_id") != activity.get("source_id"))
             and str(next_activity.get("end_date") or "")[:10] >= str(next_activity.get("start_date") or "")[:10]
             for next_activity in member.get("activities") or []
         )
         later_paid = any(
-            start > old_end and end > old_end and invoice_id != activity.get("source_id")
+            start > (old_start or old_end) and end >= start
+            and invoice_id != activity.get("source_id")
             for start, end, invoice_id in paid_periods.get((member_id, activity_id), [])
         )
         if later_on_card or later_paid:
