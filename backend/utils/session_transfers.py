@@ -47,8 +47,9 @@ async def preview(db, sender_query, recipient_query, activity_id, payload, sessi
     recipient_balance = 0
     if target:
         dest = target[0]
-        if dest.get("status", "active") != "active" or dest.get("end_date") != source.get("end_date") or dest.get("start_date", "") > today:
-            reject("اشتراك المستلم يجب أن يكون ساريًا وبنفس تاريخ الانتهاء؛ لا يتم تمديد صلاحية الحصص")
+        if (dest.get("status", "active") != "active"
+                or not dest.get("start_date", "") <= today <= dest.get("end_date", "")):
+            reject("يلزم اشتراك ساري للمستلم في النشاط نفسه")
         dest_quotas = await check_member_session_quota(recipient["id"], activity_id, session=session)
         rows = [q for q in dest_quotas if q["start_date"] == dest["start_date"][:10] and q["end_date"] == dest["end_date"][:10]]
         if len(rows) != 1 or rows[0]["used_sessions"] > rows[0]["total_allowed"]:
@@ -62,7 +63,8 @@ async def preview(db, sender_query, recipient_query, activity_id, payload, sessi
         "sender_name": sender.get("name_ar") or sender.get("name"),
         "recipient_name": recipient.get("name_ar") or recipient.get("name"),
         "activity_name": source.get("activity_name"), "sessions": amount,
-        "end_date": source["end_date"], "reason": payload["reason"].strip(),
+        "end_date": target[0]["end_date"] if target else source["end_date"],
+        "sender_end_date": source["end_date"], "reason": payload["reason"].strip(),
         "sender_before": balance, "sender_after": balance - amount,
         "recipient_before": recipient_balance, "recipient_after": recipient_balance + amount,
     }
