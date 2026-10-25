@@ -19,6 +19,7 @@ import SessionTransferDialog from '../components/members/SessionTransferDialog';
 import ScheduleChangeReviewDialog from '../components/members/ScheduleChangeReviewDialog';
 import { activityWeekdaysChanged, scheduleChangeError } from '../utils/memberScheduleChange';
 import { closureCompensatedMember } from '../utils/memberClosureStatus';
+import { matchesLegacyFreezePeriod } from '../utils/legacyFreezePeriod';
  
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -1245,9 +1246,7 @@ export const MembersPage = () => {
             if (rec.source_id && q.source_id && rec.source_id !== q.source_id) return false;
             return true;
           }
-          // Older records have no period identity. Only use an exact deadline
-          // match so overlapping renewals cannot inherit each other's freeze.
-          return rec.new_end_date === q.end_date;
+          return matchesLegacyFreezePeriod(rec, fz, q);
         });
         if (records.length && !matchingRecords.length) continue;
         for (const rec of matchingRecords) {
