@@ -793,6 +793,7 @@ async def get_member_card_public(search_term: str, branch_id: Optional[str] = No
         "branch_id": member_branch_id,
         "branch_name": branch_name,
         "branch_phone": branch_phone,
+        "is_vip": bool(member.get("is_vip")),
         "notes": member.get("notes") or "",
         "activities": activities,
         "active_activities": [a for a in activities if a.get("status") == "active"],

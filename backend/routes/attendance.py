@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 import asyncio
 
 from .common import db, get_current_user
-from utils.auth import resolve_branch_filter
+from utils.auth import get_allowed_branch_ids, resolve_branch_filter
 from utils.freeze_scope import freeze_applies_to_activity
 from utils.effective_periods import (
     effective_period_map, operational_window, original_window, source_key,
@@ -506,7 +506,8 @@ async def apply_off_schedule_end_shift(member_id: str, activity_id: str,
     return (old_end, new_end)
 
 async def enforce_attendance_window(member_id: str, activity_id: str, check_date: str,
-                                    current_user=None, previous_date=None):
+                                    current_user=None, previous_date=None,
+                                    allow_authorized_member_branch=False):
     """Authorize historical dates inside the linked operational period, not stale invoice dates."""
     try:
         if datetime.strptime(check_date, "%Y-%m-%d").date().isoformat() != check_date:
@@ -518,7 +519,11 @@ async def enforce_attendance_window(member_id: str, activity_id: str, check_date
         raise HTTPException(404, detail="Member not found")
     if current_user and not current_user.get("is_admin"):
         branch = resolve_branch_filter(current_user, None)
-        if not branch or (member.get("branch_id") != branch and not member.get("is_vip")):
+        member_branch_allowed = (
+            allow_authorized_member_branch
+            and member.get("branch_id") in get_allowed_branch_ids(current_user)
+        )
+        if not branch or (member.get("branch_id") != branch and not member.get("is_vip") and not member_branch_allowed):
             raise HTTPException(403, detail="لا يمكن تسجيل حضور عضو من فرع آخر")
     # Select the latest purchased period containing this date. Renewals can
     # overlap a previous invoice, and a profile row may still point at an
@@ -1863,6 +1868,11 @@ async def qr_checkin(
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
+    member_branch_id = member.get("branch_id")
+    if not current_user.get("is_admin") and not member.get("is_vip"):
+        if not member_branch_id or member_branch_id not in get_allowed_branch_ids(current_user):
+            raise HTTPException(status_code=403, detail="هذا العضو يتبع فرعًا غير مصرح لك بتسجيل حضوره")
+
     # VIP members may train at any branch: record the visit under the scanning
     # user's branch so reports show where the VIP went. Regular members always
     # record under their own branch.
@@ -1964,7 +1974,10 @@ async def qr_checkin(
 
     # Hard cap on total allowed sessions for this subscription
     try:
-        await enforce_attendance_window(member["id"], target_activity_id, today, current_user)
+        await enforce_attendance_window(
+            member["id"], target_activity_id, today, current_user,
+            allow_authorized_member_branch=True,
+        )
         await enforce_session_cap(member["id"], target_activity_id, today)
     except HTTPException as cap_err:
         return {
@@ -2098,6 +2111,18 @@ async def qr_checkin(
             "activity": activity_name
         }
     }
+    scanning_branch_id = current_user.get("_active_branch") or current_user.get("branch_id")
+    if not member.get("is_vip") and member_branch_id and scanning_branch_id and member_branch_id != scanning_branch_id:
+        try:
+            branch = await db.branches.find_one({"id": member_branch_id}, {"_id": 0, "name_ar": 1, "name": 1})
+        except Exception:
+            branch = None
+        branch_name = (branch or {}).get("name_ar") or (branch or {}).get("name") or member_branch_id
+        response["branch_notice"] = {
+            "branch_id": member_branch_id,
+            "branch_name": branch_name,
+            "message": f"العضو يتبع فرع {branch_name}؛ تم تسجيل حضوره في فرعه رغم عرض فرع آخر",
+        }
     if session_quota_warning:
         response["session_quota_warning"] = session_quota_warning
     # Informational only: flag check-ins recorded on a non-scheduled day

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { attendanceAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import ScannerBranchNotice, { scannerBranchMismatch } from './ScannerBranchNotice';
 
 const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
   const t = (ar, en) => language === 'ar' ? ar : en;
@@ -132,8 +133,12 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
 
     try {
       const branchId = localStorage.getItem('selectedBranchId') || '';
+      // A short member-code suffix is ambiguous across branches; for staff
+      // assigned to several branches, require a unique/full code.
+      const allowedBranches = user?.branch_ids?.length ? user.branch_ids : [user?.branch_id].filter(Boolean);
+      const lookupBranchId = !isAdmin && allowedBranches.length === 1 ? branchId : '';
       // lite=1: skip the base64 member photo (not rendered here) for a faster lookup
-      const lookupUrl = `/api/public/member-card/${encodeURIComponent(memberCode)}?lite=1${branchId ? `&branch_id=${encodeURIComponent(branchId)}` : ''}`;
+      const lookupUrl = `/api/public/member-card/${encodeURIComponent(memberCode)}?lite=1${lookupBranchId ? `&branch_id=${encodeURIComponent(lookupBranchId)}` : ''}`;
       const response = await fetch(lookupUrl);
       if (response.ok) {
         const data = await response.json();
@@ -145,7 +150,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
           initStates[a.activity_id] = { status: a.recorded_today ? 'recorded' : 'idle' };
         });
         setActivityStates(initStates);
-        setMemberData({ ...data, activeActivities, expiredActivities });
+        setMemberData({ ...data, scanBranchId: branchId, activeActivities, expiredActivities });
         // Speed-up: exactly one active unrecorded subscription → check in
         // automatically without waiting for a button press.
         if (activeActivities.length === 1 && !activeActivities[0].recorded_today) {
@@ -185,7 +190,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
     } finally {
       setLoading(false);
     }
-  }, [stopScanner, performCheckin, t]);
+  }, [stopScanner, performCheckin, t, user, isAdmin]);
 
   const startScanner = useCallback(async () => {
     setMemberData(null);
@@ -287,7 +292,7 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
         a.recorded_today || activityStates[a.activity_id]?.status === 'recorded'
       );
       const hasPending = states.some(s => s && ['loading', 'wrong_day', 'error'].includes(s.status));
-      const hasWarning = states.some(s => s && (s.sessionQuotaWarning || s.wrongDayWarning));
+      const hasWarning = scannerBranchMismatch(memberData, memberData.scanBranchId) || states.some(s => s && (s.sessionQuotaWarning || s.wrongDayWarning));
       const hasNote = !!(memberData.notes && memberData.notes.trim());
       if (allRecorded && !hasPending && !hasWarning && !hasNote) delay = 2000;
     }
@@ -436,6 +441,8 @@ const CameraQRScanner = ({ open, onClose, language = 'ar' }) => {
               </div>
               {canOpenMemberProfile && <span className="mt-2 inline-block text-xs font-semibold text-blue-700">{t('اضغط لفتح ملف العضو', 'Tap to open member profile')}</span>}
             </div>
+
+            <ScannerBranchNotice member={memberData} user={user} isAdmin={isAdmin} language={language} />
 
             {/* Member notes (admin-only) — shown in red as an alert */}
             {memberData.notes && memberData.notes.trim() && (

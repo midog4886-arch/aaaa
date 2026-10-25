@@ -13,6 +13,8 @@ import {
   Volume2, VolumeX, Loader2, Calendar, Phone, AlertTriangle
 } from 'lucide-react';
 import { attendanceAPI } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+import ScannerBranchNotice, { scannerBranchMismatch } from './ScannerBranchNotice';
 
 // Inter-key gap (ms) below which keystrokes are considered a hardware-scanner burst
 // rather than human typing. Real scanners emit chars ~1-15ms apart; humans rarely
@@ -51,6 +53,7 @@ const setNativeValue = (el, value) => {
 
 const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
   const t = (ar, en) => language === 'ar' ? ar : en;
+  const { user, isAdmin } = useAuth();
   
   // States
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -265,8 +268,12 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     try {
       const API_URL = '';
       const branchId = localStorage.getItem('selectedBranchId') || '';
+      // For multi-branch staff a short printed code may exist in several
+      // branches. Never let the currently viewed branch choose the wrong member.
+      const allowedBranches = user?.branch_ids?.length ? user.branch_ids : [user?.branch_id].filter(Boolean);
+      const lookupBranchId = !isAdmin && allowedBranches.length === 1 ? branchId : '';
       // lite=1: skip the base64 member photo (not rendered here) for a faster lookup
-      const lookupUrl = `${API_URL}/api/public/member-card/${encodeURIComponent(memberCode)}?lite=1${branchId ? `&branch_id=${encodeURIComponent(branchId)}` : ''}`;
+      const lookupUrl = `${API_URL}/api/public/member-card/${encodeURIComponent(memberCode)}?lite=1${lookupBranchId ? `&branch_id=${encodeURIComponent(lookupBranchId)}` : ''}`;
       const response = await fetch(lookupUrl);
       
       // A newer scan took over while this lookup was in flight → drop this response.
@@ -326,7 +333,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       });
       setActivityStates(initStates);
       
-      const mData = { ...data, activeActivities, expiredActivities };
+      const mData = { ...data, scanBranchId: branchId, activeActivities, expiredActivities };
       setMemberData(mData);
       
       if (activeActivities.length === 0) {
@@ -383,7 +390,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
       });
       setLoading(false);
     }
-  }, [playSound, t, attendanceAPI]);
+  }, [playSound, t, attendanceAPI, user, isAdmin]);
 
   // Close dialog handler
   const handleCloseDialog = useCallback(() => {
@@ -413,7 +420,7 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
     if (allRecorded && !hasWrongDay && !hasError) {
       // Clean success closes fast (2s); keep quota/wrong-day warnings and
       // member notes on screen longer (4s) so staff can actually read them.
-      const hasWarning = Object.values(activityStates).some(s => s && (s.sessionQuotaWarning || s.wrongDayWarning));
+      const hasWarning = scannerBranchMismatch(memberData, memberData.scanBranchId) || Object.values(activityStates).some(s => s && (s.sessionQuotaWarning || s.wrongDayWarning));
       const hasNote = !!(memberData.notes && memberData.notes.trim());
       const timer = setTimeout(() => {
         handleCloseDialog();
@@ -734,6 +741,8 @@ const GlobalScanner = ({ enabled = true, language = 'ar' }) => {
 
               {/* Content Area */}
               <div className="px-5 pb-5 -mt-5 space-y-4">
+
+                <ScannerBranchNotice member={memberData} user={user} isAdmin={isAdmin} language={language} />
 
                 {/* Member notes (admin-only) — shown in red as an alert */}
                 {memberData.notes && memberData.notes.trim() && (

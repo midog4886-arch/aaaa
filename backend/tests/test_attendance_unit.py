@@ -23,6 +23,8 @@ os.environ.setdefault("SESSION_SECRET", "test-secret")
 
 from routes import attendance as att  # noqa: E402
 
+ORIGINAL_ENFORCE_WINDOW = att.enforce_attendance_window
+
 
 def run(coro):
     loop = asyncio.new_event_loop()
@@ -254,6 +256,61 @@ def test_qr_checkin_vip_stamps_scanner_branch(db):
     out = run(att.qr_checkin("2002", current_user=admin_user(branch_id="b-scanner")))
     assert out["status"] == "success"
     assert db.attendance.docs[0]["branch_id"] == "b-scanner"
+
+
+def test_qr_checkin_multi_branch_supervisor_uses_member_branch_and_warns(db):
+    db.members.docs.append({
+        "id": "m3", "member_code": "3003", "name_ar": "سارة",
+        "branch_id": "b-member",
+        "activities": [{"activity_id": "act1", "activity_name": "سباحة", "status": "active"}],
+    })
+    db.branches.docs.append({"id": "b-member", "name_ar": "فرع السباحة"})
+    supervisor = {"username": "supervisor", "is_admin": False,
+                  "branch_id": "b-scanner", "branch_ids": ["b-scanner", "b-member"]}
+
+    out = run(att.qr_checkin("3003", current_user=supervisor))
+
+    assert out["status"] == "success"
+    assert db.attendance.docs[0]["branch_id"] == "b-member"
+    assert out["branch_notice"]["branch_name"] == "فرع السباحة"
+
+
+def test_qr_checkin_other_branch_without_permission_is_rejected(db):
+    db.members.docs.append({
+        "id": "m4", "member_code": "4004", "name_ar": "عمر",
+        "branch_id": "b-other",
+        "activities": [{"activity_id": "act1", "activity_name": "سباحة", "status": "active"}],
+    })
+    supervisor = {"username": "supervisor", "is_admin": False,
+                  "branch_id": "b-scanner", "branch_ids": ["b-scanner"]}
+
+    with pytest.raises(HTTPException) as exc:
+        run(att.qr_checkin("4004", current_user=supervisor))
+
+    assert exc.value.status_code == 403
+    assert db.attendance.docs == []
+
+
+def test_attendance_window_cross_branch_exception_is_qr_only(db, monkeypatch):
+    db.members.docs.append({
+        "id": "m5", "branch_id": "b-member",
+        "activities": [{"activity_id": "act1", "status": "active",
+                        "start_date": "2026-10-01", "end_date": "2026-11-01"}],
+    })
+    async def no_purchased_periods(*args, **kwargs):
+        return []
+    monkeypatch.setattr(att, "get_member_subscription_history", no_purchased_periods)
+    supervisor = {"is_admin": False, "branch_id": "b-scanner",
+                  "branch_ids": ["b-scanner", "b-member"]}
+
+    with pytest.raises(HTTPException) as exc:
+        run(ORIGINAL_ENFORCE_WINDOW("m5", "act1", "2026-10-25", supervisor))
+    assert exc.value.status_code == 403
+
+    run(ORIGINAL_ENFORCE_WINDOW(
+        "m5", "act1", "2026-10-25", supervisor,
+        allow_authorized_member_branch=True,
+    ))
 
 
 def test_qr_checkin_invalid_member_404(db):
