@@ -25,6 +25,23 @@ class SessionTransferRequest(BaseModel):
     preview_token: Optional[str] = None
 
 
+@router.get("/{member_id}/session-transfers")
+async def get_member_session_transfers(member_id: str, current_user: dict = Depends(get_current_user)):
+    """Show the member's incoming and outgoing session transfers."""
+    member = await db.members.find_one(_scoped_member_query(member_id, current_user), {"_id": 0, "id": 1})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    rows = await db.session_transfers.find(
+        {"$or": [{"sender_id": member_id}, {"recipient_id": member_id}]},
+        {"_id": 0, "id": 1, "sender_id": 1, "recipient_id": 1,
+         "sender_name": 1, "recipient_name": 1, "activity_name": 1,
+         "sessions": 1, "reason": 1, "created_at": 1, "end_date": 1,
+         "sender_before": 1, "sender_after": 1,
+         "recipient_before": 1, "recipient_after": 1},
+    ).sort("created_at", -1).limit(200).to_list(200)
+    return rows
+
+
 @router.post("/{member_id}/activities/{activity_id}/session-transfer/{action}")
 async def transfer_sessions(member_id: str, activity_id: str, action: Literal["preview", "confirm"],
                             data: SessionTransferRequest, current_user: dict = Depends(get_current_user)):

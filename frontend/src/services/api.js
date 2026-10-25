@@ -189,6 +189,7 @@ export const tournamentsAPI = {
 // Members API
 export const membersAPI = {
   transferSessions: (memberId, activityId, action, data) => axios.post(`${API}/members/${encodeURIComponent(memberId)}/activities/${encodeURIComponent(activityId)}/session-transfer/${action}`, data),
+  getSessionTransfers: (memberId) => axios.get(`${API}/members/${encodeURIComponent(memberId)}/session-transfers`),
   getAll: (params = {}) => axios.get(`${API}/members`, { params }),
   getById: (id) => axios.get(`${API}/members/${id}`),
   lookupByPhone: (phone) => axios.get(`${API}/members/lookup-by-phone`, { params: { phone } }),

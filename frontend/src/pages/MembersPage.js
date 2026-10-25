@@ -16,6 +16,7 @@ import ProfileOverview from '../components/member-profile/ProfileOverview';
 import ProfileFeed from '../components/member-profile/ProfileFeed';
 import MemberEditHistoryDialog from '../components/members/MemberEditHistoryDialog';
 import SessionTransferDialog from '../components/members/SessionTransferDialog';
+import MemberSessionTransfers from '../components/members/MemberSessionTransfers';
 import ScheduleChangeReviewDialog from '../components/members/ScheduleChangeReviewDialog';
 import { activityWeekdaysChanged, scheduleChangeError } from '../utils/memberScheduleChange';
 import { closureCompensatedMember } from '../utils/memberClosureStatus';
@@ -283,6 +284,9 @@ export const MembersPage = () => {
   const [memberTournaments, setMemberTournaments] = useState([]);
   const [memberFreezes, setMemberFreezes] = useState([]);
   const [memberAuditLog, setMemberAuditLog] = useState([]);
+  const [memberSessionTransfers, setMemberSessionTransfers] = useState([]);
+  const [memberTransfersLoading, setMemberTransfersLoading] = useState(false);
+  const [memberTransfersError, setMemberTransfersError] = useState(false);
   const [memberFreezeStats, setMemberFreezeStats] = useState(null);
   const [freezeLoading, setFreezeLoading] = useState(false);
   const [appliedClosures, setAppliedClosures] = useState([]);
@@ -1388,6 +1392,16 @@ export const MembersPage = () => {
     setMemberFreezes([]);
     setMemberFreezeStats(null);
     setMemberAuditLog([]);
+    setMemberSessionTransfers([]);
+    setMemberTransfersLoading(true);
+    setMemberTransfersError(false);
+    membersAPI.getSessionTransfers(member.id).then(({ data }) => {
+      if (fresh()) setMemberSessionTransfers(Array.isArray(data) ? data : []);
+    }).catch(() => {
+      if (fresh()) setMemberTransfersError(true);
+    }).finally(() => {
+      if (fresh()) setMemberTransfersLoading(false);
+    });
     {
       const [invoicesRes, attendanceRes, productInvRes, quotaRes, tournamentsRes, closuresRes, fullMemberRes] = await Promise.allSettled([
         invoicesAPI.getAll({ member_id: member.id }),
@@ -3318,6 +3332,11 @@ export const MembersPage = () => {
                       </span>
                     )}
                   </button>
+                  <button onClick={() => setViewTab('session-transfers')} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${viewTab === 'session-transfers' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+                    <ArrowRightLeft className="w-4 h-4 inline me-1" />
+                    {language === 'ar' ? 'الحصص المنقولة' : 'Transferred sessions'}
+                    {memberSessionTransfers.length > 0 && <span className="ms-1 rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">{memberSessionTransfers.length}</span>}
+                  </button>
                   <button
                     onClick={() => setViewTab('purchases')}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -3414,6 +3433,7 @@ export const MembersPage = () => {
                 </div>
 
                 {viewTab === 'overview' && <ProfileOverview key={`overview-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} member={selectedMember} attendance={memberAttendance} canViewFinancial={canViewOverviewFinancials} canViewAttendance={canViewOverviewAttendance} language={language} onTab={setViewTab} scopeKey={`${selectedBranchId}-${user?.id || ''}`} />}
+                {viewTab === 'session-transfers' && <MemberSessionTransfers memberId={selectedMember.id} transfers={memberSessionTransfers} loading={memberTransfersLoading} error={memberTransfersError} language={language} />}
                 {viewTab === 'timeline' && <ProfileFeed key={`history-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} memberId={selectedMember.id} kind="history" language={language} scopeKey={`${selectedBranchId}-${user?.id || ''}`} onTab={setViewTab} />}
                 {viewTab === 'messages' && canViewProfileMessages && <div className="space-y-4">
                   <ProfileFeed key={`messages-${selectedMember.id}-${selectedBranchId}-${user?.id || ''}`} memberId={selectedMember.id} kind="messages" language={language} scopeKey={`${selectedBranchId}-${user?.id || ''}`} />
@@ -5864,6 +5884,18 @@ export const MembersPage = () => {
               const updated = await membersAPI.getById(selectedMember.id);
               setSelectedMember(updated.data);
               setMembers(prev => prev.map(m => m.id === selectedMember.id ? { ...m, ...updated.data } : m));
+              const [transfersResult, quotaResult] = await Promise.allSettled([
+                membersAPI.getSessionTransfers(selectedMember.id),
+                attendanceAPI.getSessionQuota(selectedMember.id, undefined, true),
+              ]);
+              if (activeViewMemberIdRef.current !== selectedMember.id) return;
+              if (transfersResult.status === 'fulfilled') {
+                setMemberSessionTransfers(Array.isArray(transfersResult.value.data) ? transfersResult.value.data : []);
+                setMemberTransfersError(false);
+              } else setMemberTransfersError(true);
+              if (quotaResult.status === 'fulfilled') {
+                setMemberSessionQuota(Array.isArray(quotaResult.value.data) ? quotaResult.value.data : []);
+              }
             }} />
         )}
       </div>
