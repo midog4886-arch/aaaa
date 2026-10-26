@@ -159,6 +159,7 @@ test('requests renewed records and renders activity, a zero fee, and nationality
   expect(mockNotificationsAPI.getExpiringSubscriptions).toHaveBeenCalledWith({
     days: 7,
     include_renewed: true,
+    all_expired: true,
     branch_filter: 'branch-a',
   });
   expect(screen.getByText('Activity: Swimming')).toBeInTheDocument();

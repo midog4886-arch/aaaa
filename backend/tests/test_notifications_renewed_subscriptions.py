@@ -256,3 +256,33 @@ async def test_endpoint_keeps_expired_card_normal_despite_old_renewal(monkeypatc
     assert len(rows) == 1
     assert "_renewed" not in rows[0]
     assert rows[0]["fee"] is None
+
+
+@pytest.mark.asyncio
+async def test_renewals_page_can_find_older_expired_and_respects_transferred_dates(monkeypatch):
+    today = datetime.now(ZoneInfo("Asia/Riyadh")).date()
+    old_end = (today - timedelta(days=130)).isoformat()
+    recent_end = (today - timedelta(days=2)).isoformat()
+    member = {
+        "id": "m1", "branch_id": "b1", "activities": [
+            {"activity_id": "old", "status": "expired", "start_date": (today - timedelta(days=160)).isoformat(), "end_date": old_end},
+            {"activity_id": "transfer", "status": "active", "start_date": (today - timedelta(days=30)).isoformat(),
+             "end_date": recent_end, "session_transfer_dates": [(today + timedelta(days=5)).isoformat()]},
+        ],
+    }
+    fake_db = type("FakeDB", (), {
+        "members": _Collection([member]), "invoices": _Collection([]), "attendance": _Collection([]),
+    })()
+    monkeypatch.setattr(notifications, "db", fake_db)
+    user = {"is_admin": True, "branch_id": "b1"}
+
+    standard = await notifications.get_expiring_subscriptions(days=7, include_renewed=True, current_user=user)
+    complete = await notifications.get_expiring_subscriptions(
+        days=7, include_renewed=True, all_expired=True, current_user=user
+    )
+
+    assert [(row["activity_id"], row["days_remaining"]) for row in standard] == [("transfer", 5)]
+    assert [(row["activity_id"], row["end_date"]) for row in complete] == [("old", old_end), ("transfer", (today + timedelta(days=5)).isoformat())]
+    assert complete[0]["days_remaining"] == -130
+    assert complete[1]["days_remaining"] == 5
+    assert {"status": {"$in": ["active", "expired"]}} in fake_db.members.queries[-1]["activities"]["$elemMatch"]["$or"]

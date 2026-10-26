@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta
 from .common import db, get_current_user
 from utils.auth import resolve_branch_filter
 from utils.effective_periods import effective_period_map, operational_window
+from utils.transferred_session_dates import effective_transfer_end
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -997,12 +998,14 @@ async def get_expiring_subscriptions(
     branch_filter: Optional[str] = None,
     include_expired: bool = True,
     include_renewed: bool = False,
+    all_expired: bool = False,
     current_user: dict = Depends(get_current_user)
 ):
     """Get list of subscriptions expiring within specified days.
 
     Also includes already-expired subscriptions (negative days_remaining) so the
-    Renewals page can display both tabs from a single request. Each item is
+    Renewals page can display both tabs from a single request. By default that
+    history is 90 days; all_expired removes the lower date bound. Each item is
     enriched with last_attendance_date (used to compute renewal-likelihood
     badges client-side), activity_id, fee, and branch_id.
     """
@@ -1019,12 +1022,18 @@ async def get_expiring_subscriptions(
     )
     today = today_dt.strftime("%Y-%m-%d")
     future_date = (today_dt + timedelta(days=days)).strftime("%Y-%m-%d")
-    # Look back up to 90 days for already-expired subscriptions when requested
+    # The default report retains its 90-day horizon. The Renewals page asks for
+    # the complete expired list so local search can find older subscriptions.
     past_date = (today_dt - timedelta(days=90)).strftime("%Y-%m-%d")
-    lower_bound = past_date if include_expired else today
+    lower_bound = None if include_expired and all_expired else (past_date if include_expired else today)
 
-    activity_match = {"status": "active"}
-    if not include_renewed:
+    # Past-dated invoices can persist their member activity as "expired";
+    # older activities may have no stored status at all.
+    activity_match = {"$or": [
+        {"status": {"$in": ["active", "expired"]}},
+        {"status": {"$exists": False}},
+    ]}
+    if not include_renewed and lower_bound:
         activity_match["end_date"] = {"$gte": lower_bound, "$lte": future_date}
     query = {"activities": {"$elemMatch": activity_match}}
     # Branch scoping centralized via ``resolve_branch_filter``:
@@ -1041,10 +1050,13 @@ async def get_expiring_subscriptions(
         if effective_branch:
             query["branch_id"] = effective_branch
 
-    # Do not cap the expanded active-member candidate set: a fixed limit can
+    # Do not cap the expanded member candidate set: a fixed limit can
     # silently drop urgent subscriptions depending on Mongo's natural order.
     members = []
-    async for member in db.members.find(query, {"_id": 0}):
+    async for member in db.members.find(query, {
+        "_id": 0, "id": 1, "name_ar": 1, "name": 1, "member_code": 1,
+        "phone": 1, "nationality": 1, "branch_id": 1, "activities": 1,
+    }):
         members.append(member)
 
     member_ids = [m["id"] for m in members if m.get("id")]
@@ -1112,11 +1124,14 @@ async def get_expiring_subscriptions(
     expiring = []
     for member in members:
         for activity in member.get("activities", []):
-            if activity.get("status") != "active":
+            if activity.get("status", "active") not in ("active", "expired"):
                 continue
-            end_date = activity.get("end_date", "")
+            try:
+                end_date = effective_transfer_end(activity)
+            except (ValueError, TypeError):
+                end_date = str(activity.get("end_date") or "")[:10]
             in_normal_horizon = bool(
-                end_date and lower_bound <= end_date <= future_date
+                end_date and (lower_bound is None or lower_bound <= end_date) and end_date <= future_date
             )
             evidence = None
             # Expired cards stay actionable expired cards.  Renewal evidence

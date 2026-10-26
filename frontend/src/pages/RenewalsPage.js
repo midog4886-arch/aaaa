@@ -429,7 +429,7 @@ const RenewalsPage = () => {
       setLoading(true);
     }
     try {
-      const params = { days: parseInt(days), include_renewed: true };
+      const params = { days: parseInt(days), include_renewed: true, all_expired: true };
       if (selectedBranchId && selectedBranchId !== 'all') {
         params.branch_filter = selectedBranchId;
       }
