@@ -4246,6 +4246,7 @@ export const MembersPage = () => {
                             const scheduleDates = [...new Set([...baseDates, ...transferInfo.replacementDates])]
                               .filter(date => !q.attendance_before || date < q.attendance_before);
                             const replacementSet = new Set(transferInfo.replacementDates);
+                            const receivedTransferSet = new Set(q.transferred_session_dates || []);
                             const attendedRecords = attendanceForPeriod(memberAttendance?.records || [], q);
                             const attendedDates = new Set(attendedRecords.map(r => r.date));
                             const attendedRecordIdByDate = {};
@@ -4394,6 +4395,7 @@ export const MembersPage = () => {
                                         const isToday = date === todayStr;
                                         const isTransferred = transferInfo.transferredSet.has(date);
                                         const isReplacement = replacementSet.has(date);
+                                        const isReceivedTransfer = receivedTransferSet.has(date);
                                         const transferMeta = transferInfo.transferredMeta[date];
                                         const key = `${q.activity_id}_${date}`;
                                         const isRegistering = registeringDate === key;
@@ -4425,6 +4427,8 @@ export const MembersPage = () => {
                                                 : (language === 'ar' ? 'للعرض فقط' : 'View only'))
                                               : isTransferred
                                               ? (language === 'ar' ? `مُرحَّل (${transferMeta?.title || ''}) — تم التعويض بمدّ تاريخ نهاية الاشتراك` : `Transferred (${transferMeta?.title || ''}) — compensated by extending the subscription end date`)
+                                              : isReceivedTransfer
+                                                ? (language === 'ar' ? 'حصة واردة من نقل مشترك آخر' : 'Session received from another member')
                                               : isReplacement
                                                 ? (language === 'ar' ? 'حصة بديلة (تعويض ترحيل)' : 'Replacement session (make-up)')
                                                 : isOffSchedule
@@ -4460,6 +4464,12 @@ export const MembersPage = () => {
                                               <span className="inline-flex items-center gap-1">
                                                 <span>{date}</span>
                                                 <span className={`text-[10px] px-1 rounded ${q.expired ? 'bg-gray-300 text-gray-700' : 'bg-orange-200 text-orange-900'}`}>{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
+                                              </span>
+                                            ) : isReceivedTransfer ? (
+                                              <span className="inline-flex items-center gap-1">
+                                                {attended && <span>✓</span>}
+                                                <span>{date}</span>
+                                                <span className="rounded bg-sky-100 px-1 text-[10px] text-sky-800">{language === 'ar' ? 'حصة منقولة' : 'Received'}</span>
                                               </span>
                                             ) : isReplacement ? (
                                               <span className="inline-flex items-center gap-1">

@@ -10,6 +10,7 @@ import asyncio
 from .common import db, get_current_user
 from utils.auth import get_allowed_branch_ids, resolve_branch_filter
 from utils.freeze_scope import freeze_applies_to_activity
+from utils.transferred_session_dates import effective_transfer_end, transfer_dates
 from utils.effective_periods import (
     effective_period_map, operational_window, original_window, source_key,
 )
@@ -546,7 +547,7 @@ async def enforce_attendance_window(member_id: str, activity_id: str, check_date
     else:
         windows = await check_member_session_quota(member_id, activity_id)
     for window in windows:
-        start, end = str(window.get("start_date") or "")[:10], str(window.get("end_date") or "")[:10]
+        start, end = str(window.get("start_date") or "")[:10], effective_transfer_end(window)
         if start and end and start <= check_date <= end:
             if previous_date and not start <= previous_date <= end:
                 continue
@@ -704,7 +705,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None, se
 
         linked = [a for a in (member_doc or {}).get("activities", [])
                   if a.get("activity_id") == item_activity_id and a.get("start_date", "")[:10] == effective_start
-                  and a.get("end_date", "")[:10] == end_date]
+                  and effective_transfer_end(a) == end_date]
         if len(linked) == 1:
             act = linked[0]
             if act.get("source") == "session_transfer":
@@ -897,7 +898,7 @@ async def check_member_session_quota(member_id: str, activity_id: str = None, se
             item_activity_id,
             act.get("activity_name", ""),
             act.get("start_date", ""),
-            act.get("end_date", ""),
+            effective_transfer_end(act),
             act.get("schedule", ""),
             "",
             quota_end_date=quota_end,
@@ -1025,7 +1026,7 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
         # have changed it since an effective-period row was last written.
         if act:
             start = str(act.get("start_date") or start)[:10]
-            end = str(act.get("end_date") or end)[:10]
+            end = effective_transfer_end(act) or end
         if start > today and inv.get("status") != "paid":
             continue
         original_start, original_end = original_window(item)
@@ -1043,6 +1044,7 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
             "schedule": (act or item).get("schedule", ""),
             "quota_schedule": item.get("schedule", ""),
             "session_transfer_delta": int(act.get("session_transfer_delta") or 0) if act else 0,
+            "transferred_session_dates": transfer_dates(act) if act else [],
             "read_only": not act or act.get("status", "active") not in ("active", "expired"),
         })
     for ai, act in enumerate(activities):
@@ -1064,16 +1066,17 @@ async def get_member_subscription_history(member_id: str, activity_id: str = Non
         # An identical activity/window/schedule is already represented.
         if any(c["activity_id"] == act.get("activity_id")
                and c["start_date"] == str(act.get("start_date") or "")[:10]
-               and c["end_date"] == str(act.get("end_date") or "")[:10]
+               and c["end_date"] == effective_transfer_end(act)
                and c["schedule"] == act.get("schedule", "") for c in cards):
             continue
         cards.append({
             "activity_id": act.get("activity_id"), "activity_name": act.get("activity_name", ""),
             "start_date": str(act.get("start_date") or "")[:10],
-            "end_date": str(act.get("end_date") or "")[:10],
+            "end_date": effective_transfer_end(act),
             "schedule": act.get("schedule", ""), "invoice_number": "",
             "count_activity_ids": [act.get("activity_id")],
             "session_transfer_delta": int(act.get("session_transfer_delta") or 0),
+            "transferred_session_dates": transfer_dates(act),
             "transferred_subscription": act.get("source") == "session_transfer",
             "profile_subscription": True, "read_only": act.get("source") == "invoice",
         })

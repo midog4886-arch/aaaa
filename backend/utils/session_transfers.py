@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 from pymongo.errors import OperationFailure
+from utils.transferred_session_dates import effective_transfer_end, next_training_dates, transfer_dates
 
 
 def reject(message):
@@ -34,10 +35,11 @@ async def preview(db, sender_query, recipient_query, activity_id, payload, sessi
         reject("اشتراك النشاط غير موجود أو مكرر")
     source = source[0]
     today = datetime.now(timezone(timedelta(hours=3))).date().isoformat()
-    if source.get("status", "active") != "active" or not source.get("start_date", "") <= today <= source.get("end_date", ""):
+    source_end = effective_transfer_end(source)
+    if source.get("status", "active") != "active" or not source.get("start_date", "") <= today <= source_end:
         reject("يلزم اشتراك مصدر نشط وساري")
     quotas = await check_member_session_quota(sender["id"], activity_id, session=session)
-    matching = [q for q in quotas if q["start_date"] == source["start_date"][:10] and q["end_date"] == source["end_date"][:10]]
+    matching = [q for q in quotas if q["start_date"] == source["start_date"][:10] and q["end_date"] == source_end]
     if len(matching) != 1:
         reject("تعذر تحديد رصيد المصدر")
     balance = matching[0]["remaining"]
@@ -45,13 +47,15 @@ async def preview(db, sender_query, recipient_query, activity_id, payload, sessi
     if amount < 1 or amount > balance:
         reject("عدد الحصص أكبر من المتبقي أو غير صالح")
     recipient_balance = 0
+    recipient_end = source_end
     if target:
         dest = target[0]
+        recipient_end = effective_transfer_end(dest)
         if (dest.get("status", "active") != "active"
-                or not dest.get("start_date", "") <= today <= dest.get("end_date", "")):
+                or not dest.get("start_date", "") <= today <= recipient_end):
             reject("يلزم اشتراك ساري للمستلم في النشاط نفسه")
         dest_quotas = await check_member_session_quota(recipient["id"], activity_id, session=session)
-        rows = [q for q in dest_quotas if q["start_date"] == dest["start_date"][:10] and q["end_date"] == dest["end_date"][:10]]
+        rows = [q for q in dest_quotas if q["start_date"] == dest["start_date"][:10] and q["end_date"] == recipient_end]
         if len(rows) != 1 or rows[0]["used_sessions"] > rows[0]["total_allowed"]:
             reject("يلزم مراجعة رصيد المستلم أولًا")
         recipient_balance = rows[0]["remaining"]
@@ -59,12 +63,17 @@ async def preview(db, sender_query, recipient_query, activity_id, payload, sessi
         # Reject invoice-only entitlements instead of hiding their paid balance.
         if await check_member_session_quota(recipient["id"], activity_id, session=session):
             reject("يلزم ربط اشتراك المستلم القديم قبل النقل")
+    recipient_schedule = target[0].get("schedule") if target else source.get("schedule")
+    new_dates = next_training_dates(recipient_end, recipient_schedule, amount)
+    if len(new_dates) != amount:
+        reject("يلزم تحديد أيام التدريب للمستلم لإضافة تواريخ الحصص")
     public = {
         "sender_name": sender.get("name_ar") or sender.get("name"),
         "recipient_name": recipient.get("name_ar") or recipient.get("name"),
         "activity_name": source.get("activity_name"), "sessions": amount,
-        "end_date": target[0]["end_date"] if target else source["end_date"],
-        "sender_end_date": source["end_date"], "reason": payload["reason"].strip(),
+        "end_date": new_dates[-1], "previous_end_date": recipient_end,
+        "added_dates": new_dates,
+        "sender_end_date": source_end, "reason": payload["reason"].strip(),
         "sender_before": balance, "sender_after": balance - amount,
         "recipient_before": recipient_balance, "recipient_after": recipient_balance + amount,
     }
@@ -90,7 +99,12 @@ async def confirm(db, sender_query, recipient_query, activity_id, payload, actor
                         act = {k: copy.deepcopy(source.get(k)) for k in ("activity_id", "activity_name", "end_date", "schedule", "training_days", "training_time", "day_times")}
                         act.update(start_date=datetime.now(timezone(timedelta(hours=3))).date().isoformat(), status="active", source="session_transfer", source_id=transfer_id, fee=0, level_id="", coach_id="")
                         activities.append(act)
+                    if delta > 0:
+                        existing_dates = transfer_dates(act)
                     act["session_transfer_delta"] = int(act.get("session_transfer_delta") or 0) + delta
+                    if delta > 0:
+                        act["session_transfer_dates"] = sorted(set(existing_dates + review["added_dates"]))
+                        act["end_date"] = review["end_date"]
                     result = await db.members.update_one({"id": member["id"], "activities": member.get("activities", [])}, {"$set": {"activities": activities}}, session=session)
                     if result.matched_count != 1:
                         reject("تغير الاشتراك؛ أعد المراجعة")

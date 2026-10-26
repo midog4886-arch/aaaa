@@ -36,6 +36,7 @@ async def get_member_session_transfers(member_id: str, current_user: dict = Depe
         {"_id": 0, "id": 1, "sender_id": 1, "recipient_id": 1,
          "sender_name": 1, "recipient_name": 1, "activity_name": 1,
          "sessions": 1, "reason": 1, "created_at": 1, "end_date": 1,
+         "added_dates": 1,
          "sender_before": 1, "sender_after": 1,
          "recipient_before": 1, "recipient_after": 1},
     ).sort("created_at", -1).limit(200).to_list(200)
@@ -1327,7 +1328,7 @@ async def update_member_activity(member_id: str, activity_id: str, activity: Mem
     after_activity = activity.model_dump()
     protect_schedule_edit(before_act, after_activity)
     if before_act and before_act.get("source_id") == after_activity.get("source_id") and before_act.get("start_date") == after_activity.get("start_date"):
-        for key in ("source_period_key", "schedule_reconciliation", "session_transfer_delta"):
+        for key in ("source_period_key", "schedule_reconciliation", "session_transfer_delta", "session_transfer_dates"):
             if key in before_act:
                 after_activity[key] = before_act[key]
     if before_member:

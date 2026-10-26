@@ -76,7 +76,7 @@ export default function SessionTransferDialog({ member, activity, language, onCl
         {ar ? 'الحصص المتبقية لدى المُرسِل: ' : 'Sender remaining sessions: '}
         {balanceLoading ? (ar ? 'جارٍ الحساب...' : 'Loading...') : senderBalance === null ? (ar ? 'غير متاح؛ راجع المعاينة' : 'Unavailable; check preview') : senderBalance}
       </p>
-      <p className="text-sm text-muted-foreground">{ar ? 'النقل داخل نفس الفرع. يزيد رصيد المستلم بعدد الحصص المنقولة، وتنتهي مع اشتراكه الحالي. تبقى الفواتير والحضور السابق كما هما.' : 'Same branch only. Transferred sessions increase the recipient balance and expire with their current subscription. Past invoices and attendance remain unchanged.'}</p>
+      <p className="text-sm text-muted-foreground">{ar ? 'النقل داخل نفس الفرع. تُضاف الحصص في أيام تدريب المستلم بعد نهاية فترته الحالية، ويظهر تاريخ انتهائها الجديد في المعاينة. تبقى الفواتير والحضور السابق كما هما.' : 'Same branch only. Received sessions are scheduled on the recipient’s training days after their current period. Review the new end date before confirming. Past invoices and attendance remain unchanged.'}</p>
       <fieldset disabled={busy} className="space-y-3">
         <Label htmlFor="session-recipient-search">{ar ? 'ابحث عن المستلم بالاسم أو رقم العضوية أو الجوال' : 'Search recipient by name, member code or phone'}</Label>
         <Input id="session-recipient-search" value={search} onChange={e => { change(setSearch, e.target.value); setRecipient(''); }} />
@@ -97,7 +97,8 @@ export default function SessionTransferDialog({ member, activity, language, onCl
         <p>{review.sender_name}: {review.sender_before} ← {review.sender_after}</p>
         <p>{review.recipient_name}: {review.recipient_before} ← {review.recipient_after}</p>
         <p>{ar ? 'الحصص المنقولة' : 'Transferred sessions'}: {review.sessions}</p>
-        <p>{ar ? 'صلاحية الحصص لدى المستلم حتى' : 'Recipient sessions valid through'}: {review.end_date}</p>
+        <p>{ar ? 'التواريخ المضافة للمستلم' : 'Dates added for recipient'}: {(review.added_dates || []).join('، ')}</p>
+        <p>{ar ? 'نهاية اشتراك المستلم بعد النقل' : 'Recipient period ends after transfer'}: {review.end_date}</p>
       </div>}
       <DialogFooter className="gap-2">
         <Button variant="outline" disabled={busy} onClick={onClose}>{ar ? 'إلغاء' : 'Cancel'}</Button>

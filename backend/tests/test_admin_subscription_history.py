@@ -234,6 +234,22 @@ def test_transferred_sessions_change_profile_history_balances(monkeypatch):
     assert (recipient["total_allowed"], recipient["used_sessions"], recipient["remaining"]) == (5, 0, 5)
 
 
+def test_existing_received_transfer_gets_real_training_dates(monkeypatch):
+    inv = invoice(10)
+    recipient_act = {**inv["items"][0], "source": "invoice", "source_id": inv["id"],
+                     "status": "active", "session_transfer_delta": 3}
+    install(monkeypatch, [inv], [recipient_act])
+    card = history()[0]
+    assert card["transferred_session_dates"] == ["2026-10-26", "2026-10-28", "2026-11-02"]
+    assert card["end_date"] == "2026-11-02"
+    assert card["total_allowed"] == 11
+    quota = asyncio.run(att.check_member_session_quota("M"))[0]
+    assert quota["end_date"] == "2026-11-02"
+    assert quota["total_allowed"] == 11
+    asyncio.run(att.enforce_attendance_window("M", "A", "2026-11-02"))
+    asyncio.run(att.enforce_session_cap("M", "A", "2026-11-02"))
+
+
 def test_profile_dates_and_schedule_override_stale_effective_row(monkeypatch):
     inv = invoice(10)
     key = source_key(inv, inv["items"][0], 0)

@@ -32,7 +32,7 @@ export default function MemberSessionTransfers({ memberId, transfers, loading, e
             <p>{incoming ? (ar ? 'من: ' : 'From: ') : (ar ? 'إلى: ' : 'To: ')}<span className="font-medium">{other || '—'}</span></p>
             <p>{ar ? 'الرصيد وقت النقل: ' : 'Balance at transfer: '}<span className="font-medium" dir="ltr">{before ?? '—'} → {after ?? '—'}</span></p>
             {row.reason && <p className="sm:col-span-2">{ar ? 'السبب: ' : 'Reason: '}{row.reason}</p>}
-            {incoming && row.end_date && <p className="sm:col-span-2 text-muted-foreground">{ar ? 'صلاحيتها مع الاشتراك حتى: ' : 'Valid with subscription through: '}{row.end_date}</p>}
+            {incoming && row.end_date && <p className="sm:col-span-2 text-muted-foreground">{row.added_dates?.length ? (ar ? 'آخر تاريخ مضاف: ' : 'Last added date: ') : (ar ? 'نهاية الفترة وقت النقل: ' : 'Period end when transferred: ')}{row.end_date}</p>}
           </div>
         </article>;
       })}

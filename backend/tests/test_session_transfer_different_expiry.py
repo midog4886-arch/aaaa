@@ -10,6 +10,7 @@ from fastapi import HTTPException
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from routes import attendance
 from utils import session_transfers
+from utils.transferred_session_dates import next_training_dates
 
 
 def test_transfer_adds_sessions_to_active_recipient_with_different_expiry(monkeypatch):
@@ -19,10 +20,11 @@ def test_transfer_adds_sessions_to_active_recipient_with_different_expiry(monkey
     recipient_end = (today + timedelta(days=35)).isoformat()
     sender = {"id": "sender", "branch_id": "branch", "name": "Sender", "activities": [{
         "activity_id": "swim", "activity_name": "Swimming", "status": "active",
-        "start_date": start, "end_date": sender_end,
+        "start_date": start, "end_date": sender_end, "schedule": "Monday Wednesday Friday",
     }]}
     recipient = {"id": "recipient", "branch_id": "branch", "name": "Recipient", "activities": [{
         "activity_id": "swim", "status": "active", "start_date": start, "end_date": recipient_end,
+        "schedule": "Monday Wednesday Friday",
     }]}
 
     class Members:
@@ -43,7 +45,8 @@ def test_transfer_adds_sessions_to_active_recipient_with_different_expiry(monkey
     ))[-1]
     assert reviewed["sender_after"] == 2
     assert reviewed["recipient_after"] == 5
-    assert reviewed["end_date"] == recipient_end
+    assert reviewed["added_dates"] == next_training_dates(recipient_end, "Monday Wednesday Friday", 3)
+    assert reviewed["end_date"] == reviewed["added_dates"][-1]
     assert reviewed["sender_end_date"] == sender_end
 
     recipient["activities"][0]["end_date"] = (today - timedelta(days=1)).isoformat()
