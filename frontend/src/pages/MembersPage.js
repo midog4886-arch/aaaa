@@ -4249,6 +4249,8 @@ export const MembersPage = () => {
                             const receivedTransferSet = new Set(q.transferred_session_dates || []);
                             const attendedRecords = attendanceForPeriod(memberAttendance?.records || [], q);
                             const attendedDates = new Set(attendedRecords.map(r => r.date));
+                            const attendedTransferredDates = [...attendedDates]
+                              .filter(date => transferInfo.transferredSet.has(date));
                             const attendedRecordIdByDate = {};
                             attendedRecords.forEach(r => { attendedRecordIdByDate[r.date] = r.id; });
                             // Off-schedule attendances (member attended on a day not in their
@@ -4344,6 +4346,13 @@ export const MembersPage = () => {
                                     <span>{language === 'ar' ? `${q.used_sessions}/${q.total_allowed} حصة` : `${q.used_sessions}/${q.total_allowed} sessions`}</span>
                                     <span>{q.schedule_days?.join(' - ')}</span>
                                   </div>
+                                  {attendedTransferredDates.length > 0 && (
+                                    <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                                      {language === 'ar'
+                                        ? `تنبيه: يوجد حضور مسجّل في ${attendedTransferredDates.length} ${attendedTransferredDates.length === 1 ? 'تاريخ مُرحّل' : 'تواريخ مُرحّلة'} (${attendedTransferredDates.join('، ')}). يُحتسب الحضور في السجل؛ راجع الترحيل قبل تعديل الرصيد.`
+                                        : `Attention: attendance was recorded on ${attendedTransferredDates.length} transferred date(s) (${attendedTransferredDates.join(', ')}). It remains counted; review the transfer before adjusting the balance.`}
+                                    </p>
+                                  )}
                                   <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                                     <div className={`h-2 rounded-full ${q.expired ? 'bg-gray-400' : q.exceeded ? 'bg-red-500' : q.remaining <= 2 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (q.used_sessions / q.total_allowed) * 100)}%` }}></div>
                                   </div>
@@ -4422,7 +4431,9 @@ export const MembersPage = () => {
                                                 }
                                               }
                                             }}
-                                            title={todayClickable ? (language === 'ar' ? 'اضغط لتحضير اليوم' : 'Click to record today') : readOnly
+                                            title={attended && isTransferred
+                                              ? (language === 'ar' ? 'حضور مسجّل في تاريخ مُرحّل — راجع الترحيل' : 'Attendance recorded on a transferred date — review the transfer')
+                                              : todayClickable ? (language === 'ar' ? 'اضغط لتحضير اليوم' : 'Click to record today') : readOnly
                                               ? (q.upcoming ? (language === 'ar' ? 'اشتراك قادم — للعرض فقط' : 'Upcoming subscription — view only')
                                                 : (language === 'ar' ? 'للعرض فقط' : 'View only'))
                                               : isTransferred
@@ -4441,6 +4452,8 @@ export const MembersPage = () => {
                                             className={`text-xs px-2 py-1 rounded-full border font-medium transition-all ${
                                               q.expired
                                                 ? 'bg-gray-200 border-gray-300 text-gray-600 cursor-not-allowed'
+                                                : attended && isTransferred
+                                                  ? 'bg-green-100 border-amber-400 text-green-800 cursor-not-allowed ring-2 ring-amber-200'
                                                 : isTransferred
                                                 ? 'bg-orange-100 border-orange-400 text-orange-800 line-through decoration-orange-600 cursor-not-allowed'
                                                 : isReplacement
@@ -4460,7 +4473,13 @@ export const MembersPage = () => {
                                                           : 'bg-white border-blue-300 text-blue-700 cursor-pointer hover:bg-blue-50'
                                             }`}
                                           >
-                                            {isTransferred ? (
+                                            {attended && isTransferred ? (
+                                              <span className="inline-flex items-center gap-1">
+                                                <span>✓ {date}</span>
+                                                <span className="rounded bg-green-200 px-1 text-[10px] text-green-900">{language === 'ar' ? 'حضر' : 'Present'}</span>
+                                                <span className="rounded bg-amber-200 px-1 text-[10px] text-amber-900">{language === 'ar' ? 'مُرحّل أيضًا' : 'Also transferred'}</span>
+                                              </span>
+                                            ) : isTransferred ? (
                                               <span className="inline-flex items-center gap-1">
                                                 <span>{date}</span>
                                                 <span className={`text-[10px] px-1 rounded ${q.expired ? 'bg-gray-300 text-gray-700' : 'bg-orange-200 text-orange-900'}`}>{language === 'ar' ? 'مُرحَّل' : 'Transferred'}</span>
