@@ -7529,6 +7529,8 @@ def _campaign_scope(branch_id: str) -> dict:
 
 
 OFFER_CHOICE_FOOTER = "\n\nللاستفسار عن عرض الاشتراك، رد برقم واحد:\n1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم"
+ENROLLMENT_CHOICE_FOOTER = "\n\nكيف نساعدك؟ رد برقم واحد:\n1- المواعيد المتاحة\n2- الأسعار والباقات\n3- أريد التسجيل"
+CAMPAIGN_REPLY_MODES = {"none", "legacy_offer", "enrollment"}
 
 
 async def _add_offer_choices(branch_id: str, campaign_id: str, recipients: list) -> None:
@@ -7536,15 +7538,17 @@ async def _add_offer_choices(branch_id: str, campaign_id: str, recipients: list)
         return
     campaign = await _db["whatsapp_campaigns"].find_one({
         **_campaign_scope(branch_id), "id": campaign_id, "offer_choices_enabled": True,
-    }, {"_id": 0, "id": 1})
+    }, {"_id": 0, "id": 1, "reply_choices_mode": 1})
     if not campaign:
         return
+    footer = (ENROLLMENT_CHOICE_FOOTER
+              if campaign.get("reply_choices_mode") == "enrollment" else OFFER_CHOICE_FOOTER)
     for recipient in recipients:
         message = (recipient.get("message") or "").rstrip()
-        if OFFER_CHOICE_FOOTER.strip() not in message:
-            if len(message) + len(OFFER_CHOICE_FOOTER) > 4096:
+        if footer.strip() not in message:
+            if len(message) + len(footer) > 4096:
                 raise HTTPException(status_code=400, detail="Offer message is too long with choices")
-            recipient["message"] = message + OFFER_CHOICE_FOOTER
+            recipient["message"] = message + footer
 
 
 def _campaign_public(doc: dict, include_recipients: bool = True) -> dict:
@@ -7939,7 +7943,8 @@ async def get_campaign_offer_responses(
     rows = await _db["whatsapp_campaign_offer_responses"].find(
         {"branch_id": branch_id, "campaign_id": campaign_id}, {"_id": 0}
     ).sort("responded_at", -1).to_list(1000)
-    counts = {"details": 0, "visit": 0, "not_interested": 0}
+    counts = {"details": 0, "visit": 0, "not_interested": 0,
+              "schedule": 0, "pricing": 0, "registration": 0}
     for row in rows:
         if row.get("choice") in counts:
             counts[row["choice"]] += 1
@@ -7999,6 +8004,7 @@ async def create_campaign(
     default_name: str = Form(""),
     recipients_json: str = Form("[]"),
     offer_choices_enabled: bool = Form(False),
+    reply_choices_mode: str = Form("legacy_offer"),
     attachment: Optional[UploadFile] = File(None),
     attachments: List[UploadFile] = File(default=[]),
     current_user: dict = Depends(get_current_user),
@@ -8011,6 +8017,8 @@ async def create_campaign(
         raise HTTPException(status_code=400, detail="Campaign name or message is invalid")
     if audience not in {"pasted", "registration_requests", "active_members", "all_members", "expired_members"}:
         raise HTTPException(status_code=400, detail="Invalid campaign audience")
+    if reply_choices_mode not in CAMPAIGN_REPLY_MODES:
+        raise HTTPException(status_code=400, detail="Invalid campaign reply mode")
     recipients = _parse_campaign_recipients(recipients_json) if audience == "pasted" else []
     now = datetime.now(timezone.utc).isoformat()
     campaign_id = str(uuid.uuid4())
@@ -8018,6 +8026,7 @@ async def create_campaign(
         **_campaign_scope(branch_id), "id": campaign_id, "name": campaign_name,
         "message": message, "audience": audience, "proposed_send_at": _validate_proposed_send_at(proposed_send_at),
         "offer_choices_enabled": offer_choices_enabled is True,
+        "reply_choices_mode": reply_choices_mode if offer_choices_enabled else "none",
         "default_name": default_name[:200], "recipients": recipients,
         "created_at": now, "updated_at": now,
         "created_by": current_user.get("user_id") or current_user.get("id"),
@@ -8050,6 +8059,7 @@ async def update_campaign(
     default_name: str = Form(""),
     recipients_json: str = Form("[]"),
     offer_choices_enabled: bool = Form(False),
+    reply_choices_mode: str = Form("legacy_offer"),
     remove_attachment: bool = Form(False),
     attachment: Optional[UploadFile] = File(None),
     attachments: List[UploadFile] = File(default=[]),
@@ -8067,9 +8077,12 @@ async def update_campaign(
         raise HTTPException(status_code=400, detail="Campaign name or message is invalid")
     if audience not in {"pasted", "registration_requests", "active_members", "all_members", "expired_members"}:
         raise HTTPException(status_code=400, detail="Invalid campaign audience")
+    if reply_choices_mode not in CAMPAIGN_REPLY_MODES:
+        raise HTTPException(status_code=400, detail="Invalid campaign reply mode")
     update = {
         "name": campaign_name, "message": message, "audience": audience,
         "offer_choices_enabled": offer_choices_enabled is True,
+        "reply_choices_mode": reply_choices_mode if offer_choices_enabled else "none",
         "proposed_send_at": _validate_proposed_send_at(proposed_send_at), "default_name": default_name[:200],
         "recipients": _parse_campaign_recipients(recipients_json) if audience == "pasted" else [],
         "updated_at": datetime.now(timezone.utc).isoformat(),

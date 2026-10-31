@@ -23,6 +23,7 @@ const normalizeDigits = (s) => (s || '').replace(/[٠-٩]/g, d => ARABIC_DIGITS[
 // {الاسم} and the English {name} (case-insensitive, optional inner spaces).
 const NAME_TOKEN = '{الاسم}';
 const OFFER_CHOICE_FOOTER = '\n\nللاستفسار عن عرض الاشتراك، رد برقم واحد:\n1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم';
+const ENROLLMENT_CHOICE_FOOTER = '\n\nكيف نساعدك؟ رد برقم واحد:\n1- المواعيد المتاحة\n2- الأسعار والباقات\n3- أريد التسجيل';
 // Built fresh on each use — a shared /g/ regex is stateful across .test()/.replace().
 const nameTokenRe = () => /\{\s*(?:الاسم|name)\s*\}/gi;
 const hasLetters = (s) => /[A-Za-z\u0600-\u06FF]/.test(s || '');
@@ -159,6 +160,7 @@ export default function WhatsAppBulkPage() {
   const [campaignName, setCampaignName] = useState('');
   const [campaignId, setCampaignId] = useState(null);
   const [offerChoicesEnabled, setOfferChoicesEnabled] = useState(false);
+  const [replyChoicesMode, setReplyChoicesMode] = useState('enrollment');
   const [offerResponses, setOfferResponses] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
@@ -180,8 +182,9 @@ export default function WhatsAppBulkPage() {
   const invalidCount = items.length - validItems.length;
   const namedCount = useMemo(() => items.filter(i => i.name).length, [items]);
   const usesName = nameTokenRe().test(message);
-  const workflowMessage = offerChoicesEnabled && !message.includes(OFFER_CHOICE_FOOTER.trim())
-    ? `${message.trimEnd()}${OFFER_CHOICE_FOOTER}` : message;
+  const replyFooter = replyChoicesMode === 'enrollment' ? ENROLLMENT_CHOICE_FOOTER : OFFER_CHOICE_FOOTER;
+  const workflowMessage = offerChoicesEnabled && !message.includes(replyFooter.trim())
+    ? `${message.trimEnd()}${replyFooter}` : message;
   const isWaha = cloudStatus.provider === 'waha';
   const isSessionProvider = isWaha || cloudStatus.provider === 'whatsflow';
   const whatsflowQuotaExhausted = cloudStatus.provider === 'whatsflow'
@@ -353,6 +356,7 @@ export default function WhatsAppBulkPage() {
     setCampaignId(null);
     setCampaignName('');
     setOfferChoicesEnabled(false);
+    setReplyChoicesMode('enrollment');
     setOfferResponses(null);
     setMessage('');
     setDefaultName('');
@@ -390,6 +394,7 @@ export default function WhatsAppBulkPage() {
       setCampaignName(asCopy ? `${draft.name || ''} (${t('نسخة', 'Copy')})`.slice(0, 160) : draft.name || '');
       setMessage(draft.message || '');
       setOfferChoicesEnabled(Boolean(draft.offer_choices_enabled));
+      setReplyChoicesMode(draft.reply_choices_mode === 'enrollment' ? 'enrollment' : 'legacy_offer');
       setOfferResponses(null);
       setDefaultName(draft.default_name || '');
       setProposedSendAt(asCopy ? '' : draft.proposed_send_at || '');
@@ -452,6 +457,7 @@ export default function WhatsAppBulkPage() {
     formData.append('name', campaignName.trim());
     formData.append('message', message);
     formData.append('offer_choices_enabled', String(offerChoicesEnabled));
+    formData.append('reply_choices_mode', replyChoicesMode);
     formData.append('audience', audience);
     formData.append('proposed_send_at', proposedSendAt);
     formData.append('default_name', defaultName);
@@ -817,10 +823,19 @@ export default function WhatsAppBulkPage() {
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
                 <label className="flex items-center gap-2 text-sm font-medium">
                   <input type="checkbox" checked={offerChoicesEnabled} onChange={event => setOfferChoicesEnabled(event.target.checked)} />
-                  {t('خيارات الرد على عرض الاشتراك', 'Subscription offer reply choices')}
+                  {t('خيارات الرد على الحملة', 'Campaign reply choices')}
                 </label>
+                {offerChoicesEnabled && <Select value={replyChoicesMode} onValueChange={setReplyChoicesMode}>
+                  <SelectTrigger aria-label={t('نوع خيارات الرد', 'Reply choices type')}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="enrollment">{t('المواعيد · الأسعار · التسجيل', 'Schedule · Pricing · Registration')}</SelectItem>
+                    <SelectItem value="legacy_offer">{t('عرض الاشتراك القديم', 'Legacy subscription offer')}</SelectItem>
+                  </SelectContent>
+                </Select>}
                 {offerChoicesEnabled && <p className="text-xs text-muted-foreground whitespace-pre-line">
-                  {t('تضاف تلقائياً عند الإرسال: 1- أرسلوا التفاصيل، 2- أريد زيارة، 3- غير مهتم. تُحسب الردود الواضحة خلال 7 أيام من الإرسال، ولكل رقم اختيار واحد في الحملة.', 'Added when sent: 1- Send details, 2- I want a visit, 3- Not interested. Explicit replies within 7 days count once per phone and campaign.')}
+                  {replyChoicesMode === 'enrollment'
+                    ? t('تُضاف كخيارات مرقّمة داخل نص واتساب: 1- المواعيد، 2- الأسعار، 3- التسجيل. يرد العميل بالرقم أو العبارة، ويظهر طلبه في متابعة استفسارات الفرع خلال 7 أيام. ليست أزرار واتساب تفاعلية.', 'Added as numbered text choices in WhatsApp: 1- Schedule, 2- Pricing, 3- Registration. The customer replies with a number or phrase, and the branch inquiry appears within 7 days. These are not native WhatsApp buttons.')
+                    : t('تضاف تلقائياً عند الإرسال: 1- أرسلوا التفاصيل، 2- أريد زيارة، 3- غير مهتم.', 'Added when sent: 1- Send details, 2- I want a visit, 3- Not interested.')}
                 </p>}
                 {campaignId && offerChoicesEnabled && <div className="space-y-2">
                   <Button type="button" size="sm" variant="outline" onClick={async () => {
@@ -832,7 +847,9 @@ export default function WhatsAppBulkPage() {
                     }
                   }}>{t('عرض ردود العرض', 'View offer responses')}</Button>
                   {offerResponses && <div className="text-sm space-y-1">
-                    <p>{t(`طلب التفاصيل: ${offerResponses.counts.details} · طلب زيارة: ${offerResponses.counts.visit} · غير مهتم: ${offerResponses.counts.not_interested}`, `Details: ${offerResponses.counts.details} · Visit: ${offerResponses.counts.visit} · Not interested: ${offerResponses.counts.not_interested}`)}</p>
+                    <p>{replyChoicesMode === 'enrollment'
+                      ? t(`مواعيد: ${offerResponses.counts.schedule || 0} · أسعار: ${offerResponses.counts.pricing || 0} · تسجيل: ${offerResponses.counts.registration || 0}`, `Schedule: ${offerResponses.counts.schedule || 0} · Pricing: ${offerResponses.counts.pricing || 0} · Registration: ${offerResponses.counts.registration || 0}`)
+                      : t(`طلب التفاصيل: ${offerResponses.counts.details} · طلب زيارة: ${offerResponses.counts.visit} · غير مهتم: ${offerResponses.counts.not_interested}`, `Details: ${offerResponses.counts.details} · Visit: ${offerResponses.counts.visit} · Not interested: ${offerResponses.counts.not_interested}`)}</p>
                     <div className="max-h-44 overflow-y-auto space-y-1">
                       {offerResponses.responses.map(row => <p key={`${row.campaign_id}:${row.phone}`} className="rounded bg-white px-2 py-1" dir="auto">{row.name || row.phone} ({row.phone}) — {row.choice_label}</p>)}
                     </div>
@@ -1245,7 +1262,7 @@ export default function WhatsAppBulkPage() {
                   {previewItem?.name ? `: ${previewItem.name}` : ''}
                   {t(')', ')')}
                 </div>
-                <div className="text-sm whitespace-pre-wrap">{previewText}</div>
+                <div className="text-sm whitespace-pre-wrap">{previewText}{offerChoicesEnabled ? replyFooter : ''}</div>
               </div>
             )}
 

@@ -71,6 +71,13 @@ OFFER_CHOICE_LABELS = {
     "visit": "أريد زيارة",
     "not_interested": "غير مهتم",
 }
+ENROLLMENT_CHOICE_LABELS = {
+    "schedule": "المواعيد المتاحة",
+    "pricing": "الأسعار والباقات",
+    "registration": "أريد التسجيل",
+}
+ENROLLMENT_CHOICE_SIGNATURE = "1- المواعيد المتاحة\n2- الأسعار والباقات\n3- أريد التسجيل"
+LEGACY_CHOICE_SIGNATURE = "1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم"
 
 
 def parse_offer_choice(body: str) -> Optional[str]:
@@ -84,15 +91,25 @@ def parse_offer_choice(body: str) -> Optional[str]:
     }.get(value)
 
 
+def parse_enrollment_choice(body: str) -> Optional[str]:
+    value = " ".join(str(body or "").strip().split()).rstrip(".!؟")
+    value = value.translate(str.maketrans("١٢٣۱۲۳", "123123"))
+    return {
+        "1": "schedule", "المواعيد المتاحة": "schedule",
+        "2": "pricing", "الأسعار والباقات": "pricing",
+        "3": "registration", "أريد التسجيل": "registration",
+        "اريد التسجيل": "registration",
+    }.get(value)
+
+
 async def capture_offer_choice(branch_id: str, phone: str, body: str, message_id: str) -> bool:
     """Store one answer per campaign and phone after an actually sent offer.
 
     Provider message IDs make webhook retries idempotent; a later deliberate
     answer from the same phone may replace its earlier selection.
     """
-    choice = parse_offer_choice(body)
     normalized = normalize_phone(phone)
-    if not choice or not normalized or not message_id:
+    if not normalized or not message_id:
         return False
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=RECENT_CAMPAIGN_REPLY_DAYS)
@@ -104,7 +121,8 @@ async def capture_offer_choice(branch_id: str, phone: str, body: str, message_id
     }, {"_id": 0, "job_id": 1, "phone": 1, "recipient_name": 1,
         "message": 1, "completed_at": 1}).to_list(None)
     matches = [item for item in items if normalize_phone(item.get("phone")) == normalized
-               and "1- أرسلوا التفاصيل\n2- أريد زيارة\n3- غير مهتم" in (item.get("message") or "")]
+               and (LEGACY_CHOICE_SIGNATURE in (item.get("message") or "")
+                    or ENROLLMENT_CHOICE_SIGNATURE in (item.get("message") or ""))]
     for item in sorted(matches, key=lambda row: _parse_timestamp(row.get("completed_at")) or cutoff, reverse=True):
         job = await db.whatsapp_campaign_jobs.find_one({
             "id": item.get("job_id"), "branch_id": branch_id, "source": "campaign",
@@ -114,9 +132,16 @@ async def capture_offer_choice(branch_id: str, phone: str, body: str, message_id
             continue
         campaign = await db.whatsapp_campaigns.find_one({
             "id": campaign_id, "branch_id": branch_id, "offer_choices_enabled": True,
-        }, {"_id": 0, "name": 1})
+        }, {"_id": 0, "name": 1, "reply_choices_mode": 1})
         if not campaign:
             continue
+        # The sent message determines the reply vocabulary even if a draft is
+        # edited after dispatch.
+        enrollment = ENROLLMENT_CHOICE_SIGNATURE in (item.get("message") or "")
+        choice = (parse_enrollment_choice(body) if enrollment else parse_offer_choice(body))
+        if not choice:
+            continue
+        labels = ENROLLMENT_CHOICE_LABELS if enrollment else OFFER_CHOICE_LABELS
         response_id = f"{branch_id}:{campaign_id}:{normalized}"
         previous = await db.whatsapp_campaign_offer_responses.find_one({"_id": response_id})
         if previous and previous.get("message_id") == message_id:
@@ -127,15 +152,17 @@ async def capture_offer_choice(branch_id: str, phone: str, body: str, message_id
                 "branch_id": branch_id, "campaign_id": campaign_id,
                 "campaign_name": campaign.get("name") or (job or {}).get("campaign_title") or "",
                 "phone": normalized, "name": item.get("recipient_name") or "",
-                "choice": choice, "choice_label": OFFER_CHOICE_LABELS[choice],
+                "choice": choice, "choice_label": labels[choice],
                 "message_id": message_id, "responded_at": now.isoformat(),
             }, "$setOnInsert": {"created_at": now.isoformat()}}, upsert=True,
         )
         document = _base_document(
             branch_id=branch_id, phone=normalized, name=item.get("recipient_name") or "",
             source="campaign_offer_choice", campaign=campaign.get("name") or "",
-            notes=f"اختيار عرض الاشتراك: {OFFER_CHOICE_LABELS[choice]}",
-            status={"details": "interested", "visit": "visit", "not_interested": "not_interested"}[choice],
+            notes=f"اختيار الحملة: {labels[choice]}",
+            status={"details": "interested", "visit": "visit", "not_interested": "not_interested",
+                    "schedule": "interested", "pricing": "interested",
+                    "registration": "interested"}[choice],
             followup_due_at=_now() if choice != "not_interested" else None,
         )
         document["campaign_id"] = campaign_id
