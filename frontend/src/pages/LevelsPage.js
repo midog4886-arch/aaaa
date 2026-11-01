@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { transferLevelMember } from '../utils/transferLevelMember';
+import { forecastLevelForDate, weekdayForISODate } from '../utils/levelsDateForecast';
 import GroupWaitingList from '../components/GroupWaitingList';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -134,6 +135,7 @@ export const LevelsPage = () => {
   // Navigation states for drill-down view
   const [currentView, setCurrentView] = useState('days'); // 'days' | 'activities' | 'times' | 'levels'
   const [selectedDay, setSelectedDay] = useState(null);
+  const [forecastDate, setForecastDate] = useState('');
   const [selectedActivityId, setSelectedActivityId] = useState(null);
   const [selectedTimeSlotKey, setSelectedTimeSlotKey] = useState(null);
   
@@ -862,8 +864,13 @@ export const LevelsPage = () => {
     const dayNames = DAY_ARABIC_MAP[dayId] || [];
     return dayNames.some(name => schedule.includes(name));
   };
+  const membersById = new Map(members.map(member => [member.id, member]));
 
   const getFilteredLevelForDay = (level) => {
+    if (forecastDate && selectedDay === weekdayForISODate(forecastDate)) {
+      return forecastLevelForDate(level, membersById, forecastDate, selectedDay, memberMatchesDay)
+        || { ...level, members: [], members_details: [] };
+    }
     // Count only members with a non-expired active subscription so the hour
     // cards and the level cards inside agree (expired members stay linked to
     // the level in the DB but shouldn't inflate counts/occupancy). Members
@@ -898,6 +905,15 @@ export const LevelsPage = () => {
       (mergeBranchId && l.branch_id === mergeBranchId)
     );
   }, [levels, selectedBranchId, mergeBranchId]);
+  const forecastDay = weekdayForISODate(forecastDate);
+  const forecastLevels = forecastDay
+    ? visibleLevels.map(level => forecastLevelForDate(
+        level, membersById,
+        forecastDate, forecastDay, memberMatchesDay
+      )).filter(Boolean)
+    : [];
+  const forecastPlayers = new Set(forecastLevels.flatMap(level => level.members || []));
+  const forecastSessions = new Set(forecastLevels.map(level => `${level.activity_name || ''}::${level.time_slot || ''}`));
 
   // A "foreign" level belongs to the temporarily-merged branch: it is shown
   // for display only and must never be mutated from this view (no edit/delete/
@@ -1038,7 +1054,8 @@ export const LevelsPage = () => {
   })();
 
   // Navigate to activities view (after selecting day)
-  const navigateToActivities = (day) => {
+  const navigateToActivities = (day, keepForecast = false) => {
+    if (!keepForecast) setForecastDate('');
     setSelectedDay(day);
     setCurrentView('activities');
   };
@@ -2900,6 +2917,37 @@ ${slotTables}
                   </Button>
                 ))}
               </div>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 mb-5" data-testid="levels-date-forecast">
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm font-semibold text-slate-800">
+                  {t('اعرف أعداد يوم محدد', 'Check counts for a date')}
+                  <Input type="date" className="mt-1 w-48 bg-white" value={forecastDate}
+                    min={new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh' }).format(new Date())}
+                    onChange={event => setForecastDate(event.target.value)}
+                    aria-label={t('تاريخ التدريب', 'Training date')} />
+                </label>
+                {forecastDate && <Button type="button" size="sm" variant="outline" onClick={() => setForecastDate('')}>
+                  {t('مسح التاريخ', 'Clear date')}
+                </Button>}
+              </div>
+              {forecastDate && forecastDay && (
+                <div className="mt-4">
+                  <p className="font-semibold text-slate-900">
+                    {t('المتوقع يوم', 'Expected on')} {forecastDate} · {language === 'ar' ? WEEKDAYS.find(day => day.id === forecastDay)?.name_ar : WEEKDAYS.find(day => day.id === forecastDay)?.name_en}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-800">
+                    <span>{t('الحصص:', 'Sessions:')} <strong>{forecastSessions.size}</strong></span>
+                    <span>{t('اللاعبون:', 'Players:')} <strong>{forecastPlayers.size}</strong></span>
+                    <span>{t('المستويات:', 'Levels:')} <strong>{forecastLevels.length}</strong></span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-600">{t('توقع حسب جدول المستويات والاشتراكات المسجلة الآن؛ لا يمثل الحضور الفعلي، وقد يتغير مع التجديد أو التجميد أو النقل.', 'Projection from current level schedules and subscriptions; not actual attendance. Renewals, freezes and transfers can change it.')}</p>
+                  <Button type="button" size="sm" variant="outline" className="mt-3"
+                    onClick={() => navigateToActivities(forecastDay, true)}>
+                    {t('عرض تفاصيل اليوم', 'View day details')}
+                  </Button>
+                </div>
+              )}
             </div>
             {/* Stats Cards */}
             <p className="text-xs text-slate-500 mb-3">{t('المؤشرات تخص الفرع المعروض وجميع أيام تدريبه؛ قد يظهر المستوى أو اللاعب في أكثر من يوم.', 'Figures cover the displayed branch and all training days; a level or player may appear on multiple days.')}</p>
