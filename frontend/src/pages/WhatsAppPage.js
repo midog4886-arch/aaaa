@@ -496,6 +496,8 @@ export default function WhatsAppPage() {
   const [branches, setBranches] = useState([]);
   const [classReminderStops, setClassReminderStops] = useState([]);
   const [classReminderStop, setClassReminderStop] = useState({ branch_id: '', date: '', activity_id: 'all', time: '' });
+  const [classReminderPreview, setClassReminderPreview] = useState(null);
+  const [loadingClassReminderPreview, setLoadingClassReminderPreview] = useState(false);
   const [savingClassReminderStop, setSavingClassReminderStop] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState([]);
@@ -2398,6 +2400,22 @@ export default function WhatsAppPage() {
     .replace('{days}', waSettings.days_before)
     .replace('{end_date}', new Date(Date.now() + waSettings.days_before * 86400000).toLocaleDateString('en-CA').replace(/-/g, '/'));
 
+  const previewOldClassReminder = async (slot) => {
+    setLoadingClassReminderPreview(true);
+    setClassReminderPreview(null);
+    try {
+      const response = await whatsappAPI.previewClassReminderSuppression(slot);
+      setClassReminderPreview(response.data);
+    } catch (error) { toast.error(apiErrorMessage(error, t('تعذر عرض المعاينة', 'Could not load preview'))); }
+    finally { setLoadingClassReminderPreview(false); }
+  };
+
+  const reminderBranchActivities = (() => {
+    if (!classReminderStop.branch_id) return [];
+    const branchOnly = activities.filter(a => a.branch_id === classReminderStop.branch_id);
+    return branchOnly.length ? branchOnly : activities.filter(a => !a.branch_id);
+  })();
+
   // ── Tabs definition ──
   const tabs = [
     { id: 'settings', label: t('الإعدادات', 'Settings'), icon: <Settings className="w-4 h-4" /> },
@@ -2459,17 +2477,23 @@ export default function WhatsAppPage() {
               <h2 className="font-bold">{t('إيقاف تذكير موعد قديم', 'Stop an old class reminder')}</h2>
               <p className="text-sm text-muted-foreground">{t('استخدمه إذا أبلغت المشتركين بتغيير الموعد برسالة عادية. لا يغيّر الاشتراك أو رصيد الحصص.', 'Use this after notifying members of a time change by ordinary message. It does not change subscriptions or class balances.')}</p>
               <div className="grid grid-cols-2 gap-2">
-                <select aria-label="فرع التذكير" className="border rounded-lg p-2 bg-background" value={classReminderStop.branch_id} onChange={e => setClassReminderStop(s => ({ ...s, branch_id: e.target.value }))}>
+                <select aria-label="فرع التذكير" className="border rounded-lg p-2 bg-background" value={classReminderStop.branch_id} onChange={e => { setClassReminderStop(s => ({ ...s, branch_id: e.target.value, activity_id: 'all' })); setClassReminderPreview(null); }}>
                   <option value="">{t('اختر الفرع', 'Choose branch')}</option>
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>)}
                 </select>
-                <Input aria-label="تاريخ الحصة القديمة" type="date" value={classReminderStop.date} onChange={e => setClassReminderStop(s => ({ ...s, date: e.target.value }))} />
-                <select aria-label="نشاط التذكير" className="border rounded-lg p-2 bg-background" value={classReminderStop.activity_id} onChange={e => setClassReminderStop(s => ({ ...s, activity_id: e.target.value }))}>
+                <Input aria-label="تاريخ الحصة القديمة" type="date" value={classReminderStop.date} onChange={e => { setClassReminderStop(s => ({ ...s, date: e.target.value })); setClassReminderPreview(null); }} />
+                <select aria-label="نشاط التذكير" className="border rounded-lg p-2 bg-background" value={classReminderStop.activity_id} onChange={e => { setClassReminderStop(s => ({ ...s, activity_id: e.target.value })); setClassReminderPreview(null); }}>
                   <option value="all">{t('كل الأنشطة في الموعد', 'All activities at this time')}</option>
-                  {activities.map(a => <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>)}
+                  {reminderBranchActivities.map(a => <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>)}
                 </select>
-                <Input aria-label="الوقت القديم" type="time" value={classReminderStop.time} onChange={e => setClassReminderStop(s => ({ ...s, time: e.target.value }))} />
+                <Input aria-label="الوقت القديم" type="time" value={classReminderStop.time} onChange={e => { setClassReminderStop(s => ({ ...s, time: e.target.value })); setClassReminderPreview(null); }} />
               </div>
+              <Button variant="outline" disabled={loadingClassReminderPreview || !classReminderStop.branch_id || !classReminderStop.date || !classReminderStop.time} onClick={() => previewOldClassReminder(classReminderStop)}>{loadingClassReminderPreview ? t('جاري المعاينة...', 'Loading preview...') : t('معاينة المتأثرين', 'Preview affected members')}</Button>
+              {classReminderPreview && <div className="rounded-lg border bg-muted/30 p-3 text-sm space-y-2">
+                <p>{classReminderPreview.date} · {classReminderPreview.time} · {branches.find(b => b.id === classReminderPreview.branch_id)?.name_ar || classReminderPreview.branch_id} · {classReminderPreview.activity_id === 'all' ? t('كل الأنشطة', 'All activities') : (activities.find(a => a.id === classReminderPreview.activity_id)?.name_ar || classReminderPreview.activity_id)}</p>
+                <p className="font-bold">{t(`${classReminderPreview.count} مشترك سيتوقف تذكير موعده القديم`, `${classReminderPreview.count} members will have the old reminder stopped`)}</p>
+                {classReminderPreview.members.length > 0 && <div className="max-h-32 overflow-y-auto">{classReminderPreview.members.map(m => <div key={m.id}>{m.name} · {m.activity_name}</div>)}</div>}
+              </div>}
               <Button disabled={savingClassReminderStop || !classReminderStop.branch_id || !classReminderStop.date || !classReminderStop.time} onClick={async () => {
                 setSavingClassReminderStop(true);
                 try {
@@ -2482,10 +2506,11 @@ export default function WhatsAppPage() {
               {classReminderStops.length > 0 && <div className="space-y-1 max-h-40 overflow-y-auto">
                 {classReminderStops.map(row => <div key={row.id} className="flex items-center justify-between gap-2 border rounded-lg p-2 text-sm">
                   <span>{row.date} · {row.time} · {branches.find(b => b.id === row.branch_id)?.name_ar || row.branch_id} · {row.activity_id === 'all' ? t('كل الأنشطة', 'All activities') : (activities.find(a => a.id === row.activity_id)?.name_ar || row.activity_id)}</span>
+                  <div className="flex gap-1"><Button size="sm" variant="outline" onClick={() => previewOldClassReminder(row)}>{t('معاينة', 'Preview')}</Button>
                   <Button size="sm" variant="ghost" aria-label="إلغاء استثناء التذكير" onClick={async () => {
                     try { await whatsappAPI.deleteClassReminderSuppression(row.id); setClassReminderStops(rows => rows.filter(x => x.id !== row.id)); }
                     catch (error) { toast.error(apiErrorMessage(error, t('تعذر الحذف', 'Could not remove'))); }
-                  }}><Trash2 className="w-4 h-4" /></Button>
+                  }}><Trash2 className="w-4 h-4" /></Button></div>
                 </div>)}
               </div>}
             </div>

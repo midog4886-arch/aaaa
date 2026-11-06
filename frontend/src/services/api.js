@@ -885,6 +885,7 @@ export const tenantDataAPI = {
 
 export const whatsappAPI = {
   getClassReminderSuppressions: () => axios.get(`${API}/whatsapp/class-reminder-suppressions`),
+  previewClassReminderSuppression: (data) => axios.post(`${API}/whatsapp/class-reminder-suppressions/preview`, data),
   addClassReminderSuppression: (data) => axios.post(`${API}/whatsapp/class-reminder-suppressions`, data),
   deleteClassReminderSuppression: (id) => axios.delete(`${API}/whatsapp/class-reminder-suppressions/${id}`),
   getStatus: () => axios.get(`${API}/whatsapp/status`),

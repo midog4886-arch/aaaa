@@ -1573,6 +1573,69 @@ class ClassReminderSuppressionCreate(BaseModel):
     time: str
 
 
+def _validate_reminder_branch_access(current_user: dict, branch_id: str) -> None:
+    if not current_user.get("is_admin") and branch_id not in get_allowed_branch_ids(current_user):
+        raise HTTPException(status_code=403, detail="Branch access denied")
+
+
+async def _validate_reminder_slot(data: ClassReminderSuppressionCreate, current_user: dict):
+    _require_whatsapp_access(current_user)
+    _validate_reminder_branch_access(current_user, data.branch_id)
+    branch = await _db["branches"].find_one({"id": data.branch_id}, {"_id": 0, "id": 1})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    try:
+        day = date.fromisoformat(data.date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+    parsed_time = _parse_class_time(data.time, day)
+    if not parsed_time:
+        raise HTTPException(status_code=400, detail="Invalid time")
+    activity_id = data.activity_id or "all"
+    if activity_id != "all":
+        activity = await _db["activities"].find_one(
+            {"id": activity_id}, {"_id": 0, "id": 1, "branch_id": 1}
+        )
+        if not activity:
+            raise HTTPException(status_code=404, detail="Activity not found")
+        if activity.get("branch_id") not in (None, "", data.branch_id):
+            raise HTTPException(status_code=400, detail="Activity belongs to another branch")
+    return day, parsed_time, activity_id
+
+
+@router.post("/class-reminder-suppressions/preview")
+async def preview_class_reminder_suppression(
+    data: ClassReminderSuppressionCreate, current_user=Depends(get_current_user)
+):
+    day, parsed_time, activity_id = await _validate_reminder_slot(data, current_user)
+    members = await _db["members"].find(
+        {"branch_id": data.branch_id, "phone": {"$nin": [None, ""]},
+         "activities": {"$exists": True, "$ne": []}},
+        {"_id": 0, "id": 1, "name": 1, "name_ar": 1, "activities": 1},
+    ).to_list(length=None)
+    frozen_ids = await _frozen_members_on_date(day)
+    from utils.reminder_refunds import refunded_source_ids
+    refunded_ids = await refunded_source_ids(_db, members)
+    affected = []
+    for member in members:
+        if member.get("id") in frozen_ids:
+            continue
+        for activity in member.get("activities") or []:
+            if activity_id != "all" and activity.get("activity_id") != activity_id:
+                continue
+            if activity.get("source_id") in refunded_ids or not _activity_is_current(activity, day):
+                continue
+            occurrence = _class_occurrence_for_date(activity, day)
+            if occurrence and occurrence.time() == parsed_time.time():
+                affected.append({"id": member.get("id"),
+                                 "name": member.get("name_ar") or member.get("name") or "",
+                                 "activity_name": activity.get("activity_name") or ""})
+                break
+    return {"count": len(affected), "members": affected,
+            "branch_id": data.branch_id, "date": day.isoformat(),
+            "activity_id": activity_id, "time": parsed_time.strftime("%H:%M")}
+
+
 @router.get("/class-reminder-suppressions")
 async def list_class_reminder_suppressions(current_user=Depends(get_current_user)):
     _require_whatsapp_access(current_user)
@@ -1587,23 +1650,7 @@ async def list_class_reminder_suppressions(current_user=Depends(get_current_user
 async def create_class_reminder_suppression(
     data: ClassReminderSuppressionCreate, current_user=Depends(get_current_user)
 ):
-    _require_whatsapp_access(current_user)
-    require_branch_scope(current_user, data.branch_id)
-    branch = await _db["branches"].find_one({"id": data.branch_id}, {"_id": 0, "id": 1})
-    if not branch:
-        raise HTTPException(status_code=404, detail="Branch not found")
-    try:
-        day = date.fromisoformat(data.date)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date")
-    parsed_time = _parse_class_time(data.time, day)
-    if not parsed_time:
-        raise HTTPException(status_code=400, detail="Invalid time")
-    activity_id = data.activity_id or "all"
-    if activity_id != "all" and not await _db["activities"].find_one(
-        {"id": activity_id}, {"_id": 0, "id": 1}
-    ):
-        raise HTTPException(status_code=404, detail="Activity not found")
+    day, parsed_time, activity_id = await _validate_reminder_slot(data, current_user)
     item = {
         "id": str(uuid.uuid4()), "branch_id": data.branch_id,
         "date": day.isoformat(), "activity_id": activity_id,
@@ -1624,7 +1671,7 @@ async def delete_class_reminder_suppression(
     item = await _db["class_reminder_suppressions"].find_one({"id": suppression_id})
     if not item:
         raise HTTPException(status_code=404, detail="Suppression not found")
-    require_branch_scope(current_user, item["branch_id"])
+    _validate_reminder_branch_access(current_user, item["branch_id"])
     await _db["class_reminder_suppressions"].delete_one({"id": suppression_id})
     return {"deleted": True}
 

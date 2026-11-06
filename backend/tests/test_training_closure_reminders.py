@@ -241,6 +241,20 @@ def test_manual_suppression_added_after_agenda_selection(monkeypatch):
     sender.assert_not_awaited()
 
 
+def test_manual_suppression_preview_counts_only_selected_branch_slot(monkeypatch):
+    db = DB(members=[member(), member("b")])
+    db["activities"].rows.append({"id": "swim", "branch_id": "a"})
+    configure(monkeypatch, db)
+    request = whatsapp.ClassReminderSuppressionCreate(
+        branch_id="a", date="2026-09-07", activity_id="swim", time="17:00"
+    )
+    result = run(whatsapp.preview_class_reminder_suppression(
+        request, {"is_admin": True, "user_id": "admin"}
+    ))
+    assert result["count"] == 1
+    assert result["members"] == [{"id": "a", "name": "Member", "activity_name": "swim"}]
+
+
 @pytest.mark.parametrize("changes,expected", [
     ({"branch_id": "all"}, 0),
     ({"start_date": "2026-09-08", "end_date": "2026-09-09"}, 2),
