@@ -186,6 +186,34 @@ def test_activity_closure_keeps_open_activity_and_its_reminder_time(monkeypatch)
     assert "swim" not in sender.await_args.args[1]
 
 
+def test_changed_slot_does_not_send_old_time_reminder(monkeypatch):
+    db = DB([{**CLOSURE, "stop_type": "specific_times",
+              "affected_times": ["5:00 م"], "scope": "specific",
+              "activity_ids": ["swim"]}], [member()])
+    sender = configure(monkeypatch, db)
+    assert run(whatsapp.process_class_reminders(NOW)) == 0
+    assert db.whatsapp_class_reminder_log.rows == []
+    assert run(whatsapp.process_class_reminders(NOW.replace(hour=17))) == 1
+    assert "karate" in sender.await_args.args[1]
+    assert "swim" not in sender.await_args.args[1]
+
+
+def test_slot_cancelled_after_agenda_selection_is_rechecked(monkeypatch):
+    db = DB(members=[member()])
+    sender = configure(monkeypatch, db)
+
+    async def config(_branch):
+        db.closures.rows.append({**CLOSURE, "stop_type": "specific_times",
+                                 "affected_times": ["5:00 م"], "scope": "specific",
+                                 "activity_ids": ["swim"]})
+        return {"enabled": True, "provider": "whatsflow"}
+
+    monkeypatch.setattr(whatsapp, "_get_branch_cloud_config", config)
+    assert run(whatsapp.process_class_reminders(NOW)) == 0
+    sender.assert_not_awaited()
+    assert db.whatsapp_class_reminder_log.rows == []
+
+
 @pytest.mark.parametrize("changes,expected", [
     ({"branch_id": "all"}, 0),
     ({"start_date": "2026-09-08", "end_date": "2026-09-09"}, 2),

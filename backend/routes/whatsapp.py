@@ -1344,6 +1344,27 @@ def _activity_is_current(activity: dict, on_date: date) -> bool:
     return (not start or start <= day) and (not end or end >= day)
 
 
+def _class_reminder_closed(closures: list, branch_id: str, activity_id: str,
+                           class_time: datetime) -> bool:
+    """Suppress reminders for cancelled days and cancelled individual slots."""
+    if training_day_closed(closures, branch_id, activity_id):
+        return True
+    for closure in closures:
+        if closure.get("branch_id") not in (None, "", "all", branch_id):
+            continue
+        if closure.get("stop_type") != "specific_times":
+            continue
+        if closure.get("scope", "all") != "all" and activity_id not in (
+            closure.get("activity_ids") or [closure.get("activity_id")]
+        ):
+            continue
+        for raw_time in closure.get("affected_times") or []:
+            cancelled_time = _parse_class_time(raw_time, class_time.date())
+            if cancelled_time and cancelled_time.time() == class_time.time():
+                return True
+    return False
+
+
 async def _frozen_members_on_date(on_date: date) -> set:
     """Freeze dates are inclusive; a frozen member has no class reminder."""
     rows = await _db["member_freezes"].find({
@@ -1375,7 +1396,9 @@ async def send_class_reminder_whatsapp_notice(
         daily_classes = [
             entry for entry in daily_classes
             if entry.get("member_id", member.get("id")) not in frozen_ids
-            and not training_day_closed(closures, branch_id, entry.get("activity_id"))
+            and not _class_reminder_closed(
+                closures, branch_id, entry.get("activity_id"), entry["class_time"]
+            )
         ]
         if not daily_classes:
             return False
@@ -1391,7 +1414,7 @@ async def send_class_reminder_whatsapp_notice(
             act.get("activity_id") for act in member.get("activities", [])
             if act.get("activity_name") == activity_name
         ), None)
-        if training_day_closed(closures, branch_id, activity_id):
+        if _class_reminder_closed(closures, branch_id, activity_id, class_time):
             return False
     name = member.get("name_ar") or member.get("name") or ""
     time_text = class_time.strftime("%I:%M %p").lstrip("0").replace("AM", "ص").replace("PM", "م")
@@ -1558,12 +1581,12 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         for activity in member.get("activities") or []:
             if activity.get("source_id") in refunded_ids:
                 continue
-            if training_day_closed(closures, branch_id, activity.get("activity_id")):
-                continue
             if not _activity_is_current(activity, target_date):
                 continue
             class_time = _class_occurrence_for_date(activity, target_date)
-            if not class_time:
+            if not class_time or _class_reminder_closed(
+                closures, branch_id, activity.get("activity_id"), class_time
+            ):
                 continue
             activity_key = activity.get("activity_id") or activity.get("activity_name") or "activity"
             group = groups.setdefault((branch_id, phone), {"member": member, "entries": {}})
