@@ -13,6 +13,7 @@ jest.mock('../../services/api', () => ({
     getTargetCount: jest.fn(),
     getCloudInboxConversations: jest.fn(),
     getCloudInboxThread: jest.fn(),
+    markCloudPhoneRead: jest.fn(),
     syncCloudInboxPhoneReplies: jest.fn(),
     syncCloudPhoneBranch: jest.fn(),
     getCloudPhoneHistory: jest.fn(),
@@ -205,6 +206,23 @@ test('refreshes the current branch inbox after opening a read-only thread and pr
   expect(branchesAPI.getAll).toHaveBeenCalledTimes(1);
   expect(whatsappAPI.getCloudInboxThread).toHaveBeenCalledTimes(1);
   expect(screen.getByPlaceholderText(/اكتب الرد/)).toBeInTheDocument();
+});
+
+test('shows chat history while phone read confirmation is still pending', async () => {
+  const readConfirmation = deferred();
+  const mirrored = { ...conversation, provider: 'whatsflow', phone_mirrored: true,
+    phone_unread_known: true, phone_unread_count: 1 };
+  whatsappAPI.getCloudInboxThread.mockResolvedValue({ data: {
+    conversation: mirrored,
+    messages: [{ id: 'quick-message', body: 'رسالة ظاهرة', direction: 'inbound',
+      type: 'text', created_at: '2026-01-01T12:00:00Z' }],
+  } });
+  whatsappAPI.markCloudPhoneRead.mockReturnValue(readConfirmation.promise);
+  const user = await renderCloudInbox();
+  await user.click(screen.getByRole('button', { name: /أحمد/ }));
+  expect(await screen.findByText('رسالة ظاهرة')).toBeInTheDocument();
+  expect(whatsappAPI.markCloudPhoneRead).toHaveBeenCalledTimes(1);
+  await act(async () => readConfirmation.resolve({ data: { confirmed: true } }));
 });
 
 test('shows a clear unavailable notice and explicitly recovers missing Whatsflow text', async () => {

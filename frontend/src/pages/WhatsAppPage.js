@@ -1063,6 +1063,27 @@ export default function WhatsAppPage() {
       ));
       const phoneConversation = response.data?.conversation || null;
       let currentConversation = phoneConversation;
+      // Render the conversation as soon as its history arrives. Confirming
+      // read state with the phone provider may take much longer than the read.
+      setCloudThread(phoneConversation);
+      const messages = response.data?.messages || [];
+      if (response.data?.phone_history) {
+        const previousHistory = phoneHistoryRef.current;
+        const history = previousHistory?.conversation === conversationId && previousHistory.page > 1
+          ? previousHistory
+          : { conversation: conversationId, page: 1, ...response.data.phone_history };
+        phoneHistoryRef.current = history;
+        setPhoneHistory(history);
+        setCloudMessages(previous => {
+          const older = history.page > 1 ? previous : [];
+          const merged = new Map([...older, ...messages].map(m => [m.id, m]));
+          return [...merged.values()].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+        });
+      } else {
+        phoneHistoryRef.current = null;
+        setPhoneHistory(null);
+        setCloudMessages(messages);
+      }
       const readFingerprint = phoneConversation?.phone_mirrored
         ? `${conversationId}:${phoneConversation.phone_last_message_key?.id || ''}:${phoneConversation.phone_unread_count}`
         : null;
@@ -1088,24 +1109,6 @@ export default function WhatsAppPage() {
         }
       }
       setCloudThread(currentConversation);
-      const messages = response.data?.messages || [];
-      if (response.data?.phone_history) {
-        const previousHistory = phoneHistoryRef.current;
-        const history = previousHistory?.conversation === conversationId && previousHistory.page > 1
-          ? previousHistory
-          : { conversation: conversationId, page: 1, ...response.data.phone_history };
-        phoneHistoryRef.current = history;
-        setPhoneHistory(history);
-        setCloudMessages(previous => {
-          const older = history.page > 1 ? previous : [];
-          const merged = new Map([...older, ...messages].map(m => [m.id, m]));
-          return [...merged.values()].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
-        });
-      } else {
-        phoneHistoryRef.current = null;
-        setPhoneHistory(null);
-        setCloudMessages(messages);
-      }
       const mediaMessages = messages.filter(message => message.media_id || message.media_storage_id);
       mediaMessages.forEach(message => {
         loadCloudMedia(message, branchKey, authScope, viewKey, conversationId);
