@@ -645,6 +645,8 @@ export default function WhatsAppPage() {
   const [actNotifMemberCount, setActNotifMemberCount] = useState(null);
   const [actNotifPriority, setActNotifPriority] = useState('info');
   const [actNotifMembers, setActNotifMembers] = useState([]);       // full member list with active status
+  const [actNotifActivityMembers, setActNotifActivityMembers] = useState([]);
+  const [actNotifLoadingActivityMembers, setActNotifLoadingActivityMembers] = useState(false);
   const [actNotifLoadingMembers, setActNotifLoadingMembers] = useState(false);
   const [actNotifActiveOnly, setActNotifActiveOnly] = useState(true); // filter to active subscribers
   const [actNotifShowList, setActNotifShowList] = useState(false);   // toggle member list visibility
@@ -1570,14 +1572,14 @@ export default function WhatsAppPage() {
   const loadActivityNotifActivities = async (branchFilter) => {
     setActNotifLoadingActivities(true);
     // reset activity/levels when branch changes
-    setActNotifActivity(''); setActNotifLevels([]); setActNotifMembers([]);
+    setActNotifActivity(''); setActNotifLevels([]); setActNotifMembers([]); setActNotifActivityMembers([]);
     setActNotifMemberCount(null); setActNotifShowList(false);
     try {
       // Same source as SchedulePage: activitiesAPI.getAll — shows all registered activities
       const params = branchFilter ? { branch_filter: branchFilter } : { branch_filter: 'all' };
       const res = await activitiesAPI.getAll(params);
       const list = (res.data || []).map(a => ({
-        id: a.name_ar || a.name || a.id,
+        id: a.id,
         name: a.name_ar || a.name || a.id,
       }));
       setActNotifAllActivities(list);
@@ -1698,7 +1700,7 @@ export default function WhatsAppPage() {
   useEffect(() => {
     if (!actNotifActivity) {
       setActNotifLevels([]); setActNotifLevel('all');
-      setActNotifMemberCount(null); setActNotifMembers([]); setActNotifShowList(false);
+      setActNotifMemberCount(null); setActNotifMembers([]); setActNotifActivityMembers([]); setActNotifShowList(false);
       return;
     }
     const params = actNotifBranch ? { branch_filter: actNotifBranch } : {};
@@ -1712,6 +1714,47 @@ export default function WhatsAppPage() {
     }).catch(() => { setActNotifLevels([]); setActNotifMembers([]); });
   }, [actNotifActivity, actNotifBranch]);
 
+  // The "all levels" audience is the activity's subscribers, including
+  // members who have not yet been assigned to a level.
+  useEffect(() => {
+    if (!actNotifActivity) return;
+    let cancelled = false;
+    setActNotifActivityMembers([]);
+    setActNotifLoadingActivityMembers(true);
+    const matching = actNotifAllActivities.filter(activity =>
+      actNotifActivity === 'سباح'
+        ? activity.name.includes('سباح') || activity.name.toLowerCase().includes('swim')
+        : actNotifActivity === 'قدم'
+          ? activity.name.includes('قدم') || activity.name.toLowerCase().includes('football')
+          : actNotifActivity === 'كارات'
+            ? activity.name.includes('كارات') || activity.name.toLowerCase().includes('karate')
+            : activity.name === actNotifActivity
+    );
+    Promise.all(matching.map(activity => activitiesAPI.getMembers(activity.id)))
+      .then(results => {
+        if (cancelled) return;
+        const seen = new Set();
+        const members = results.flatMap(result => result.data || [])
+          .filter(member => !actNotifBranch || member.branch_id === actNotifBranch)
+          .filter(member => {
+            if (seen.has(member.id)) return false;
+            seen.add(member.id);
+            return true;
+          })
+          .map(member => ({
+            member_id: member.id,
+            name: member.name_ar || member.name,
+            phone: member.phone,
+            branch_id: member.branch_id,
+            is_active: member.active,
+          }));
+        setActNotifActivityMembers(members);
+      })
+      .catch(() => { if (!cancelled) toast.error(t('تعذر تحميل مشتركي النشاط', 'Could not load activity subscribers')); })
+      .finally(() => { if (!cancelled) setActNotifLoadingActivityMembers(false); });
+    return () => { cancelled = true; };
+  }, [actNotifActivity, actNotifBranch, actNotifAllActivities]);
+
   // Update member list when level or members change
   useEffect(() => {
     if (!actNotifActivity || !actNotifLevels.length) return;
@@ -1720,19 +1763,22 @@ export default function WhatsAppPage() {
   }, [actNotifLevel, actNotifLevels]);
 
   // Derived: filtered member list based on active-only toggle
+  const actNotifSelectedMembers = actNotifLevel === 'all' ? actNotifActivityMembers : actNotifMembers;
+  const actNotifAudienceLoading = actNotifLevel === 'all' ? actNotifLoadingActivityMembers : actNotifLoadingMembers;
   const actNotifFilteredMembers = actNotifActiveOnly
-    ? actNotifMembers.filter(m => m.is_active)
-    : actNotifMembers;
+    ? actNotifSelectedMembers.filter(m => m.is_active)
+    : actNotifSelectedMembers;
 
   // Sync member count with filtered list
   useEffect(() => {
-    if (!actNotifLoadingMembers) {
+    if (!actNotifAudienceLoading) {
       setActNotifMemberCount(actNotifFilteredMembers.length);
     }
-  }, [actNotifFilteredMembers, actNotifLoadingMembers]);
+  }, [actNotifFilteredMembers, actNotifAudienceLoading]);
 
   const handleSendActivityNotif = async () => {
     if (!actNotifActivity) { toast.error(t('اختر النشاط أولاً', 'Select an activity first')); return; }
+    if (actNotifAudienceLoading) { toast.error(t('انتظر تحميل أعضاء النشاط', 'Wait for activity members to load')); return; }
     if (!actNotifBody.trim()) { toast.error(t('أدخل نص الإشعار', 'Enter notification body')); return; }
     if (actNotifChannel !== 'whatsapp' && !actNotifTitle.trim()) { toast.error(t('أدخل عنوان الإشعار', 'Enter notification title')); return; }
     // Use the filtered member list (active-only or all) — computed from actNotifMembers
@@ -3425,19 +3471,19 @@ export default function WhatsAppPage() {
                       />
                       {t('نشطين فقط (اشتراك سارٍ)', 'Active subscribers only')}
                     </label>
-                    {actNotifLoadingMembers
+                    {actNotifAudienceLoading
                       ? <span className="text-xs text-muted-foreground">{t('جاري التحقق...', 'Checking...')}</span>
-                      : actNotifMembers.length > 0 && (
+                      : actNotifSelectedMembers.length > 0 && (
                         <span className="text-xs text-muted-foreground">
                           {actNotifActiveOnly
-                            ? t(`${actNotifFilteredMembers.length} نشط من ${actNotifMembers.length}`, `${actNotifFilteredMembers.length} active of ${actNotifMembers.length}`)
-                            : t(`${actNotifMembers.length} عضو`, `${actNotifMembers.length} members`)}
+                            ? t(`${actNotifFilteredMembers.length} نشط من ${actNotifSelectedMembers.length}`, `${actNotifFilteredMembers.length} active of ${actNotifSelectedMembers.length}`)
+                            : t(`${actNotifSelectedMembers.length} عضو`, `${actNotifSelectedMembers.length} members`)}
                         </span>
                       )}
                   </div>
 
                   {/* Count badge */}
-                  {!actNotifLoadingMembers && (
+                  {!actNotifAudienceLoading && (
                     <div
                       className={`flex items-center justify-between gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer ${actNotifFilteredMembers.length > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-gray-50 text-gray-500 border'}`}
                       onClick={() => setActNotifShowList(v => !v)}
@@ -3540,11 +3586,13 @@ export default function WhatsAppPage() {
 
               {/* Send button */}
               <Button onClick={handleSendActivityNotif}
-                disabled={actNotifSending || !actNotifActivity || (actNotifChannel !== 'whatsapp' && !actNotifTitle.trim()) || !actNotifBody.trim() || actNotifMemberCount === 0}
+                disabled={actNotifSending || actNotifAudienceLoading || !actNotifActivity || (actNotifChannel !== 'whatsapp' && !actNotifTitle.trim()) || !actNotifBody.trim() || actNotifMemberCount === 0}
                 className={`w-full ${actNotifChannel === 'whatsapp' ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}>
                 {actNotifSending ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : <Send className="w-4 h-4 me-2" />}
                 {actNotifMemberCount === 0
-                  ? t('لا يوجد أعضاء في هذا المستوى', 'No members in this level')
+                  ? (actNotifLevel === 'all'
+                    ? t('لا يوجد مشتركون مطابقون للنشاط والفرع', 'No subscribers match this activity and branch')
+                    : t('لا يوجد أعضاء في هذا المستوى', 'No members in this level'))
                   : actNotifChannel === 'whatsapp'
                     ? t(`إرسال إلى ${actNotifMemberCount} رقم عبر واتساب`, `Send to ${actNotifMemberCount} numbers via WhatsApp`)
                     : t(`إرسال${actNotifMemberCount !== null ? ` لـ ${actNotifMemberCount} عضو` : ''}`, `Send${actNotifMemberCount !== null ? ` to ${actNotifMemberCount} members` : ''}`)}
