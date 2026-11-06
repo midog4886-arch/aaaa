@@ -214,6 +214,33 @@ def test_slot_cancelled_after_agenda_selection_is_rechecked(monkeypatch):
     assert db.whatsapp_class_reminder_log.rows == []
 
 
+def test_manual_message_old_slot_suppression_without_closure(monkeypatch):
+    db = DB(members=[member()])
+    db["class_reminder_suppressions"].rows.append({
+        "branch_id": "a", "date": "2026-09-07", "activity_id": "swim", "time": "17:00",
+    })
+    sender = configure(monkeypatch, db)
+    assert run(whatsapp.process_class_reminders(NOW)) == 0
+    assert run(whatsapp.process_class_reminders(NOW.replace(hour=17))) == 1
+    assert "karate" in sender.await_args.args[1]
+    assert "swim" not in sender.await_args.args[1]
+
+
+def test_manual_suppression_added_after_agenda_selection(monkeypatch):
+    db = DB(members=[member()])
+    sender = configure(monkeypatch, db)
+
+    async def config(_branch):
+        db["class_reminder_suppressions"].rows.append({
+            "branch_id": "a", "date": "2026-09-07", "activity_id": "all", "time": "17:00",
+        })
+        return {"enabled": True, "provider": "whatsflow"}
+
+    monkeypatch.setattr(whatsapp, "_get_branch_cloud_config", config)
+    assert run(whatsapp.process_class_reminders(NOW)) == 0
+    sender.assert_not_awaited()
+
+
 @pytest.mark.parametrize("changes,expected", [
     ({"branch_id": "all"}, 0),
     ({"start_date": "2026-09-08", "end_date": "2026-09-09"}, 2),

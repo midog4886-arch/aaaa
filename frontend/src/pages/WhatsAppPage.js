@@ -494,6 +494,9 @@ export default function WhatsAppPage() {
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
   const [branches, setBranches] = useState([]);
+  const [classReminderStops, setClassReminderStops] = useState([]);
+  const [classReminderStop, setClassReminderStop] = useState({ branch_id: '', date: '', activity_id: 'all', time: '' });
+  const [savingClassReminderStop, setSavingClassReminderStop] = useState(false);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [waMessage, setWaMessage] = useState('');
@@ -1591,6 +1594,17 @@ export default function WhatsAppPage() {
   };
 
   useEffect(() => {
+    if (activeTab === 'settings') {
+      Promise.all([
+        whatsappAPI.getClassReminderSuppressions(),
+        branchesAPI.getAll(),
+        activitiesAPI.getAll({ branch_filter: 'all' }),
+      ]).then(([stops, branchRows, activityRows]) => {
+        setClassReminderStops(stops.data || []);
+        setBranches(branchRows.data || []);
+        setActivities(activityRows.data || []);
+      }).catch(() => toast.error(t('تعذر تحميل استثناءات التذكير', 'Could not load reminder exceptions')));
+    }
     if (activeTab === 'manual' && !members.length) loadMembers();
     if (activeTab === 'portal') loadPortalNotifications();
     if (activeTab === 'internal') loadConversations();
@@ -2440,6 +2454,41 @@ export default function WhatsAppPage() {
         ══════════════════════════════════════════ */}
         {activeTab === 'settings' && (
           <div className="space-y-5 max-w-3xl">
+
+            <div className="rounded-2xl border p-5 bg-card space-y-3">
+              <h2 className="font-bold">{t('إيقاف تذكير موعد قديم', 'Stop an old class reminder')}</h2>
+              <p className="text-sm text-muted-foreground">{t('استخدمه إذا أبلغت المشتركين بتغيير الموعد برسالة عادية. لا يغيّر الاشتراك أو رصيد الحصص.', 'Use this after notifying members of a time change by ordinary message. It does not change subscriptions or class balances.')}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <select aria-label="فرع التذكير" className="border rounded-lg p-2 bg-background" value={classReminderStop.branch_id} onChange={e => setClassReminderStop(s => ({ ...s, branch_id: e.target.value }))}>
+                  <option value="">{t('اختر الفرع', 'Choose branch')}</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name_ar || b.name}</option>)}
+                </select>
+                <Input aria-label="تاريخ الحصة القديمة" type="date" value={classReminderStop.date} onChange={e => setClassReminderStop(s => ({ ...s, date: e.target.value }))} />
+                <select aria-label="نشاط التذكير" className="border rounded-lg p-2 bg-background" value={classReminderStop.activity_id} onChange={e => setClassReminderStop(s => ({ ...s, activity_id: e.target.value }))}>
+                  <option value="all">{t('كل الأنشطة في الموعد', 'All activities at this time')}</option>
+                  {activities.map(a => <option key={a.id} value={a.id}>{a.name_ar || a.name}</option>)}
+                </select>
+                <Input aria-label="الوقت القديم" type="time" value={classReminderStop.time} onChange={e => setClassReminderStop(s => ({ ...s, time: e.target.value }))} />
+              </div>
+              <Button disabled={savingClassReminderStop || !classReminderStop.branch_id || !classReminderStop.date || !classReminderStop.time} onClick={async () => {
+                setSavingClassReminderStop(true);
+                try {
+                  const response = await whatsappAPI.addClassReminderSuppression(classReminderStop);
+                  setClassReminderStops(rows => [response.data, ...rows]);
+                  toast.success(t('توقف تذكير الموعد القديم', 'Old class reminder stopped'));
+                } catch (error) { toast.error(apiErrorMessage(error, t('تعذر حفظ الاستثناء', 'Could not save exception'))); }
+                finally { setSavingClassReminderStop(false); }
+              }}>{t('إيقاف التذكير لهذا الموعد', 'Stop reminder for this slot')}</Button>
+              {classReminderStops.length > 0 && <div className="space-y-1 max-h-40 overflow-y-auto">
+                {classReminderStops.map(row => <div key={row.id} className="flex items-center justify-between gap-2 border rounded-lg p-2 text-sm">
+                  <span>{row.date} · {row.time} · {branches.find(b => b.id === row.branch_id)?.name_ar || row.branch_id} · {row.activity_id === 'all' ? t('كل الأنشطة', 'All activities') : (activities.find(a => a.id === row.activity_id)?.name_ar || row.activity_id)}</span>
+                  <Button size="sm" variant="ghost" aria-label="إلغاء استثناء التذكير" onClick={async () => {
+                    try { await whatsappAPI.deleteClassReminderSuppression(row.id); setClassReminderStops(rows => rows.filter(x => x.id !== row.id)); }
+                    catch (error) { toast.error(apiErrorMessage(error, t('تعذر الحذف', 'Could not remove'))); }
+                  }}><Trash2 className="w-4 h-4" /></Button>
+                </div>)}
+              </div>}
+            </div>
 
             {/* Auto Reminders Settings */}
             <div className="rounded-2xl border p-6 bg-card space-y-5">

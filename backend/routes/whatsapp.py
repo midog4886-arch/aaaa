@@ -1365,6 +1365,25 @@ def _class_reminder_closed(closures: list, branch_id: str, activity_id: str,
     return False
 
 
+async def _suppressed_class_reminders(day: str) -> list:
+    return await _db["class_reminder_suppressions"].find(
+        {"date": day}, {"_id": 0}
+    ).to_list(length=None)
+
+
+def _class_reminder_suppressed(suppressions: list, branch_id: str,
+                               activity_id: str, class_time: datetime) -> bool:
+    for item in suppressions:
+        if item.get("branch_id") != branch_id:
+            continue
+        if item.get("activity_id") not in ("all", activity_id):
+            continue
+        old_time = _parse_class_time(item.get("time"), class_time.date())
+        if old_time and old_time.time() == class_time.time():
+            return True
+    return False
+
+
 async def _frozen_members_on_date(on_date: date) -> set:
     """Freeze dates are inclusive; a frozen member has no class reminder."""
     rows = await _db["member_freezes"].find({
@@ -1391,6 +1410,7 @@ async def send_class_reminder_whatsapp_notice(
     # Re-read after configuration lookup: a closure may have been created while
     # this agenda waited behind other recipients. No provider call precedes this.
     closures = await closures_for_date(_db, class_time.astimezone(RIYADH_TZ).date().isoformat())
+    suppressions = await _suppressed_class_reminders(class_time.astimezone(RIYADH_TZ).date().isoformat())
     daily_classes = member.get("_daily_classes") or []
     if daily_classes:
         daily_classes = [
@@ -1398,6 +1418,9 @@ async def send_class_reminder_whatsapp_notice(
             if entry.get("member_id", member.get("id")) not in frozen_ids
             and not _class_reminder_closed(
                 closures, branch_id, entry.get("activity_id"), entry["class_time"]
+            )
+            and not _class_reminder_suppressed(
+                suppressions, branch_id, entry.get("activity_id"), entry["class_time"]
             )
         ]
         if not daily_classes:
@@ -1414,7 +1437,8 @@ async def send_class_reminder_whatsapp_notice(
             act.get("activity_id") for act in member.get("activities", [])
             if act.get("activity_name") == activity_name
         ), None)
-        if _class_reminder_closed(closures, branch_id, activity_id, class_time):
+        if (_class_reminder_closed(closures, branch_id, activity_id, class_time)
+                or _class_reminder_suppressed(suppressions, branch_id, activity_id, class_time)):
             return False
     name = member.get("name_ar") or member.get("name") or ""
     time_text = class_time.strftime("%I:%M %p").lstrip("0").replace("AM", "ص").replace("PM", "م")
@@ -1542,6 +1566,69 @@ async def send_schedule_update_whatsapp_notice(
         return False
 
 
+class ClassReminderSuppressionCreate(BaseModel):
+    branch_id: str
+    date: str
+    activity_id: str = "all"
+    time: str
+
+
+@router.get("/class-reminder-suppressions")
+async def list_class_reminder_suppressions(current_user=Depends(get_current_user)):
+    _require_whatsapp_access(current_user)
+    allowed = get_allowed_branch_ids(current_user)
+    query = {} if current_user.get("is_admin") else {"branch_id": {"$in": allowed}}
+    return await _db["class_reminder_suppressions"].find(
+        query, {"_id": 0}
+    ).sort("date", -1).to_list(length=200)
+
+
+@router.post("/class-reminder-suppressions")
+async def create_class_reminder_suppression(
+    data: ClassReminderSuppressionCreate, current_user=Depends(get_current_user)
+):
+    _require_whatsapp_access(current_user)
+    require_branch_scope(current_user, data.branch_id)
+    branch = await _db["branches"].find_one({"id": data.branch_id}, {"_id": 0, "id": 1})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Branch not found")
+    try:
+        day = date.fromisoformat(data.date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date")
+    parsed_time = _parse_class_time(data.time, day)
+    if not parsed_time:
+        raise HTTPException(status_code=400, detail="Invalid time")
+    activity_id = data.activity_id or "all"
+    if activity_id != "all" and not await _db["activities"].find_one(
+        {"id": activity_id}, {"_id": 0, "id": 1}
+    ):
+        raise HTTPException(status_code=404, detail="Activity not found")
+    item = {
+        "id": str(uuid.uuid4()), "branch_id": data.branch_id,
+        "date": day.isoformat(), "activity_id": activity_id,
+        "time": parsed_time.strftime("%H:%M"),
+        "created_by": current_user.get("user_id"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await _db["class_reminder_suppressions"].insert_one(item)
+    item.pop("_id", None)
+    return item
+
+
+@router.delete("/class-reminder-suppressions/{suppression_id}")
+async def delete_class_reminder_suppression(
+    suppression_id: str, current_user=Depends(get_current_user)
+):
+    _require_whatsapp_access(current_user)
+    item = await _db["class_reminder_suppressions"].find_one({"id": suppression_id})
+    if not item:
+        raise HTTPException(status_code=404, detail="Suppression not found")
+    require_branch_scope(current_user, item["branch_id"])
+    await _db["class_reminder_suppressions"].delete_one({"id": suppression_id})
+    return {"deleted": True}
+
+
 async def process_class_reminders(now: Optional[datetime] = None) -> int:
     """One daily agenda per branch/phone, two hours before its first class."""
     if _db is None:
@@ -1553,6 +1640,7 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         current = current.astimezone(RIYADH_TZ)
     target_date = (current + timedelta(hours=2)).date()
     closures = await closures_for_date(_db, target_date.isoformat())
+    suppressions = await _suppressed_class_reminders(target_date.isoformat())
     frozen_ids = await _frozen_members_on_date(target_date)
     branch_rows = await _db["branches"].find(
         {}, {"_id": 0, "id": 1, "name": 1, "name_ar": 1}
@@ -1586,6 +1674,8 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
             class_time = _class_occurrence_for_date(activity, target_date)
             if not class_time or _class_reminder_closed(
                 closures, branch_id, activity.get("activity_id"), class_time
+            ) or _class_reminder_suppressed(
+                suppressions, branch_id, activity.get("activity_id"), class_time
             ):
                 continue
             activity_key = activity.get("activity_id") or activity.get("activity_name") or "activity"
