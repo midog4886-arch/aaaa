@@ -54,6 +54,14 @@ export default function AttendancePage() {
   const [quickSearching, setQuickSearching] = useState(false);
   const [quickRegistering, setQuickRegistering] = useState(false);
   const [quickSearchResults, setQuickSearchResults] = useState([]); // Multiple results
+  const quickSearchRequestRef = useRef(0);
+
+  useEffect(() => {
+    quickSearchRequestRef.current += 1;
+    setQuickSearchResult(null);
+    setQuickSearchResults([]);
+    setQuickSearching(false);
+  }, [selectedBranchId]);
   
   // QR Scanner Dialog
   const [isQRDialogOpen, setIsQRDialogOpen] = useState(false);
@@ -337,19 +345,24 @@ export default function AttendancePage() {
 
   // Quick Search by Member Code or Name
   const handleQuickSearch = async () => {
-    if (!quickMemberCode.trim()) {
-      toast.error(t('أدخل رقم العضوية أو الاسم', 'Enter member ID or name'));
+    if (!selectedBranchId) {
+      toast.error(t('اختر الفرع أولاً', 'Choose a branch first'));
       return;
     }
-    
+    if (!quickMemberCode.trim()) {
+      toast.error(t('أدخل رقم العضوية أو الاسم أو الجوال', 'Enter member ID, name, or phone'));
+      return;
+    }
+
+    const requestId = ++quickSearchRequestRef.current;
     setQuickSearching(true);
     setQuickSearchResult(null);
     setQuickSearchResults([]);
     
     try {
       // Try multi-search first
-      const res = await attendanceAPI.quickSearchMulti(toAsciiDigits(quickMemberCode).trim(), selectedBranchId || user?.branch_id || null);
-      
+      const res = await attendanceAPI.quickSearchMulti(toAsciiDigits(quickMemberCode).trim(), selectedBranchId);
+      if (requestId !== quickSearchRequestRef.current) return;
       if (res.data && res.data.length > 0) {
         if (res.data.length === 1) {
           // Single result - show directly
@@ -362,9 +375,10 @@ export default function AttendancePage() {
         toast.error(t('لم يتم العثور على العضو', 'Member not found'));
       }
     } catch (error) {
+      if (requestId !== quickSearchRequestRef.current) return;
       toast.error(t('خطأ في البحث', 'Search error'));
     } finally {
-      setQuickSearching(false);
+      if (requestId === quickSearchRequestRef.current) setQuickSearching(false);
     }
   };
 
@@ -417,6 +431,7 @@ export default function AttendancePage() {
 
   // Clear quick search
   const clearQuickSearch = () => {
+    quickSearchRequestRef.current += 1;
     setQuickMemberCode('');
     setQuickSearchResult(null);
     setQuickSearchResults([]);
@@ -1019,22 +1034,28 @@ export default function AttendancePage() {
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
               <h2 className="text-lg font-bold text-green-800 mb-4 flex items-center gap-2">
                 <Zap className="w-5 h-5" />
-                {t('تسجيل سريع برقم العضوية أو الاسم', 'Quick Check-in by Member ID or Name')}
+                {t('بحث وتسجيل حضور حسب الفرع', 'Branch-specific search and check-in')}
               </h2>
-              
+              <div className="mb-3 max-w-md">
+                <label htmlFor="quick-attendance-branch" className="text-sm text-gray-600 mb-1 block">{t('الفرع', 'Branch')}</label>
+                <select id="quick-attendance-branch" value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)} className="w-full h-11 border rounded-lg px-3 bg-white">
+                  <option value="">{t('اختر الفرع للبحث', 'Choose a branch to search')}</option>
+                  {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name_ar || branch.name}</option>)}
+                </select>
+              </div>
               <div className="flex gap-3 items-end">
                 <div className="flex-1 max-w-md">
                   <label className="text-sm text-gray-600 mb-1 block">
-                    {t('رقم العضوية أو الاسم', 'Member ID or Name')}
+                    {t('رقم العضوية أو الاسم أو الجوال', 'Member ID, name, or phone')}
                   </label>
                   <div className="relative">
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input
                       type="text"
                       value={quickMemberCode}
-                      onChange={(e) => setQuickMemberCode(e.target.value)}
+                      onChange={(e) => { setQuickMemberCode(e.target.value); quickSearchRequestRef.current += 1; setQuickSearchResult(null); setQuickSearchResults([]); setQuickSearching(false); }}
                       onKeyPress={(e) => e.key === 'Enter' && handleQuickSearch()}
-                      placeholder={t('2601 أو أحمد', '2601 or Ahmed')}
+                      placeholder={t('2601 أو أحمد محمد أو 05...', '2601, Ahmed Mohamed, or 05...')}
                       className="text-lg pr-10 h-12"
                       dir="auto"
                     />
@@ -1042,7 +1063,7 @@ export default function AttendancePage() {
                 </div>
                 <Button 
                   onClick={handleQuickSearch} 
-                  disabled={quickSearching || !quickMemberCode.trim()}
+                  disabled={quickSearching || !selectedBranchId || !quickMemberCode.trim()}
                   className="h-12 px-6 bg-green-600 hover:bg-green-700"
                 >
                   <Search className="w-4 h-4 me-2" />

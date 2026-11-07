@@ -8275,13 +8275,15 @@ async def quick_search_member(
     from utils.text import normalize_digits, dearabize_keyboard
     from utils.auth import resolve_branch_filter
     search_term = normalize_digits(search_term).strip()
-    # Scope results to the active branch (VIP members attend any branch,
-    # so they stay visible everywhere).
+    # Quick attendance search always uses one explicit branch. Cross-branch
+    # VIP check-in remains available through the QR scanner workflow.
     _bid = resolve_branch_filter(current_user, branch_filter)
-    _branch_q = {"$or": [{"branch_id": _bid}, {"is_vip": True}]} if _bid else {}
+    if not _bid:
+        raise HTTPException(status_code=400, detail="اختر الفرع قبل البحث")
+    _branch_q = {"branch_id": _bid}
 
     def _with_branch(q):
-        return {"$and": [q, _branch_q]} if _bid else q
+        return {"$and": [q, _branch_q]}
 
     # First try to find by member_code
     member = await db.members.find_one(_with_branch({"member_code": search_term}), {"_id": 0})
@@ -8310,8 +8312,8 @@ async def quick_search_member(
     if not member:
         raise HTTPException(status_code=404, detail="لم يتم العثور على العضو")
     
-    # Get today's date
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Match the Riyadh date used when recording attendance.
+    today = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")
     
     # Check if already recorded today
     today_records = await db.attendance.find(
@@ -8385,6 +8387,7 @@ async def quick_search_member(
     return {
         "member_id": member["id"],
         "member_code": member.get("member_code", ""),
+        "branch_id": member.get("branch_id", ""),
         "name": member.get("name", ""),
         "name_ar": member.get("name_ar", ""),
         "phone": member.get("phone", ""),
@@ -8399,44 +8402,36 @@ async def quick_search_members_multi(
     branch_filter: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
-    """Search multiple members by member_code or name for quick attendance"""
-    import re as _rk2
-    from utils.text import normalize_digits, dearabize_keyboard
+    """Rank code, phone, and flexible name matches within one branch."""
+    from utils.text import normalize_digits
     from utils.auth import resolve_branch_filter
+    from utils.attendance_quick_search import candidate_query, match_rank
     search_term = normalize_digits(search_term).strip()
-    # Scope results to the active branch (VIP members attend any branch,
-    # so they stay visible everywhere).
     _bid = resolve_branch_filter(current_user, branch_filter)
-    _branch_q = {"$or": [{"branch_id": _bid}, {"is_vip": True}]} if _bid else {}
-
-    def _with_branch(q):
-        return {"$and": [q, _branch_q]} if _bid else q
-
-    # Search by member_code or name (escape user input so mangled codes
-    # containing regex metacharacters like [ ] don't break the query).
-    term_rx = _rk2.escape(search_term)
-    members = await db.members.find(_with_branch({
-        "$or": [
-            {"member_code": {"$regex": term_rx, "$options": "i"}},
-            {"name_ar": {"$regex": term_rx, "$options": "i"}},
-            {"name": {"$regex": term_rx, "$options": "i"}}
-        ]
-    }), {"_id": 0}).limit(10).to_list(10)
-
-    if not members:
-        # Recover a code mangled by an Arabic keyboard layout (hardware scanner).
-        alt = dearabize_keyboard(search_term)
-        if alt and alt != search_term:
-            members = await db.members.find(
-                _with_branch({"member_code": {"$regex": f"^{_rk2.escape(alt)}$", "$options": "i"}}),
-                {"_id": 0}
-            ).limit(10).to_list(10)
+    if not _bid:
+        raise HTTPException(status_code=400, detail="اختر الفرع قبل البحث")
+    query = {"$and": [{"branch_id": _bid}, candidate_query(search_term)]}
+    # Preserve an exact identifier even when a common name produces many matches.
+    exact_code = await db.members.find_one(
+        {"branch_id": _bid, "member_code": search_term}, {"_id": 0},
+    )
+    members = await db.members.find(
+        query,
+        {"_id": 0},
+    ).limit(250).to_list(250)
+    if exact_code and all(m.get("id") != exact_code.get("id") for m in members):
+        members.append(exact_code)
+    ranked = [(match_rank(member, search_term), member) for member in members]
+    members = [member for rank, member in sorted(
+        (row for row in ranked if row[0] is not None),
+        key=lambda row: (row[0], row[1].get("name_ar") or row[1].get("name") or ""),
+    )[:10]]
 
     if not members:
         return []
     
-    # Get today's date
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Match the Riyadh date used when recording attendance.
+    today = datetime.now(timezone(timedelta(hours=3))).strftime("%Y-%m-%d")
     
     product_ids = set()
     products_cursor = db.products.find({}, {"_id": 0, "id": 1})
@@ -8460,6 +8455,7 @@ async def quick_search_members_multi(
         results.append({
             "member_id": member["id"],
             "member_code": member.get("member_code", ""),
+            "branch_id": member.get("branch_id", ""),
             "name": member.get("name", ""),
             "name_ar": member.get("name_ar", ""),
             "phone": member.get("phone", ""),
