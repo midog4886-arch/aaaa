@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Layout } from '../components/Layout';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
-import { branchesAPI, campaignInquiriesAPI } from '../services/api';
+import { branchesAPI, campaignInquiriesAPI, whatsappAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { whatsappChatUrl } from '../utils/whatsapp';
 import { toast } from 'sonner';
@@ -24,6 +25,7 @@ const SOURCE_LABELS = {
   social_ad: 'إعلان سوشيال ميديا',
   campaign_reply: 'رد مباشر على رسالة الحملة',
   campaign_recent_message: 'ارتباط محتمل بالحملة',
+  campaign_offer_choice: 'اختيار سؤال من الحملة',
 };
 const SAUDI_TIME_ZONE = 'Asia/Riyadh';
 const TEMPLATES = {
@@ -63,6 +65,7 @@ const dueLabel = value => {
 };
 
 export const CampaignInquiriesPage = () => {
+  const navigate = useNavigate();
   const { user, selectedBranchId } = useAuth();
   const isAdmin = user?.is_admin;
   const canViewPhones = isAdmin || (user?.permissions || []).includes('member-phones');
@@ -223,6 +226,23 @@ export const CampaignInquiriesPage = () => {
     }
   };
   const canOpenChat = item => canViewPhones && item.status !== 'do_not_contact' && /^\+?\d[\d\s()-]{7,}$/.test(String(item.phone || ''));
+  const openCampaignConversation = async item => {
+    if (!canOpenChat(item) || !item.branch_id) return;
+    try {
+      const response = await whatsappAPI.getCloudInboxConversations(item.branch_id, false, false, item.phone);
+      const digits = value => String(value || '').replace(/\D/g, '');
+      const conversation = (response.data?.conversations || []).find(row =>
+        row.branch_id === item.branch_id && digits(row.phone) === digits(item.phone)
+      );
+      if (!conversation) {
+        toast.error('لم تُحفظ محادثة لهذا الرقم في شات الفرع بعد. افتح «عرض الردود» للتحقق من الرسائل الواردة.');
+        return;
+      }
+      navigate(`/admin/whatsapp?conversation=${encodeURIComponent(conversation.id)}&branch=${encodeURIComponent(item.branch_id)}`);
+    } catch {
+      toast.error('تعذّر فتح محادثة الفرع الآن.');
+    }
+  };
   const openWhatsApp = item => { window.open(whatsappChatUrl(item.phone, composer.text), '_blank', 'noopener,noreferrer'); setComposer(null); };
   const startContact = (item, status = item.status) => {
     const next = { ...item, status, followup_due_at: datetimeInput(item.followup_due_at) };
@@ -269,7 +289,7 @@ export const CampaignInquiriesPage = () => {
          emptyContent={<div className="text-center py-16 text-muted-foreground"><Users className="mx-auto mb-3 opacity-40" /><p>لا توجد استفسارات ضمن هذه الفلاتر.</p><p className="text-xs mt-1">أضفها يدوياً أو الصق أرقام حملة بعد معاينتها.</p></div>}
          filterKey={`${branch}|${filters.status}|${filters.due}|${filters.search}|${filters.campaign}|${form?.id || ''}|${bulk ? 'bulk' : ''}`}
        >
-           {({ item, selectionControl, directButton, stopButton, statusSummary }) => <Card key={item.id}><CardContent className="p-3 flex flex-col gap-2"><div className="w-full min-w-0"><div className="flex gap-2 items-center flex-wrap"><h2 className="font-semibold">{item.name || (canViewPhones ? (item.phone || 'بدون اسم') : 'بدون اسم')}</h2><Status status={item.status} />{isAdmin && <span className="text-[11px] bg-muted px-2 py-0.5 rounded">{branchName(item.branch_id)}</span>}</div><div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">{canViewPhones && <span dir="ltr"><Phone className="inline w-3 h-3 ml-1" />{item.phone}</span>}{item.source && <span>المصدر: {sourceLabel(item.source)}</span>}{item.campaign && <span>الحملة: {item.campaign}</span>}{item.activity && <span>النشاط: {item.activity}</span>}{item.assigned_to && <span>المسؤول: {item.assigned_to}</span>}{(item.invoice_number || item.invoice_id) && <span>فاتورة: {item.invoice_number || item.invoice_id}</span>}<span title={displayDate(item.followup_due_at)} aria-label={displayDate(item.followup_due_at)}><CalendarClock className="inline w-3 h-3 ml-1" />المتابعة: {dueLabel(item.followup_due_at)}</span></div>{item.invoice_link_error && <p className="mt-2 text-xs text-destructive">مشكلة ربط الفاتورة: {item.invoice_link_error}</p>}{item.notes && <p className="mt-2 text-xs bg-muted/60 rounded p-2 line-clamp-2 break-words" title={item.notes}>{item.notes}</p>}{item.last_contact_at ? <p className="mt-2 text-[11px] text-muted-foreground">آخر تواصل مسجل: {displayDate(item.last_contact_at)}</p> : <p className="mt-2 text-[11px] text-muted-foreground">لم تتم متابعته بعد</p>}{statusSummary}</div><div className="flex flex-wrap items-center gap-2">{selectionControl}{directButton}{canViewPhones && <Button size="sm" variant="outline" onClick={() => showReplies(item)}>عرض الردود</Button>}{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => setComposer({ item, template: 'first', text: TEMPLATES.first.replace('{name}', item.name || '') })}><MessageCircle className="w-3.5 h-3.5 ml-1" /> تجهيز واتساب</Button>}{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => startContact(item)}>تسجيل تواصل</Button>}{canOpenChat(item) && <div className="flex flex-wrap gap-1" aria-label="نتائج التواصل">{QUICK_OUTCOMES.map(([statusValue, label]) => <Button key={statusValue} size="sm" variant="ghost" onClick={() => startContact(item, statusValue)}>{label}</Button>)}</div>}{stopButton}<Button size="sm" variant="outline" onClick={() => { setSelectedAutomationIds([]); setForm({ ...item, followup_due_at: datetimeInput(item.followup_due_at), invoice_id: item.invoice_number || item.invoice_id || '' }); }}><Pencil className="w-3.5 h-3.5 ml-1" /> تعديل</Button><Button size="sm" variant="ghost" className="text-destructive" onClick={() => archive(item)}><Archive className="w-3.5 h-3.5" /></Button></div></CardContent></Card>}
+           {({ item, selectionControl, directButton, stopButton, statusSummary }) => <Card key={item.id}><CardContent className="p-3 flex flex-col gap-2"><div className="w-full min-w-0"><div className="flex gap-2 items-center flex-wrap"><h2 className="font-semibold">{item.name || (canViewPhones ? (item.phone || 'بدون اسم') : 'بدون اسم')}</h2><Status status={item.status} />{isAdmin && <span className="text-[11px] bg-muted px-2 py-0.5 rounded">{branchName(item.branch_id)}</span>}</div><div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">{canViewPhones && <span dir="ltr"><Phone className="inline w-3 h-3 ml-1" />{item.phone}</span>}{item.source && <span>المصدر: {sourceLabel(item.source)}</span>}{item.campaign && <span>الحملة: {item.campaign}</span>}{item.activity && <span>النشاط: {item.activity}</span>}{item.assigned_to && <span>المسؤول: {item.assigned_to}</span>}{(item.invoice_number || item.invoice_id) && <span>فاتورة: {item.invoice_number || item.invoice_id}</span>}<span title={displayDate(item.followup_due_at)} aria-label={displayDate(item.followup_due_at)}><CalendarClock className="inline w-3 h-3 ml-1" />المتابعة: {dueLabel(item.followup_due_at)}</span></div>{item.invoice_link_error && <p className="mt-2 text-xs text-destructive">مشكلة ربط الفاتورة: {item.invoice_link_error}</p>}{item.latest_campaign_choice && <p className="mt-2 text-xs rounded p-2 bg-blue-50 text-blue-900">سؤال العميل الأخير: {item.latest_campaign_choice}</p>}{item.notes && <p className="mt-2 text-xs bg-muted/60 rounded p-2 line-clamp-2 break-words" title={item.notes}>{item.notes}</p>}{item.last_contact_at ? <p className="mt-2 text-[11px] text-muted-foreground">آخر تواصل مسجل: {displayDate(item.last_contact_at)}</p> : <p className="mt-2 text-[11px] text-muted-foreground">لم تتم متابعته بعد</p>}{statusSummary}</div><div className="flex flex-wrap items-center gap-2">{selectionControl}{directButton}{canOpenChat(item) && (String(item.source || '').startsWith('campaign') || item.latest_campaign_choice) && <Button size="sm" onClick={() => openCampaignConversation(item)}><MessageCircle className="w-3.5 h-3.5 ml-1" /> الرد في شات الفرع</Button>}{canViewPhones && <Button size="sm" variant="outline" onClick={() => showReplies(item)}>عرض الردود</Button>}{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => setComposer({ item, template: 'first', text: TEMPLATES.first.replace('{name}', item.name || '') })}><MessageCircle className="w-3.5 h-3.5 ml-1" /> تجهيز واتساب</Button>}{canOpenChat(item) && <Button size="sm" variant="outline" onClick={() => startContact(item)}>تسجيل تواصل</Button>}{canOpenChat(item) && <div className="flex flex-wrap gap-1" aria-label="نتائج التواصل">{QUICK_OUTCOMES.map(([statusValue, label]) => <Button key={statusValue} size="sm" variant="ghost" onClick={() => startContact(item, statusValue)}>{label}</Button>)}</div>}{stopButton}<Button size="sm" variant="outline" onClick={() => { setSelectedAutomationIds([]); setForm({ ...item, followup_due_at: datetimeInput(item.followup_due_at), invoice_id: item.invoice_number || item.invoice_id || '' }); }}><Pencil className="w-3.5 h-3.5 ml-1" /> تعديل</Button><Button size="sm" variant="ghost" className="text-destructive" onClick={() => archive(item)}><Archive className="w-3.5 h-3.5" /></Button></div></CardContent></Card>}
        </CampaignAutomationPanel>}
     {form && <InquiryForm value={form} setValue={setForm} branches={branches} isAdmin={isAdmin} canViewPhones={canViewPhones} onChange={setField} onSubmit={saveForm} busy={busy} onClose={() => setForm(null)} />}
     {contact && <ContactForm value={contact} setValue={setContact} onChange={setField} onSubmit={saveContact} busy={busy} onClose={() => setContact(null)} />}

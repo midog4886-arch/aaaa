@@ -834,7 +834,7 @@ export default function WhatsAppBulkPage() {
                 </Select>}
                 {offerChoicesEnabled && <p className="text-xs text-muted-foreground whitespace-pre-line">
                   {replyChoicesMode === 'enrollment'
-                    ? t('تُضاف كخيارات مرقّمة داخل نص واتساب: 1- المواعيد، 2- الأسعار، 3- التسجيل. يرد العميل بالرقم أو العبارة، ويظهر طلبه في متابعة استفسارات الفرع خلال 7 أيام. ليست أزرار واتساب تفاعلية.', 'Added as numbered text choices in WhatsApp: 1- Schedule, 2- Pricing, 3- Registration. The customer replies with a number or phrase, and the branch inquiry appears within 7 days. These are not native WhatsApp buttons.')
+                    ? t('تُضاف كخيارات مرقّمة داخل نص واتساب: 1- المواعيد، 2- الأسعار، 3- التسجيل. يظهر اختيار العميل في متابعة استفسارات الفرع، ويرد المشرف بنفسه من شات واتساب. ليست أزرار واتساب تفاعلية.', 'Numbered choices are added to the WhatsApp text: 1- Schedule, 2- Pricing, 3- Registration. The answer appears in branch inquiries and a supervisor replies manually in WhatsApp. These are not native WhatsApp buttons.')
                     : t('تضاف تلقائياً عند الإرسال: 1- أرسلوا التفاصيل، 2- أريد زيارة، 3- غير مهتم.', 'Added when sent: 1- Send details, 2- I want a visit, 3- Not interested.')}
                 </p>}
                 {campaignId && offerChoicesEnabled && <div className="space-y-2">
@@ -846,6 +846,7 @@ export default function WhatsAppBulkPage() {
                       toast.error(apiErrorMessage(error, t('تعذر تحميل ردود العرض', 'Could not load offer responses')));
                     }
                   }}>{t('عرض ردود العرض', 'View offer responses')}</Button>
+                  <Button asChild type="button" size="sm" variant="outline"><a href="/admin/campaign-inquiries">{t('متابعة الاستفسارات والرد', 'Review inquiries and reply')}</a></Button>
                   {offerResponses && <div className="text-sm space-y-1">
                     <p>{replyChoicesMode === 'enrollment'
                       ? t(`مواعيد: ${offerResponses.counts.schedule || 0} · أسعار: ${offerResponses.counts.pricing || 0} · تسجيل: ${offerResponses.counts.registration || 0}`, `Schedule: ${offerResponses.counts.schedule || 0} · Pricing: ${offerResponses.counts.pricing || 0} · Registration: ${offerResponses.counts.registration || 0}`)

@@ -1,7 +1,10 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react';
 import CampaignInquiriesPage from './CampaignInquiriesPage';
-import { branchesAPI, campaignInquiriesAPI } from '../services/api';
+import { branchesAPI, campaignInquiriesAPI, whatsappAPI } from '../services/api';
+
+const mockNavigate = jest.fn();
+jest.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
 
 jest.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { is_admin: true, permissions: ['messages', 'member-phones'] }, selectedBranchId: 'b1' }) }));
 jest.mock('../components/Layout', () => ({ Layout: ({ children }) => <div>{children}</div> }));
@@ -14,7 +17,7 @@ jest.mock('lucide-react', () => {
   return { Archive:I, CalendarClock:I, ChevronDown:I, ClipboardPlus:I, MessageCircle:I, Pencil:I, Phone:I, Plus:I, Search:I, Users:I };
 });
 
-jest.mock('../services/api', () => ({ branchesAPI: { getAll: jest.fn() }, campaignInquiriesAPI: { getAll: jest.fn(), getReplies: jest.fn(), create: jest.fn(), preview: jest.fn(), import: jest.fn(), update: jest.fn(), delete: jest.fn() } }));
+jest.mock('../services/api', () => ({ branchesAPI: { getAll: jest.fn() }, campaignInquiriesAPI: { getAll: jest.fn(), getReplies: jest.fn(), create: jest.fn(), preview: jest.fn(), import: jest.fn(), update: jest.fn(), delete: jest.fn() }, whatsappAPI: { getCloudInboxConversations: jest.fn() } }));
 
 const inquiry = { id: 'i1', branch_id: 'b1', name: 'ليان', phone: '966501234567', source: 'social_ad', status: 'new', notes: '' };
 beforeEach(() => {
@@ -43,6 +46,21 @@ test('opens stored incoming replies without treating them as campaign-specific',
   expect(await screen.findByText('ما مواعيد التدريب؟')).toBeTruthy();
   expect(screen.getByText(/قد تشمل أسئلة غير متعلقة بالحملة/)).toBeTruthy();
   expect(campaignInquiriesAPI.getReplies).toHaveBeenCalledWith('i1');
+});
+
+test('campaign answer opens only the matching branch conversation for a manual reply', async () => {
+  campaignInquiriesAPI.getAll.mockResolvedValue({ data: { items: [{ ...inquiry, source: 'campaign_offer_choice', notes: 'اختيار الحملة: المواعيد المتاحة' }], counts: {} } });
+  whatsappAPI.getCloudInboxConversations.mockResolvedValue({ data: { conversations: [
+    { id: 'b2:966501234567', branch_id: 'b2', phone: '966501234567' },
+    { id: 'b1:966501234567', branch_id: 'b1', phone: '966501234567' },
+  ] } });
+  render(<CampaignInquiriesPage />);
+  await screen.findByText('ليان');
+  fireEvent.click(screen.getByText('الرد في شات الفرع'));
+  await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/admin/whatsapp?conversation=b1%3A966501234567&branch=b1'));
+  expect(whatsappAPI.getCloudInboxConversations).toHaveBeenCalledWith('b1', false, false, '966501234567');
+  expect(window.open).not.toHaveBeenCalled();
+  expect(campaignInquiriesAPI.update).not.toHaveBeenCalled();
 });
 
 test('do-not-contact suppresses phone actions', async () => {

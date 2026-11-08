@@ -168,6 +168,33 @@ def test_subscription_offer_reply_is_deduplicated_and_branch_scoped(crm):
     assert fake_db.campaign_inquiries.docs[0]["status"] == "interested"
 
 
+def test_new_campaign_choice_updates_existing_lead_without_changing_status(crm):
+    module, fake_db = crm
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    fake_db.campaign_inquiries.docs.append({
+        "_id": "existing", "id": "existing", "branch_id": "B1",
+        "phone": "966501234567", "status": "contacted", "notes": "ملاحظة المشرف",
+    })
+    fake_db.whatsapp_campaign_job_items.docs.append({
+        "branch_id": "B1", "source": "campaign", "status": "sent",
+        "completed_at": now - timedelta(minutes=2), "job_id": "job-1",
+        "phone": "966501234567", "message": "كيف نساعدك؟ رد برقم واحد:\n1- المواعيد المتاحة\n2- الأسعار والباقات\n3- أريد التسجيل",
+    })
+    fake_db.whatsapp_campaign_jobs.docs.append({
+        "id": "job-1", "branch_id": "B1", "source": "campaign", "campaign_id": "offer-1",
+    })
+    fake_db.whatsapp_campaigns.docs.append({
+        "id": "offer-1", "branch_id": "B1", "name": "حملة سباحة", "offer_choices_enabled": True,
+    })
+    assert run(module.capture_offer_choice("B1", "0501234567", "2", "inbound-2"))
+    lead = fake_db.campaign_inquiries.docs[0]
+    assert lead["latest_campaign_choice"] == "الأسعار والباقات"
+    assert lead["status"] == "contacted"
+    assert lead["notes"] == "ملاحظة المشرف"
+
+
 @pytest.fixture()
 def crm(monkeypatch):
     from routes import campaign_inquiries as module

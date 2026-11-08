@@ -166,7 +166,17 @@ async def capture_offer_choice(branch_id: str, phone: str, body: str, message_id
             followup_due_at=_now() if choice != "not_interested" else None,
         )
         document["campaign_id"] = campaign_id
+        document["latest_campaign_choice"] = labels[choice]
+        document["latest_campaign_choice_at"] = now.isoformat()
         await _atomic_create(document)
+        # A phone may already have a CRM inquiry. Keep the lead's existing
+        # status and notes, while surfacing the newest explicit reply.
+        await db.campaign_inquiries.update_one(
+            {"branch_id": branch_id, "phone": normalized, "archived_at": {"$exists": False}},
+            {"$set": {"latest_campaign_choice": labels[choice],
+                      "latest_campaign_choice_at": now.isoformat(),
+                      "latest_campaign_name": campaign.get("name") or ""}},
+        )
         return True
     return False
 
