@@ -1270,7 +1270,7 @@ export default function WhatsAppBulkPage() {
             <div className="rounded-lg border p-3 space-y-3">
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input type="checkbox" checked={spreadAcrossDays} onChange={event => setSpreadAcrossDays(event.target.checked)} />
-                {t('تقسيم الحملة على عدة أيام', 'Spread campaign across days')}
+                {t('تحديد موعد بدء الإرسال (ويمكن تقسيمه على أيام)', 'Schedule a send start time (optionally across days)')}
               </label>
               {spreadAcrossDays && <>
                 <div className="grid gap-3 sm:grid-cols-3">

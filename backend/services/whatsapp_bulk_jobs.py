@@ -476,6 +476,10 @@ async def get_report(job_id, branch_id, *, phone_visible=True, names_by_phone=No
             item.get("delivered_at") for item in grouped if item.get("delivered_at")
         ]
         read_values = [item.get("read_at") for item in grouped if item.get("read_at")]
+        next_attempt_values = [
+            item.get("next_attempt_at") for item in grouped
+            if item.get("next_attempt_at") and item.get("status") in {"pending", "processing"}
+        ]
         errors = [
             _report_error(item.get("error"), phone_visible=phone_visible)
             for item in grouped if item.get("error")
@@ -489,6 +493,7 @@ async def get_report(job_id, branch_id, *, phone_visible=True, names_by_phone=No
             "sent_at": min((_iso(value) for value in sent_values), default=None),
             "delivered_at": min((_iso(value) for value in delivered_values), default=None),
             "read_at": min((_iso(value) for value in read_values), default=None),
+            "next_attempt_at": min((_iso(value) for value in next_attempt_values), default=None),
             "error": errors[0] if errors else None,
         })
 

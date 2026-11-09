@@ -8442,11 +8442,13 @@ def _campaign_report_xlsx(report: dict) -> bytes:
     summary_sheet.append(["Branch", _excel_safe(job.get("branch_name"))])
     summary_sheet.append(["Job ID", _excel_safe(job.get("id"))])
     summary_sheet.append(["Created", _excel_safe(job.get("created_at"))])
+    summary_sheet.append(["Schedule start date (Riyadh)", _excel_safe(job.get("start_date"))])
+    summary_sheet.append(["Schedule start time (Riyadh)", _excel_safe(job.get("send_time"))])
     summary_sheet.append(["Started", _excel_safe(job.get("started_at"))])
     summary_sheet.append(["Completed", _excel_safe(job.get("completed_at"))])
     summary_sheet.append([])
     summary_sheet.append(["Metric", "Count"])
-    for cell in summary_sheet[9]:
+    for cell in summary_sheet[11]:
         cell.font = Font(bold=True)
         cell.fill = PatternFill("solid", fgColor="D9EAF7")
     for key, value in (report.get("summary") or {}).items():
@@ -8460,7 +8462,7 @@ def _campaign_report_xlsx(report: dict) -> bytes:
     recipients_sheet = workbook.create_sheet("Recipients")
     columns = [
         "id", "name", "phone", "status", "delivery_status",
-        "sent_at", "delivered_at", "read_at", "error",
+        "sent_at", "delivered_at", "read_at", "error", "next_attempt_at",
     ]
     recipients_sheet.append(columns)
     for cell in recipients_sheet[1]:

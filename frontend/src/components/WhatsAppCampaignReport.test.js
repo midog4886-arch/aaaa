@@ -96,6 +96,18 @@ test('loads summary, timestamps, masked recipients, and receipt-aware states', a
   expect(whatsappAPI.getBranchCloudJobReport).toHaveBeenCalledWith('branch-1', 'job-1');
 });
 
+test('shows the Riyadh schedule and pending recipient time without claiming delivery', async () => {
+  whatsappAPI.getBranchCloudJobReport.mockResolvedValue({ data: {
+    ...report,
+    job: { ...report.job, start_date: '2026-11-10', send_time: '10:00' },
+    recipients: [{ id: 'r-1', name: 'Aisha', phone: '***0001', status: 'pending', next_attempt_at: '2026-11-10T07:00:00Z' }],
+  } });
+  render(<WhatsAppCampaignReport branchId="branch-1" job={{ id: 'job-1' }} open onOpenChange={jest.fn()} language="en" />);
+  expect(await screen.findByTestId('report-schedule')).toHaveTextContent('2026-11-10 10:00');
+  expect(screen.getByText(/Next send attempt/)).toHaveTextContent('Riyadh time');
+  expect(screen.getByText('Unconfirmed')).toBeInTheDocument();
+});
+
 test('search and status filter operate on normalized partial recipient states', async () => {
   const user = userEvent.setup();
   render(

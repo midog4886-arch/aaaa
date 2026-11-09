@@ -302,6 +302,25 @@ def test_report_groups_attachment_items_and_requires_receipts_for_delivery(monke
     assert report["recipients"][0]["phone"] == "966500000001"
 
 
+def test_report_exposes_pending_scheduled_attempt_and_excel_schedule(monkeypatch):
+    scheduled = datetime(2026, 11, 10, 7, tzinfo=timezone.utc)
+    db = DB(
+        [{"id": "job-scheduled", "branch_id": "branch-a",
+          "start_date": "2026-11-10", "send_time": "10:00"}],
+        [{"id": "item-scheduled", "job_id": "job-scheduled",
+          "branch_id": "branch-a", "provider": "meta_cloud",
+          "recipient_index": 0, "phone": "966500000001",
+          "status": "pending", "next_attempt_at": scheduled}],
+    )
+    monkeypatch.setattr(jobs, "_db", db)
+    report = run(jobs.get_report("job-scheduled", "branch-a"))
+    assert report["recipients"][0]["next_attempt_at"] == scheduled.isoformat()
+    workbook = load_workbook(__import__("io").BytesIO(whatsapp_mod._campaign_report_xlsx(report)))
+    assert workbook["Summary"]["B6"].value == "2026-11-10"
+    assert workbook["Summary"]["B7"].value == "10:00"
+    assert workbook["Recipients"]["J2"].value == scheduled.isoformat()
+
+
 def test_exact_provider_receipt_updates_only_matching_campaign_item(monkeypatch):
     db = DB(
         [{"id": "job-3", "branch_id": "branch-a"}],

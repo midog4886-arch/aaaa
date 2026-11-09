@@ -232,6 +232,8 @@ export function WhatsAppCampaignReport({
       value: firstValue(reportJob[key], job?.[key]),
     }))
     .filter(timestamp => timestamp.value);
+  const scheduledStart = reportJob.start_date && reportJob.send_time
+    ? `${reportJob.start_date} ${reportJob.send_time}` : null;
 
   const getSummaryCount = key => {
     if (key === 'total') return numberValue(firstValue(summary.total, recipients.length));
@@ -336,6 +338,13 @@ export function WhatsAppCampaignReport({
                 </span>
               ))}
             </div>
+          )}
+          {!loading && report && (
+            <p className="mt-2 rounded-md bg-sky-50 p-2 text-xs text-sky-900" data-testid="report-schedule">
+              {scheduledStart
+                ? t(`بداية الجدولة: ${scheduledStart} بتوقيت الرياض. قد يتأخر الإرسال بسبب طابور الفرع أو حد المزود.`, `Scheduled from ${scheduledStart} Riyadh time. Branch queues or provider limits may delay sending.`)
+                : t('لم يُحدد موعد للجدولة؛ الرسائل في الطابور وتُرسل حسب سعة الفرع.', 'No scheduled time was set; messages are queued and sent as branch capacity permits.')}
+            </p>
           )}
         </DialogHeader>
 
@@ -448,6 +457,7 @@ export function WhatsAppCampaignReport({
                             </td>
                             <td className="p-2 text-xs text-muted-foreground space-y-1">
                               {recipient.sent_at && <div>{t('قبول', 'Accepted')}: {formatDateTime(recipient.sent_at, locale)}</div>}
+                              {recipient.next_attempt_at && state === 'pending' && <div>{t('موعد الإرسال القادم', 'Next send attempt')}: {new Date(recipient.next_attempt_at).toLocaleString(locale, { timeZone: 'Asia/Riyadh' })} {t('بتوقيت الرياض', 'Riyadh time')}</div>}
                               {recipient.delivered_at && <div>{t('تسليم', 'Delivered')}: {formatDateTime(recipient.delivered_at, locale)}</div>}
                               {recipient.read_at && <div>{t('قراءة', 'Read')}: {formatDateTime(recipient.read_at, locale)}</div>}
                               {!recipient.sent_at && !recipient.delivered_at && !recipient.read_at && '—'}
