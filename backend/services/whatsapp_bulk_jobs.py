@@ -973,6 +973,16 @@ async def _oldest_branch_item(branch_id, now=None):
         if now is None or deferred_until is None or deferred_until <= now:
             return closure
 
+    # Operator-initiated send-now work precedes scheduled marketing work.
+    # It still shares the branch-wide gate, provider quota and in-flight lock.
+    immediate = await _first_branch_item({
+        "branch_id": branch_id, "source": "branch_bulk", "status": "pending",
+    })
+    if immediate:
+        deferred_until = _utc_datetime(immediate.get("next_attempt_at"))
+        if now is None or deferred_until is None or deferred_until <= now:
+            return immediate
+
     # A deferred closure should not stop otherwise runnable ordinary work.
     # Migration-held items remain inert until reviewed.
     return await _first_branch_item({

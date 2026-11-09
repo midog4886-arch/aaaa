@@ -102,7 +102,7 @@ async function enterCampaign() {
   await waitFor(() => {
     expect(screen.getByText(/Preview: 1 recipient/)).toBeInTheDocument();
   });
-  return screen.getByRole('button', { name: /Send 1 message.* to 1/i });
+  return screen.getByRole('button', { name: /Start sending 1 message.* to 1/i });
 }
 
 function expectNoOutboundSend() {
@@ -180,7 +180,7 @@ test('a future daily plan can be queued despite today being at quota', async () 
   ));
 });
 
-test('a connected Whatsflow session queues personalized text only after confirmation', async () => {
+test('a connected Whatsflow session starts sequential personalized text only after confirmation', async () => {
   const user = userEvent.setup({ pointerEventsCheck: 0 });
   render(<WhatsAppBulkPage />);
   const sendButton = await enterCampaign();
@@ -189,12 +189,12 @@ test('a connected Whatsflow session queues personalized text only after confirma
   expectNoOutboundSend();
   await user.click(sendButton);
 
-  expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/queued is not sent/i));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/automatically in sequence/i));
   await waitFor(() => expect(whatsappAPI.sendBranchCloudBulk).toHaveBeenCalledWith(
     'branch-a',
     [{ phone: '966501234567', message: 'Hello Aisha', name: 'Aisha' }],
     'whatsflow-ui-key',
-    { campaign_id: null, campaign_title: '', branch_name: 'Main' },
+    { campaign_id: null, campaign_title: '', branch_name: 'Main', dispatch_source: 'branch_bulk' },
   ));
   expect(whatsappAPI.sendBranchCloudBulkMedia).not.toHaveBeenCalled();
   expect(window.open).not.toHaveBeenCalled();
@@ -216,12 +216,12 @@ test.each([
   await user.upload(input, file);
   expect(await screen.findByText(file.name)).toBeInTheDocument();
 
-  const sendButton = screen.getByRole('button', { name: /Send 1 message.* to 1/i });
+  const sendButton = screen.getByRole('button', { name: /Start sending 1 message.* to 1/i });
   expect(sendButton).toBeEnabled();
   expectNoOutboundSend();
   await user.click(sendButton);
 
-  expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/queued is not sent/i));
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/automatically in sequence/i));
   await waitFor(() => expect(whatsappAPI.sendBranchCloudBulkMedia).toHaveBeenCalledTimes(1));
   const [formData, metadata] = whatsappAPI.sendBranchCloudBulkMedia.mock.calls[0];
   expect(JSON.parse(formData.get('recipients_json'))).toEqual([
@@ -229,12 +229,14 @@ test.each([
   ]);
   expect(formData.get('branch_id')).toBe('branch-a');
   expect(formData.get('idempotency_key')).toBe('whatsflow-ui-key');
+  expect(formData.get('dispatch_source')).toBe('branch_bulk');
   expect(formData.getAll('attachments')).toHaveLength(1);
   expect(formData.getAll('attachments')[0].name).toBe(file.name);
   expect(metadata).toEqual({
     campaign_id: null,
     campaign_title: '',
     branch_name: 'Main',
+    dispatch_source: 'branch_bulk',
   });
   expect(whatsappAPI.sendBranchCloudBulk).not.toHaveBeenCalled();
   expect(window.open).not.toHaveBeenCalled();

@@ -8606,8 +8606,7 @@ async def send_branch_cloud_bulk(
            for r in recipients):
         raise HTTPException(status_code=400, detail="Invalid phone or message")
     enqueue_args = (data.branch_id, provider, recipients, key)
-    is_campaign = data.dispatch_source == 'campaign' or data.campaign_id or current_user.get('_approved_campaign')
-    enqueue_options = {} if is_campaign else {'source': 'branch_bulk'}
+    enqueue_options = {'source': 'branch_bulk'} if data.dispatch_source == 'branch_bulk' else {}
     if metadata:
         job, _created = await whatsapp_bulk_jobs.enqueue(
             *enqueue_args, metadata=metadata, **enqueue_options
@@ -9177,6 +9176,7 @@ async def send_branch_cloud_bulk_media(
     campaign_title: str = Form(""),
     campaign_id: str = Form(""),
     branch_name: str = Form(""),
+    dispatch_source: Literal['campaign', 'branch_bulk'] = Form('campaign'),
     daily_recipients: Optional[int] = Form(None),
     start_date: str = Form(""),
     send_time: str = Form(""),
@@ -9335,12 +9335,13 @@ async def send_branch_cloud_bulk_media(
             prepared_recipients,
             idempotency_key, stored,
         )
+        enqueue_options = {'source': 'branch_bulk'} if dispatch_source == 'branch_bulk' else {}
         if metadata:
             job, created = await whatsapp_bulk_jobs.enqueue(
-                *enqueue_args, metadata=metadata
+                *enqueue_args, metadata=metadata, **enqueue_options
             )
         else:
-            job, created = await whatsapp_bulk_jobs.enqueue(*enqueue_args)
+            job, created = await whatsapp_bulk_jobs.enqueue(*enqueue_args, **enqueue_options)
         if not created:
             for ref in stored:
                 await _delete_campaign_attachment(branch_id, ref.get("attachment_id"))

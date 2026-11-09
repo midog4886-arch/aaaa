@@ -678,11 +678,12 @@ export default function WhatsAppBulkPage() {
       campaign_id: campaignId || null,
       campaign_title: campaignName.trim(),
       branch_name: branchName,
+      dispatch_source: spreadAcrossDays ? 'campaign' : 'branch_bulk',
       ...(spreadAcrossDays ? { daily_recipients: Number(dailyRecipients), start_date: startDate, send_time: sendTime } : {}),
     };
     if (!window.confirm(t(
-       spreadAcrossDays ? `سيُجدول ${validItems.length} مستلم على ${Math.ceil(validItems.length / Number(dailyRecipients))} أيام، بدءاً من ${startDate} الساعة ${sendTime} بتوقيت الرياض. الحد ${dailyRecipients} مستلم يومياً. قد يتأخر الإرسال إذا امتلأ حد الفرع أو كان هناك طابور سابق. هل تريد المتابعة؟` : `ستتم إضافة ${automaticMessageCount} رسالة إلى قائمة الانتظار (لم تُرسل بعد). الفاصل 3 دقائق على الأقل بين الرسائل داخل الفرع والمدة التقديرية الدنيا ${Math.max(0, automaticMessageCount - 1) * 3} دقيقة. قد تزيد المدة بسبب الحملات الأخرى قيد الانتظار. لا يشمل هذا الحد إشعارات المعاملات. هل تريد المتابعة؟`,
-       spreadAcrossDays ? `Schedule ${validItems.length} recipients over ${Math.ceil(validItems.length / Number(dailyRecipients))} days from ${startDate} at ${sendTime} Riyadh time, up to ${dailyRecipients} recipients per day. Existing queues or daily limits may delay delivery. Continue?` : `Queue ${automaticMessageCount} message(s) (queued is not sent). At least 3 minutes apart within the branch; estimated minimum ${Math.max(0, automaticMessageCount - 1) * 3} minute(s). Other queued campaigns may increase this duration. Transactional notices are not affected. Continue?`
+       spreadAcrossDays ? `سيُجدول ${validItems.length} مستلم على ${Math.ceil(validItems.length / Number(dailyRecipients))} أيام، بدءاً من ${startDate} الساعة ${sendTime} بتوقيت الرياض. الحد ${dailyRecipients} مستلم يومياً. قد يتأخر الإرسال إذا امتلأ حد الفرع أو كان هناك طابور سابق. هل تريد المتابعة؟` : `سيبدأ إرسال ${automaticMessageCount} رسالة تلقائياً بالتتابع. يُحفظ التقدم حتى إذا أغلقت الصفحة، وتظهر نتيجة كل مستلم في التقرير. قد ينتظر الإرسال انتهاء رسالة جارية أو حد المزود. هل تريد المتابعة؟`,
+       spreadAcrossDays ? `Schedule ${validItems.length} recipients over ${Math.ceil(validItems.length / Number(dailyRecipients))} days from ${startDate} at ${sendTime} Riyadh time, up to ${dailyRecipients} recipients per day. Existing queues or daily limits may delay delivery. Continue?` : `Start sending ${automaticMessageCount} message(s) automatically in sequence. Progress is saved if you close this page, and each recipient's outcome appears in the report. An in-flight send or provider limit may delay the start. Continue?`
     ))) return;
 
     setCloudSending(true);
@@ -703,6 +704,7 @@ export default function WhatsAppBulkPage() {
         formData.append('campaign_id', campaignMetadata.campaign_id || '');
         formData.append('campaign_title', campaignMetadata.campaign_title);
         formData.append('branch_name', campaignMetadata.branch_name);
+        formData.append('dispatch_source', campaignMetadata.dispatch_source);
         if (spreadAcrossDays) {
           formData.append('daily_recipients', String(campaignMetadata.daily_recipients));
           formData.append('start_date', campaignMetadata.start_date);
@@ -717,9 +719,9 @@ export default function WhatsAppBulkPage() {
       setCloudJobs(current => [job, ...current.filter(item => item.id !== job.id)]);
       setCloudJobsPollVersion(value => value + 1);
       enqueueKey.current = null;
-      toast.success(t('تمت الإضافة إلى قائمة الانتظار؛ لم يتم الإرسال بعد', 'Queued successfully; no message has been sent yet'));
+      toast.success(t(spreadAcrossDays ? 'تمت جدولة الإرسال؛ تابع النتائج في التقرير' : 'بدأ الإرسال التلقائي؛ تابع النتائج في التقرير', spreadAcrossDays ? 'Sending scheduled; follow results in the report' : 'Automatic sending started; follow results in the report'));
     } catch (error) {
-      toast.error(apiErrorMessage(error, t('تعذّر تأكيد إضافة الحملة. تحقّق من قائمة الإرسال قبل المحاولة مجدداً.', 'Could not confirm campaign enqueue. Check the queue before trying again.')));
+      toast.error(apiErrorMessage(error, t('تعذّر تأكيد بدء الإرسال. تحقّق من سجل الإرسال قبل المحاولة مجدداً.', 'Could not confirm the send start. Check the sending history before trying again.')));
     } finally {
       setCloudSending(false);
     }
@@ -1295,7 +1297,7 @@ export default function WhatsAppBulkPage() {
             >
               <Send className="w-4 h-4 ml-1" />
               {cloudSending && <Loader2 className="w-4 h-4 me-1 animate-spin" />}
-              {t(`إرسال ${automaticMessageCount} رسالة إلى ${validItems.length} رقم`, `Send ${automaticMessageCount} message(s) to ${validItems.length}`)}
+              {t(`${spreadAcrossDays ? 'جدولة' : 'بدء إرسال'} ${automaticMessageCount} رسالة إلى ${validItems.length} رقم`, `${spreadAcrossDays ? 'Schedule' : 'Start sending'} ${automaticMessageCount} message(s) to ${validItems.length}`)}
             </Button>
             <Button onClick={startSend} variant="outline" disabled={!validItems.length || waQueue.length > 0 || cloudSending || campaignLoading || audienceLoading || (audience !== 'pasted' && dynamicAudienceBranch !== branchId)}>
               <MessageCircle className="w-4 h-4 ml-1" />
@@ -1311,7 +1313,7 @@ export default function WhatsAppBulkPage() {
                       <div className="font-medium">
                         {job.campaign_name || job.campaign_title || job.name || t('حملة تلقائية', 'Automatic campaign')} · {
                           ['initializing', 'processing'].includes(String(job.status || '').toLowerCase())
-                            ? t('معلّق', 'Pending')
+                            ? t('قيد الإرسال', 'Sending')
                             : String(job.status || '').toLowerCase() === 'partial'
                               ? t('جزئي', 'Partial')
                               : job.status
@@ -1331,7 +1333,7 @@ export default function WhatsAppBulkPage() {
                       </Button>
                      </div>
                     <div className="mt-1 text-muted-foreground">
-                      {t('معلّق', 'Pending')}: {job.pending || 0} · {t('تم', 'Sent')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
+                      {t('متبقي', 'Remaining')}: {job.pending || 0} · {t('تم', 'Sent')}: {job.sent || 0} · {t('فشل', 'Failed')}: {job.failed || 0} · {t('غير معروف', 'Unknown')}: {job.unknown || 0}
                     </div>
                     {job.daily_recipients && <div className="mt-1 text-muted-foreground">
                       {t(`مجدولة من ${job.start_date} الساعة ${job.send_time} بتوقيت الرياض · ${job.daily_recipients} مستلم يومياً`, `Scheduled from ${job.start_date} at ${job.send_time} Riyadh time · ${job.daily_recipients} recipients daily`)}

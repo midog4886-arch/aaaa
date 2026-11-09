@@ -501,6 +501,22 @@ def test_non_campaign_bulk_waits_thirty_seconds_between_provider_calls(queue):
     assert len(sent) == 2
 
 
+def test_send_now_precedes_older_scheduled_campaign_without_bypassing_branch_gate(queue):
+    db, sent, *_ = queue
+    run(jobs.enqueue("a", "waha", recipients(), "older-campaign-123"))
+    run(jobs.enqueue("a", "waha", recipients(), "send-now-123", source="branch_bulk"))
+    assert run(jobs.process_one()) is True
+    items = db["whatsapp_campaign_job_items"].rows
+    assert items[0]["status"] == "pending"
+    assert items[1]["status"] == "sent"
+    assert len(sent) == 1
+    Clock.set(Clock.now() + timedelta(seconds=179))
+    assert run(jobs.process_one()) is False
+    Clock.set(Clock.now() + timedelta(seconds=1))
+    assert run(jobs.process_one()) is True
+    assert items[0]["status"] == "sent"
+
+
 def test_cancel_during_claim_wins_dispatch_cas_and_never_sends(queue):
     db, sent, *_ = queue
     job, _ = run(jobs.enqueue("a", "meta_cloud", recipients(), "cancel-claim-key-123"))
