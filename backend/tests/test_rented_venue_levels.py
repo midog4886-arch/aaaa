@@ -11,6 +11,17 @@ import routes.branches as branches_mod
 import routes.levels as levels_mod
 
 
+def test_booking_slot_preserves_booker_contact():
+    slot = BookingSlot(
+        day="sunday", start_time="20:00", end_time="21:00",
+        start_date="2026-11-01", end_date="2026-11-01",
+        cost=100, cost_type="hourly",
+        booker_name="  Ahmed  ", booker_phone=" 0501234567 ",
+    )
+    assert slot.booker_name == "Ahmed"
+    assert slot.booker_phone == "0501234567"
+
+
 def run(coro):
     loop = asyncio.new_event_loop()
     try:

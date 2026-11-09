@@ -16,6 +16,7 @@ const VenueMonthCalendar = ({
   venues,
   isSlotReserved,
   onMonthChange,
+  onViewDay,
   onAddBooking,
   onEditBooking,
 }) => {
@@ -67,7 +68,7 @@ const VenueMonthCalendar = ({
           <div>
             <h2 className="text-lg font-bold">{ar ? 'تقويم حجوزات الملاعب' : 'Venue booking calendar'}</h2>
             <p className="text-sm text-muted-foreground">
-              {ar ? 'اختر الملعب ثم اضغط على اليوم لإضافة حجز.' : 'Choose a venue, then select a day to add a booking.'}
+              {ar ? 'اختر الملعب ثم اضغط على اليوم لرؤية الحجوزات وإضافة حجز.' : 'Choose a venue, then open a day to view or add bookings.'}
             </p>
           </div>
         </div>
@@ -134,12 +135,12 @@ const VenueMonthCalendar = ({
                 key={key}
                 role="button"
                 tabIndex={0}
-                aria-label={`${ar ? 'حجز يوم' : 'Book'} ${key} - ${selectedVenue?.name || ''}`}
-                onClick={() => selectedVenue && onAddBooking(selectedVenue, key)}
+                aria-label={`${ar ? 'عرض حجوزات يوم' : 'View bookings for'} ${key} - ${selectedVenue?.name || ''}`}
+                onClick={() => selectedVenue && onViewDay(selectedVenue, key)}
                 onKeyDown={event => {
                   if ((event.key === 'Enter' || event.key === ' ') && selectedVenue) {
                     event.preventDefault();
-                    onAddBooking(selectedVenue, key);
+                    onViewDay(selectedVenue, key);
                   }
                 }}
                 className={`group relative min-h-24 cursor-pointer rounded-lg border p-1.5 text-start transition-all hover:border-primary/50 hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary sm:min-h-32 sm:p-2 ${
@@ -169,6 +170,8 @@ const VenueMonthCalendar = ({
                       >
                         <span className="flex items-center gap-1" dir="ltr"><Clock3 className="hidden h-3 w-3 sm:block" />{slot.start_time}–{slot.end_time}</span>
                         {reserved && <span className="mt-0.5 block">{ar ? 'محجوز' : 'Reserved'}</span>}
+                        {reserved && <span className="mt-0.5 block break-words">{slot.booker_name || (ar ? 'الاسم غير مسجل' : 'Name not recorded')}</span>}
+                        {reserved && <span className="block break-all" dir="ltr">{slot.booker_phone || (ar ? 'الهاتف غير مسجل' : 'Phone not recorded')}</span>}
                         {slot.total_cost !== undefined && slot.total_cost !== null && slot.total_cost !== '' &&
                           <span className="mt-0.5 block">{Number(slot.total_cost).toFixed(2)} {ar ? 'ر.س' : 'SAR'} · {slot.payment_status === 'paid' ? (ar ? 'مدفوع' : 'Paid') : (ar ? 'غير مدفوع' : 'Unpaid')}</span>}
                       </button>

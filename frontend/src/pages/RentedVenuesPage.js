@@ -13,7 +13,7 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { WEEKDAYS, branchVenues, emptyVenue, normalizeVenue, serializeVenues, venueState } from '../utils/rentedVenues';
-import { slotsOverlap, weekdayIdForDate } from '../utils/rentedVenues';
+import { slotsOverlap, venueSlotsForDate, weekdayIdForDate } from '../utils/rentedVenues';
 import VenueMonthCalendar from '../components/rented-venues/VenueMonthCalendar';
 
 const errorText = (error, fallback) => {
@@ -43,9 +43,11 @@ const RentedVenuesPage = () => {
   const [form, setForm] = useState(emptyVenue);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [bookingDialog, setBookingDialog] = useState(null);
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [bookingForm, setBookingForm] = useState({
     date: '', start_time: '18:00', end_time: '19:00',
     hourly_rate: '', payment_status: 'unpaid', payment_method: 'cash',
+    booker_name: '', booker_phone: '',
   });
 
   const loadData = async () => {
@@ -89,6 +91,10 @@ const RentedVenuesPage = () => {
   }, [selectedBranchId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const venues = useMemo(() => branchVenues(branch).map(normalizeVenue), [branch]);
+  const selectedDayVenue = venues.find(venue => venue.id === selectedCalendarDay?.venueId);
+  const selectedDaySlots = selectedDayVenue && selectedCalendarDay?.date
+    ? venueSlotsForDate(selectedDayVenue, new Date(`${selectedCalendarDay.date}T12:00:00`))
+    : [];
   const branchLevels = useMemo(
     () => levels.filter(level => level.branch_id === selectedBranchId),
     [levels, selectedBranchId]
@@ -141,6 +147,7 @@ const RentedVenuesPage = () => {
   };
 
   const openCalendarBooking = (venue, date) => {
+    setSelectedCalendarDay(null);
     setBookingForm({
       date,
       start_time: '18:00',
@@ -148,6 +155,8 @@ const RentedVenuesPage = () => {
       hourly_rate: venue.cost ?? '',
       payment_status: 'unpaid',
       payment_method: 'cash',
+      booker_name: '',
+      booker_phone: '',
     });
     setBookingDialog({ venueId: venue.id, slotId: null });
   };
@@ -168,7 +177,10 @@ const RentedVenuesPage = () => {
       hourly_rate: slot.hourly_rate ?? slot.cost ?? venue.cost ?? '',
       payment_status: slot.payment_status || 'unpaid',
       payment_method: slot.payment_method || 'cash',
+      booker_name: slot.booker_name || '',
+      booker_phone: slot.booker_phone || '',
     });
+    setSelectedCalendarDay(null);
     setBookingDialog({ venueId: venue.id, slotId: slot.id });
   };
 
@@ -177,8 +189,9 @@ const RentedVenuesPage = () => {
     const venue = venues.find(item => item.id === bookingDialog?.venueId);
     if (!venue || !bookingForm.date || !bookingForm.start_time || !bookingForm.end_time ||
         bookingForm.hourly_rate === '' || Number(bookingForm.hourly_rate) < 0 ||
+        !bookingForm.booker_name.trim() || !bookingForm.booker_phone.trim() ||
         bookingForm.end_time === bookingForm.start_time) {
-      toast.error(ar ? 'تحقق من تاريخ ووقت الحجز' : 'Check the booking date and time');
+      toast.error(ar ? 'أكمل اسم صاحب الحجز ورقم هاتفه وتحقق من الموعد' : 'Enter the booker name and phone, then check the time');
       return;
     }
     const [startTime, endTime] = bookingForm.start_time < bookingForm.end_time
@@ -203,6 +216,8 @@ const RentedVenuesPage = () => {
       total_cost: Number((durationHours * hourlyRate).toFixed(2)),
       payment_status: bookingForm.payment_status,
       payment_method: bookingForm.payment_status === 'paid' ? bookingForm.payment_method : '',
+      booker_name: bookingForm.booker_name.trim(),
+      booker_phone: bookingForm.booker_phone.trim(),
     };
     if (venue.booking_slots.some(slot => slot.id !== bookingDialog.slotId && slotsOverlap(slot, candidate))) {
       toast.error(ar ? 'هذه الساعة محجوزة أو تتداخل مع موعد آخر في نفس الملعب' : 'This time overlaps another booking in the same venue');
@@ -338,6 +353,7 @@ const RentedVenuesPage = () => {
                venues={venues}
                isSlotReserved={activeSlotReferenced}
                onMonthChange={offset => setCalendarMonth(current => new Date(current.getFullYear(), current.getMonth() + offset, 1))}
+               onViewDay={(venue, date) => setSelectedCalendarDay({ venueId: venue.id, date })}
                onAddBooking={openCalendarBooking}
                onEditBooking={openCalendarSlot}
              />
@@ -379,10 +395,34 @@ const RentedVenuesPage = () => {
           </section>
         </>}
 
+        <Dialog open={Boolean(selectedCalendarDay)} onOpenChange={open => !open && setSelectedCalendarDay(null)}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader><DialogTitle>{ar ? 'حجوزات يوم' : 'Bookings for'} {selectedCalendarDay?.date} · {selectedDayVenue?.name}</DialogTitle></DialogHeader>
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+              {selectedDaySlots.length ? selectedDaySlots.map(slot => (
+                <div key={slot.id} className="flex items-start justify-between gap-3 rounded-lg border p-3 text-sm">
+                  <div className="min-w-0 space-y-1">
+                    <div className="font-semibold" dir="ltr">{slot.start_time}–{slot.end_time}</div>
+                    <div>{slot.booker_name || (ar ? 'اسم صاحب الحجز غير مسجل' : 'Booker name not recorded')}</div>
+                    <div className="text-muted-foreground" dir="ltr">{slot.booker_phone || (ar ? 'رقم الهاتف غير مسجل' : 'Phone not recorded')}</div>
+                    <div className="text-xs text-muted-foreground">{slot.payment_status === 'paid' ? (ar ? 'مدفوع' : 'Paid') : (ar ? 'غير مدفوع' : 'Unpaid')}</div>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => openCalendarSlot(selectedDayVenue, slot)}>{ar ? 'التفاصيل' : 'Details'}</Button>
+                </div>
+              )) : <p className="py-6 text-center text-sm text-muted-foreground">{ar ? 'لا توجد حجوزات في هذا اليوم' : 'No bookings on this day'}</p>}
+            </div>
+            <DialogFooter><Button type="button" onClick={() => openCalendarBooking(selectedDayVenue, selectedCalendarDay.date)}><Plus className="me-1 h-4 w-4" />{ar ? 'إضافة حجز' : 'Add booking'}</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={Boolean(bookingDialog)} onOpenChange={open => !open && setBookingDialog(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader><DialogTitle>{bookingDialog?.slotId ? (ar ? 'تعديل الحجز' : 'Edit booking') : (ar ? 'حجز ساعة' : 'Book a time')}</DialogTitle></DialogHeader>
             <form onSubmit={saveCalendarBooking} className="space-y-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1"><Label htmlFor="venue-booker-name">{ar ? 'اسم صاحب الحجز' : 'Booker name'} *</Label><Input id="venue-booker-name" maxLength={200} value={bookingForm.booker_name} onChange={event => setBookingForm(current => ({ ...current, booker_name: event.target.value }))} /></div>
+                <div className="space-y-1"><Label htmlFor="venue-booker-phone">{ar ? 'رقم هاتفه' : 'Phone number'} *</Label><Input id="venue-booker-phone" type="tel" maxLength={30} dir="ltr" value={bookingForm.booker_phone} onChange={event => setBookingForm(current => ({ ...current, booker_phone: event.target.value }))} /></div>
+              </div>
               <div className="space-y-1"><Label>{ar ? 'التاريخ' : 'Date'}</Label><Input type="date" value={bookingForm.date} onChange={event => setBookingForm(current => ({ ...current, date: event.target.value }))} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1"><Label>{ar ? 'من الساعة' : 'From'}</Label><Input type="time" value={bookingForm.start_time} onChange={event => setBookingForm(current => ({ ...current, start_time: event.target.value }))} /></div>
@@ -458,6 +498,8 @@ const RentedVenuesPage = () => {
                       <div className="space-y-1"><Label>{ar ? 'من' : 'From'}</Label><Input type="time" disabled={locked} value={slot.start_time} onChange={e => updateSlot(index, { start_time: e.target.value })} /></div>
                       <div className="space-y-1"><Label>{ar ? 'إلى' : 'To'}</Label><Input type="time" disabled={locked} value={slot.end_time} onChange={e => updateSlot(index, { end_time: e.target.value })} /></div>
                       <Button type="button" variant="ghost" size="icon" className="text-red-600" disabled={locked} onClick={() => setForm(current => ({ ...current, booking_slots: current.booking_slots.filter((_, slotIndex) => slotIndex !== index) }))}><Trash2 className="h-4 w-4" /></Button>
+                      <div className="space-y-1"><Label>{ar ? 'اسم صاحب الحجز' : 'Booker name'}</Label><Input maxLength={200} disabled={locked} value={slot.booker_name || ''} onChange={e => updateSlot(index, { booker_name: e.target.value })} /></div>
+                      <div className="space-y-1"><Label>{ar ? 'رقم هاتفه' : 'Phone number'}</Label><Input type="tel" dir="ltr" maxLength={30} disabled={locked} value={slot.booker_phone || ''} onChange={e => updateSlot(index, { booker_phone: e.target.value })} /></div>
                     </div>;
                   })}
                   {!form.booking_slots.length && <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground"><Clock3 className="mx-auto mb-2 h-6 w-6" />{ar ? 'أضف فترة حجز واحدة على الأقل' : 'Add at least one booking slot'}</div>}

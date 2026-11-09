@@ -81,6 +81,8 @@ describe('rented venue monthly bookings', () => {
         total_cost: 175,
         payment_status: 'paid',
         payment_method: 'card',
+        booker_name: '  أحمد علي  ',
+        booker_phone: ' 0501234567 ',
       }],
     }]);
 
@@ -90,6 +92,8 @@ describe('rented venue monthly bookings', () => {
       total_cost: 175,
       payment_status: 'paid',
       payment_method: 'card',
+      booker_name: 'أحمد علي',
+      booker_phone: '0501234567',
     }));
   });
 });

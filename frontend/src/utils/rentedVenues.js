@@ -51,6 +51,8 @@ export const normalizeVenue = (venue = {}) => ({
     total_cost: slot.total_cost ?? '',
     payment_status: slot.payment_status || 'unpaid',
     payment_method: slot.payment_method || '',
+    booker_name: slot.booker_name || '',
+    booker_phone: slot.booker_phone || '',
   })).filter(slot => slot.weekday),
 });
 
@@ -87,6 +89,8 @@ export const serializeVenues = venues => venues.map(venue => ({
           : Number(slot.total_cost),
         payment_status: slot.payment_status || 'unpaid',
         payment_method: slot.payment_status === 'paid' ? (slot.payment_method || 'cash') : null,
+        booker_name: (slot.booker_name || '').trim() || null,
+        booker_phone: (slot.booker_phone || '').trim() || null,
       }))
   ),
 }));

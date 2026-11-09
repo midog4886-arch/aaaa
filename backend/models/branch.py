@@ -25,6 +25,13 @@ class BookingSlot(BaseModel):
     total_cost: Optional[float] = Field(default=None, ge=0)
     payment_status: Literal["unpaid", "paid"] = "unpaid"
     payment_method: Optional[Literal["cash", "card", "transfer"]] = None
+    booker_name: Optional[str] = Field(default=None, max_length=200)
+    booker_phone: Optional[str] = Field(default=None, max_length=30)
+
+    @field_validator("booker_name", "booker_phone")
+    @classmethod
+    def clean_booker(cls, value: Optional[str]) -> Optional[str]:
+        return (value.strip() or None) if value is not None else None
 
     @field_validator("id", "day", "start_time", "end_time", "start_date", "end_date", "cost_type")
     @classmethod
