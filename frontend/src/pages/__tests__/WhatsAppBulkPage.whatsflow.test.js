@@ -169,7 +169,7 @@ test('a future daily plan can be queued despite today being at quota', async () 
   });
   render(<WhatsAppBulkPage />);
   const sendButton = await enterCampaign();
-  fireEvent.click(screen.getByLabelText('Spread campaign across days'));
+  fireEvent.click(screen.getByLabelText('Schedule a send start time (optionally across days)'));
   fireEvent.change(screen.getByLabelText('Recipients per day'), { target: { value: '1' } });
   fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2099-01-01' } });
   expect(sendButton).toBeEnabled();
