@@ -34,7 +34,7 @@ async function attemptKey(fingerprint, keys) {
   return key;
 }
 
-export default function BranchAutomaticSendDialog({ recipients, message, branches, language, attemptKeys, onClose, onQueued }) {
+export default function BranchAutomaticSendDialog({ recipients, message, image, branches, language, attemptKeys, onClose, onQueued }) {
   const ar = language === 'ar';
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,13 +77,26 @@ export default function BranchAutomaticSendDialog({ recipients, message, branche
         for (let offset = row.queued; offset < row.recipients.length; offset += 200) {
           const batch = row.recipients.slice(offset, offset + 200);
           const payload = batch.map(({ memberIds, ...recipient }) => recipient);
-          const fingerprint = JSON.stringify([row.branchId, payload]);
+          const fingerprint = JSON.stringify([row.branchId, payload, image ? [image.name, image.size, image.lastModified] : null]);
           // Retain the key after timeouts: retrying the same payload reconciles
           // the existing job instead of creating a duplicate send.
-          await whatsappAPI.sendBranchCloudBulk(row.branchId, payload, await attemptKey(fingerprint, attemptKeys), {
-            campaign_title: ar ? 'رسالة من شاشة واتساب' : 'WhatsApp message', branch_name: row.name,
-            dispatch_source: 'branch_bulk',
-          });
+          const key = await attemptKey(fingerprint, attemptKeys);
+          if (image) {
+            const formData = new FormData();
+            formData.append('branch_id', row.branchId);
+            formData.append('recipients_json', JSON.stringify(payload));
+            formData.append('idempotency_key', key);
+            formData.append('campaign_title', ar ? 'رسالة من شاشة واتساب' : 'WhatsApp message');
+            formData.append('branch_name', row.name);
+            formData.append('dispatch_source', 'branch_bulk');
+            formData.append('attachment', image);
+            await whatsappAPI.sendBranchCloudBulkMedia(formData);
+          } else {
+            await whatsappAPI.sendBranchCloudBulk(row.branchId, payload, key, {
+              campaign_title: ar ? 'رسالة من شاشة واتساب' : 'WhatsApp message', branch_name: row.name,
+              dispatch_source: 'branch_bulk',
+            });
+          }
           row.queued = offset + batch.length; row.uncertain = false;
           onQueued(batch.flatMap(recipient => recipient.memberIds));
         }
@@ -97,6 +110,7 @@ export default function BranchAutomaticSendDialog({ recipients, message, branche
       <DialogHeader><DialogTitle>{ar ? 'إرسال تلقائي من الفروع المتصلة' : 'Send automatically from connected branches'}</DialogTitle>
         <DialogDescription>{ar ? 'كل رسالة تُرسل من رقم فرع المستلم. الأرقام المتكررة داخل الفرع تستقبل رسالة واحدة.' : 'Each message uses the recipient’s branch number. Shared numbers in a branch receive one message.'}</DialogDescription></DialogHeader>
       <p className="whitespace-pre-wrap rounded-md border p-3 text-sm">{message}</p>
+      {image && <div className="rounded-md border p-3 text-sm">{ar ? 'الصورة المرفقة' : 'Attached image'}: {image.name}</div>}
       {loading ? <p>{ar ? 'جارٍ التحقق من اتصال الفروع...' : 'Checking branch connections...'}</p> : rows.map(row => <div key={row.branchId} className="rounded-md border p-3 space-y-1 text-sm">
         <p className="font-semibold">{row.name} — {row.recipients.length} {ar ? 'رقم' : 'numbers'}</p>
         <p>{row.ready ? (ar ? 'متصل — جاهز للإرسال التلقائي' : 'Connected — ready') : (ar ? 'غير متصل أو غير مهيأ — لن يُرسل تلقائيًا' : 'Disconnected or unconfigured — excluded')}</p>
@@ -108,7 +122,7 @@ export default function BranchAutomaticSendDialog({ recipients, message, branche
       {done && <a href="/admin/whatsapp-bulk" className="text-blue-700 underline">{ar ? 'متابعة قوائم الإرسال' : 'View sending queues'}</a>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" disabled={busy} onClick={onClose}>{ar ? 'إغلاق' : 'Close'}</Button>
-        <Button disabled={loading || busy || !available || message.trim().length > 4096} onClick={send}>
+        <Button disabled={loading || busy || !available || message.trim().length > (image ? 1024 : 4096)} onClick={send}>
           {busy ? (ar ? 'جارٍ الإضافة...' : 'Queuing...') : rows.some(r => r.uncertain) ? (ar ? 'إعادة التحقق بنفس المحاولة' : 'Reconcile same attempt') : (ar ? 'تأكيد الإرسال من الفروع المتصلة' : 'Confirm connected branches')}
         </Button>
       </div>

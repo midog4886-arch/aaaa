@@ -502,6 +502,8 @@ export default function WhatsAppPage() {
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [waMessage, setWaMessage] = useState('');
+  const [waImage, setWaImage] = useState(null);
+  const [waImagePreview, setWaImagePreview] = useState('');
   const [messageType, setMessageType] = useState('custom');
   const [filterActivities, setFilterActivities] = useState([]);
   const [filterBranch, setFilterBranch] = useState('all');
@@ -1933,6 +1935,7 @@ export default function WhatsAppPage() {
   const handleSendWaMessage = () => {
     if (!selectedMembers.length) { toast.error(t('اختر المستلمين أولاً', 'Select recipients first')); return; }
     if (!waMessage.trim()) { toast.error(t('أدخل نص الرسالة', 'Enter message text')); return; }
+    if (waImage && !window.confirm(t('فتح واتساب يدويًا يفتح النص فقط. أرفق الصورة بنفسك داخل المحادثة. هل تريد المتابعة؟', 'Manual WhatsApp opens text only. Attach the image yourself in the chat. Continue?'))) return;
     const encoded = encodeURIComponent(waMessage);
     const selected = members.filter(m => selectedMembers.includes(m.id));
     if (selected.length === 0) return;
@@ -3402,13 +3405,33 @@ export default function WhatsAppPage() {
                     <Textarea value={waMessage} onChange={e => setWaMessage(e.target.value)} placeholder={t('أدخل نص الرسالة...', 'Enter message...')} rows={7} dir="auto" />
                     <p className="text-xs text-muted-foreground mt-1">{waMessage.length} {t('حرف', 'chars')}</p>
                   </div>
+                  <div className="space-y-2">
+                    <label htmlFor="manual-whatsapp-image" className="text-sm font-medium block">{t('صورة مع الرسالة (اختياري)', 'Image with message (optional)')}</label>
+                    <Input id="manual-whatsapp-image" type="file" accept="image/jpeg,image/png" onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                        toast.error(t('اختر صورة JPG أو PNG بحجم لا يزيد عن 5 ميجابايت', 'Choose a JPG or PNG image up to 5 MB'));
+                        e.target.value = '';
+                        return;
+                      }
+                      if (waImagePreview) URL.revokeObjectURL(waImagePreview);
+                      setWaImage(file); setWaImagePreview(URL.createObjectURL(file));
+                    }} />
+                    {waImage && <div className="flex items-center gap-3 rounded-lg border p-2">
+                      <img src={waImagePreview} alt={t('معاينة الصورة المرفقة', 'Attachment preview')} className="h-16 w-16 object-cover rounded" />
+                      <span className="text-xs break-all flex-1">{waImage.name}</span>
+                      <Button type="button" variant="outline" size="sm" onClick={() => { URL.revokeObjectURL(waImagePreview); setWaImage(null); setWaImagePreview(''); document.getElementById('manual-whatsapp-image').value = ''; }}>{t('إزالة', 'Remove')}</Button>
+                    </div>}
+                    {waImage && <p className="text-xs text-muted-foreground">{t('الصورة تُرفق بالإرسال التلقائي. الإرسال اليدوي يتطلب إرفاقها داخل واتساب.', 'The image is included in automatic sending. Manual WhatsApp requires attaching it in the chat.')}</p>}
+                  </div>
                   {waMessage && (
                     <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm whitespace-pre-wrap" dir="auto">
                       <p className="text-xs font-medium text-green-700 mb-1">{t('معاينة:', 'Preview:')}</p>
                       {waMessage}
                     </div>
                   )}
-                  {isAdmin && <Button className="w-full gap-2" onClick={() => setAutomaticSend({ recipients: members.filter(m => selectedMembers.includes(m.id)), message: waMessage })} disabled={!selectedMembers.length || !waMessage.trim() || waMessage.trim().length > 4096}>
+                  {isAdmin && <Button className="w-full gap-2" onClick={() => setAutomaticSend({ recipients: members.filter(m => selectedMembers.includes(m.id)), message: waMessage, image: waImage })} disabled={!selectedMembers.length || !waMessage.trim() || waMessage.trim().length > (waImage ? 1024 : 4096)}>
                     <Send className="w-4 h-4" />
                     {t('معاينة الإرسال التلقائي', 'Preview automatic sending')} ({selectedMembers.length})
                   </Button>}
@@ -4903,7 +4926,7 @@ export default function WhatsAppPage() {
         )}
 
       </div>
-      {automaticSend && <BranchAutomaticSendDialog recipients={automaticSend.recipients} message={automaticSend.message}
+      {automaticSend && <BranchAutomaticSendDialog recipients={automaticSend.recipients} message={automaticSend.message} image={automaticSend.image}
         branches={branches} language={language} attemptKeys={automaticAttemptKeys} onClose={() => setAutomaticSend(null)}
         onQueued={ids => { setSelectedMembers(current => current.filter(id => !ids.includes(id))); setSelectAll(false); }} />}
     </Layout>

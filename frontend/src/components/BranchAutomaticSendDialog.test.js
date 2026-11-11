@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import BranchAutomaticSendDialog from './BranchAutomaticSendDialog';
 import { whatsappAPI, branchesAPI } from '../services/api';
 
-jest.mock('../services/api', () => ({ whatsappAPI: { getBranchCloudAvailability: jest.fn(), sendBranchCloudBulk: jest.fn() }, branchesAPI: { getProviderStatus: jest.fn() } }));
+jest.mock('../services/api', () => ({ whatsappAPI: { getBranchCloudAvailability: jest.fn(), sendBranchCloudBulk: jest.fn(), sendBranchCloudBulkMedia: jest.fn() }, branchesAPI: { getProviderStatus: jest.fn() } }));
 const branches = [{ id: 'a', name: 'Branch A' }, { id: 'b', name: 'Branch B' }];
 const members = [{ id: 'one', branch_id: 'a', phone: '0501234567', name: 'One' }, { id: 'family', branch_id: 'a', phone: '966501234567', name: 'Family' }, { id: 'two', branch_id: 'b', phone: '0507654321', name: 'Two' }];
 const status = { provider: 'whatsflow', enabled: true, configured: true, connected: true };
@@ -17,6 +17,7 @@ beforeEach(() => {
   whatsappAPI.getBranchCloudAvailability.mockResolvedValue({ data: status });
   branchesAPI.getProviderStatus.mockImplementation(async id => ({ data: { connected: id === 'a' } }));
   whatsappAPI.sendBranchCloudBulk.mockResolvedValue({ data: { id: 'job' } });
+  whatsappAPI.sendBranchCloudBulkMedia.mockResolvedValue({ data: { id: 'media-job' } });
 });
 function open(recipients = members, keys = { current: new Map() }, onQueued = jest.fn()) {
   return render(<BranchAutomaticSendDialog recipients={recipients} branches={branches} message="Test message" language="ar" attemptKeys={keys} onClose={jest.fn()} onQueued={onQueued} />);
@@ -69,4 +70,17 @@ test('large selections split at 200; queue state and keys survive closing and re
   await waitFor(() => expect(button.disabled).toBe(false)); fireEvent.click(button);
   await waitFor(() => expect(whatsappAPI.sendBranchCloudBulk).toHaveBeenCalledTimes(4));
   expect(whatsappAPI.sendBranchCloudBulk.mock.calls.slice(2).map(call => call[2])).toEqual(keys);
+});
+test('image and caption are submitted together through the media endpoint', async () => {
+  const image = new File(['image'], 'offer.png', { type: 'image/png', lastModified: 12 });
+  render(<BranchAutomaticSendDialog recipients={[members[0]]} branches={branches} message="Test message" image={image} language="ar" attemptKeys={{ current: new Map() }} onClose={jest.fn()} onQueued={jest.fn()} />);
+  const button = await screen.findByRole('button', { name: 'تأكيد الإرسال من الفروع المتصلة' });
+  await waitFor(() => expect(button.disabled).toBe(false));
+  fireEvent.click(button);
+  await waitFor(() => expect(whatsappAPI.sendBranchCloudBulkMedia).toHaveBeenCalledTimes(1));
+  const form = whatsappAPI.sendBranchCloudBulkMedia.mock.calls[0][0];
+  expect(form.get('attachment')).toBe(image);
+  expect(form.get('branch_id')).toBe('a');
+  expect(JSON.parse(form.get('recipients_json'))[0].message).toBe('Test message');
+  expect(whatsappAPI.sendBranchCloudBulk).not.toHaveBeenCalled();
 });
