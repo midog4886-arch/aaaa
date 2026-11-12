@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { toast } from 'sonner';
 import { whatsappAPI, membersAPI, activitiesAPI, branchesAPI, messagesAPI, pushNotificationsAPI, levelsAPI } from '../services/api';
 import { apiErrorMessage } from '../utils/apiErrorMessage';
+import { memberMatchesSubscriptionFilter, subscriptionIsActive, subscriptionIsExpired } from '../utils/recipientSubscriptionFilter';
 import {
   MessageSquare, CheckCircle2, XCircle, RefreshCw, Send, Settings, Loader2,
   PhoneCall, Bell, Eye, Users, History, Clock, Phone,
@@ -508,6 +509,7 @@ export default function WhatsAppPage() {
   const [filterActivities, setFilterActivities] = useState([]);
   const [filterBranch, setFilterBranch] = useState('all');
   const [filterDays, setFilterDays] = useState([]);
+  const [subscriptionFilter, setSubscriptionFilter] = useState('active');
   const [selectAll, setSelectAll] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState({});
   const [waQueue, setWaQueue] = useState([]);
@@ -2064,11 +2066,10 @@ export default function WhatsAppPage() {
   };
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const isSubscriptionActive = (a) => {
-    if (a.status !== 'active') return false;
-    if (!a.end_date) return true;
-    return new Date(a.end_date) >= today;
-  };
+  const dateParts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const dateValue = type => dateParts.find(part => part.type === type)?.value || '';
+  const todayKey = `${dateValue('year')}-${dateValue('month')}-${dateValue('day')}`;
+  const isSubscriptionActive = (a) => subscriptionIsActive(a, todayKey);
 
   const getMemberEndDate = (m) => {
     const active = m.activities?.filter(a => isSubscriptionActive(a));
@@ -2230,10 +2231,11 @@ export default function WhatsAppPage() {
   };
 
   const filteredMembers = members.filter(m => {
-    const hasActive = m.activities?.some(a => isSubscriptionActive(a));
-    if (!hasActive) return false;
-    const matchActDay = m.activities?.some(a => {
-      if (!isSubscriptionActive(a)) return false;
+    if (!memberMatchesSubscriptionFilter(m, subscriptionFilter, todayKey)) return false;
+    const hasActivityFilters = filterActivities.length > 0 || filterDays.length > 0;
+    const matchActDay = !hasActivityFilters || m.activities?.some(a => {
+      if (subscriptionFilter === 'active' && !isSubscriptionActive(a)) return false;
+      if (subscriptionFilter === 'expired' && !subscriptionIsExpired(a, todayKey)) return false;
       if (!activityMatchesSelected(a)) return false;
       if (!activityHasAnyDay(a, filterDays)) return false;
       return true;
@@ -2909,6 +2911,14 @@ export default function WhatsAppPage() {
                 {/* Filters */}
                 <div className="flex gap-2 flex-wrap">
                   <Filter className="w-4 h-4 text-muted-foreground self-center" />
+                  <Select value={subscriptionFilter} onValueChange={value => { setSubscriptionFilter(value); setSelectedMembers([]); setSelectAll(false); }}>
+                    <SelectTrigger className="min-w-[150px] h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">{t('اشتراك سارٍ', 'Active subscription')}</SelectItem>
+                      <SelectItem value="expired">{t('اشتراك منتهٍ', 'Expired subscription')}</SelectItem>
+                      <SelectItem value="all">{t('الكل', 'All members')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <MultiSelectPopover
                     values={filterActivities}
                     onChange={setFilterActivities}
@@ -3298,6 +3308,14 @@ export default function WhatsAppPage() {
                 <CardContent className="space-y-3">
                   <div className="flex gap-2 flex-wrap">
                     <Filter className="w-4 h-4 text-muted-foreground self-center" />
+                    <Select value={subscriptionFilter} onValueChange={value => { setSubscriptionFilter(value); setSelectedMembers([]); setSelectAll(false); }}>
+                      <SelectTrigger className="min-w-[150px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">{t('اشتراك سارٍ', 'Active subscription')}</SelectItem>
+                        <SelectItem value="expired">{t('اشتراك منتهٍ', 'Expired subscription')}</SelectItem>
+                        <SelectItem value="all">{t('الكل', 'All members')}</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <MultiSelectPopover
                       values={filterActivities}
                       onChange={setFilterActivities}
