@@ -265,7 +265,7 @@ async def _enrich_member_phone_matches(
     # phone below: an exact sibling (or a match in another branch) must not
     # suppress a formatted sibling and turn a genuinely ambiguous association
     # into an arbitrary unique one.
-    exact_rows = await _db["members"].find(
+    exact_request = _db["members"].find(
         {
             **member_scope,
             "$or": [
@@ -283,10 +283,11 @@ async def _enrich_member_phone_matches(
             for field in ("phone", "guardian_phone")
         ],
     }
-    legacy_rows = await _db["members"].find(
+    legacy_request = _db["members"].find(
         legacy_query,
         projection,
     ).to_list(length=None)
+    exact_rows, legacy_rows = await asyncio.gather(exact_request, legacy_request)
 
     # The two batched queries can overlap in legacy data.  De-duplicate by
     # member ID before grouping so a number recorded as both member and
@@ -6028,16 +6029,24 @@ async def get_cloud_inbox_thread(
             campaign_messages = []
             conversation['phone_history_stale'] = True
     else:
-        cloud_rows, campaign_messages = await asyncio.gather(
-        _db["whatsapp_cloud_messages"]
-        .find({"conversation_id": conversation_id}, {"_id": 0})
-        .sort("created_at", -1)
-        .limit(501)
-        .to_list(length=501),
-        campaign_inbox.thread(
-            _db, conversation["branch_id"], conversation["phone"]
-        ),
-    )
+        cloud_rows, campaign_messages, branch, enriched = await asyncio.gather(
+            _db["whatsapp_cloud_messages"]
+            .find({"conversation_id": conversation_id}, {"_id": 0})
+            .sort("created_at", -1)
+            .limit(501)
+            .to_list(length=501),
+            campaign_inbox.thread(
+                _db, conversation["branch_id"], conversation["phone"]
+            ),
+            _db["branches"].find_one(
+                {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
+            ),
+            _enrich_member_phone_matches(
+                [conversation], current_user,
+                member_branch=conversation.get("branch_id"),
+                include_candidates=True,
+            ),
+        )
     # Load the newest page, then restore chronological order for rendering.
     # The extra row is only a completeness sentinel and is never marked read.
     fetched_complete = len(cloud_rows) <= 500
@@ -6056,25 +6065,22 @@ async def get_cloud_inbox_thread(
         )
         if refreshed_conversation:
             conversation.update(refreshed_conversation)
-    branch_request = _db["branches"].find_one(
-        {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
-    )
-    member_request = _enrich_member_phone_matches(
-            [conversation],
-            current_user,
-            member_branch=conversation.get("branch_id"),
-            include_candidates=True,
-        )
     if not conversation.get('phone_mirrored'):
-        branch, enriched, _ = await asyncio.gather(
-            branch_request, member_request,
-            _mark_cloud_inbound_read(
-                conversation_id, conversation.get("branch_id") or "", cloud_messages,
-                provider=None, fetched_complete=fetched_complete,
-            ),
+        await _mark_cloud_inbound_read(
+            conversation_id, conversation.get("branch_id") or "", cloud_messages,
+            provider=None, fetched_complete=fetched_complete,
         )
     else:
-        branch, enriched = await asyncio.gather(branch_request, member_request)
+        branch, enriched = await asyncio.gather(
+            _db["branches"].find_one(
+                {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
+            ),
+            _enrich_member_phone_matches(
+                [conversation], current_user,
+                member_branch=conversation.get("branch_id"),
+                include_candidates=True,
+            ),
+        )
     conversation = enriched[0]
     conversation["branch_name"] = (branch or {}).get("name")
     return {"conversation": conversation, "messages": messages,
