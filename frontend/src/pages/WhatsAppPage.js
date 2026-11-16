@@ -1092,6 +1092,11 @@ export default function WhatsAppPage() {
           const merged = new Map([...older, ...messages].map(m => [m.id, m]));
           return [...merged.values()].sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
         });
+        if (response.data.phone_history.syncing) {
+          setTimeout(() => {
+            if (isCurrentRequest()) openCloudThread(conversationId, { polling: true });
+          }, 2000);
+        }
       } else {
         phoneHistoryRef.current = null;
         setPhoneHistory(null);
@@ -4202,6 +4207,11 @@ export default function WhatsAppPage() {
                     )}
                   </p>
                   <ChatMessageViewport key={selectedCloudThread} className="max-h-[520px] overflow-y-auto mb-4 p-2 bg-muted/20 rounded-lg">
+                    {phoneHistory?.syncing && !cloudMessages.length && (
+                      <p className="mb-3 text-center text-sm text-muted-foreground">
+                        {t('جارٍ جلب رسائل الجوال، ستظهر هنا تلقائيًا.', 'Loading phone messages; they will appear here automatically.')}
+                      </p>
+                    )}
                     {phoneHistory?.has_more && <Button variant="outline" onClick={handleOlderPhoneMessages} disabled={loadingOlderPhone} className="mb-3 w-full">
                       {t('تحميل رسائل الجوال الأقدم', 'Load older phone messages')}
                     </Button>}

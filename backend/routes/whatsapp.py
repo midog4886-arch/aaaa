@@ -5767,6 +5767,61 @@ async def _phone_client(branch_id):
 
 
 _phone_snapshot_locks = {}
+_phone_snapshot_refresh_tasks = {}
+_phone_history_refresh_tasks = {}
+_phone_history_refresh_times = {}
+_phone_history_refresh_results = {}
+
+
+def _refresh_phone_snapshot_in_background(branch_id):
+    """Refresh a cached phone snapshot without delaying inbox reads."""
+    key = (get_current_tenant_slug(), branch_id)
+    task = _phone_snapshot_refresh_tasks.get(key)
+    if task and not task.done():
+        return
+
+    async def refresh():
+        try:
+            await _refresh_phone_snapshot(branch_id)
+        except Exception:
+            logger.exception("Background phone chat refresh failed for branch %s", branch_id)
+
+    task = asyncio.create_task(refresh())
+    _phone_snapshot_refresh_tasks[key] = task
+    task.add_done_callback(
+        lambda done: _phone_snapshot_refresh_tasks.pop(key, None)
+        if _phone_snapshot_refresh_tasks.get(key) is done else None
+    )
+
+
+def _refresh_phone_history_in_background(conversation):
+    key = (get_current_tenant_slug(), conversation['branch_id'], conversation['id'])
+    task = _phone_history_refresh_tasks.get(key)
+    if task and not task.done():
+        return True
+    now = datetime.now(timezone.utc)
+    previous = _phone_history_refresh_times.get(key)
+    if previous and (now - previous).total_seconds() < 30:
+        return False
+    _phone_history_refresh_times[key] = now
+
+    async def refresh():
+        try:
+            _, result, _ = await _import_phone_history(conversation)
+            _phone_history_refresh_results[key] = {
+                'has_more': result['has_more'], 'total': result['total'],
+            }
+        except Exception:
+            logger.exception("Background phone history refresh failed for branch %s", conversation['branch_id'])
+            _phone_history_refresh_results[key] = {'error': True}
+
+    task = asyncio.create_task(refresh())
+    _phone_history_refresh_tasks[key] = task
+    task.add_done_callback(
+        lambda done: _phone_history_refresh_tasks.pop(key, None)
+        if _phone_history_refresh_tasks.get(key) is done else None
+    )
+    return True
 
 
 async def _refresh_phone_snapshot(branch_id, force=False):
@@ -5867,7 +5922,7 @@ async def list_cloud_inbox_conversations(
         )
         phone_snapshot = await _db['whatsapp_phone_sync'].find_one({'branch_id': effective_branch, 'enabled': True}, {'_id': 0})
         if phone_snapshot:
-            phone_snapshot = await _refresh_phone_snapshot(effective_branch)
+            _refresh_phone_snapshot_in_background(effective_branch)
             scope_query['phone_snapshot'] = phone_snapshot['snapshot']
     # The focused needs-reply view must see its bounded backfill before its
     # materialized predicate runs.  Other polling views run it concurrently so
@@ -6017,16 +6072,20 @@ async def get_cloud_inbox_thread(
     _assert_branch_access(current_user, conversation.get("branch_id"))
     phone_history = None
     if conversation.get('phone_mirrored'):
-        try:
-            _, phone_history, phone_messages = await _import_phone_history(conversation)
-            cloud_rows, campaign_messages = list(reversed(phone_messages)), []
-        except HTTPException as exc:
-            if exc.status_code not in (409, 502):
-                raise
-            cloud_rows = await _db['whatsapp_cloud_messages'].find({
-                'conversation_id': conversation_id, 'branch_id': conversation['branch_id'],
-            }, {'_id': 0}).sort('created_at', -1).limit(50).to_list(length=50)
-            campaign_messages = []
+        cloud_rows = await _db['whatsapp_cloud_messages'].find({
+            'conversation_id': conversation_id, 'branch_id': conversation['branch_id'],
+            'provider': 'whatsflow',
+        }, {'_id': 0}).sort('created_at', -1).limit(50).to_list(length=50)
+        campaign_messages = []
+        history_key = (get_current_tenant_slug(), conversation['branch_id'], conversation_id)
+        syncing = _refresh_phone_history_in_background(conversation)
+        history_result = _phone_history_refresh_results.get(history_key) or {}
+        phone_history = {
+            'has_more': history_result.get('has_more', len(cloud_rows) >= 50),
+            'total': history_result.get('total', len(cloud_rows)),
+            'syncing': syncing,
+        }
+        if history_result.get('error'):
             conversation['phone_history_stale'] = True
     else:
         cloud_rows, campaign_messages, branch, enriched = await asyncio.gather(
@@ -6055,16 +6114,7 @@ async def get_cloud_inbox_thread(
         cloud_messages, campaign_messages
     )
     if phone_history:
-        # GET only refreshes the provider state. The UI sends a separate
-        # explicit read action after it has opened the conversation.
-        await _refresh_phone_snapshot(conversation['branch_id'])
-        refreshed_conversation = await _db["whatsapp_cloud_conversations"].find_one(
-            {"id": conversation_id, "branch_id": conversation["branch_id"]},
-            {"_id": 0, "unread_count": 1, "phone_unread_count": 1,
-             "phone_unread_known": 1, "phone_synced_at": 1},
-        )
-        if refreshed_conversation:
-            conversation.update(refreshed_conversation)
+        _refresh_phone_snapshot_in_background(conversation['branch_id'])
     if not conversation.get('phone_mirrored'):
         await _mark_cloud_inbound_read(
             conversation_id, conversation.get("branch_id") or "", cloud_messages,
@@ -6084,7 +6134,7 @@ async def get_cloud_inbox_thread(
     conversation = enriched[0]
     conversation["branch_name"] = (branch or {}).get("name")
     return {"conversation": conversation, "messages": messages,
-            "phone_history": {'has_more': phone_history['has_more'], 'total': phone_history['total']} if phone_history else None}
+            "phone_history": phone_history}
 
 
 async def _set_phone_chat_read_state(conversation_id: str, current_user: dict, read: bool):

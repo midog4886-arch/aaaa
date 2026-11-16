@@ -355,18 +355,20 @@ def test_opening_mirrored_thread_does_not_mark_phone_messages_read(monkeypatch):
     }
     db = {
         'whatsapp_cloud_conversations': AsyncMock(),
+        'whatsapp_cloud_messages': MagicMock(),
         'branches': AsyncMock(),
     }
     db['whatsapp_cloud_conversations'].find_one.return_value = conversation.copy()
+    db['whatsapp_cloud_messages'].find.return_value.sort.return_value.limit.return_value.to_list = AsyncMock(
+        return_value=[{'id': 'message-1', 'direction': 'inbound', 'unread': True}]
+    )
     db['branches'].find_one.return_value = {'name': 'Branch A'}
     monkeypatch.setattr(mod, '_db', db)
     monkeypatch.setattr(mod, '_require_bulk_whatsapp_access', lambda _: None)
-    client = AsyncMock()
-    history = {'records': [record('123@lid')], 'has_more': False, 'total': 1}
-    messages = [{'id': 'message-1', 'direction': 'inbound', 'unread': True}]
-    monkeypatch.setattr(mod, '_import_phone_history', AsyncMock(return_value=(client, history, messages)))
-    refresh = AsyncMock(return_value={'unread_chats': 1})
-    monkeypatch.setattr(mod, '_refresh_phone_snapshot', refresh)
+    import_history = AsyncMock()
+    monkeypatch.setattr(mod, '_import_phone_history', import_history)
+    monkeypatch.setattr(mod, '_refresh_phone_history_in_background', lambda _: True)
+    monkeypatch.setattr(mod, '_refresh_phone_snapshot_in_background', lambda _: None)
     async def passthrough(rows, *args, **kwargs):
         return rows
     monkeypatch.setattr(mod, '_enrich_member_phone_matches', passthrough)
@@ -376,5 +378,31 @@ def test_opening_mirrored_thread_does_not_mark_phone_messages_read(monkeypatch):
 
     assert result['conversation']['unread_count'] == 2
     assert result['messages'][0]['unread'] is True
-    client.mark_messages_read.assert_not_called()
-    refresh.assert_awaited_once_with('a')
+    assert result['phone_history']['syncing'] is True
+    import_history.assert_not_awaited()
+
+
+def test_phone_history_refresh_does_not_hold_the_request(monkeypatch):
+    pending = asyncio.Event()
+    conversation = {'id': 'chat', 'branch_id': 'branch', 'remote_jid': '123@s.whatsapp.net'}
+    monkeypatch.setattr(mod, 'get_current_tenant_slug', lambda: 'test-tenant')
+    async def slow_import(_):
+        await pending.wait()
+        return None, {'has_more': False, 'total': 1}, []
+    monkeypatch.setattr(mod, '_import_phone_history', slow_import)
+    mod._phone_history_refresh_tasks.clear()
+    mod._phone_history_refresh_times.clear()
+    mod._phone_history_refresh_results.clear()
+
+    async def check():
+        assert mod._refresh_phone_history_in_background(conversation) is True
+        key = ('test-tenant', 'branch', 'chat')
+        task = mod._phone_history_refresh_tasks[key]
+        await asyncio.sleep(0)
+        assert not task.done()
+        assert mod._refresh_phone_history_in_background(conversation) is True
+        pending.set()
+        await task
+        assert mod._phone_history_refresh_results[key] == {'has_more': False, 'total': 1}
+
+    run(check())
