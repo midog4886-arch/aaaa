@@ -13,6 +13,8 @@ INDEXES = {
         ([("branch_id", 1), ("name", 1)], {}),
         ([("activities.end_date", 1)], {}),
         ([("guardian_phone", 1)], {}),
+        ([("branch_id", 1), ("phone", 1)], {}),
+        ([("branch_id", 1), ("guardian_phone", 1)], {}),
     ],
     "invoices": [
         ([("branch_id", 1)], {}),
@@ -120,6 +122,15 @@ INDEXES = {
     "whatsapp_campaign_job_items": [
         ([("branch_id", 1), ("provider", 1), ("source", 1), ("completed_at", -1)], {}),
         ([("branch_id", 1), ("source", 1), ("completed_at", -1)], {}),
+        ([("branch_id", 1), ("phone", 1), ("created_at", -1)], {}),
+    ],
+    "whatsapp_cloud_conversations": [
+        ([("branch_id", 1), ("last_message_at", -1)], {}),
+        ([("branch_id", 1), ("unread_count", 1), ("last_message_at", -1)], {}),
+        ([("branch_id", 1), ("needs_reply", 1), ("last_message_at", -1)], {}),
+    ],
+    "whatsapp_cloud_messages": [
+        ([("conversation_id", 1), ("created_at", -1)], {}),
     ],
     "whatsapp_campaign_offer_responses": [
         ([("branch_id", 1), ("campaign_id", 1), ("responded_at", -1)], {}),

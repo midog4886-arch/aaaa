@@ -6056,23 +6056,27 @@ async def get_cloud_inbox_thread(
         )
         if refreshed_conversation:
             conversation.update(refreshed_conversation)
-    elif not conversation.get('phone_mirrored'):
-        await _mark_cloud_inbound_read(
-            conversation_id, conversation.get("branch_id") or "", cloud_messages,
-            provider=None, fetched_complete=fetched_complete,
-        )
-    branch = await _db["branches"].find_one(
+    branch_request = _db["branches"].find_one(
         {"id": conversation.get("branch_id")}, {"_id": 0, "name": 1}
     )
-    conversation["branch_name"] = (branch or {}).get("name")
-    conversation = (
-        await _enrich_member_phone_matches(
+    member_request = _enrich_member_phone_matches(
             [conversation],
             current_user,
             member_branch=conversation.get("branch_id"),
             include_candidates=True,
         )
-    )[0]
+    if not conversation.get('phone_mirrored'):
+        branch, enriched, _ = await asyncio.gather(
+            branch_request, member_request,
+            _mark_cloud_inbound_read(
+                conversation_id, conversation.get("branch_id") or "", cloud_messages,
+                provider=None, fetched_complete=fetched_complete,
+            ),
+        )
+    else:
+        branch, enriched = await asyncio.gather(branch_request, member_request)
+    conversation = enriched[0]
+    conversation["branch_name"] = (branch or {}).get("name")
     return {"conversation": conversation, "messages": messages,
             "phone_history": {'has_more': phone_history['has_more'], 'total': phone_history['total']} if phone_history else None}
 

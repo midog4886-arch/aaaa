@@ -824,10 +824,10 @@ export default function WhatsAppPage() {
               ? whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView, true)
               : whatsappAPI.getCloudInboxConversations(branchKey, isUnreadView)
           );
-        const branchesRequest = branches.length
-          ? Promise.resolve(branches)
-          : loadCloudBranches();
-        request = Promise.all([inboxRequest, branchesRequest]);
+        // Branch names are loaded separately; do not hold the chat list until
+        // that unrelated request finishes.
+        if (!branches.length) loadCloudBranches().catch(() => {});
+        request = inboxRequest;
         cloudConversationRequestsRef.current.set(requestKey, request);
         request.then(
           () => {
@@ -842,7 +842,7 @@ export default function WhatsAppPage() {
           },
         );
       }
-      const [inboxResponse] = await request;
+      const inboxResponse = await request;
       if (!isCurrentRequest()) return;
       setCloudConversations(inboxResponse.data?.conversations || []);
       setPhoneSync(inboxResponse.data?.phone_sync || null);
@@ -1047,6 +1047,10 @@ export default function WhatsAppPage() {
       setCloudImageCaption('');
       setCloudThread(null);
       setCloudMessages([]);
+    }
+    if (!polling) {
+      const preview = cloudConversations.find(row => row.id === conversationId);
+      if (preview) setCloudThread(preview);
     }
 
     const isCurrentRequest = () => (
