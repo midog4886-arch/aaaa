@@ -664,12 +664,34 @@ export default function WhatsAppBulkPage() {
     }
     if (spreadAcrossDays) {
       const count = Number(dailyRecipients);
-      const messagesPerDay = count * Math.max(attachments.length, 1);
-      const [hour, minute] = sendTime.split(':').map(Number);
+      const attachmentCount = Math.max(attachments.length, 1);
+      const messagesPerDay = count * attachmentCount;
+      const [hour, minute] = (sendTime || '').split(':').map(Number);
       const minutesAvailable = 1200 - (hour * 60 + minute);
-      const maxInWindow = Math.floor((minutesAvailable - 1) / (3 * Math.max(attachments.length, 1))) + 1;
-      if (!startDate || !sendTime || !Number.isInteger(count) || count < 1 || hour < 10 || hour >= 20 || minute < 0 || minute > 59 || count > maxInWindow || (isSessionProvider && messagesPerDay > Number(cloudStatus.daily_limit || 30))) {
-        toast.error(t('تحقق من تاريخ البداية وعدد المستلمين اليومي ووقت الإرسال وحد الفرع', 'Check the start date, daily recipients, send time and branch limit'));
+      const maxInWindow = Math.floor((minutesAvailable - 1) / (3 * attachmentCount)) + 1;
+      const branchLimit = Number(cloudStatus.daily_limit || 30);
+      if (!startDate || !Number.isFinite(new Date(`${startDate}T00:00:00+03:00`).getTime())) {
+        toast.error(t('اختر تاريخ بداية صالحًا', 'Choose a valid start date'));
+        return;
+      }
+      if (!sendTime || !Number.isInteger(hour) || !Number.isInteger(minute) || hour < 10 || hour >= 20 || minute < 0 || minute > 59) {
+        toast.error(t('وقت البداية يجب أن يكون بين 10:00 صباحًا و7:59 مساءً بتوقيت الرياض', 'Start time must be between 10:00 AM and 7:59 PM Riyadh time'));
+        return;
+      }
+      if (new Date(`${startDate}T${sendTime}:00+03:00`).getTime() <= Date.now()) {
+        toast.error(t('اختر تاريخًا ووقتًا في المستقبل بتوقيت الرياض', 'Choose a future date and time in Riyadh'));
+        return;
+      }
+      if (!Number.isInteger(count) || count < 1) {
+        toast.error(t('أدخل عدد مستلمين يوميًّا أكبر من صفر', 'Enter a positive daily recipient count'));
+        return;
+      }
+      if (count > maxInWindow) {
+        toast.error(t(`يتسع الوقت المحدد لـ ${maxInWindow} مستلم يوميًا بحد أقصى؛ خفّض العدد أو اختر وقتًا أبكر`, `The selected time fits at most ${maxInWindow} recipients per day; reduce the count or choose an earlier time`));
+        return;
+      }
+      if (isSessionProvider && messagesPerDay > branchLimit) {
+        toast.error(t(`حد الفرع ${branchLimit} رسالة يوميًا؛ اختر ${Math.floor(branchLimit / attachmentCount)} مستلمًا أو أقل`, `Branch limit is ${branchLimit} messages per day; choose ${Math.floor(branchLimit / attachmentCount)} recipients or fewer`));
         return;
       }
     }
@@ -1286,7 +1308,7 @@ export default function WhatsAppBulkPage() {
                     <Input type="time" min="10:00" max="19:59" value={sendTime} onChange={event => setSendTime(event.target.value)} />
                   </label>
                 </div>
-                <p className="text-xs text-muted-foreground">{t(`الخطة: ${validItems.length} مستلم خلال ${Math.ceil(validItems.length / (Number(dailyRecipients) || 1))} أيام. فاصل 3 دقائق على الأقل بين الرسائل؛ قد يتأخر التنفيذ بسبب طابور الفرع أو حد الإرسال اليومي.`, `Plan: ${validItems.length} recipients over ${Math.ceil(validItems.length / (Number(dailyRecipients) || 1))} days. At least 3 minutes between messages; branch queues or daily limits may delay delivery.`)}</p>
+                <p className="text-xs text-muted-foreground">{t(`الإرسال يبدأ بين 10:00 صباحًا و7:59 مساءً بتوقيت الرياض. الخطة: ${validItems.length} مستلم خلال ${Math.ceil(validItems.length / (Number(dailyRecipients) || 1))} أيام. فاصل 3 دقائق على الأقل بين الرسائل${isSessionProvider ? `؛ حد الفرع ${cloudStatus.daily_limit || 30} رسالة يوميًا` : ''}.`, `Sending starts between 10:00 AM and 7:59 PM Riyadh time. Plan: ${validItems.length} recipients over ${Math.ceil(validItems.length / (Number(dailyRecipients) || 1))} days, at least 3 minutes apart${isSessionProvider ? `; branch limit ${cloudStatus.daily_limit || 30} messages per day` : ''}.`)}</p>
               </>}
             </div>
             <div className="flex flex-wrap gap-2">
