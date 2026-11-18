@@ -1874,11 +1874,11 @@ export default function WhatsAppPage() {
   };
 
   // ── WhatsApp handlers ──
-  const handleToggleEnabled = async () => {
-    if (!reminderSettingsBranchId || savingBranchReminder) return;
-    const branchId = reminderSettingsBranchId;
+  const handleToggleEnabled = async (branchId = reminderSettingsBranchId) => {
+    if (!branchId || savingBranchReminder) return;
+    const branchName = branches.find(branch => branch.id === branchId)?.name_ar || branches.find(branch => branch.id === branchId)?.name || branchId;
     const current = waSettings.branch_reminders_enabled?.[branchId] ?? waSettings.enabled;
-    if (current && !window.confirm(t('هل تريد إيقاف التذكيرات التلقائية لهذا الفرع؟', 'Disable automatic reminders for this branch?'))) return;
+    if (current && !window.confirm(t(`هل تريد إيقاف التذكيرات التلقائية لفرع ${branchName} فقط؟`, `Disable automatic reminders for ${branchName} only?`))) return;
     setSavingBranchReminder(true);
     try {
       await whatsappAPI.updateBranchReminderEnabled(branchId, !current);
@@ -2560,13 +2560,24 @@ export default function WhatsAppPage() {
                 <option value="">{t('اختر الفرع', 'Choose branch')}</option>
                 {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name_ar || branch.name}</option>)}
               </select>
+              <p className="text-xs text-muted-foreground">{t('حالة كل فرع مستقلة. الفروع التي لم يُضبط مفتاحها بعد ترث حالة الإعداد العام السابق.', 'Each branch has its own switch. Branches not configured yet inherit the previous global setting.')}</p>
+              <div className="rounded-xl border divide-y max-h-52 overflow-y-auto">
+                {branches.map(branch => {
+                  const explicit = Object.prototype.hasOwnProperty.call(waSettings.branch_reminders_enabled || {}, branch.id);
+                  const enabled = explicit ? waSettings.branch_reminders_enabled[branch.id] : waSettings.enabled;
+                  return <div key={branch.id} className="flex items-center justify-between gap-3 p-3 text-sm">
+                    <span>{branch.name_ar || branch.name} <span className="text-muted-foreground">· {enabled ? t('مفعّل', 'On') : t('متوقف', 'Off')}{!explicit ? ` (${t('الإعداد السابق', 'Previous setting')})` : ''}</span></span>
+                    <button type="button" disabled={savingBranchReminder} onClick={() => handleToggleEnabled(branch.id)} className={`px-3 py-1 rounded-lg text-white ${enabled ? 'bg-green-600' : 'bg-gray-500'}`}>{enabled ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
+                  </div>;
+                })}
+              </div>
 
               <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
                 <div>
                   <p className="font-medium">{t('تفعيل التذكيرات التلقائية لهذا الفرع', 'Enable Auto Reminders for This Branch')}</p>
                   <p className="text-sm text-muted-foreground">{t(`يُرسل يومياً الساعة ${HOURS[waSettings.send_hour]?.label}`, `Sent daily at ${HOURS[waSettings.send_hour]?.label}`)}</p>
                 </div>
-                <button onClick={handleToggleEnabled} disabled={!reminderSettingsBranchId || savingBranchReminder} className={`relative w-12 h-6 rounded-full transition-colors ${((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? 'bg-green-500' : 'bg-gray-300'}`}>
+                <button onClick={() => handleToggleEnabled()} disabled={!reminderSettingsBranchId || savingBranchReminder} className={`relative w-12 h-6 rounded-full transition-colors ${((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? 'bg-green-500' : 'bg-gray-300'}`}>
                   <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? (isRTL ? 'right-1' : 'translate-x-6') : (isRTL ? 'right-7' : 'translate-x-1')}`} />
                 </button>
               </div>
