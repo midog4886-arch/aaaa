@@ -119,7 +119,17 @@ class _FakeCollection:
         return _FakeCursor([dict(d) for d in self.docs if self._matches(d, q)])
 
     def aggregate(self, pipeline):
-        return _FakeCursor([])
+        rows = list(self.docs)
+        for stage in pipeline:
+            if "$match" in stage:
+                rows = [row for row in rows if self._matches(row, stage["$match"])]
+            if "$group" in stage:
+                rows = [{
+                    "total_points_earned": sum(row.get("total_points", 0) for row in rows),
+                    "total_points_available": sum(row.get("available_points", 0) for row in rows),
+                    "total_members": len(rows),
+                }] if rows else []
+        return _FakeCursor(rows)
 
 
 class _FakeDB:
@@ -150,6 +160,33 @@ def _reward_model(**over):
     )
     base.update(over)
     return loy.RewardCreate(**base)
+
+
+def test_branch_stats_and_leaderboard_include_only_its_members(db):
+    db.members.docs.extend([
+        {"id": "m1", "name_ar": "عضو ألف", "member_code": "A1", "branch_id": "b1"},
+        {"id": "m2", "name_ar": "عضو باء", "member_code": "B1", "branch_id": "b2"},
+    ])
+    db.branches.docs.extend([
+        {"id": "b1", "name_ar": "الفرع الأول"},
+        {"id": "b2", "name_ar": "الفرع الثاني"},
+    ])
+    db.member_points.docs.extend([
+        {"member_id": "m1", "total_points": 100, "available_points": 70},
+        {"member_id": "m2", "total_points": 900, "available_points": 800},
+    ])
+    db.redemption_requests.docs.extend([
+        {"member_id": "m1", "status": "pending"},
+        {"member_id": "m2", "status": "approved"},
+    ])
+
+    stats = run(loy.get_loyalty_stats(branch_id="b1"))
+    assert (stats["total_points_earned"], stats["total_points_available"]) == (100, 70)
+    assert stats["total_members_in_program"] == 1
+    assert stats["pending_redemptions"] == 1
+    leaders = run(loy.get_leaderboard(branch_id="b1"))
+    assert [(m["member_id"], m["branch_name"]) for m in leaders] == [("m1", "الفرع الأول")]
+    assert [m["member_id"] for m in run(loy.get_leaderboard())] == ["m2", "m1"]
 
 
 # ── settings ─────────────────────────────────────────────────────────────────

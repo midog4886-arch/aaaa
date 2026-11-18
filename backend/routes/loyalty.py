@@ -630,10 +630,15 @@ async def apply_referral_code(data: ReferralApply):
 # ============== Statistics Endpoints ==============
 
 @router.get("/stats")
-async def get_loyalty_stats():
+async def get_loyalty_stats(branch_id: Optional[str] = None):
     """Get loyalty program statistics (admin)"""
     # Total points
+    member_ids = None
+    if branch_id and branch_id != 'all':
+        members_in_branch = await db.members.find({'branch_id': branch_id}, {'id': 1}).to_list(100000)
+        member_ids = [m['id'] for m in members_in_branch if m.get('id')]
     pipeline = [
+        *([{'$match': {'member_id': {'$in': member_ids}}}] if member_ids is not None else []),
         {"$group": {
             "_id": None,
             "total_points_earned": {"$sum": "$total_points"},
@@ -656,14 +661,15 @@ async def get_loyalty_stats():
         "diamond": 0
     }
     
-    all_members = await db.member_points.find({}).to_list(10000)
+    all_members = await db.member_points.find({'member_id': {'$in': member_ids}} if member_ids is not None else {}).to_list(100000)
     for m in all_members:
         level = calculate_level(m.get('total_points', 0), level_settings)
         level_counts[level['level']] += 1
     
     # Redemption stats
-    total_redemptions = await db.redemption_requests.count_documents({})
-    pending_redemptions = await db.redemption_requests.count_documents({"status": "pending"})
+    redemption_filter = {'member_id': {'$in': member_ids}} if member_ids is not None else {}
+    total_redemptions = await db.redemption_requests.count_documents(redemption_filter)
+    pending_redemptions = await db.redemption_requests.count_documents({**redemption_filter, "status": "pending"})
     
     # Top rewards
     top_rewards = await db.loyalty_rewards.find({"is_active": True}).sort("redeemed_count", -1).limit(5).to_list(5)
@@ -680,18 +686,30 @@ async def get_loyalty_stats():
     }
 
 @router.get("/leaderboard")
-async def get_leaderboard(limit: int = 10):
+async def get_leaderboard(limit: int = 10, branch_id: Optional[str] = None):
     """Get top members by points"""
-    top_members = await db.member_points.find({}).sort("total_points", -1).limit(limit).to_list(limit)
+    member_filter = {}
+    if branch_id and branch_id != 'all':
+        branch_members = await db.members.find({'branch_id': branch_id}, {'id': 1}).to_list(100000)
+        member_filter = {'member_id': {'$in': [m['id'] for m in branch_members if m.get('id')]}}
+    top_members = await db.member_points.find(member_filter).sort("total_points", -1).limit(limit).to_list(limit)
+    level_settings = await db.loyalty_settings.find_one({"type": "levels"}) or LevelSettings().model_dump()
+    branch_ids = set()
+    members_by_id = {}
+    for mp in top_members:
+        member = await db.members.find_one({"id": mp['member_id']}, {"_id": 0})
+        if member:
+            members_by_id[mp['member_id']] = member
+            if member.get('branch_id'):
+                branch_ids.add(member['branch_id'])
+    branches = await db.branches.find({'id': {'$in': list(branch_ids)}}, {'_id': 0, 'id': 1, 'name_ar': 1, 'name': 1}).to_list(len(branch_ids)) if branch_ids else []
+    branch_names = {b['id']: b.get('name_ar') or b.get('name') or b['id'] for b in branches}
     
     result = []
     for i, mp in enumerate(top_members):
         # Use 'id' field instead of ObjectId
-        member = await db.members.find_one({"id": mp['member_id']}, {"_id": 0})
+        member = members_by_id.get(mp['member_id'])
         if member:
-            level_settings = await db.loyalty_settings.find_one({"type": "levels"})
-            if not level_settings:
-                level_settings = LevelSettings().model_dump()
             level_info = calculate_level(mp.get('total_points', 0), level_settings)
             
             result.append({
@@ -699,6 +717,8 @@ async def get_leaderboard(limit: int = 10):
                 "member_id": mp['member_id'],
                 "member_name": member.get('name_ar', ''),
                 "member_code": member.get('member_code', ''),
+                "branch_id": member.get('branch_id'),
+                "branch_name": branch_names.get(member.get('branch_id'), 'بدون فرع'),
                 "total_points": mp.get('total_points', 0),
                 "level": level_info['level'],
                 "level_ar": level_info['level_ar'],

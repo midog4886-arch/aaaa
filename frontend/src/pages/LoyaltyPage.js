@@ -23,6 +23,8 @@ const LoyaltyPage = () => {
   const [processingBirthdays, setProcessingBirthdays] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [selectedBranch, setSelectedBranch] = useState('all');
   const [rewards, setRewards] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -54,10 +56,10 @@ const LoyaltyPage = () => {
     try {
       setLoading(true);
       const [statsRes, rewardsRes, redemptionsRes, leaderboardRes, pointsRes, levelsRes] = await Promise.all([
-        api.get('/loyalty/stats'),
+        api.get('/loyalty/stats', { params: selectedBranch === 'all' ? {} : { branch_id: selectedBranch } }),
         api.get('/loyalty/rewards'),
         api.get('/loyalty/redemptions?limit=50'),
-        api.get('/loyalty/leaderboard?limit=10'),
+        api.get('/loyalty/leaderboard', { params: { limit: 10, ...(selectedBranch === 'all' ? {} : { branch_id: selectedBranch }) } }),
         api.get('/loyalty/settings/points'),
         api.get('/loyalty/settings/levels')
       ]);
@@ -74,6 +76,11 @@ const LoyaltyPage = () => {
     } finally {
       setLoading(false);
     }
+  }, [selectedBranch]);
+
+  useEffect(() => {
+    api.get('/branches').then(({ data }) => setBranches(Array.isArray(data) ? data : data?.branches || []))
+      .catch(() => setBranches([]));
   }, []);
 
   useEffect(() => {
@@ -252,8 +259,19 @@ const LoyaltyPage = () => {
         </div>
       </div>
 
+      <div className="flex items-center gap-3" dir="rtl">
+        <Label htmlFor="loyalty-branch">الفرع</Label>
+        <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+          <SelectTrigger id="loyalty-branch" className="w-64"><SelectValue placeholder="جميع الفروع" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">جميع الفروع</SelectItem>
+            {branches.map(branch => <SelectItem key={branch.id} value={branch.id}>{branch.name_ar || branch.name || branch.id}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -263,6 +281,20 @@ const LoyaltyPage = () => {
               </div>
               <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                 <Star className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">النقاط المتاحة للاستخدام</p>
+                <p className="text-2xl font-bold text-emerald-600">{stats?.total_points_available?.toLocaleString() || 0}</p>
+              </div>
+              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center">
+                <Coins className="w-6 h-6 text-emerald-600" />
               </div>
             </div>
           </CardContent>
@@ -370,7 +402,7 @@ const LoyaltyPage = () => {
                       </div>
                       <div>
                         <p className="font-medium">{member.member_name}</p>
-                        <p className="text-sm text-gray-500">#{member.member_code}</p>
+                        <p className="text-sm text-gray-500">#{member.member_code} · {member.branch_name}</p>
                       </div>
                     </div>
                     <div className="text-left">
