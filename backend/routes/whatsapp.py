@@ -382,6 +382,9 @@ LEGACY_RENEWAL_MESSAGE_TEMPLATE = "مرحباً {name}،\nنذكركم بأن ا
 
 DEFAULT_SETTINGS = {
     "enabled": False,
+    # Branch overrides for automatic expiry reminders. Existing installations
+    # inherit the previous global value until a branch is configured.
+    "branch_reminders_enabled": {},
     # Forward NEW admin bell notifications (رسائل الأعضاء، تنبيهات التجديد…)
     # to the manager's WhatsApp. Checked every minute by _admin_alert_loop.
     "admin_alert_enabled": False,
@@ -2317,6 +2320,13 @@ async def _get_settings() -> dict:
     return DEFAULT_SETTINGS.copy()
 
 
+def _branch_reminders_enabled(settings: dict, branch_id: str) -> bool:
+    overrides = settings.get("branch_reminders_enabled") or {}
+    if branch_id in overrides:
+        return bool(overrides[branch_id])
+    return bool(settings.get("enabled"))
+
+
 async def _get_branch_templates() -> dict:
     """Load per-branch WhatsApp template overrides keyed by branch id.
 
@@ -2982,7 +2992,9 @@ async def _do_daily_reminders():
     if _db is None:
         return
     settings = await _get_settings()
-    if not settings.get("enabled"):
+    if not settings.get("enabled") and not any(
+        (settings.get("branch_reminders_enabled") or {}).values()
+    ):
         return
 
     template = settings.get("message_template", DEFAULT_SETTINGS["message_template"])
@@ -3007,6 +3019,9 @@ async def _do_daily_reminders():
 
     for days in days_set:
         members_data = await _get_expiring_members(days)
+        members_data = [item for item in members_data if _branch_reminders_enabled(
+            settings, (item.get("member") or {}).get("branch_id")
+        )]
         if not members_data:
             continue
 
@@ -3264,6 +3279,27 @@ async def get_status(current_user: dict = Depends(get_current_user)):
 async def get_settings_endpoint(current_user: dict = Depends(get_current_user)):
     _require_whatsapp_access(current_user)
     return await _get_settings()
+
+
+class BranchReminderEnabled(BaseModel):
+    branch_id: str
+    enabled: bool
+
+
+@router.put("/settings/branch-enabled")
+async def update_branch_reminder_enabled(
+    data: BranchReminderEnabled, current_user: dict = Depends(get_current_user)
+):
+    _require_whatsapp_access(current_user)
+    _validate_reminder_branch_access(current_user, data.branch_id)
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    if not await _db["branches"].find_one({"id": data.branch_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=404, detail="Branch not found")
+    await _db["whatsapp_settings"].update_one(
+        {}, {"$set": {f"branch_reminders_enabled.{data.branch_id}": data.enabled}}, upsert=True
+    )
+    return {"branch_id": data.branch_id, "enabled": data.enabled}
 
 
 class WhatsAppSettings(BaseModel):

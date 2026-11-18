@@ -890,6 +890,7 @@ export const whatsappAPI = {
   deleteClassReminderSuppression: (id) => axios.delete(`${API}/whatsapp/class-reminder-suppressions/${id}`),
   getStatus: () => axios.get(`${API}/whatsapp/status`),
   getSettings: () => axios.get(`${API}/whatsapp/settings`),
+  updateBranchReminderEnabled: (branch_id, enabled) => axios.put(`${API}/whatsapp/settings/branch-enabled`, { branch_id, enabled }),
   updateSettings: (data) => axios.put(`${API}/whatsapp/settings`, data),
   sendTest: (phone, message) => axios.post(`${API}/whatsapp/test`, { phone, message }),
   sendNow: (data) => axios.post(`${API}/whatsapp/send-now`, data),

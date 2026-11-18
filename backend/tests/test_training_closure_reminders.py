@@ -255,6 +255,32 @@ def test_manual_suppression_preview_counts_only_selected_branch_slot(monkeypatch
     assert result["members"] == [{"id": "a", "name": "Member", "activity_name": "swim"}]
 
 
+def test_automatic_expiry_reminders_respect_each_branch_switch(monkeypatch):
+    db = DB()
+    monkeypatch.setattr(whatsapp, "_db", db)
+    settings = {**whatsapp.DEFAULT_SETTINGS, "enabled": False,
+                "branch_reminders_enabled": {"a": False, "b": True},
+                "offsets": [{"days": 1, "enabled": True}]}
+    monkeypatch.setattr(whatsapp, "_get_settings", AsyncMock(return_value=settings))
+    monkeypatch.setattr(whatsapp, "_get_branch_templates", AsyncMock(return_value={}))
+    monkeypatch.setattr(whatsapp, "_get_wa_status", AsyncMock(return_value={"connected": True}))
+    monkeypatch.setattr(whatsapp, "_get_expiring_members", AsyncMock(return_value=[
+        {"member": {"id": branch, "branch_id": branch}} for branch in ("a", "b")
+    ]))
+    send_wa = AsyncMock(return_value=1)
+    send_push = AsyncMock(return_value=1)
+    send_portal = AsyncMock(return_value=1)
+    monkeypatch.setattr(whatsapp, "_send_wa_for_members", send_wa)
+    monkeypatch.setattr(whatsapp, "_send_push_for_members", send_push)
+    monkeypatch.setattr(whatsapp, "_send_portal_for_members", send_portal)
+
+    run(whatsapp._do_daily_reminders())
+
+    for sender in (send_wa, send_push, send_portal):
+        sent_members = sender.await_args.args[0]
+        assert [item["member"]["branch_id"] for item in sent_members] == ["b"]
+
+
 @pytest.mark.parametrize("changes,expected", [
     ({"branch_id": "all"}, 0),
     ({"start_date": "2026-09-08", "end_date": "2026-09-09"}, 2),

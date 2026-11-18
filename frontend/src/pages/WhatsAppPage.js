@@ -472,6 +472,8 @@ export default function WhatsAppPage() {
     admin_alert_phone: '',
   });
   const [savingSettings, setSavingSettings] = useState(false);
+  const [reminderSettingsBranchId, setReminderSettingsBranchId] = useState('');
+  const [savingBranchReminder, setSavingBranchReminder] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
@@ -1580,6 +1582,15 @@ export default function WhatsAppPage() {
   }, []);
 
   useEffect(() => {
+    if (!branches.length) return;
+    if (!branches.some(branch => branch.id === reminderSettingsBranchId)) {
+      setReminderSettingsBranchId(
+        branches.find(branch => branch.id === selectedBranchId)?.id || branches[0].id
+      );
+    }
+  }, [branches, reminderSettingsBranchId, selectedBranchId]);
+
+  useEffect(() => {
     setSendLogs([]);
     loadSendLogs();
     return () => { logRequestRef.current += 1; };
@@ -1863,9 +1874,18 @@ export default function WhatsAppPage() {
   };
 
   // ── WhatsApp handlers ──
-  const handleToggleEnabled = () => {
-    if (waSettings.enabled && !window.confirm(t('هل تريد إيقاف التذكيرات التلقائية؟', 'Disable automatic reminders?'))) return;
-    setWaSettings(s => ({ ...s, enabled: !s.enabled }));
+  const handleToggleEnabled = async () => {
+    if (!reminderSettingsBranchId || savingBranchReminder) return;
+    const branchId = reminderSettingsBranchId;
+    const current = waSettings.branch_reminders_enabled?.[branchId] ?? waSettings.enabled;
+    if (current && !window.confirm(t('هل تريد إيقاف التذكيرات التلقائية لهذا الفرع؟', 'Disable automatic reminders for this branch?'))) return;
+    setSavingBranchReminder(true);
+    try {
+      await whatsappAPI.updateBranchReminderEnabled(branchId, !current);
+      setWaSettings(s => ({ ...s, branch_reminders_enabled: { ...s.branch_reminders_enabled, [branchId]: !current } }));
+      toast.success(t('تم تحديث تذكيرات الفرع', 'Branch reminders updated'));
+    } catch (error) { toast.error(apiErrorMessage(error, t('تعذر تحديث الفرع', 'Could not update branch'))); }
+    finally { setSavingBranchReminder(false); }
   };
 
   const handleSaveSettings = async () => {
@@ -2536,13 +2556,18 @@ export default function WhatsAppPage() {
                 <h2 className="text-lg font-bold">{t('إعدادات التذكيرات التلقائية', 'Auto Reminder Settings')}</h2>
               </div>
 
+              <select aria-label={t('فرع التذكيرات التلقائية', 'Auto reminder branch')} className="w-full border rounded-lg p-2 bg-background" value={reminderSettingsBranchId} onChange={e => setReminderSettingsBranchId(e.target.value)}>
+                <option value="">{t('اختر الفرع', 'Choose branch')}</option>
+                {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name_ar || branch.name}</option>)}
+              </select>
+
               <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
                 <div>
-                  <p className="font-medium">{t('تفعيل التذكيرات التلقائية', 'Enable Auto Reminders')}</p>
+                  <p className="font-medium">{t('تفعيل التذكيرات التلقائية لهذا الفرع', 'Enable Auto Reminders for This Branch')}</p>
                   <p className="text-sm text-muted-foreground">{t(`يُرسل يومياً الساعة ${HOURS[waSettings.send_hour]?.label}`, `Sent daily at ${HOURS[waSettings.send_hour]?.label}`)}</p>
                 </div>
-                <button onClick={handleToggleEnabled} className={`relative w-12 h-6 rounded-full transition-colors ${waSettings.enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.enabled ? (isRTL ? 'right-1' : 'translate-x-6') : (isRTL ? 'right-7' : 'translate-x-1')}`} />
+                <button onClick={handleToggleEnabled} disabled={!reminderSettingsBranchId || savingBranchReminder} className={`relative w-12 h-6 rounded-full transition-colors ${((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? 'bg-green-500' : 'bg-gray-300'}`}>
+                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? (isRTL ? 'right-1' : 'translate-x-6') : (isRTL ? 'right-7' : 'translate-x-1')}`} />
                 </button>
               </div>
 
