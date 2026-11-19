@@ -177,6 +177,18 @@ def test_worker_suppresses_closed_branch_but_sends_other_branch(monkeypatch, app
     assert len(db.whatsapp_class_reminder_log.rows) == 1
 
 
+def test_branch_notification_switch_suppresses_only_its_class_reminders(monkeypatch):
+    db = DB(members=[member("a"), member("b")])
+    db.whatsapp_settings.rows.append({
+        "branch_notifications": {"a": {"all_enabled": False}},
+    })
+    sender = configure(monkeypatch, db)
+    assert run(whatsapp.process_class_reminders(NOW)) == 1
+    assert sender.await_count == 1
+    assert "Branch B" in sender.await_args.args[1]
+    assert [row["branch_id"] for row in db.whatsapp_class_reminder_log.rows] == ["b"]
+
+
 def test_activity_closure_keeps_open_activity_and_its_reminder_time(monkeypatch):
     db = DB([{**CLOSURE, "scope": "specific", "activity_ids": ["swim"]}], [member()])
     sender = configure(monkeypatch, db)
@@ -255,11 +267,14 @@ def test_manual_suppression_preview_counts_only_selected_branch_slot(monkeypatch
     assert result["members"] == [{"id": "a", "name": "Member", "activity_name": "swim"}]
 
 
-def test_automatic_expiry_reminders_respect_each_branch_switch(monkeypatch):
+@pytest.mark.parametrize("overrides", [
+    {"enabled": False, "branch_reminders_enabled": {"a": False, "b": True}},
+    {"enabled": True, "branch_notifications": {"a": {"all_enabled": False}}},
+])
+def test_automatic_expiry_reminders_respect_each_branch_switch(monkeypatch, overrides):
     db = DB()
     monkeypatch.setattr(whatsapp, "_db", db)
-    settings = {**whatsapp.DEFAULT_SETTINGS, "enabled": False,
-                "branch_reminders_enabled": {"a": False, "b": True},
+    settings = {**whatsapp.DEFAULT_SETTINGS, **overrides,
                 "offsets": [{"days": 1, "enabled": True}]}
     monkeypatch.setattr(whatsapp, "_get_settings", AsyncMock(return_value=settings))
     monkeypatch.setattr(whatsapp, "_get_branch_templates", AsyncMock(return_value={}))
@@ -279,6 +294,17 @@ def test_automatic_expiry_reminders_respect_each_branch_switch(monkeypatch):
     for sender in (send_wa, send_push, send_portal):
         sent_members = sender.await_args.args[0]
         assert [item["member"]["branch_id"] for item in sent_members] == ["b"]
+
+
+def test_branch_notification_master_and_channels_are_isolated():
+    settings = {"push_enabled": True, "portal_enabled": True,
+                "branch_notifications": {"a": {"all_enabled": False},
+                                         "b": {"push_enabled": False}}}
+    assert not whatsapp._branch_notification_enabled(settings, "a", "class_reminder_enabled")
+    assert not whatsapp._branch_notification_enabled(settings, "a", "portal_enabled")
+    assert not whatsapp._branch_notification_enabled(settings, "b", "push_enabled")
+    assert whatsapp._branch_notification_enabled(settings, "b", "portal_enabled")
+    assert whatsapp._branch_notification_enabled(settings, "c", "push_enabled")
 
 
 @pytest.mark.parametrize("changes,expected", [

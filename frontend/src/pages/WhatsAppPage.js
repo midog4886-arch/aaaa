@@ -474,6 +474,7 @@ export default function WhatsAppPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [reminderSettingsBranchId, setReminderSettingsBranchId] = useState('');
   const [savingBranchReminder, setSavingBranchReminder] = useState(false);
+  const [savingBranchNotification, setSavingBranchNotification] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
@@ -1888,6 +1889,31 @@ export default function WhatsAppPage() {
     finally { setSavingBranchReminder(false); }
   };
 
+  const branchNotificationEnabled = (channel) => {
+    const branch = waSettings.branch_notifications?.[reminderSettingsBranchId] || {};
+    const fallback = channel === 'push_enabled' ? waSettings.push_enabled
+      : channel === 'portal_enabled' ? waSettings.portal_enabled
+      : channel === 'admin_alert_enabled' ? waSettings.admin_alert_enabled : true;
+    return channel === 'all_enabled' ? branch.all_enabled !== false
+      : branch.all_enabled !== false && (branch[channel] ?? fallback);
+  };
+
+  const handleToggleBranchNotification = async (channel) => {
+    if (!reminderSettingsBranchId || savingBranchNotification) return;
+    const branchId = reminderSettingsBranchId;
+    const current = branchNotificationEnabled(channel);
+    setSavingBranchNotification(true);
+    try {
+      await whatsappAPI.updateBranchNotification(branchId, channel, !current);
+      setWaSettings(s => ({ ...s, branch_notifications: {
+        ...s.branch_notifications,
+        [branchId]: { ...s.branch_notifications?.[branchId], [channel]: !current },
+      } }));
+      toast.success(t('تم تحديث إشعارات الفرع', 'Branch notifications updated'));
+    } catch (error) { toast.error(apiErrorMessage(error, t('تعذر تحديث إشعارات الفرع', 'Could not update branch notifications'))); }
+    finally { setSavingBranchNotification(false); }
+  };
+
   const handleSaveSettings = async () => {
     setSavingSettings(true);
     try {
@@ -2561,13 +2587,25 @@ export default function WhatsAppPage() {
                 {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name_ar || branch.name}</option>)}
               </select>
               <p className="text-xs text-muted-foreground">{t('حالة كل فرع مستقلة. الفروع التي لم يُضبط مفتاحها بعد ترث حالة الإعداد العام السابق.', 'Each branch has its own switch. Branches not configured yet inherit the previous global setting.')}</p>
+              <div className="rounded-xl border p-4 space-y-3 bg-muted/30">
+                <p className="font-semibold">{t('التحكم بإشعارات الفرع المحدد', 'Selected branch notifications')}</p>
+                {[
+                  ['all_enabled', t('كل الإشعارات التلقائية', 'All automatic notifications')],
+                  ['class_reminder_enabled', t('تذكير الحصص', 'Class reminders')],
+                  ['video_enabled', t('إشعار الفيديو الجديد', 'New video notifications')],
+                ].map(([channel, label]) => <div key={channel} className="flex items-center justify-between gap-3 text-sm">
+                  <span>{label}</span>
+                  <button type="button" disabled={!reminderSettingsBranchId || savingBranchNotification || (channel !== 'all_enabled' && !branchNotificationEnabled('all_enabled'))} onClick={() => handleToggleBranchNotification(channel)} className={`px-3 py-1 rounded-lg text-white ${branchNotificationEnabled(channel) ? 'bg-green-600' : 'bg-gray-500'}`}>{branchNotificationEnabled(channel) ? t('مفعّل', 'On') : t('متوقف', 'Off')}</button>
+                </div>)}
+              </div>
               <div className="rounded-xl border divide-y max-h-52 overflow-y-auto">
                 {branches.map(branch => {
                   const explicit = Object.prototype.hasOwnProperty.call(waSettings.branch_reminders_enabled || {}, branch.id);
-                  const enabled = explicit ? waSettings.branch_reminders_enabled[branch.id] : waSettings.enabled;
+                  const enabled = (explicit ? waSettings.branch_reminders_enabled[branch.id] : waSettings.enabled)
+                    && waSettings.branch_notifications?.[branch.id]?.all_enabled !== false;
                   return <div key={branch.id} className="flex items-center justify-between gap-3 p-3 text-sm">
                     <span>{branch.name_ar || branch.name} <span className="text-muted-foreground">· {enabled ? t('مفعّل', 'On') : t('متوقف', 'Off')}{!explicit ? ` (${t('الإعداد السابق', 'Previous setting')})` : ''}</span></span>
-                    <button type="button" disabled={savingBranchReminder} onClick={() => handleToggleEnabled(branch.id)} className={`px-3 py-1 rounded-lg text-white ${enabled ? 'bg-green-600' : 'bg-gray-500'}`}>{enabled ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
+                    <button type="button" disabled={savingBranchReminder || waSettings.branch_notifications?.[branch.id]?.all_enabled === false} onClick={() => handleToggleEnabled(branch.id)} className={`px-3 py-1 rounded-lg text-white ${enabled ? 'bg-green-600' : 'bg-gray-500'}`}>{enabled ? t('إيقاف', 'Disable') : t('تفعيل', 'Enable')}</button>
                   </div>;
                 })}
               </div>
@@ -2577,8 +2615,8 @@ export default function WhatsAppPage() {
                   <p className="font-medium">{t('تفعيل التذكيرات التلقائية لهذا الفرع', 'Enable Auto Reminders for This Branch')}</p>
                   <p className="text-sm text-muted-foreground">{t(`يُرسل يومياً الساعة ${HOURS[waSettings.send_hour]?.label}`, `Sent daily at ${HOURS[waSettings.send_hour]?.label}`)}</p>
                 </div>
-                <button onClick={() => handleToggleEnabled()} disabled={!reminderSettingsBranchId || savingBranchReminder} className={`relative w-12 h-6 rounded-full transition-colors ${((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? 'bg-green-500' : 'bg-gray-300'}`}>
-                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? (isRTL ? 'right-1' : 'translate-x-6') : (isRTL ? 'right-7' : 'translate-x-1')}`} />
+                <button onClick={() => handleToggleEnabled()} disabled={!reminderSettingsBranchId || savingBranchReminder || !branchNotificationEnabled('all_enabled')} className={`relative w-12 h-6 rounded-full transition-colors ${branchNotificationEnabled('all_enabled') && ((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? 'bg-green-500' : 'bg-gray-300'}`}>
+                  <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${branchNotificationEnabled('all_enabled') && ((waSettings.branch_reminders_enabled || {})[reminderSettingsBranchId] ?? waSettings.enabled) ? (isRTL ? 'right-1' : 'translate-x-6') : (isRTL ? 'right-7' : 'translate-x-1')}`} />
                 </button>
               </div>
 
@@ -2840,6 +2878,7 @@ export default function WhatsAppPage() {
               {/* Push & Portal notification channels */}
               <div className="border rounded-xl p-4 space-y-4 bg-muted/30">
                 <p className="text-sm font-semibold">{t('قنوات الإشعار الإضافية (تعمل دون اتصال واتساب)', 'Extra notification channels (work without WhatsApp)')}</p>
+                <p className="text-xs text-muted-foreground">{t('الفرع:', 'Branch:')} {branches.find(branch => branch.id === reminderSettingsBranchId)?.name_ar || branches.find(branch => branch.id === reminderSettingsBranchId)?.name || t('اختر الفرع أعلاه', 'Choose a branch above')}</p>
 
                 {/* Push toggle */}
                 <div className="flex items-center justify-between gap-3">
@@ -2847,13 +2886,13 @@ export default function WhatsAppPage() {
                     <p className="text-sm font-medium">{t('إشعار Push للجوال/المتصفح', 'Mobile / Browser Push')}</p>
                     <p className="text-xs text-muted-foreground">{t('يصل للأعضاء المشتركين في الإشعارات', 'Reaches members subscribed to notifications')}</p>
                   </div>
-                  <button onClick={() => setWaSettings(s => ({ ...s, push_enabled: !s.push_enabled }))}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${waSettings.push_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.push_enabled ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
+                  <button onClick={() => handleToggleBranchNotification('push_enabled')} disabled={!reminderSettingsBranchId || savingBranchNotification || !branchNotificationEnabled('all_enabled')}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${branchNotificationEnabled('push_enabled') ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${branchNotificationEnabled('push_enabled') ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
                   </button>
                 </div>
 
-                {waSettings.push_enabled && (
+                {branchNotificationEnabled('push_enabled') && (
                   <div className="space-y-2 ps-2 border-s-2 border-green-400">
                     <div>
                       <label className="block text-xs font-medium mb-1">{t('عنوان الإشعار', 'Push title')}</label>
@@ -2877,9 +2916,9 @@ export default function WhatsAppPage() {
                     <p className="text-sm font-medium">{t('إشعار بوابة العضو', 'Member portal notification')}</p>
                     <p className="text-xs text-muted-foreground">{t('يظهر داخل تطبيق العضو في قسم الإشعارات', 'Appears inside the member app under notifications')}</p>
                   </div>
-                  <button onClick={() => setWaSettings(s => ({ ...s, portal_enabled: !s.portal_enabled }))}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${waSettings.portal_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.portal_enabled ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
+                  <button onClick={() => handleToggleBranchNotification('portal_enabled')} disabled={!reminderSettingsBranchId || savingBranchNotification || !branchNotificationEnabled('all_enabled')}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${branchNotificationEnabled('portal_enabled') ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${branchNotificationEnabled('portal_enabled') ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
                   </button>
                 </div>
               </div>
@@ -2887,17 +2926,18 @@ export default function WhatsAppPage() {
               {/* Manager WhatsApp alerts for new admin notifications (admin-only) */}
               {user?.is_admin && (
               <div className="border rounded-xl p-4 space-y-3 bg-muted/30">
+                <p className="text-xs text-muted-foreground">{t('الفرع:', 'Branch:')} {branches.find(branch => branch.id === reminderSettingsBranchId)?.name_ar || branches.find(branch => branch.id === reminderSettingsBranchId)?.name || t('اختر الفرع أعلاه', 'Choose a branch above')}</p>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold">{t('تنبيه المدير على واتساب 🔔', 'Manager WhatsApp alerts 🔔')}</p>
                     <p className="text-xs text-muted-foreground">{t('يرسل كل إشعار جديد في جرس لوحة التحكم (رسائل الأعضاء، تنبيهات التجديد…) إلى رقم المدير. يتطلب اتصال الواتساب.', 'Forwards every new dashboard bell notification (member messages, renewal alerts…) to the manager. Requires WhatsApp connection.')}</p>
                   </div>
-                  <button onClick={() => setWaSettings(s => ({ ...s, admin_alert_enabled: !s.admin_alert_enabled }))}
-                    className={`relative w-10 h-5 rounded-full transition-colors ${waSettings.admin_alert_enabled ? 'bg-green-500' : 'bg-gray-300'}`}>
-                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${waSettings.admin_alert_enabled ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
+                  <button onClick={() => handleToggleBranchNotification('admin_alert_enabled')} disabled={!reminderSettingsBranchId || savingBranchNotification || !branchNotificationEnabled('all_enabled')}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${branchNotificationEnabled('admin_alert_enabled') ? 'bg-green-500' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${branchNotificationEnabled('admin_alert_enabled') ? (isRTL ? 'right-0.5' : 'translate-x-5') : (isRTL ? 'right-5' : 'translate-x-0.5')}`} />
                   </button>
                 </div>
-                {waSettings.admin_alert_enabled && (
+                {branchNotificationEnabled('admin_alert_enabled') && (
                   <div className="ps-2 border-s-2 border-green-400">
                     <label className="block text-xs font-medium mb-1">{t('رقم واتساب المدير', "Manager's WhatsApp number")}</label>
                     <input type="tel" value={waSettings.admin_alert_phone || ''}

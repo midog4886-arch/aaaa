@@ -864,6 +864,10 @@ async def send_push_to_admins(payload: NotificationPayload, branch_id: Optional[
     payload in their saved language. Best-effort — failures are swallowed."""
     import logging
     logger = logging.getLogger(__name__)
+    if branch_id:
+        from .whatsapp import _get_settings, _branch_notification_enabled
+        if not _branch_notification_enabled(await _get_settings(), branch_id, "push_enabled"):
+            return {"total": 0, "success": 0, "failed": 0}
     try:
         query = {"is_admin": True}
         if branch_id:
@@ -933,8 +937,18 @@ async def send_push_to_members(payload: NotificationPayload, member_ids: List[st
     if not member_ids:
         return {"total": 0, "success": 0, "failed": 0}
     try:
+        from .whatsapp import _get_settings, _branch_notification_enabled
+        notification_settings = await _get_settings()
+        member_rows = await db.members.find(
+            {"id": {"$in": list(member_ids)}}, {"_id": 0, "id": 1, "branch_id": 1}
+        ).to_list(10000)
+        eligible_ids = [row["id"] for row in member_rows if _branch_notification_enabled(
+            notification_settings, row.get("branch_id"), "push_enabled"
+        )]
+        if not eligible_ids:
+            return {"total": 0, "success": 0, "failed": 0}
         subs = await db.push_subscriptions.find(
-            {"member_id": {"$in": list(member_ids)}, "is_active": True}, {"_id": 0}
+            {"member_id": {"$in": eligible_ids}, "is_active": True}, {"_id": 0}
         ).to_list(10000)
         success_count = 0
         fail_count = 0
@@ -955,6 +969,10 @@ async def send_push_to_members(payload: NotificationPayload, member_ids: List[st
 
 
 async def send_notification_to_all_members(payload: NotificationPayload, branch_id: Optional[str] = None):
+    from .whatsapp import _get_settings, _branch_notification_enabled
+    notification_settings = await _get_settings()
+    if branch_id and not _branch_notification_enabled(notification_settings, branch_id, "push_enabled"):
+        return {"total": 0, "success": 0, "failed": 0}
     query = {"is_active": True}
     
     if branch_id:
@@ -966,6 +984,15 @@ async def send_notification_to_all_members(payload: NotificationPayload, branch_
         query["member_id"] = {"$in": member_ids}
     
     subscriptions = await db.push_subscriptions.find(query, {"_id": 0}).to_list(10000)
+    if not branch_id and subscriptions:
+        member_ids = [sub.get("member_id") for sub in subscriptions if sub.get("member_id")]
+        member_rows = await db.members.find(
+            {"id": {"$in": member_ids}}, {"_id": 0, "id": 1, "branch_id": 1}
+        ).to_list(10000)
+        member_branches = {row["id"]: row.get("branch_id") for row in member_rows}
+        subscriptions = [sub for sub in subscriptions if _branch_notification_enabled(
+            notification_settings, member_branches.get(sub.get("member_id")), "push_enabled"
+        )]
     
     success_count = 0
     fail_count = 0
@@ -986,6 +1013,11 @@ async def send_notification_to_all_members(payload: NotificationPayload, branch_
 
 async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[str] = None, youtube_id: Optional[str] = None, activity_id: Optional[str] = None):
     from utils.i18n import t, get_member_languages_map
+    from .whatsapp import _get_settings, _branch_notification_enabled
+    notification_settings = await _get_settings()
+    if branch_id and not all(_branch_notification_enabled(notification_settings, branch_id, channel)
+                             for channel in ("video_enabled", "push_enabled")):
+        return {"total": 0, "success": 0, "failed": 0}
     thumbnail = f"https://img.youtube.com/vi/{youtube_id}/hqdefault.jpg" if youtube_id else None
 
     query = {"is_active": True}
@@ -1004,6 +1036,17 @@ async def notify_new_video(video_title: str, video_id: str, branch_id: Optional[
         query["member_id"] = {"$in": [m["id"] for m in members]}
 
     subscriptions = await db.push_subscriptions.find(query, {"_id": 0}).to_list(10000)
+    if not branch_id and subscriptions:
+        member_ids = [sub.get("member_id") for sub in subscriptions if sub.get("member_id")]
+        member_rows = await db.members.find(
+            {"id": {"$in": member_ids}}, {"_id": 0, "id": 1, "branch_id": 1}
+        ).to_list(10000)
+        member_branches = {row["id"]: row.get("branch_id") for row in member_rows}
+        subscriptions = [sub for sub in subscriptions if all(
+            _branch_notification_enabled(notification_settings,
+                                         member_branches.get(sub.get("member_id")), channel)
+            for channel in ("video_enabled", "push_enabled")
+        )]
     if not subscriptions:
         return {"total": 0, "success": 0, "failed": 0}
 

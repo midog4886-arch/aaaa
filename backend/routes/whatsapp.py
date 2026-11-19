@@ -385,6 +385,7 @@ DEFAULT_SETTINGS = {
     # Branch overrides for automatic expiry reminders. Existing installations
     # inherit the previous global value until a branch is configured.
     "branch_reminders_enabled": {},
+    "branch_notifications": {},
     # Forward NEW admin bell notifications (رسائل الأعضاء، تنبيهات التجديد…)
     # to the manager's WhatsApp. Checked every minute by _admin_alert_loop.
     "admin_alert_enabled": False,
@@ -1403,6 +1404,8 @@ async def send_class_reminder_whatsapp_notice(
 ) -> bool:
     """Send one two-hour class reminder through the member branch's Meta template."""
     branch_id = member.get("branch_id")
+    if not _branch_notification_enabled(await _get_settings(), branch_id, "class_reminder_enabled"):
+        return False
     phone = _format_cloud_phone(member.get("phone") or "")
     config = await _get_branch_cloud_config(branch_id)
     provider = _branch_provider(config)
@@ -1684,6 +1687,7 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
     """One daily agenda per branch/phone, two hours before its first class."""
     if _db is None:
         return 0
+    notification_settings = await _get_settings()
     current = now or datetime.now(RIYADH_TZ)
     if current.tzinfo is None:
         current = current.replace(tzinfo=RIYADH_TZ)
@@ -1714,6 +1718,8 @@ async def process_class_reminders(now: Optional[datetime] = None) -> int:
         if member.get("id") in frozen_ids:
             continue
         branch_id = member.get("branch_id")
+        if not _branch_notification_enabled(notification_settings, branch_id, "class_reminder_enabled"):
+            continue
         phone = _format_phone(member.get("phone") or "")
         if not branch_id or not phone:
             continue
@@ -2327,6 +2333,20 @@ def _branch_reminders_enabled(settings: dict, branch_id: str) -> bool:
     return bool(settings.get("enabled"))
 
 
+def _branch_notification_enabled(settings: dict, branch_id: str, channel: str) -> bool:
+    branch = (settings.get("branch_notifications") or {}).get(branch_id) or {}
+    if not branch.get("all_enabled", True):
+        return False
+    defaults = {
+        "push_enabled": settings.get("push_enabled", True),
+        "portal_enabled": settings.get("portal_enabled", True),
+        "admin_alert_enabled": settings.get("admin_alert_enabled", False),
+        "class_reminder_enabled": True,
+        "video_enabled": True,
+    }
+    return bool(branch.get(channel, defaults.get(channel, True)))
+
+
 async def _get_branch_templates() -> dict:
     """Load per-branch WhatsApp template overrides keyed by branch id.
 
@@ -2513,6 +2533,7 @@ def _send_now_settings_fingerprint(settings: dict) -> str:
         "templates": settings.get("templates") or {},
         "push_enabled": bool(settings.get("push_enabled", True)),
         "portal_enabled": bool(settings.get("portal_enabled", True)),
+        "branch_notifications": settings.get("branch_notifications") or {},
         "push_title_template": settings.get("push_title_template", ""),
         "push_body_template": settings.get("push_body_template", ""),
         "push_title_template_en": settings.get("push_title_template_en", ""),
@@ -2881,6 +2902,8 @@ async def _send_push_for_members(members_data: list, days_before: int, settings:
     sent_count = 0
     for item in members_data:
         member = item["member"]
+        if not _branch_notification_enabled(settings, member.get("branch_id"), "push_enabled"):
+            continue
         member_id = member.get("id", "")
         if not member_id:
             continue
@@ -2942,6 +2965,8 @@ async def _send_portal_for_members(members_data: list, days_before: int, setting
     inserted_count = 0
     for item in members_data:
         member = item["member"]
+        if not _branch_notification_enabled(settings, member.get("branch_id"), "portal_enabled"):
+            continue
         member_id = member.get("id", "")
         if not member_id:
             continue
@@ -3003,8 +3028,6 @@ async def _do_daily_reminders():
 
     wa_status = await _get_wa_status()
     wa_connected = wa_status.get("connected", False) or await _has_enabled_cloud_config()
-    push_enabled = settings.get("push_enabled", True)
-    portal_enabled = settings.get("portal_enabled", True)
 
     if not wa_connected:
         logger.info("WhatsApp not connected — skipping WhatsApp channel (push/portal still active)")
@@ -3021,7 +3044,7 @@ async def _do_daily_reminders():
         members_data = await _get_expiring_members(days)
         members_data = [item for item in members_data if _branch_reminders_enabled(
             settings, (item.get("member") or {}).get("branch_id")
-        )]
+        ) and _branch_notification_enabled(settings, (item.get("member") or {}).get("branch_id"), "all_enabled")]
         if not members_data:
             continue
 
@@ -3030,13 +3053,13 @@ async def _do_daily_reminders():
             tpl_for_offset = per_offset_templates.get(str(days)) or template
             whatsapp_items.extend({**item, "_days_before": days, "_template": tpl_for_offset} for item in members_data)
 
-        if push_enabled:
+        if any(_branch_notification_enabled(settings, item["member"].get("branch_id"), "push_enabled") for item in members_data):
             try:
                 total_push += await _send_push_for_members(members_data, days, settings)
             except Exception as e:
                 logger.error(f"Push expiry reminders error (days={days}): {e}")
 
-        if portal_enabled:
+        if any(_branch_notification_enabled(settings, item["member"].get("branch_id"), "portal_enabled") for item in members_data):
             try:
                 total_portal += await _send_portal_for_members(members_data, days, settings)
             except Exception as e:
@@ -3130,7 +3153,10 @@ async def _forward_admin_alerts_for_current_tenant():
     ADMIN_ALERT_BATCH_LIMIT items go out and the cursor jumps past the rest.
     """
     settings = await _get_settings()
-    if not settings.get("admin_alert_enabled"):
+    if not settings.get("admin_alert_enabled") and not any(
+        branch.get("admin_alert_enabled") for branch in
+        (settings.get("branch_notifications") or {}).values()
+    ):
         return
     phone = (settings.get("admin_alert_phone") or "").strip()
     if not phone:
@@ -3145,7 +3171,8 @@ async def _forward_admin_alerts_for_current_tenant():
 
     fresh = await _db["notifications"].find(
         {"created_at": {"$gt": last_ts}},
-        {"_id": 0, "title_ar": 1, "title": 1, "message_ar": 1, "message": 1, "created_at": 1},
+        {"_id": 0, "title_ar": 1, "title": 1, "message_ar": 1, "message": 1,
+         "created_at": 1, "branch_id": 1},
     ).sort("created_at", 1).to_list(200)
     if not fresh:
         return
@@ -3155,7 +3182,9 @@ async def _forward_admin_alerts_for_current_tenant():
         return  # keep cursor; retry when the bot reconnects
 
     newest_ts = max(str(n.get("created_at") or "") for n in fresh)
-    to_send = fresh[-ADMIN_ALERT_BATCH_LIMIT:]
+    to_send = [n for n in fresh[-ADMIN_ALERT_BATCH_LIMIT:] if _branch_notification_enabled(
+        settings, n.get("branch_id"), "admin_alert_enabled"
+    )]
     dropped = len(fresh) - len(to_send)
 
     wa_phone = _format_phone(phone)
@@ -3175,8 +3204,8 @@ async def _forward_admin_alerts_for_current_tenant():
         else:
             logger.error("Admin WA alert send failed — will retry next cycle")
             return
+    await coll.update_one({}, {"$max": {"admin_alert_last_ts": newest_ts}}, upsert=True)
     if dropped:
-        await coll.update_one({}, {"$max": {"admin_alert_last_ts": newest_ts}}, upsert=True)
         logger.info(f"Admin WA alerts: sent {sent}, skipped {dropped} older backlog items")
 
 
@@ -3300,6 +3329,34 @@ async def update_branch_reminder_enabled(
         {}, {"$set": {f"branch_reminders_enabled.{data.branch_id}": data.enabled}}, upsert=True
     )
     return {"branch_id": data.branch_id, "enabled": data.enabled}
+
+
+class BranchNotificationToggle(BaseModel):
+    branch_id: str
+    channel: Literal[
+        "all_enabled", "push_enabled", "portal_enabled",
+        "class_reminder_enabled", "video_enabled", "admin_alert_enabled",
+    ]
+    enabled: bool
+
+
+@router.put("/settings/branch-notification")
+async def update_branch_notification(
+    data: BranchNotificationToggle, current_user: dict = Depends(get_current_user)
+):
+    _require_whatsapp_access(current_user)
+    _validate_reminder_branch_access(current_user, data.branch_id)
+    if data.channel == "admin_alert_enabled" and not current_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Manager alerts require admin access")
+    if _db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    if not await _db["branches"].find_one({"id": data.branch_id}, {"_id": 0, "id": 1}):
+        raise HTTPException(status_code=404, detail="Branch not found")
+    updates = {f"branch_notifications.{data.branch_id}.{data.channel}": data.enabled}
+    if data.channel == "admin_alert_enabled" and data.enabled:
+        updates["admin_alert_last_ts"] = datetime.now(timezone.utc).isoformat()
+    await _db["whatsapp_settings"].update_one({}, {"$set": updates}, upsert=True)
+    return {"branch_id": data.branch_id, "channel": data.channel, "enabled": data.enabled}
 
 
 class WhatsAppSettings(BaseModel):
@@ -9632,9 +9689,11 @@ async def preview_reminders_now(
         if branch_id in candidate_branch_ids
     }
     channels = ["whatsapp"]
-    if settings.get("push_enabled", True):
+    if any(_branch_notification_enabled(settings, branch_id, "push_enabled")
+           for branch_id in candidate_branch_ids):
         channels.append("push")
-    if settings.get("portal_enabled", True):
+    if any(_branch_notification_enabled(settings, branch_id, "portal_enabled")
+           for branch_id in candidate_branch_ids):
         channels.append("portal")
 
     now = datetime.now(timezone.utc)
@@ -10303,8 +10362,6 @@ async def send_bulk_renewal_reminders(
         DEFAULT_SETTINGS["manual_reminder_expired_template"],
     )
     branch_templates = await _get_branch_templates()
-    push_enabled = settings.get("push_enabled", True)
-    portal_enabled = settings.get("portal_enabled", True)
 
     wa_status = await _get_wa_status()
     wa_connected = (
@@ -10516,7 +10573,7 @@ async def send_bulk_renewal_reminders(
             member_logged = True
 
         # ── Push ──
-        if push_enabled and not log_only:
+        if _branch_notification_enabled(settings, member.get("branch_id"), "push_enabled") and not log_only:
             try:
                 from .push_notifications import send_push_notification, NotificationPayload
                 push_title_tmpl = settings.get("push_title_template", DEFAULT_SETTINGS["push_title_template"])
@@ -10568,7 +10625,7 @@ async def send_bulk_renewal_reminders(
                 logger.error(f"Manual push reminder error for {name}: {e}")
 
         # ── Portal (member_notifications) ──
-        if portal_enabled and not log_only:
+        if _branch_notification_enabled(settings, member.get("branch_id"), "portal_enabled") and not log_only:
             try:
                 title_ar = "🔔 تذكير بتجديد الاشتراك"
                 if is_expired_reminder:

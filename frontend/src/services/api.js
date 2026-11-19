@@ -891,6 +891,7 @@ export const whatsappAPI = {
   getStatus: () => axios.get(`${API}/whatsapp/status`),
   getSettings: () => axios.get(`${API}/whatsapp/settings`),
   updateBranchReminderEnabled: (branch_id, enabled) => axios.put(`${API}/whatsapp/settings/branch-enabled`, { branch_id, enabled }),
+  updateBranchNotification: (branch_id, channel, enabled) => axios.put(`${API}/whatsapp/settings/branch-notification`, { branch_id, channel, enabled }),
   updateSettings: (data) => axios.put(`${API}/whatsapp/settings`, data),
   sendTest: (phone, message) => axios.post(`${API}/whatsapp/test`, { phone, message }),
   sendNow: (data) => axios.post(`${API}/whatsapp/send-now`, data),

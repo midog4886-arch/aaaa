@@ -899,6 +899,8 @@ async def delete_notification(notification_id: str, current_user: dict = Depends
 @router.post("/check-renewals")
 async def check_subscription_renewals(current_user: dict = Depends(get_current_user)):
     """Check for expiring subscriptions and create notifications"""
+    from .whatsapp import _get_settings, _branch_notification_enabled
+    notification_settings = await _get_settings()
     # Branch filtering — fail-closed for non-admins without a branch_id.
     # Notifications written below carry this branch_id, so admins running
     # this check without an associated branch get global-scoped notifications.
@@ -924,6 +926,9 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
     
     notifications_created = 0
     for member in members:
+        member_branch_id = member.get("branch_id")
+        if not _branch_notification_enabled(notification_settings, member_branch_id, "all_enabled"):
+            continue
         for activity in member.get("activities", []):
             if activity.get("status") == "active":
                 end_date = activity.get("end_date", "")
@@ -957,7 +962,7 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
                             "member_id": member["id"],
                             "activity_id": activity.get("activity_id"),
                             "is_read": False,
-                            "branch_id": branch_id,
+                            "branch_id": member_branch_id,
                             "created_at": datetime.now(timezone.utc).isoformat()
                         })
                         notifications_created += 1
@@ -980,7 +985,7 @@ async def check_subscription_renewals(current_user: dict = Depends(get_current_u
                                         "end_date": end_date,
                                     },
                                 ),
-                                branch_id=branch_id,
+                                branch_id=member_branch_id,
                             )
                         except Exception:
                             import logging
@@ -1285,6 +1290,8 @@ async def get_expiring_subscriptions(
 @router.post("/check-ads-expiry")
 async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
     """Check for expiring and expired advertisements and create notifications"""
+    from .whatsapp import _get_settings, _branch_notification_enabled
+    notification_settings = await _get_settings()
     # Branch filtering — fail-closed for non-admins without a branch_id.
     # Ads without a branch (shared/legacy) are visible to everyone, hence the $or.
     effective_branch = resolve_branch_filter(current_user, None)
@@ -1303,6 +1310,9 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
     notifications_created = 0
     
     for ad in ads:
+        ad_branch_id = ad.get("branch_id") or branch_id
+        if not _branch_notification_enabled(notification_settings, ad_branch_id, "all_enabled"):
+            continue
         end_date = ad.get("end_date", "")
         if not end_date:
             continue
@@ -1338,7 +1348,7 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
                     "ad_id": ad_id,
                     "link": "/advertisements",
                     "is_read": False,
-                    "branch_id": branch_id,
+                    "branch_id": ad_branch_id,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 })
                 notifications_created += 1
@@ -1352,7 +1362,7 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
                             url="/advertisements", tag=f"ad-expired-{ad_id}",
                             data={"type": "ad_expired", "ad_id": ad_id},
                         ),
-                        branch_id=branch_id,
+                        branch_id=ad_branch_id,
                     )
                 except Exception:
                     import logging
@@ -1388,7 +1398,7 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
                     "ad_id": ad_id,
                     "link": "/advertisements",
                     "is_read": False,
-                    "branch_id": branch_id,
+                    "branch_id": ad_branch_id,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 })
                 notifications_created += 1
@@ -1402,7 +1412,7 @@ async def check_ads_expiry(current_user: dict = Depends(get_current_user)):
                             url="/advertisements", tag=f"ad-expiring-{ad_id}",
                             data={"type": "ad_expiring_soon", "ad_id": ad_id},
                         ),
-                        branch_id=branch_id,
+                        branch_id=ad_branch_id,
                     )
                 except Exception:
                     import logging
