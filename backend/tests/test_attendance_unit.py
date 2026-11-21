@@ -190,34 +190,32 @@ def test_create_attendance_duplicate_same_day_400(db):
     assert len(db.attendance.docs) == 1
 
 
-def test_create_attendance_frozen_membership_400(db):
+def test_create_attendance_during_freeze_records_visit(db):
     db.members.docs.append({"id": "m1", "name_ar": "علي", "branch_id": "b1"})
     db.member_freezes.docs.append({
         "member_id": "m1", "status": "active",
         "start_date": "2026-01-01", "end_date": "2026-01-31",
     })
-    with pytest.raises(HTTPException) as e:
-        run(att.create_attendance(
-            att.AttendanceCreate(member_id="m1", activity_id="act1", date="2026-01-05"),
-            admin_user()))
-    assert e.value.status_code == 400
-    assert "2026-01-31" in e.value.detail
-    assert len(db.attendance.docs) == 0
+    out = run(att.create_attendance(
+        att.AttendanceCreate(member_id="m1", activity_id="act1", date="2026-01-05"),
+        admin_user()))
+    assert out["record"]["status"] == "present"
+    assert len(db.attendance.docs) == 1
 
 
-def test_create_attendance_freeze_only_blocks_selected_activity(db):
+def test_create_attendance_during_activity_freeze_keeps_other_activity_available(db):
     db.members.docs.append({"id": "m1", "name_ar": "علي", "branch_id": "b1"})
     db.member_freezes.docs.append({
         "member_id": "m1", "activity_id": "swim", "status": "active",
         "start_date": "2026-01-01", "end_date": "2026-01-31",
     })
-    with pytest.raises(HTTPException):
-        run(att.create_attendance(
-            att.AttendanceCreate(member_id="m1", activity_id="swim", date="2026-01-05"),
-            admin_user()))
+    frozen = run(att.create_attendance(
+        att.AttendanceCreate(member_id="m1", activity_id="swim", date="2026-01-05"),
+        admin_user()))
     other = run(att.create_attendance(
         att.AttendanceCreate(member_id="m1", activity_id="football", date="2026-01-05"),
         admin_user()))
+    assert frozen["record"]["activity_id"] == "swim"
     assert other["record"]["activity_id"] == "football"
 
 
@@ -328,6 +326,21 @@ def test_qr_checkin_already_checked_in(db):
     out = run(att.qr_checkin("1001", current_user=admin_user()))
     assert out["status"] == "already_checked_in"
     assert len(db.attendance.docs) == 1
+
+
+def test_qr_checkin_during_freeze_records_visit(db):
+    db.members.docs.append({
+        "id": "m1", "member_code": "1001", "name_ar": "علي", "branch_id": "b1",
+        "activities": [{"activity_id": "act1", "activity_name": "X", "status": "active"}],
+    })
+    db.member_freezes.docs.append({
+        "member_id": "m1", "activity_id": "act1", "status": "active",
+        "start_date": "2000-01-01", "end_date": "2099-12-31",
+    })
+    out = run(att.qr_checkin("1001", current_user=admin_user()))
+    assert out["status"] != "frozen"
+    assert len(db.attendance.docs) == 1
+    assert db.attendance.docs[0]["status"] == "present"
 
 
 def test_qr_checkin_no_active_activity_400(db):

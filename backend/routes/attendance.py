@@ -9,7 +9,6 @@ import asyncio
 
 from .common import db, get_current_user
 from utils.auth import get_allowed_branch_ids, resolve_branch_filter
-from utils.freeze_scope import freeze_applies_to_activity
 from utils.transferred_session_dates import effective_transfer_end, transfer_dates
 from utils.effective_periods import (
     effective_period_map, operational_window, original_window, source_key,
@@ -248,19 +247,7 @@ async def create_attendance(
     else:
         branch_id = member.get("branch_id") or current_user.get("branch_id")
     
-    # Check if member has active freeze
     saudi_tz_w = timezone(timedelta(hours=3))
-    record_date_check = attendance.date or datetime.now(saudi_tz_w).strftime("%Y-%m-%d")
-    active_freezes = await db.member_freezes.find({
-        "member_id": attendance.member_id,
-        "status": "active",
-        "start_date": {"$lte": record_date_check},
-        "end_date": {"$gte": record_date_check}
-    }).to_list(100)
-    active_freeze = next((f for f in active_freezes if freeze_applies_to_activity(f, attendance.activity_id)), None)
-    if active_freeze:
-        raise HTTPException(status_code=400, detail=f"عضوية مجمّدة حتى {active_freeze['end_date']} - لا يمكن تسجيل الحضور")
-    
     # Get activity info
     activity = await db.activities.find_one({"id": attendance.activity_id}, {"_id": 0})
     activity_name = activity.get("name_ar", "") if activity else ""
@@ -1888,8 +1875,8 @@ async def qr_checkin(
     today = datetime.now(saudi_tz_q).strftime("%Y-%m-%d")
     check_in_time = datetime.now(saudi_tz_q).strftime("%H:%M")
     
-    # Resolve the activity before checking the freeze: one activity may be
-    # frozen while another remains open for attendance.
+    # A freeze extends the deadline, but an actual visit still consumes one
+    # purchased session through the normal attendance cap below.
     target_activity_id = activity_id
     activity_name = ""
     if not target_activity_id:
@@ -1900,26 +1887,6 @@ async def qr_checkin(
     if not target_activity_id:
         raise HTTPException(status_code=400, detail="No active activity found for member")
 
-    active_freezes = await db.member_freezes.find({
-        "member_id": member["id"],
-        "status": "active",
-        "start_date": {"$lte": today},
-        "end_date": {"$gte": today}
-    }).to_list(100)
-    active_freeze = next((f for f in active_freezes if freeze_applies_to_activity(f, target_activity_id)), None)
-    if active_freeze:
-        return {
-            "status": "frozen",
-            "message": f"عضوية مجمّدة حتى {active_freeze['end_date']}",
-            "member": {
-                "name": member.get("name_ar", member.get("name", "")),
-                "member_code": member.get("member_code", ""),
-                "photo": member.get("photo", ""),
-                "phone": member.get("phone", "")
-            },
-            "freeze_end_date": active_freeze["end_date"]
-        }
-    
     if not activity_name:
         activity = await db.activities.find_one({"id": target_activity_id}, {"_id": 0})
         activity_name = activity.get("name_ar", "") if activity else ""
