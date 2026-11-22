@@ -28,12 +28,14 @@ export default function WhatsAppProviderStatus({ status, language }) {
     ? (ar ? 'تعذّر التحقق من الاتصال' : 'Could not verify connection')
     : status.connected
       ? (ar ? 'متصل' : 'Connected')
+      : status.status === 'not_started'
+        ? (ar ? 'الجلسة لم تبدأ' : 'Session not started')
       : status.status === 'connecting'
         ? (ar ? 'جارٍ الاتصال' : 'Connecting')
         : (ar ? 'غير متصل' : 'Not connected');
   return <div className="text-sm" role="status">
     <Badge variant={failed ? 'destructive' : status.connected ? 'default' : 'secondary'}>{label}</Badge>
-    {failed ? <p className="mt-2 text-destructive">{providerStatusError(status, language)}
+    {status.status === 'not_started' ? <p className="mt-2 text-muted-foreground">{ar ? 'اضغط «بدء» لإنشاء الجلسة، ثم اعرض رمز QR لربط الهاتف.' : 'Select Start to create the session, then show the QR code to link the phone.'}</p> : failed ? <p className="mt-2 text-destructive">{providerStatusError(status, language)}
       {status.error && /^(http_\d{3}|[A-Za-z_]+)$/.test(status.error) &&
         <span className="ms-2" dir="ltr">({status.error})</span>}
     </p> : <span className="ms-2 text-muted-foreground">{status.status || ''}</span>}

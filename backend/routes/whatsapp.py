@@ -3640,17 +3640,17 @@ async def update_branch_cloud_config(
     phone_number_id = "".join(filter(str.isdigit, data.phone_number_id or ""))
     waba_id = "".join(filter(str.isdigit, data.whatsapp_business_account_id or ""))
     version = (data.graph_api_version or "v23.0").strip()
-    if provider == "meta_cloud" and not phone_number_id:
+    if data.enabled and provider == "meta_cloud" and not phone_number_id:
         raise HTTPException(status_code=400, detail="Phone Number ID is required")
     if provider == "meta_cloud" and (not version.startswith("v") or not version[1:].replace(".", "").isdigit()):
         raise HTTPException(status_code=400, detail="Invalid Graph API version")
     session_name = (data.waha_session_name or "").strip()
-    if provider == "waha" and not session_name:
+    if data.enabled and provider == "waha" and not session_name:
         raise HTTPException(status_code=400, detail="WAHA session name is required")
     if session_name and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", session_name):
         raise HTTPException(status_code=400, detail="Invalid WAHA session name")
     whatsflow_instance = (data.whatsflow_instance or "").strip()
-    if provider == "whatsflow" and not whatsflow_instance:
+    if data.enabled and provider == "whatsflow" and not whatsflow_instance:
         raise HTTPException(status_code=400, detail="Whatsflow instance is required")
     if whatsflow_instance and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", whatsflow_instance):
         raise HTTPException(status_code=400, detail="Invalid Whatsflow instance")
@@ -3866,6 +3866,11 @@ async def branch_provider_status(branch_id: str, current_user: dict = Depends(ge
     if not client.configured:
         return {"provider": "waha", "configured": False, "connected": False, "session": config["waha_session_name"]}
     ok, data, error = await client.session(config["waha_physical_session_id"])
+    if not ok and error == "http_404":
+        # A saved branch is not a WAHA session until Start creates it.
+        return {"provider": "waha", "configured": True, "connected": False,
+                "session": config["waha_session_name"], "status": "not_started",
+                "error": None}
     status = data.get("status") if isinstance(data, dict) else None
     if ok and status:
         await _db["whatsapp_branch_configs"].update_one(

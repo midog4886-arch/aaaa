@@ -171,6 +171,10 @@ const BranchesPage = () => {
       toast.error(language === 'ar' ? 'اختر يوم عمل واحد على الأقل للفرع' : 'Select at least one working day');
       return;
     }
+    if (formData.whatsapp_cloud_enabled && formData.whatsapp_provider === 'waha' && !formData.whatsapp_waha_session_name?.trim()) {
+      toast.error(language === 'ar' ? 'أدخل اسم جلسة WAHA قبل تفعيل ربط واتساب' : 'Enter a WAHA session name before enabling WhatsApp');
+      return;
+    }
     setSaving(true);
     try {
       const cleanedPrefix = (formData.code_prefix || '')
@@ -1092,7 +1096,7 @@ const BranchesPage = () => {
                          <Input type="number" min="1" max="1000" value={formData.whatsapp_waha_daily_limit} onChange={e => setFormData({ ...formData, whatsapp_waha_daily_limit: e.target.value })} dir="ltr" />
                        </div>
                      </div>
-                     <p className="text-xs text-sky-900">{language === 'ar' ? 'يتطلب WAHA جلسة متصلة قبل الإرسال. مؤشر الجودة داخلي للتشغيل وليس تصنيفاً رسمياً من واتساب.' : 'WAHA requires a connected session before sending. Quality is an internal operating signal, not an official WhatsApp quality rating.'}</p>
+                     <p className="text-xs text-sky-900">{language === 'ar' ? 'branch-main مثال فقط. أدخل اسم جلسة عند تفعيل الربط. يتطلب WAHA جلسة متصلة قبل الإرسال. مؤشر الجودة داخلي للتشغيل وليس تصنيفاً رسمياً من واتساب.' : 'branch-main is an example only. Enter a session name when enabling the connection. WAHA requires a connected session before sending. Quality is an internal operating signal, not an official WhatsApp quality rating.'}</p>
                      {editingBranch && (
                        <div className="space-y-3">
                          <div className="flex flex-wrap gap-2">

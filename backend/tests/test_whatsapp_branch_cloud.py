@@ -104,6 +104,45 @@ def test_branch_cloud_config_encrypts_and_redacts_access_token(monkeypatch):
     assert "access_token_encrypted" not in response
 
 
+def test_disabled_waha_branch_can_be_saved_without_session(monkeypatch):
+    db = _DB()
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    result = run(whatsapp_mod.update_branch_cloud_config(
+        "branch-a",
+        whatsapp_mod.BranchCloudConfigUpdate(
+            enabled=False, provider="waha", waha_session_name="",
+        ),
+        current_user={"is_admin": True, "id": "admin"},
+    ))
+    assert result["enabled"] is False
+    assert result["provider"] == "waha"
+    assert result["waha_session_name"] == ""
+
+
+def test_waha_missing_session_status_prompts_start(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.append({
+        "branch_id": "branch-a", "enabled": True, "provider": "waha",
+        "waha_session_name": "main", "waha_physical_session_id": "branch-a-main",
+    })
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+
+    class MissingSessionClient:
+        configured = True
+
+        async def session(self, name):
+            assert name == "branch-a-main"
+            return False, None, "http_404"
+
+    monkeypatch.setattr(whatsapp_mod, "WAHAClient", MissingSessionClient)
+    result = run(whatsapp_mod.branch_provider_status(
+        "branch-a", current_user={"is_admin": True},
+    ))
+    assert result["status"] == "not_started"
+    assert result["error"] is None
+    assert result["connected"] is False
+
+
 def test_send_uses_the_member_branch_cloud_config(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
     db = _DB()

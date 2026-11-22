@@ -13,8 +13,15 @@ test.each([
   [{ connected: true, status: 'open' }, 'متصل'],
   [{ connected: false, status: 'close' }, 'غير متصل'],
   [{ connected: false, status: 'connecting' }, 'جارٍ الاتصال'],
+  [{ connected: false, status: 'not_started', provider: 'waha' }, 'الجلسة لم تبدأ'],
   [{ connected: false, status: 'unavailable' }, 'تعذّر التحقق من الاتصال'],
 ])('shows the actual connection state', (status, label) => {
   render(<WhatsAppProviderStatus language="ar" status={status} />);
   expect(screen.getByText(label)).toBeTruthy();
+});
+
+test('missing WAHA session explains how to connect', () => {
+  render(<WhatsAppProviderStatus language="ar" status={{ provider: 'waha', connected: false, status: 'not_started' }} />);
+  expect(screen.getByText(/اضغط «بدء» لإنشاء الجلسة/)).toBeTruthy();
+  expect(screen.queryByText(/INSTANCE/)).toBeNull();
 });
