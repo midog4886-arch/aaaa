@@ -9,6 +9,7 @@ import asyncio
 
 from .common import db, get_current_user
 from utils.auth import get_allowed_branch_ids, resolve_branch_filter
+from utils.freeze_scope import freeze_applies_to_activity
 from utils.transferred_session_dates import effective_transfer_end, transfer_dates
 from utils.effective_periods import (
     effective_period_map, operational_window, original_window, source_key,
