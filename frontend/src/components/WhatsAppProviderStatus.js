@@ -30,7 +30,7 @@ export default function WhatsAppProviderStatus({ status, language }) {
       ? (ar ? 'متصل' : 'Connected')
       : status.status === 'not_started'
         ? (ar ? 'الجلسة لم تبدأ' : 'Session not started')
-      : status.status === 'connecting'
+      : ['connecting', 'STARTING'].includes(status.status)
         ? (ar ? 'جارٍ الاتصال' : 'Connecting')
         : (ar ? 'غير متصل' : 'Not connected');
   return <div className="text-sm" role="status">

@@ -13,6 +13,7 @@ test.each([
   [{ connected: true, status: 'open' }, 'متصل'],
   [{ connected: false, status: 'close' }, 'غير متصل'],
   [{ connected: false, status: 'connecting' }, 'جارٍ الاتصال'],
+  [{ connected: false, status: 'STARTING' }, 'جارٍ الاتصال'],
   [{ connected: false, status: 'not_started', provider: 'waha' }, 'الجلسة لم تبدأ'],
   [{ connected: false, status: 'unavailable' }, 'تعذّر التحقق من الاتصال'],
 ])('shows the actual connection state', (status, label) => {

@@ -431,14 +431,32 @@ const BranchesPage = () => {
     if (!editingBranch?.id) return;
     setProviderAction('qr');
     try {
-      const status = await branchesAPI.getProviderStatus(editingBranch.id);
-      setProviderStatus(status.data);
-      if (status.data?.connected) {
+      let status = (await branchesAPI.getProviderStatus(editingBranch.id)).data;
+      setProviderStatus(status);
+      if (status?.status === 'not_started') {
+        toast.info(language === 'ar' ? 'اضغط «بدء» لإنشاء الجلسة أولاً' : 'Select Start to create the session first');
+        return;
+      }
+      // WAHA does not have a QR image while the session is still starting.
+      for (let attempt = 0; attempt < 12 && String(status?.status || '').toUpperCase() === 'STARTING'; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        status = (await branchesAPI.getProviderStatus(editingBranch.id)).data;
+        setProviderStatus(status);
+      }
+      if (status?.connected) {
         if (providerQr) URL.revokeObjectURL(providerQr);
         setProviderQr('');
         toast.info(language === 'ar'
           ? 'الجلسة متصلة بالفعل ولا تحتاج إلى رمز QR'
           : 'The session is already connected and does not need a QR code');
+        return;
+      }
+      if (String(status?.status || '').toUpperCase() === 'STARTING') {
+        toast.info(language === 'ar' ? 'الجلسة لا تزال تبدأ. انتظر قليلاً ثم اضغط «عرض QR» مجددًا.' : 'The session is still starting. Wait a moment, then select Show QR again.');
+        return;
+      }
+      if (String(status?.status || '').toUpperCase() === 'FAILED') {
+        toast.error(language === 'ar' ? 'فشل بدء الجلسة. اضغط «إعادة تشغيل» ثم حاول عرض QR.' : 'Session startup failed. Select Restart, then try Show QR again.');
         return;
       }
       const response = await branchesAPI.getProviderQr(editingBranch.id);
