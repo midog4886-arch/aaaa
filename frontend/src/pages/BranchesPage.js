@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import WhatsAppProviderStatus, { statusCheckFailed, providerStatusError } from '../components/WhatsAppProviderStatus';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -139,6 +139,8 @@ const BranchesPage = () => {
   const [providerQuality, setProviderQuality] = useState(null);
   const [providerQr, setProviderQr] = useState(null);
   const [providerAction, setProviderAction] = useState('');
+  const [pairingBranchId, setPairingBranchId] = useState(null);
+  const openBranchId = useRef(null);
   
   const [formData, setFormData] = useState(initialFormData);
 
@@ -289,6 +291,7 @@ const BranchesPage = () => {
   };
 
   const handleEdit = async (branch) => {
+    openBranchId.current = branch.id;
     setEditingBranch(branch);
     let cloud = {};
     try {
@@ -354,9 +357,17 @@ const BranchesPage = () => {
     setProviderStatus(null);
     setProviderQuality(null);
     setProviderQr(null);
+    setPairingBranchId(null);
+    if ((cloud.provider || 'meta_cloud') === 'waha') {
+      branchesAPI.getProviderStatus(branch.id)
+        .then(response => { if (openBranchId.current === branch.id) setProviderStatus(response.data); })
+        .catch(() => {});
+    }
   };
 
   const handleCloseDialog = () => {
+    openBranchId.current = null;
+    setPairingBranchId(null);
     if (providerQr) URL.revokeObjectURL(providerQr);
     setIsDialogOpen(false);
     setEditingBranch(null);
@@ -467,6 +478,89 @@ const BranchesPage = () => {
       toast.error(error.response?.data?.detail || (language === 'ar' ? 'تعذر تحميل رمز QR' : 'Could not load QR code'));
     } finally { setProviderAction(''); }
   };
+
+  const connectWaha = async () => {
+    const branchId = editingBranch?.id;
+    if (!branchId) return;
+    setProviderAction('connect');
+    setProviderQr(previous => { if (previous) URL.revokeObjectURL(previous); return null; });
+    try {
+      const status = (await branchesAPI.getProviderStatus(branchId)).data;
+      setProviderStatus(status);
+      const state = String(status?.status || '').toUpperCase();
+      if (status?.connected) {
+        toast.success(language === 'ar' ? 'واتساب متصل بالفعل' : 'WhatsApp is already connected');
+        return;
+      }
+      // A failed WEBJS session may retain broken authentication data. Re-pair
+      // only this branch's physical session before requesting a new QR.
+      if (state === 'FAILED') {
+        await branchesAPI.providerSessionAction(branchId, 'logout');
+      }
+      if (!['STARTING', 'SCAN_QR_CODE'].includes(state)) {
+        await branchesAPI.providerSessionAction(branchId, 'start');
+      }
+      setPairingBranchId(branchId);
+      toast.info(language === 'ar'
+        ? 'جاري تجهيز رمز الربط. سيظهر ويتجدد تلقائيًا.'
+        : 'Preparing the pairing QR. It will appear and refresh automatically.');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || (language === 'ar' ? 'تعذر بدء ربط واتساب' : 'Could not start WhatsApp pairing'));
+    } finally {
+      setProviderAction('');
+    }
+  };
+
+  useEffect(() => {
+    if (!pairingBranchId || !isDialogOpen) return undefined;
+    let cancelled = false;
+    let timer;
+    const startedAt = Date.now();
+    const poll = async () => {
+      let delay = 2000;
+      try {
+        const status = (await branchesAPI.getProviderStatus(pairingBranchId)).data;
+        if (cancelled || openBranchId.current !== pairingBranchId) return;
+        setProviderStatus(status);
+        const state = String(status?.status || '').toUpperCase();
+        if (status?.connected) {
+          setPairingBranchId(null);
+          setProviderQr(previous => { if (previous) URL.revokeObjectURL(previous); return null; });
+          toast.success(language === 'ar' ? 'تم ربط واتساب بنجاح' : 'WhatsApp connected');
+          return;
+        }
+        if (state === 'FAILED' || state === 'STOPPED') {
+          setPairingBranchId(null);
+          setProviderQr(previous => { if (previous) URL.revokeObjectURL(previous); return null; });
+          toast.error(language === 'ar' ? 'فشل تجهيز الجلسة. اضغط «إعادة الربط» للمحاولة مجددًا.' : 'Session startup failed. Select Reconnect to try again.');
+          return;
+        }
+        if (state === 'STARTING' && Date.now() - startedAt > 90000) {
+          setPairingBranchId(null);
+          toast.error(language === 'ar' ? 'تأخر بدء الجلسة. تحقق من حالة WAHA ثم حاول إعادة الربط.' : 'Session startup timed out. Check WAHA status before reconnecting.');
+          return;
+        }
+        if (state === 'SCAN_QR_CODE') {
+          delay = 8000;
+          try {
+            const response = await branchesAPI.getProviderQr(pairingBranchId);
+            if (!cancelled && openBranchId.current === pairingBranchId) {
+              const nextQr = URL.createObjectURL(response.data);
+              setProviderQr(previous => { if (previous) URL.revokeObjectURL(previous); return nextQr; });
+            }
+          } catch (_error) {
+            // A QR can rotate between status and image requests; retry shortly.
+            delay = 2000;
+          }
+        }
+      } catch (_error) {
+        delay = 4000;
+      }
+      if (!cancelled) timer = setTimeout(poll, delay);
+    };
+    poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [pairingBranchId, isDialogOpen, language]);
 
   const handleTestProvider = async () => {
     const phone = (formData.support_whatsapp || formData.phone || '').trim();
@@ -1118,7 +1212,20 @@ const BranchesPage = () => {
                      <p className="text-xs text-sky-900">{language === 'ar' ? 'branch-main مثال فقط. أدخل اسم جلسة عند تفعيل الربط. يتطلب WAHA جلسة متصلة قبل الإرسال. مؤشر الجودة داخلي للتشغيل وليس تصنيفاً رسمياً من واتساب.' : 'branch-main is an example only. Enter a session name when enabling the connection. WAHA requires a connected session before sending. Quality is an internal operating signal, not an official WhatsApp quality rating.'}</p>
                      {editingBranch && (
                        <div className="space-y-3">
-                         <div className="flex flex-wrap gap-2">
+                         <div className="flex flex-wrap items-center gap-2">
+                           <Button type="button" size="sm" onClick={connectWaha} disabled={!!providerAction || !!pairingBranchId || !!providerStatus?.connected}>
+                             {providerAction === 'connect' || pairingBranchId ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                             {language === 'ar'
+                               ? (pairingBranchId ? 'جاري تجهيز الربط' : String(providerStatus?.status || '').toUpperCase() === 'FAILED' ? 'إعادة ربط واتساب' : 'ربط واتساب')
+                               : (pairingBranchId ? 'Preparing connection' : String(providerStatus?.status || '').toUpperCase() === 'FAILED' ? 'Reconnect WhatsApp' : 'Connect WhatsApp')}
+                           </Button>
+                           <span className="text-xs text-muted-foreground">{language === 'ar' ? 'جهز الجوال لمسح الرمز؛ سيظهر ويتجدد تلقائيًا.' : 'Have your phone ready; the QR appears and refreshes automatically.'}</span>
+                         </div>
+                         <WhatsAppProviderStatus status={providerStatus} language={language} />
+                         {providerQr && <img src={providerQr} alt="WAHA QR" className="w-48 h-48 rounded-md border bg-white p-2" />}
+                         <details className="text-sm">
+                           <summary className="cursor-pointer text-sky-900">{language === 'ar' ? 'خيارات متقدمة' : 'Advanced options'}</summary>
+                           <div className="flex flex-wrap gap-2 mt-2">
                            <Button type="button" size="sm" variant="outline" onClick={loadWahaDetails} disabled={!!providerAction}>{language === 'ar' ? 'تحديث الحالة والجودة' : 'Refresh status & quality'}</Button>
                            {['start', 'stop', 'restart', 'logout'].map(action => (
                              <Button key={action} type="button" size="sm" variant="outline" onClick={() => runWahaAction(action)} disabled={!!providerAction}>
@@ -1127,8 +1234,8 @@ const BranchesPage = () => {
                            ))}
                            <Button type="button" size="sm" variant="outline" onClick={fetchWahaQr} disabled={!!providerAction}>{language === 'ar' ? 'عرض QR' : 'Show QR'}</Button>
                            <Button type="button" size="sm" onClick={handleTestProvider} disabled={!!providerAction}>{language === 'ar' ? 'إرسال اختبار' : 'Send test'}</Button>
-                         </div>
-                         <WhatsAppProviderStatus status={providerStatus} language={language} />
+                           </div>
+                         </details>
                          {providerQuality && (
                            <div className="text-xs text-muted-foreground">
                              {language === 'ar'
@@ -1139,8 +1246,6 @@ const BranchesPage = () => {
                              </span>
                            </div>
                          )}
-
-                         {providerQr && <img src={providerQr} alt="WAHA QR" className="w-48 h-48 rounded-md border bg-white p-2" />}
                        </div>
                      )}
                    </div>

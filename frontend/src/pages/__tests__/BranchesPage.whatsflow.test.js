@@ -14,6 +14,7 @@ const mockBranchesAPI = {
   getProviderStatus: jest.fn(),
   getProviderQuality: jest.fn(),
   getProviderQr: jest.fn(),
+  providerSessionAction: jest.fn(),
   testProvider: jest.fn(),
   configureProviderWebhook: jest.fn(),
 };
@@ -113,6 +114,7 @@ beforeEach(() => {
   mockBranchesAPI.getProviderQr.mockResolvedValue({
     data: new Blob(['qr'], { type: 'image/png' }),
   });
+  mockBranchesAPI.providerSessionAction.mockResolvedValue({ data: { success: true } });
   mockBranchesAPI.configureProviderWebhook.mockResolvedValue({ data: {} });
   mockWhatsappAPI.getMetaWebhookInfo.mockResolvedValue({ data: null });
 });
@@ -127,6 +129,28 @@ async function openSouthBranch() {
   });
   return { user, dialog };
 }
+
+test('reconnects a failed WAHA branch and displays a fresh QR without manual steps', async () => {
+  mockBranchesAPI.getWhatsAppCloud.mockResolvedValue({
+    data: { enabled: true, provider: 'waha', waha_session_name: 'south-session' },
+  });
+  mockBranchesAPI.getProviderStatus
+    .mockResolvedValueOnce({ data: { connected: false, status: 'FAILED' } })
+    .mockResolvedValueOnce({ data: { connected: false, status: 'FAILED' } })
+    .mockResolvedValueOnce({ data: { connected: false, status: 'SCAN_QR_CODE' } });
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  render(<BranchesPage />);
+  await user.click(await screen.findByTestId('edit-branch-branch-b'));
+  const dialog = await screen.findByRole('dialog');
+  await user.click(await within(dialog).findByRole('button', { name: 'Reconnect WhatsApp' }));
+  await waitFor(() => {
+    expect(mockBranchesAPI.providerSessionAction.mock.calls).toEqual([
+      ['branch-b', 'logout'],
+      ['branch-b', 'start'],
+    ]);
+    expect(within(dialog).getByAltText('WAHA QR')).toBeInTheDocument();
+  });
+});
 
 function inputBesideLabel(dialog, label) {
   const labelNode = within(dialog).getByText(label, { selector: 'label' });
