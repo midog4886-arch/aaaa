@@ -145,7 +145,7 @@ test('reconnects a failed WAHA branch and displays a fresh QR without manual ste
   await user.click(await within(dialog).findByRole('button', { name: 'Reconnect WhatsApp' }));
   await waitFor(() => {
     expect(mockBranchesAPI.providerSessionAction.mock.calls).toEqual([
-      ['branch-b', 'logout'],
+      ['branch-b', 'recover'],
       ['branch-b', 'start'],
     ]);
     expect(within(dialog).getByAltText('WAHA QR')).toBeInTheDocument();

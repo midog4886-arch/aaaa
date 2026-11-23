@@ -143,6 +143,48 @@ def test_waha_missing_session_status_prompts_start(monkeypatch):
     assert result["connected"] is False
 
 
+def test_recover_failed_waha_session_preserves_old_session_and_branch_scope(monkeypatch):
+    db = _DB()
+    db["whatsapp_branch_configs"].rows.extend([
+        {"branch_id": "branch-a", "enabled": True, "provider": "waha",
+         "waha_session_name": "school", "waha_physical_session_id": "school-old"},
+        {"branch_id": "branch-b", "enabled": True, "provider": "waha",
+         "waha_session_name": "other", "waha_physical_session_id": "other-unchanged"},
+    ])
+    monkeypatch.setattr(whatsapp_mod, "_db", db)
+    calls = []
+
+    class Client:
+        configured = True
+
+        async def session(self, name):
+            calls.append(("session", name))
+            return True, {"status": "FAILED"}, None
+
+        async def lifecycle(self, name, action):
+            calls.append((action, name))
+            return True, {}, None
+
+    monkeypatch.setattr(whatsapp_mod, "WAHAClient", Client)
+    result = run(whatsapp_mod.branch_provider_lifecycle(
+        "branch-a", "recover", request=None, current_user={"is_admin": True},
+    ))
+    assert result["success"] is True
+    assert calls == [("session", "school-old"), ("stop", "school-old")]
+    assert db["whatsapp_branch_configs"].rows[0]["waha_physical_session_id"].startswith("school-")
+    assert db["whatsapp_branch_configs"].rows[0]["waha_physical_session_id"] != "school-old"
+    assert db["whatsapp_branch_configs"].rows[1]["waha_physical_session_id"] == "other-unchanged"
+    new_session = db["whatsapp_branch_configs"].rows[0]["waha_physical_session_id"]
+
+    # Saving unrelated branch settings must not restore the failed physical ID.
+    run(whatsapp_mod.update_branch_cloud_config(
+        "branch-a", whatsapp_mod.BranchCloudConfigUpdate(
+            enabled=True, provider="waha", waha_session_name="school",
+        ), current_user={"is_admin": True, "id": "admin"},
+    ))
+    assert db["whatsapp_branch_configs"].rows[0]["waha_physical_session_id"] == new_session
+
+
 def test_send_uses_the_member_branch_cloud_config(monkeypatch):
     monkeypatch.setenv("SESSION_SECRET", "test-only-secret")
     db = _DB()

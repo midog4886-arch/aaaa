@@ -3661,6 +3661,8 @@ async def update_branch_cloud_config(
         "provider_explicit": bool(provider_was_explicit or existing.get("provider_explicit")),
         "waha_session_name": session_name,
         "waha_physical_session_id": (
+            (existing.get("waha_physical_session_id") or _waha_physical_session_id(branch_id, session_name))
+            if provider == "waha" and existing.get("waha_session_name") == session_name else
             _waha_physical_session_id(branch_id, session_name) if provider == "waha" else
             existing.get("waha_physical_session_id")
         ),
@@ -3892,11 +3894,30 @@ async def branch_provider_lifecycle(branch_id: str, action: str, request: Reques
     config = await _require_session_provider_branch(branch_id)
     if _branch_provider(config) != "waha":
         raise HTTPException(status_code=400, detail="Whatsflow has no lifecycle controls")
-    if action not in {"start", "stop", "restart", "logout"}:
+    if action not in {"start", "stop", "restart", "logout", "recover"}:
         raise HTTPException(status_code=404, detail="Unknown session action")
     client = WAHAClient()
     if not client.configured:
         raise HTTPException(status_code=503, detail="WAHA is not configured")
+    if action == "recover":
+        old_session = config["waha_physical_session_id"]
+        exists, data, error = await client.session(old_session)
+        if not exists or not isinstance(data, dict) or data.get("status") != "FAILED":
+            raise HTTPException(status_code=409, detail="Only a failed WAHA session can be recovered")
+        stopped, _, stop_error = await client.lifecycle(old_session, "stop")
+        if not stopped:
+            raise HTTPException(status_code=502, detail=f"WAHA session stop failed ({stop_error})")
+        # Keep the old session and its credentials intact. A fresh physical ID
+        # gets the configured default engine when Start creates it.
+        prefix = re.sub(r"[^a-z0-9_-]", "-", (config.get("waha_session_name") or "waha").lower()).strip("-_")[:24] or "waha"
+        new_session = f"{prefix}-{uuid.uuid4().hex[:20]}"
+        await _db["whatsapp_branch_configs"].update_one(
+            {"branch_id": branch_id, "waha_physical_session_id": old_session},
+            {"$set": {"waha_physical_session_id": new_session,
+                      "waha_session_status": "not_started",
+                      "waha_status_updated_at": datetime.now(timezone.utc).isoformat()}},
+        )
+        return {"success": True, "provider": "waha", "action": "recover"}
     if action == "start":
         webhook_secret = os.environ.get("WAHA_WEBHOOK_SECRET", "")
         if not webhook_secret:

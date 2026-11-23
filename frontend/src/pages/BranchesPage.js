@@ -492,10 +492,10 @@ const BranchesPage = () => {
         toast.success(language === 'ar' ? 'واتساب متصل بالفعل' : 'WhatsApp is already connected');
         return;
       }
-      // A failed WEBJS session may retain broken authentication data. Re-pair
-      // only this branch's physical session before requesting a new QR.
+      // Stop the failed physical session and create a fresh branch session
+      // with the server's configured engine, preserving the old credentials.
       if (state === 'FAILED') {
-        await branchesAPI.providerSessionAction(branchId, 'logout');
+        await branchesAPI.providerSessionAction(branchId, 'recover');
       }
       if (!['STARTING', 'SCAN_QR_CODE'].includes(state)) {
         await branchesAPI.providerSessionAction(branchId, 'start');
