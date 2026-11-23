@@ -55,7 +55,7 @@ class WAHAClient:
         return await self._request("POST", f"/api/sessions/{name}/{action}")
 
     async def logout(self, name: str):
-        return await self._request("POST", "/api/sessions/logout", json={"session": name})
+        return await self._request("POST", f"/api/sessions/{quote(name, safe='')}/logout")
 
     async def qr(self, name: str):
         return await self._request(

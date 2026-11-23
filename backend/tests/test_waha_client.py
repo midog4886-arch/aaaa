@@ -69,6 +69,29 @@ def test_waha_client_fetches_qr_with_get(monkeypatch):
     assert captured["headers"] == {"X-Api-Key": "secret", "Accept": "image/png"}
 
 
+def test_waha_client_logs_out_only_the_named_session(monkeypatch):
+    captured = {}
+
+    class Response:
+        status_code = 200
+        def json(self):
+            return {"status": "STOPPED"}
+
+    class Client:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def request(self, method, url, headers, **kwargs):
+            captured.update(method=method, url=url, headers=headers, **kwargs)
+            return Response()
+
+    monkeypatch.setattr("services.waha.httpx.AsyncClient", lambda **_: Client())
+    ok, _, error = run(WAHAClient("https://waha.example", "secret").logout("branch one"))
+    assert ok and error is None
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://waha.example/api/sessions/branch%20one/logout"
+    assert "json" not in captured
+
+
 def test_waha_client_uses_dedicated_voice_contract(monkeypatch):
     captured = {}
 
