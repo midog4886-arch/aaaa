@@ -4249,14 +4249,16 @@ async def branch_provider_quality(branch_id: str, current_user: dict = Depends(g
     today = datetime.now(timezone.utc).date().isoformat()
     logs = _db["whatsapp_send_log"]
     messages = _db["whatsapp_cloud_messages"]
-    success = await logs.count_documents({"branch_id": branch_id, "transport": provider, "success": True, "sent_at": {"$gte": since}})
-    failure = await logs.count_documents({"branch_id": branch_id, "transport": provider, "success": False, "sent_at": {"$gte": since}})
-    today_sent = await logs.count_documents({"branch_id": branch_id, "transport": provider, "success": True, "sent_at": {"$gte": today, "$lt": today + "T99"}})
-    replies = await messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "inbound", "created_at": {"$gte": since}})
-    delivered = await messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "outbound",
-        "status": {"$in": ["delivered", "DELIVERED"]}, "created_at": {"$gte": since}})
-    read = await messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "outbound",
-        "status": {"$in": ["read", "READ"]}, "created_at": {"$gte": since}})
+    success, failure, today_sent, replies, delivered, read = await asyncio.gather(
+        logs.count_documents({"branch_id": branch_id, "transport": provider, "success": True, "sent_at": {"$gte": since}}),
+        logs.count_documents({"branch_id": branch_id, "transport": provider, "success": False, "sent_at": {"$gte": since}}),
+        logs.count_documents({"branch_id": branch_id, "transport": provider, "success": True, "sent_at": {"$gte": today, "$lt": today + "T99"}}),
+        messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "inbound", "created_at": {"$gte": since}}),
+        messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "outbound",
+            "status": {"$in": ["delivered", "DELIVERED"]}, "created_at": {"$gte": since}}),
+        messages.count_documents({"branch_id": branch_id, "provider": provider, "direction": "outbound",
+            "status": {"$in": ["read", "READ"]}, "created_at": {"$gte": since}}),
+    )
     opt_outs = 0
     stop_terms = {"إلغاء", "الغاء", "توقف", "stop", "unsubscribe"}
     cursor = messages.find({"branch_id": branch_id, "provider": provider, "direction": "inbound", "created_at": {"$gte": since}},

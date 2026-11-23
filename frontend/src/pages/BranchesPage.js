@@ -394,17 +394,18 @@ const BranchesPage = () => {
 
   const loadWahaDetails = async () => {
     if (!editingBranch?.id) return;
+    const branchId = editingBranch.id;
     setProviderAction('refresh');
     try {
-      const [status, quality] = await Promise.allSettled([
-        branchesAPI.getProviderStatus(editingBranch.id),
-        branchesAPI.getProviderQuality(editingBranch.id)
-      ]);
-      if (status.status === 'rejected') throw status.reason;
-      setProviderStatus(status.value.data);
-      setProviderQuality(quality.status === 'fulfilled' ? quality.value.data : null);
-      if (statusCheckFailed(status.value.data)) {
-        toast.error(providerStatusError(status.value.data, language));
+      const status = await branchesAPI.getProviderStatus(branchId);
+      setProviderStatus(status.data);
+      // Quality aggregates can scan many messages. Keep the session controls
+      // responsive while those counters load independently.
+      branchesAPI.getProviderQuality(branchId)
+        .then(response => setProviderQuality(response.data))
+        .catch(() => setProviderQuality(null));
+      if (statusCheckFailed(status.data)) {
+        toast.error(providerStatusError(status.data, language));
       } else {
         toast.success(language === 'ar' ? 'تم تحديث حالة الاتصال' : 'Provider status refreshed');
       }
