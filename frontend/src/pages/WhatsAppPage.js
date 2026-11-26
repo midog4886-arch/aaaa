@@ -2588,15 +2588,32 @@ export default function WhatsAppPage() {
               </select>
               <p className="text-xs text-muted-foreground">{t('حالة كل فرع مستقلة. الفروع التي لم يُضبط مفتاحها بعد ترث حالة الإعداد العام السابق.', 'Each branch has its own switch. Branches not configured yet inherit the previous global setting.')}</p>
               <div className="rounded-xl border p-4 space-y-3 bg-muted/30">
-                <p className="font-semibold">{t('التحكم بإشعارات الفرع المحدد', 'Selected branch notifications')}</p>
+                <div>
+                  <p className="font-semibold">{t('التحكم بإشعارات الفرع المحدد', 'Selected branch notifications')}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t('كل مفتاح يُحفظ فورًا لهذا الفرع فقط. إيقاف المفتاح العام يوقف القنوات أدناه مع الاحتفاظ باختياراتها حتى تعيد تفعيله.', 'Each switch saves immediately for this branch only. Turning off the master switch pauses the channels below and keeps their choices for when you turn it back on.')}</p>
+                </div>
                 {[
-                  ['all_enabled', t('كل الإشعارات التلقائية', 'All automatic notifications')],
-                  ['class_reminder_enabled', t('تذكير الحصص', 'Class reminders')],
-                  ['video_enabled', t('إشعار الفيديو الجديد', 'New video notifications')],
-                ].map(([channel, label]) => <div key={channel} className="flex items-center justify-between gap-3 text-sm">
-                  <span>{label}</span>
-                  <button type="button" disabled={!reminderSettingsBranchId || savingBranchNotification || (channel !== 'all_enabled' && !branchNotificationEnabled('all_enabled'))} onClick={() => handleToggleBranchNotification(channel)} className={`px-3 py-1 rounded-lg text-white ${branchNotificationEnabled(channel) ? 'bg-green-600' : 'bg-gray-500'}`}>{branchNotificationEnabled(channel) ? t('مفعّل', 'On') : t('متوقف', 'Off')}</button>
-                </div>)}
+                  ['all_enabled', t('كل إشعارات الفرع', 'All branch notifications'), t('مفتاح عام للتذكيرات والإشعارات الآلية في هذا الفرع.', 'Master switch for this branch’s reminders and automatic notifications.')],
+                  ['renewal_reminder', t('تذكير تجديد الاشتراك', 'Subscription renewal reminders'), t(`رسالة واتساب تلقائية قبل انتهاء الاشتراك؛ موعد الإرسال اليومي ${HOURS[waSettings.send_hour]?.label || ''}.`, `Automatic WhatsApp message before subscription expiry; daily send time ${HOURS[waSettings.send_hour]?.label || ''}.`)],
+                  ['class_reminder_enabled', t('تذكير موعد الحصة', 'Class time reminders'), t('رسالة واتساب قبل موعد التدريب. لا يغيّر الحضور أو رصيد الحصص.', 'WhatsApp message before training. Does not change attendance or class balance.')],
+                  ['video_enabled', t('إشعار فيديو جديد', 'New video alert'), t('إشعار Push عند إضافة فيديو لعضو في هذا الفرع؛ يتطلب تفعيل Push أيضًا.', 'Push alert when a video is added for a member in this branch; Push must also be on.')],
+                  ['push_enabled', t('إشعارات الجوال والمتصفح', 'Mobile and browser Push'), t('إشعارات المشتركين في Push، ومنها تذكير الانتهاء والفيديو.', 'Push notifications for subscribed members, including expiry and video alerts.')],
+                  ['portal_enabled', t('إشعارات بوابة العضو', 'Member portal alerts'), t('تظهر داخل قسم إشعارات العضو دون الحاجة لاتصال واتساب.', 'Shown in the member notification area without a WhatsApp connection.')],
+                  ...(isAdmin ? [['admin_alert_enabled', t('تنبيهات المدير على واتساب', 'Manager WhatsApp alerts'), t('ترسل إشعارات جرس لوحة التحكم إلى رقم المدير، وتتطلب اتصال واتساب.', 'Sends dashboard bell alerts to the manager number and requires WhatsApp connection.')]] : []),
+                ].map(([channel, label, description]) => {
+                  const enabled = channel === 'renewal_reminder'
+                    ? branchNotificationEnabled('all_enabled') && (waSettings.branch_reminders_enabled?.[reminderSettingsBranchId] ?? waSettings.enabled)
+                    : branchNotificationEnabled(channel);
+                  const blocked = channel !== 'all_enabled' && !branchNotificationEnabled('all_enabled');
+                  return <div key={channel} className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-sm ${blocked ? 'opacity-60' : 'bg-background'}`}>
+                    <div>
+                      <p className="font-medium">{label}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{description}</p>
+                      {blocked && <p className="text-xs text-amber-700 mt-1">{t('متوقف بسبب المفتاح العام', 'Paused by the master switch')}</p>}
+                    </div>
+                    <button type="button" aria-label={label} aria-pressed={!!enabled} disabled={!reminderSettingsBranchId || savingBranchNotification || savingBranchReminder || blocked} onClick={() => channel === 'renewal_reminder' ? handleToggleEnabled() : handleToggleBranchNotification(channel)} className={`shrink-0 px-3 py-1 rounded-lg text-white ${enabled ? 'bg-green-600' : 'bg-gray-500'}`}>{enabled ? t('مفعّل', 'On') : t('متوقف', 'Off')}</button>
+                  </div>;
+                })}
               </div>
               <div className="rounded-xl border divide-y max-h-52 overflow-y-auto">
                 {branches.map(branch => {
